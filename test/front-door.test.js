@@ -915,21 +915,42 @@ describe("the harness never strands a newcomer (LD-D4)", () => {
 describe("the repo's front door (HarnessV3-Launch LD-D12)", () => {
   // (fails before: yes — the README opened with the shim, "One local address for every AI model …", and memory was a
   // bullet under "The proxy underneath")
-  test("the README leads with the three pillars in the plan's order, and What you get follows them", () => {
+  // The README rewritten for the public repo (11-22): the demo's moving picture and the three pillars first, then a
+  // section and a picture for each feature, the long reference left to the guide.
+  test("the README leads with the pitch, the moving picture and the three pillars, then a picture for each feature", () => {
     const readme = readFileSync("README.md", "utf8");
-    const lead = readme.slice(0, readme.indexOf("\n## What you get\n"));
     const at = (/** @type {string} */ s, /** @type {string} */ what) => {
       const i = s.indexOf(what);
       assert.ok(i >= 0, `missing: ${what}`);
       return i;
     };
-    assert.match(lead, /^<img src="assets\/filament-logo\.png" alt="Filament" width="96" \/>\n\n# Filament\n\n\*\*Any model\. Any agent\. One memory\.\*\*\n/, "the pitch first");
+    assert.match(readme, /^<img src="assets\/filament-logo\.png" alt="Filament" width="96" \/>\n\n# Filament\n\n\*\*Any model\. Any agent\. One memory\.\*\*\n/, "the pitch first");
+    const lead = readme.slice(0, at(readme, "\n## "));
+    assert.ok(lead.includes('<img src="assets/readme/story.webp" alt="'), "the moving picture before any section");
+    assert.match(lead, /a scripted demo on a sample project/, "said for what it is");
     const pillars = ["1. **The harness**", "2. **Memory**", "3. **A local API for your other tools**"].map((p) => at(lead, `\n${p}: `));
     assert.deepEqual([...pillars].sort((a, b) => a - b), pillars, "the harness, memory, the local API");
-    const body = readme.slice(lead.length);
-    const parts = ["### 1. The harness", "### 2. Memory", "### 3. A local API for your other tools", "### Around all three", "## Quick start"].map((h) => at(body, `\n${h}\n`));
-    assert.deepEqual([...parts].sort((a, b) => a - b), parts, "What you get, pillar by pillar, then what serves all three");
-    const memory = body.slice(parts[1], parts[2]);
-    assert.ok(memory.includes("**It installs itself.**") && memory.includes("about 500 MB"), "memory's engine and its download, said where memory is");
+    const features = [
+      "## Several agents on one project, without collisions",
+      "## Claude Code and Codex, inside Filament",
+      "## A memory that steers every agent",
+      "## Every change in view, and a way back",
+      "## About 99% read from the provider's cache",
+      "## Every model you pay for. Every agent you use.",
+    ];
+    const rest = ["## And a lot more", "## Your data stays yours", "## Download", "## Run it from source", "## Contributing", "## Supporting Filament", "## License"];
+    const heads = [...features, ...rest].map((h) => at(readme, `\n${h}\n`));
+    assert.deepEqual([...heads].sort((a, b) => a - b), heads, "the features, then the rest, in order");
+    const section = (/** @type {number} */ i) => readme.slice(heads[i], heads[i + 1]);
+    features.forEach((h, i) => assert.equal((section(i).match(/<img src="assets\/readme\/[a-z-]+\.webp" alt="[^"]+"/g) || []).length, 1, `${h}: one picture, with its words`));
+    // Claims with their source: the maker's numbers as the maker's own, the cache's from real use.
+    assert.ok(section(0).includes("not a published benchmark"), "the maker's own runs, said so");
+    assert.ok(section(4).includes("98.87%") && section(4).includes("4,491 model calls"), "the cache figure, with what it was measured over");
+    assert.ok(section(features.length + 2).includes("about 500 MB"), "memory's engine and its size, said at the download");
+    // Every picture the README names is in the repo, and the folder holds no picture it doesn't name.
+    const named = [...readme.matchAll(/src="(assets\/readme\/[^"]+)"/g)].map((m) => m[1]).sort();
+    for (const f of named) assert.ok(existsSync(f), `${f} is missing`);
+    const kept = readdirSync("assets/readme").filter((f) => f.endsWith(".webp"));
+    assert.deepEqual(kept.map((f) => `assets/readme/${f}`).sort(), named, "no picture left over");
   });
 });
