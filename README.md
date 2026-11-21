@@ -16,6 +16,11 @@ on the plans you already pay for. All of them share one memory and one plan of t
 <sub>One request, three agents at once. Filament's real interface, playing a scripted demo on a sample project, sped
 up.</sub>
 
+**Watch the three-minute tour**, with sound: one prompt becomes a plan, the plan runs on agents across your machines,
+and the work comes back checked.
+
+<a href="https://filamentdev.com/#tour"><img src="assets/readme/tour.webp" width="640" alt="Watch the tour: a play button over Filament's Plan at work, a game's release split into tasks, the first pieces landed." /></a>
+
 Filament is three things, in the order you will meet them:
 
 1. **The harness**: Filament's own coding agent, in its own window or the browser. Any model works in your project

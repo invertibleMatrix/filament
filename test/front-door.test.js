@@ -928,6 +928,7 @@ describe("the repo's front door (HarnessV3-Launch LD-D12)", () => {
     const lead = readme.slice(0, at(readme, "\n## "));
     assert.ok(lead.includes('<img src="assets/readme/story.webp" alt="'), "the moving picture before any section");
     assert.match(lead, /a scripted demo on a sample project/, "said for what it is");
+    assert.ok(lead.includes('<a href="https://filamentdev.com/#tour"><img src="assets/readme/tour.webp" '), "the tour, linked where it plays");
     const pillars = ["1. **The harness**", "2. **Memory**", "3. **A local API for your other tools**"].map((p) => at(lead, `\n${p}: `));
     assert.deepEqual([...pillars].sort((a, b) => a - b), pillars, "the harness, memory, the local API");
     const features = [
