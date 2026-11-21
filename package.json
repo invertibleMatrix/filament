@@ -1,6 +1,6 @@
 {
   "name": "filament",
-  "version": "0.9.83",
+  "version": "0.9.84",
   "description": "Filament, an agentic development environment: your coding agent on any model you pay for, with a memory that keeps what every session learned and a context window you can see into.",
   "type": "module",
   "private": true,
