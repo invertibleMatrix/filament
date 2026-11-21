@@ -135,7 +135,7 @@ licence file except fastdom, which ships none (its package.json says MIT).
 | es-toolkit | 1.52.0 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2024 Viva Republica, Inc. | <https://github.com/toss/es-toolkit> |
 | fastdom | 1.0.12 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | not stated in the package, which ships no licence file | <https://github.com/wilsonpage/fastdom> |
 | internmap | 2.0.3 | src/ui/harness/vendor/mermaid/mermaid.mjs; src/ui/harness/vendor/shelf/d3@7/d3.js, d3.umd.js | ISC | Copyright 2021 Mike Bostock | <https://github.com/mbostock/internmap> |
-| katex | 0.16.47 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2013-2020 Khan Academy and other contributors | <https://github.com/KaTeX/KaTeX> |
+| katex | 0.18.2 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2013-2020 Khan Academy and other contributors | <https://github.com/KaTeX/KaTeX> |
 | khroma | 2.1.0 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2019-present Fabio Spampinato, Andrew Maney | <https://github.com/fabiospampinato/khroma> |
 | layout-base | 1.0.2 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2019 iVis@Bilkent | <https://github.com/iVis-at-Bilkent/layout-base> |
 | layout-base | 2.0.1 | src/ui/harness/vendor/mermaid/mermaid.mjs | MIT | Copyright (c) 2019 iVis@Bilkent | <https://github.com/iVis-at-Bilkent/layout-base> |
@@ -1368,7 +1368,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### MIT: katex 0.16.47, katex 0.18.2
+### MIT: katex 0.18.2
 
 ```text
 The MIT License (MIT)

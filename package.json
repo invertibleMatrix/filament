@@ -57,6 +57,11 @@
     "shiki": "^4.4.3",
     "typescript": "^5.9.0"
   },
+  "overrides": {
+    "mermaid": {
+      "katex": "$katex"
+    }
+  },
   "keywords": [
     "llm",
     "agent",
