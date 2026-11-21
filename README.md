@@ -40,8 +40,9 @@ finishes, once its check passes, and the work that needs it starts then.
 <img src="assets/readme/plan.webp" alt="A chat beside its Plan: the agent recalls the project's rule that every note belongs to whoever made it, puts four tasks on the task graph, and starts three builders in the background while the routes wait for all three." />
 
 > In my own runs, splitting a task across parallel worktrees made it about twice as fast, the time shared among the
-> agents working at once, and it used about 40% fewer tokens, even with several agents. The work came back about twice
-> as good, too: thanks to the task graph and memory, every agent knows what it is doing.
+> agents working at once. It used about 40% fewer tokens, even with several agents, when the models were used in
+> Filament, either on an API key or through coding agents. The work came back about twice as good, too: thanks to the
+> task graph and memory, every agent knows what it is doing.
 >
 > — invertibleMatrix, who makes Filament (from my own use, not a published benchmark)
 
