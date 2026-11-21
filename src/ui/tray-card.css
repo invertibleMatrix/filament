@@ -1,0 +1,89 @@
+/* The tray's card (HarnessV3-Native NA-D9): the widget kit's parts (instruments.css) laid out for the desktop app's
+   small frameless window by the tray — its head fixed and dragged, the chosen part scrolling under it, its foot fixed.
+   The window is the card: no glass over the desktop, the popover's own colours, solid. */
+
+.theme-zai-dark { --tc-bg: #1d1d20; --tc-line: rgba(255, 255, 255, 0.08); }
+.theme-zai-light { --tc-bg: #fbfbfd; --tc-line: rgba(60, 60, 67, 0.12); }
+
+body.tray-card {
+  margin: 0; height: 100dvh; overflow: hidden;
+  background: var(--tc-bg); color: var(--inst-label);
+  font: 13px/1.35 var(--font); -webkit-font-smoothing: antialiased;
+}
+.inst-traycard { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); height: 100%; box-sizing: border-box; padding: 0; gap: 0; }
+.inst-traycard .inst-tile { background: linear-gradient(180deg, #38bdf8, #0284c7); }
+
+.tc { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* The head is where the window is dragged from; its controls take their clicks. */
+.tc-top { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 12px; -webkit-app-region: drag; }
+.tc-top button, .tc-top .inst-seg { -webkit-app-region: no-drag; }
+.tc-trail { display: flex; align-items: center; gap: 6px; flex: none; }
+.tc-close {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px;
+  background: transparent; color: var(--inst-label-2); cursor: pointer;
+}
+.tc-close:hover { background: var(--inst-btn); color: var(--inst-label); }
+.tc-close .inst-ic svg { width: 14px; height: 14px; }
+
+.tc-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: 14px; padding: 2px 16px 14px;
+}
+/* What a part holds keeps its height and the body scrolls: a group clips what overflows it, so it would shrink to the
+   body's height, its rows over each other (Requests, ten of them). */
+.tc-body > * { flex-shrink: 0; }
+.tc-foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px 12px; border-top: 1px solid var(--tc-line); }
+.tc-foot .inst-actions { margin-left: auto; }
+/* Each button as wide as its words: shared out evenly, the longest ran past its blue (the owner's of 11-08). */
+.tc-foot .inst-btn { flex: none; padding: 0 11px; }
+.tc-at { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--inst-label-3); white-space: nowrap; }
+
+/* The day's four figures, two by two. */
+.tc-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tc-tile { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 11px; border-radius: 11px; background: var(--inst-card); min-width: 0; }
+.tc-tile .inst-section-title { padding: 0; }
+.tc-tile .inst-hero-num { font-size: 24px; }
+.tc-tile .inst-hero-cap { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* A pill: a dot and a word in its tone — green runs, blue works, orange warns, red stops. */
+.tc-pill {
+  display: inline-flex; align-items: center; gap: 5px; flex: none; height: 20px; padding: 0 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  background: color-mix(in oklab, var(--tc-tone) 16%, transparent); color: var(--tc-tone-text);
+}
+.tc-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tc-pill.is-ok { --tc-tone: var(--color-sys-green); --tc-tone-text: var(--color-sys-green-text); }
+.tc-pill.is-accent { --tc-tone: var(--color-sys-blue); --tc-tone-text: var(--color-sys-blue-text); }
+.tc-pill.is-warn { --tc-tone: var(--color-sys-orange); --tc-tone-text: var(--color-sys-orange-text); }
+.tc-pill.is-err { --tc-tone: var(--color-sys-red); --tc-tone-text: var(--color-sys-red-text); }
+.tc-pill.is-quiet { --tc-tone: var(--inst-label-2); --tc-tone-text: var(--inst-label-2); }
+
+/* The model calls in flight: a sub-agent's turn stands under its turn; a speed that is an average (not writing now) steps back. */
+.inst-row.tc-depth-1 { padding-left: 28px; }
+.inst-row.tc-depth-2 { padding-left: 44px; }
+.inst-row.tc-depth-3 { padding-left: 60px; }
+.inst-row.tc-still .inst-row-value { color: var(--inst-label-3); }
+/* What runs now keeps to one line: a long model name or command is cut by its line, not by the page. */
+.inst-row.tc-now .inst-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A call under the turn above it, quieter. */
+.inst-row.tc-child .inst-row-label { color: var(--inst-label-2); }
+
+.tc-alerts { display: flex; flex-direction: column; gap: 6px; }
+.tc-kind { font-weight: 600; text-transform: capitalize; }
+
+/* Now: the harness's own rows (harness.css's .now-*), on the card's surface; empty, nothing. */
+.tc-nowlist { display: flex; flex-direction: column; gap: 1px; margin: 0 -8px; }
+.tc-nowlist:empty { display: none; }
+.tc-nowlist .now-group { padding-top: 8px; }
+.tc-nowlist .now-group:first-child { padding-top: 0; }
+.tc-quiet { padding: 10px 2px 0; font-size: 12.5px; color: var(--inst-label-2); }
+/* The day in one line, under Now: a press shows Today. */
+.tc-day {
+  display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 9px 12px; border: 0; border-radius: 10px;
+  background: var(--inst-card); color: var(--inst-label); font: inherit; text-align: left; cursor: pointer;
+}
+.tc-day:hover { background: var(--inst-btn); }
+.tc-day-name { font-weight: 600; }
+.tc-day-facts { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--inst-label-2); }
+.tc-day .inst-ic { display: flex; color: var(--inst-label-3); }
+.tc-day .inst-ic svg { width: 13px; height: 13px; }

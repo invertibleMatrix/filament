@@ -1,0 +1,128 @@
+{
+  "a corrected region": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 560
+  },
+  "a neighbour that shares the subject": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 584
+  },
+  "a package manager switched by a correction": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 557
+  },
+  "a command is not a package manager": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 561
+  },
+  "a file changed under a fact about it": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 545
+  },
+  "a file deleted under a fact about it": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 545
+  },
+  "an untouched file keeps its fact": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 563
+  },
+  "a folder the environment contradicts": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 527
+  },
+  "another folder is not this project's": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 546
+  },
+  "a lockfile names the package manager": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 545
+  },
+  "the user's rules are never crowded out": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 792
+  },
+  "one fact said twice in other words, after the curator's pass": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 563
+  },
+  "two values the user said for one thing, while memory asks": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 578
+  },
+  "a mistake is not made again without its reminder": {
+    "stale": 0,
+    "pairs": 0,
+    "rulesLost": 0,
+    "truthLost": 0,
+    "repeated": 0,
+    "misfired": 0,
+    "tokensPerTurn": 642
+  }
+}

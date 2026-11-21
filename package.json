@@ -1,0 +1,85 @@
+{
+  "name": "filament",
+  "version": "0.9.82",
+  "description": "Filament, an agentic development environment: your coding agent on any model you pay for, with a memory that keeps what every session learned and a context window you can see into.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/invertibleMatrix/filament.git"
+  },
+  "bugs": {
+    "url": "https://github.com/invertibleMatrix/filament/issues"
+  },
+  "homepage": "https://filamentdev.com",
+  "bin": {
+    "filament": "bin/filament.js"
+  },
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node bin/filament.js",
+    "dev": "node --watch bin/filament.js",
+    "postinstall": "node scripts/pty-helper.mjs",
+    "test": "node --test \"test/*.test.js\"",
+    "test:golden": "node --test test/golden.test.js",
+    "test:ratchets": "node --test test/ratchets.test.js",
+    "typecheck": "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "format": "prettier --write .",
+    "docs": "node scripts/gen-docs.js",
+    "acp-schema": "node scripts/acp-schema.mjs",
+    "codex-schema": "node scripts/codex-schema.mjs",
+    "app": "node scripts/app.mjs",
+    "desktop": "electron desktop/main.js",
+    "test:desktop": "node scripts/desktop-drive.mjs",
+    "dist": "node scripts/dist.mjs",
+    "dist:win": "node scripts/dist-win.mjs",
+    "dist:mac": "node scripts/dist.mjs mac",
+    "dist:linux": "node scripts/dist.mjs linux",
+    "dist:server": "node scripts/dist-server.mjs",
+    "engine:bundle": "node scripts/build-memory-bundle.mjs",
+    "reset": "node scripts/reset.mjs"
+  },
+  "devDependencies": {
+    "@pierre/diffs": "^1.4.3",
+    "@types/node": "^24.0.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.28.2",
+    "katex": "^0.18.2",
+    "mermaid": "^11.17.2",
+    "prettier": "^3.6.0",
+    "shiki": "^4.4.3",
+    "typescript": "^5.9.0"
+  },
+  "keywords": [
+    "llm",
+    "agent",
+    "coding-agent",
+    "agent-harness",
+    "memory",
+    "anthropic",
+    "openai",
+    "claude",
+    "prompt-caching"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/",
+    "tray/",
+    "sidecar/",
+    "docs/",
+    "starters/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  }
+}

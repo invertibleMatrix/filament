@@ -1,0 +1,81 @@
+{
+  "libraries": [
+    {
+      "name": "Preact",
+      "version": "11.1.0",
+      "with": "htm 3.1.1",
+      "license": "MIT; htm Apache-2.0",
+      "module": "preact@11/preact.js",
+      "words": "components with no build step: h, render, Component, Fragment, every hook (useState, useEffect …) and htm's html tag"
+    },
+    {
+      "name": "Chart.js",
+      "version": "4.6.1",
+      "license": "MIT",
+      "module": "chart.js@4/chart.js",
+      "script": "chart.js@4/chart.umd.js",
+      "global": "Chart",
+      "words": "charts, every chart type registered: Chart (the default export too)"
+    },
+    {
+      "name": "d3",
+      "version": "7.9.0",
+      "license": "ISC",
+      "module": "d3@7/d3.js",
+      "script": "d3@7/d3.umd.js",
+      "global": "d3",
+      "words": "every d3 module: import * as d3"
+    },
+    {
+      "name": "three.js",
+      "version": "0.186.1",
+      "license": "MIT",
+      "module": "three@0.186/three.js",
+      "addons": [
+        "three@0.186/OrbitControls.js",
+        "three@0.186/PointerLockControls.js",
+        "three@0.186/GLTFLoader.js"
+      ],
+      "words": "3D: import * as THREE; its addons OrbitControls, PointerLockControls, GLTFLoader beside it, each importing this three"
+    },
+    {
+      "name": "marked",
+      "version": "18.1.2",
+      "license": "MIT",
+      "module": "marked@18/marked.js",
+      "script": "marked@18/marked.umd.js",
+      "global": "marked",
+      "words": "Markdown to HTML: marked (the default export too)"
+    },
+    {
+      "name": "DOMPurify",
+      "version": "3.4.17",
+      "license": "Apache-2.0 or MPL-2.0",
+      "module": "dompurify@3/purify.js",
+      "script": "dompurify@3/purify.umd.js",
+      "global": "DOMPurify",
+      "words": "HTML made safe to show: DOMPurify.sanitize (the default export)"
+    }
+  ],
+  "files": [
+    "chart.js@4/LICENSE.txt",
+    "chart.js@4/chart.js",
+    "chart.js@4/chart.umd.js",
+    "d3@7/LICENSE.txt",
+    "d3@7/d3.js",
+    "d3@7/d3.umd.js",
+    "dompurify@3/LICENSE.txt",
+    "dompurify@3/purify.js",
+    "dompurify@3/purify.umd.js",
+    "marked@18/LICENSE.txt",
+    "marked@18/marked.js",
+    "marked@18/marked.umd.js",
+    "preact@11/LICENSE.txt",
+    "preact@11/preact.js",
+    "three@0.186/GLTFLoader.js",
+    "three@0.186/LICENSE.txt",
+    "three@0.186/OrbitControls.js",
+    "three@0.186/PointerLockControls.js",
+    "three@0.186/three.js"
+  ]
+}

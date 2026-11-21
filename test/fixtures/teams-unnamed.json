@@ -1,0 +1,393 @@
+{
+ "10x-engineer": {
+  "members": [
+   {
+    "tag": "scout",
+    "name": "Scout",
+    "goodFor": "Finds and reads: where a thing is, how it works",
+    "may": "read",
+    "place": "scout",
+    "line": "Answer the question asked, with file paths and line numbers; skip the tour.",
+    "model": null
+   },
+   {
+    "tag": "builder",
+    "name": "Builder",
+    "goodFor": "Makes one change, and only that",
+    "may": "edit",
+    "place": "builder",
+    "line": "Make the smallest change that meets the acceptance check. No refactors, renames or cleanups along the way.",
+    "model": null
+   },
+   {
+    "tag": "tester",
+    "name": "Tester",
+    "goodFor": "Writes and runs tests, and reports what they really said",
+    "may": "edit",
+    "place": "tester",
+    "line": "Run the narrowest test that proves the acceptance check, then the suite it belongs to, and report the numbers.",
+    "model": null
+   },
+   {
+    "tag": "reviewer",
+    "name": "Reviewer",
+    "goodFor": "Reads a change: what holds, what breaks, what is missing",
+    "may": "read",
+    "place": "reviewer",
+    "line": "Flag only what breaks the goal or the acceptance check; style is not a finding.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "in one role: a scout reads and searches to answer a question; a builder changes code; a tester writes and runs tests; a reviewer reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "worktree": "- A builder and a tester work in their own git worktree when the folder is a repository: their changes reach the folder only when you apply them — worker with their agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that a reviewer or a tester confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: have a reviewer read the diff, or a tester run more.",
+   "graphBy": "the role of the worker that does it",
+   "graphTask": "- Give every task its worker's role, a goal, its steps in order and its acceptance check, and a builder's or a tester's the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for its role and what the tasks it needs reported; a builder's or a tester's change that reports done with its check passed waits in its worktree until you apply it. With review: true a reviewer reads that change first, and the changes it asks go back to the same worker, two rounds at most. You do not start or finish a task yourself.",
+   "toolRoles": "in one role, with the session's hands and MCP servers — scout (reads and searches, changes nothing), builder (changes code), tester (writes and runs tests) or reviewer (reads a change or files and judges them, changes nothing).",
+   "toolWorktree": "A builder and a tester work in their own git worktree when the folder is a repository: their changes reach your folder only when you apply them (worker with apply_changes: true). A reviewer's review names the builder or tester whose change, not applied yet, it reads ahead of its brief.",
+   "applies": "applies the changes a builder or a tester made in its own git worktree to your folder",
+   "tasksBy": "by — the role of the worker that does it —",
+   "tasksWho": "A scout reads and searches and a reviewer reads and judges: neither changes anything, so neither names writes. A builder changes code and a tester writes and runs tests, each in the files its writes name — with review: true, a reviewer reads its change before it merges, and the changes it asks go back to the same worker, two rounds at most.",
+   "tasksBrief": "in your team's words for its role",
+   "roleField": "scout: reads and searches to answer a question. builder: changes code. tester: writes and runs tests. reviewer: reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "reviewField": "A reviewer's only: the agent_id of the builder or tester whose change, made in its own worktree and not applied yet, the reviewer reads ahead of its brief.",
+   "byField": "The role of its worker — required: a scout (it reads and reports, and names no writes), a builder (it changes the files in writes), a tester (it writes and runs tests, in the files in writes) or a reviewer (it reads and judges, and names no writes).",
+   "reviewTaskField": "A builder's or a tester's task: true, and a reviewer reads its change before it merges — the changes it asks go back to the same worker, two rounds at most."
+  },
+  "tools": "cb64fb112410683370b00fe0e83b83d25d4b231883b6d1c37e78bf96ac260d1e"
+ },
+ "methodical": {
+  "members": [
+   {
+    "tag": "scout",
+    "name": "Scout",
+    "goodFor": "Finds and reads: where a thing is, how it works",
+    "may": "read",
+    "place": "scout",
+    "line": "Report what you read as facts with their file and line, and say plainly what you could not confirm.",
+    "model": null
+   },
+   {
+    "tag": "builder",
+    "name": "Builder",
+    "goodFor": "Makes one change, and only that",
+    "may": "edit",
+    "place": "builder",
+    "line": "Do this step and nothing past it. Before you report, run the step's acceptance check yourself where you can, and say what it printed.",
+    "model": null
+   },
+   {
+    "tag": "tester",
+    "name": "Tester",
+    "goodFor": "Writes and runs tests, and reports what they really said",
+    "may": "edit",
+    "place": "tester",
+    "line": "Run the acceptance check exactly as written and report its output word for word: a pass or a failure, never a summary of one.",
+    "model": null
+   },
+   {
+    "tag": "reviewer",
+    "name": "Reviewer",
+    "goodFor": "Reads a change: what holds, what breaks, what is missing",
+    "may": "read",
+    "place": "reviewer",
+    "line": "Check the step against its acceptance check and the plan's order: what it claims, what the diff shows, what is missing.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "in one role: a scout reads and searches to answer a question; a builder changes code; a tester writes and runs tests; a reviewer reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "worktree": "- A builder and a tester work in their own git worktree when the folder is a repository: their changes reach the folder only when you apply them — worker with their agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that a reviewer or a tester confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: have a reviewer read the diff, or a tester run more.",
+   "graphBy": "the role of the worker that does it",
+   "graphTask": "- Give every task its worker's role, a goal, its steps in order and its acceptance check, and a builder's or a tester's the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for its role and what the tasks it needs reported; a builder's or a tester's change that reports done with its check passed waits in its worktree until you apply it. With review: true a reviewer reads that change first, and the changes it asks go back to the same worker, two rounds at most. You do not start or finish a task yourself.",
+   "toolRoles": "in one role, with the session's hands and MCP servers — scout (reads and searches, changes nothing), builder (changes code), tester (writes and runs tests) or reviewer (reads a change or files and judges them, changes nothing).",
+   "toolWorktree": "A builder and a tester work in their own git worktree when the folder is a repository: their changes reach your folder only when you apply them (worker with apply_changes: true). A reviewer's review names the builder or tester whose change, not applied yet, it reads ahead of its brief.",
+   "applies": "applies the changes a builder or a tester made in its own git worktree to your folder",
+   "tasksBy": "by — the role of the worker that does it —",
+   "tasksWho": "A scout reads and searches and a reviewer reads and judges: neither changes anything, so neither names writes. A builder changes code and a tester writes and runs tests, each in the files its writes name — with review: true, a reviewer reads its change before it merges, and the changes it asks go back to the same worker, two rounds at most.",
+   "tasksBrief": "in your team's words for its role",
+   "roleField": "scout: reads and searches to answer a question. builder: changes code. tester: writes and runs tests. reviewer: reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "reviewField": "A reviewer's only: the agent_id of the builder or tester whose change, made in its own worktree and not applied yet, the reviewer reads ahead of its brief.",
+   "byField": "The role of its worker — required: a scout (it reads and reports, and names no writes), a builder (it changes the files in writes), a tester (it writes and runs tests, in the files in writes) or a reviewer (it reads and judges, and names no writes).",
+   "reviewTaskField": "A builder's or a tester's task: true, and a reviewer reads its change before it merges — the changes it asks go back to the same worker, two rounds at most."
+  },
+  "tools": "cb64fb112410683370b00fe0e83b83d25d4b231883b6d1c37e78bf96ac260d1e"
+ },
+ "architect": {
+  "members": [
+   {
+    "tag": "scout",
+    "name": "Scout",
+    "goodFor": "Finds and reads: where a thing is, how it works",
+    "may": "read",
+    "place": "scout",
+    "line": "Map what exists: the modules, their interfaces and their callers. Draw the boundaries as the code has them, not as the names suggest.",
+    "model": null
+   },
+   {
+    "tag": "builder",
+    "name": "Builder",
+    "goodFor": "Makes one change, and only that",
+    "may": "edit",
+    "place": "builder",
+    "line": "Build against the contract in your brief. If the contract cannot hold, stop and report why instead of bending it.",
+    "model": null
+   },
+   {
+    "tag": "tester",
+    "name": "Tester",
+    "goodFor": "Writes and runs tests, and reports what they really said",
+    "may": "edit",
+    "place": "tester",
+    "line": "Test at the interfaces the contract names: the inputs, the outputs and the errors it promises.",
+    "model": null
+   },
+   {
+    "tag": "reviewer",
+    "name": "Reviewer",
+    "goodFor": "Reads a change: what holds, what breaks, what is missing",
+    "may": "read",
+    "place": "reviewer",
+    "line": "Review against the contract: interfaces kept, data flowing the way it says, no dependency it does not allow.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "in one role: a scout reads and searches to answer a question; a builder changes code; a tester writes and runs tests; a reviewer reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "worktree": "- A builder and a tester work in their own git worktree when the folder is a repository: their changes reach the folder only when you apply them — worker with their agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that a reviewer or a tester confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: have a reviewer read the diff, or a tester run more.",
+   "graphBy": "the role of the worker that does it",
+   "graphTask": "- Give every task its worker's role, a goal, its steps in order and its acceptance check, and a builder's or a tester's the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for its role and what the tasks it needs reported; a builder's or a tester's change that reports done with its check passed waits in its worktree until you apply it. With review: true a reviewer reads that change first, and the changes it asks go back to the same worker, two rounds at most. You do not start or finish a task yourself.",
+   "toolRoles": "in one role, with the session's hands and MCP servers — scout (reads and searches, changes nothing), builder (changes code), tester (writes and runs tests) or reviewer (reads a change or files and judges them, changes nothing).",
+   "toolWorktree": "A builder and a tester work in their own git worktree when the folder is a repository: their changes reach your folder only when you apply them (worker with apply_changes: true). A reviewer's review names the builder or tester whose change, not applied yet, it reads ahead of its brief.",
+   "applies": "applies the changes a builder or a tester made in its own git worktree to your folder",
+   "tasksBy": "by — the role of the worker that does it —",
+   "tasksWho": "A scout reads and searches and a reviewer reads and judges: neither changes anything, so neither names writes. A builder changes code and a tester writes and runs tests, each in the files its writes name — with review: true, a reviewer reads its change before it merges, and the changes it asks go back to the same worker, two rounds at most.",
+   "tasksBrief": "in your team's words for its role",
+   "roleField": "scout: reads and searches to answer a question. builder: changes code. tester: writes and runs tests. reviewer: reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "reviewField": "A reviewer's only: the agent_id of the builder or tester whose change, made in its own worktree and not applied yet, the reviewer reads ahead of its brief.",
+   "byField": "The role of its worker — required: a scout (it reads and reports, and names no writes), a builder (it changes the files in writes), a tester (it writes and runs tests, in the files in writes) or a reviewer (it reads and judges, and names no writes).",
+   "reviewTaskField": "A builder's or a tester's task: true, and a reviewer reads its change before it merges — the changes it asks go back to the same worker, two rounds at most."
+  },
+  "tools": "cb64fb112410683370b00fe0e83b83d25d4b231883b6d1c37e78bf96ac260d1e"
+ },
+ "one-shot": {
+  "members": [
+   {
+    "tag": "scout",
+    "name": "Scout",
+    "goodFor": "Finds and reads: where a thing is, how it works",
+    "may": "read",
+    "place": "scout",
+    "line": "Report everything your task asks for in one pass; there is no second round.",
+    "model": null
+   },
+   {
+    "tag": "builder",
+    "name": "Builder",
+    "goodFor": "Makes one change, and only that",
+    "may": "edit",
+    "place": "builder",
+    "line": "Your task runs beside others at the same time: touch only the files your brief names, and report anything outside them you needed.",
+    "model": null
+   },
+   {
+    "tag": "tester",
+    "name": "Tester",
+    "goodFor": "Writes and runs tests, and reports what they really said",
+    "may": "edit",
+    "place": "tester",
+    "line": "Write and run the tests for your own slice; other workers own the rest.",
+    "model": null
+   },
+   {
+    "tag": "reviewer",
+    "name": "Reviewer",
+    "goodFor": "Reads a change: what holds, what breaks, what is missing",
+    "may": "read",
+    "place": "reviewer",
+    "line": "Review the integrated whole once: what the tasks missed between them, where they disagree, and what does not fit together.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "in one role: a scout reads and searches to answer a question; a builder changes code; a tester writes and runs tests; a reviewer reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "worktree": "- A builder and a tester work in their own git worktree when the folder is a repository: their changes reach the folder only when you apply them — worker with their agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that a reviewer or a tester confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: have a reviewer read the diff, or a tester run more.",
+   "graphBy": "the role of the worker that does it",
+   "graphTask": "- Give every task its worker's role, a goal, its steps in order and its acceptance check, and a builder's or a tester's the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for its role and what the tasks it needs reported; a builder's or a tester's change that reports done with its check passed waits in its worktree until you apply it. With review: true a reviewer reads that change first, and the changes it asks go back to the same worker, two rounds at most. You do not start or finish a task yourself.",
+   "toolRoles": "in one role, with the session's hands and MCP servers — scout (reads and searches, changes nothing), builder (changes code), tester (writes and runs tests) or reviewer (reads a change or files and judges them, changes nothing).",
+   "toolWorktree": "A builder and a tester work in their own git worktree when the folder is a repository: their changes reach your folder only when you apply them (worker with apply_changes: true). A reviewer's review names the builder or tester whose change, not applied yet, it reads ahead of its brief.",
+   "applies": "applies the changes a builder or a tester made in its own git worktree to your folder",
+   "tasksBy": "by — the role of the worker that does it —",
+   "tasksWho": "A scout reads and searches and a reviewer reads and judges: neither changes anything, so neither names writes. A builder changes code and a tester writes and runs tests, each in the files its writes name — with review: true, a reviewer reads its change before it merges, and the changes it asks go back to the same worker, two rounds at most.",
+   "tasksBrief": "in your team's words for its role",
+   "roleField": "scout: reads and searches to answer a question. builder: changes code. tester: writes and runs tests. reviewer: reads a change or files and judges them. A scout and a reviewer change nothing.",
+   "reviewField": "A reviewer's only: the agent_id of the builder or tester whose change, made in its own worktree and not applied yet, the reviewer reads ahead of its brief.",
+   "byField": "The role of its worker — required: a scout (it reads and reports, and names no writes), a builder (it changes the files in writes), a tester (it writes and runs tests, in the files in writes) or a reviewer (it reads and judges, and names no writes).",
+   "reviewTaskField": "A builder's or a tester's task: true, and a reviewer reads its change before it merges — the changes it asks go back to the same worker, two rounds at most."
+  },
+  "tools": "cb64fb112410683370b00fe0e83b83d25d4b231883b6d1c37e78bf96ac260d1e"
+ },
+ "bug-hunter": {
+  "members": [
+   {
+    "tag": "hunter",
+    "name": "Hunter",
+    "goodFor": "Hunts bugs in one slice, with file, line and code",
+    "may": "read",
+    "place": "hunter",
+    "line": "Hunt only your slice. Each finding: the claim, its file and line, the code that shows it, why it is a bug, and how to see it go wrong where that can be shown. One you cannot back with file, line and code is Plausible, said so.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "as one member of your team, named by its tag:\n  - `hunter` — Hunter: Hunts bugs in one slice, with file, line and code. It changes nothing.",
+   "worktree": "- No member of your team changes the project's files: there is nothing to apply, and what a worker reports is what its task yields.",
+   "check": null,
+   "claim": "- A report is a claim. Check it before anything builds on it: read what changed.",
+   "graphBy": "the member of your team that does it, by its tag",
+   "graphTask": "- Give every task its member, a goal, its steps in order and its acceptance check. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for that member and what the tasks it needs reported. You do not start or finish a task yourself.",
+   "toolRoles": "as one member of your team, with the session's hands and MCP servers — hunter (changes nothing).",
+   "toolWorktree": "No member of your team changes the project's files.",
+   "applies": "applies the changes a worker made in its own git worktree to your folder",
+   "tasksBy": "by — the tag of the member that does it —",
+   "tasksWho": "`hunter` changes nothing that is kept, and names no writes.",
+   "tasksBrief": "in your team's words for that member",
+   "roleField": "One of your team's members, by its tag. `hunter` — Hunter: Hunts bugs in one slice, with file, line and code. It changes nothing.",
+   "reviewField": null,
+   "byField": "The member that does it, by its tag — required: hunter (it names no writes).",
+   "reviewTaskField": null
+  },
+  "tools": "1d856cbd0fc6d8d13ee1709bf41b3294590899d9be30e392996adebce095d289"
+ },
+ "verifier": {
+  "members": [
+   {
+    "tag": "checker",
+    "name": "Checker",
+    "goodFor": "Checks a claim against the code: Confirmed, Plausible or Dismissed",
+    "may": "read",
+    "place": "checker",
+    "line": "Check each claim you were given against the code as it is now: read the file and the line, run what shows it where you can. Confirmed with why, Plausible where it cannot be shown either way, Dismissed with why. Fix nothing.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "as one member of your team, named by its tag:\n  - `checker` — Checker: Checks a claim against the code: Confirmed, Plausible or Dismissed. It changes nothing.",
+   "worktree": "- No member of your team changes the project's files: there is nothing to apply, and what a worker reports is what its task yields.",
+   "check": null,
+   "claim": "- A report is a claim. Check it before anything builds on it: read what changed.",
+   "graphBy": "the member of your team that does it, by its tag",
+   "graphTask": "- Give every task its member, a goal, its steps in order and its acceptance check. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for that member and what the tasks it needs reported. You do not start or finish a task yourself.",
+   "toolRoles": "as one member of your team, with the session's hands and MCP servers — checker (changes nothing).",
+   "toolWorktree": "No member of your team changes the project's files.",
+   "applies": "applies the changes a worker made in its own git worktree to your folder",
+   "tasksBy": "by — the tag of the member that does it —",
+   "tasksWho": "`checker` changes nothing that is kept, and names no writes.",
+   "tasksBrief": "in your team's words for that member",
+   "roleField": "One of your team's members, by its tag. `checker` — Checker: Checks a claim against the code: Confirmed, Plausible or Dismissed. It changes nothing.",
+   "reviewField": null,
+   "byField": "The member that does it, by its tag — required: checker (it names no writes).",
+   "reviewTaskField": null
+  },
+  "tools": "1637ce785a6a2c6f50176acc0f14243a78b000bd8351163094969f0989ed6da9"
+ },
+ "copies": {
+  "members": [
+   {
+    "tag": "translator",
+    "name": "Translator",
+    "goodFor": "Turns one language's code into another's",
+    "may": "edit",
+    "place": "builder",
+    "line": "Keep the tests green.",
+    "model": null
+   },
+   {
+    "tag": "scout",
+    "name": "Scout",
+    "goodFor": "Finds and reads: where a thing is, how it works",
+    "may": "read",
+    "place": "scout",
+    "line": "",
+    "model": null
+   },
+   {
+    "tag": "tester",
+    "name": "Tester",
+    "goodFor": "Writes and runs tests, and reports what they really said",
+    "may": "edit",
+    "place": "tester",
+    "line": "Run them all.",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "as one member of your team, named by its tag:\n  - `translator` — Translator: Turns one language's code into another's. It changes files.\n  - `scout` — Scout: Finds and reads: where a thing is, how it works. It changes nothing.\n  - `tester` — Tester: Writes and runs tests, and reports what they really said. It changes files.",
+   "worktree": "- `translator` and `tester` work in their own git worktree when the folder is a repository: their changes reach the folder only when you apply them — worker with their agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that another worker confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: read what changed, or have another member read the diff or run the check.",
+   "graphBy": "the member of your team that does it, by its tag",
+   "graphTask": "- Give every task its member, a goal, its steps in order and its acceptance check, and a task of `translator` or `tester` the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for that member and what the tasks it needs reported; a change that reports done with its check passed waits in its worktree until you apply it. No member of your team reviews, so no task takes a review. You do not start or finish a task yourself.",
+   "toolRoles": "as one member of your team, with the session's hands and MCP servers — translator (changes files), scout (changes nothing), tester (changes files).",
+   "toolWorktree": "`translator` and `tester` work in their own git worktree when the folder is a repository: their changes reach your folder only when you apply them (worker with apply_changes: true).",
+   "applies": "applies the changes a worker made in its own git worktree to your folder",
+   "tasksBy": "by — the tag of the member that does it —",
+   "tasksWho": "`scout` changes nothing that is kept, and names no writes. `translator` and `tester` change the files their writes name.",
+   "tasksBrief": "in your team's words for that member",
+   "roleField": "One of your team's members, by its tag. `translator` — Translator: Turns one language's code into another's. It changes files. `scout` — Scout: Finds and reads: where a thing is, how it works. It changes nothing. `tester` — Tester: Writes and runs tests, and reports what they really said. It changes files.",
+   "reviewField": null,
+   "byField": "The member that does it, by its tag — required: translator (it changes the files in writes), scout (it names no writes), tester (it changes the files in writes).",
+   "reviewTaskField": null
+  },
+  "tools": "d2b5de9ef1c9d44b670e8dfc1e7bb7e5a88732deca1aabac29cd60033de59f81"
+ },
+ "mine": {
+  "members": [
+   {
+    "tag": "builder",
+    "name": "Builder",
+    "goodFor": "Makes one change, and only that",
+    "may": "edit",
+    "place": "builder",
+    "line": "Touch only the files named.",
+    "model": null
+   },
+   {
+    "tag": "reviewer",
+    "name": "Reviewer",
+    "goodFor": "Reads a change: what holds, what breaks, what is missing",
+    "may": "read",
+    "place": "reviewer",
+    "line": "",
+    "model": null
+   }
+  ],
+  "words": {
+   "roles": "as one member of your team, named by its tag:\n  - `builder` — Builder: Makes one change, and only that. It changes files.\n  - `reviewer` — Reviewer: Reads a change: what holds, what breaks, what is missing. It changes nothing.",
+   "worktree": "- `builder` works in its own git worktree when the folder is a repository: its changes reach the folder only when you apply them — worker with its agent_id and apply_changes: true. Apply only work whose report shows its acceptance check passed, or that another worker confirmed.",
+   "check": "- Put the commands that prove a task done in check, and the others it needs in may_run: in the worker's own worktree they run without anyone's answer, and Filament runs the check itself once the worker reports — a failing one goes back to the worker, twice at most, before you hear. Where you can, have a failing test written first, and make it the check of the work that makes it pass.",
+   "claim": "- A report is a claim; a check Filament ran is not. Read every change before you apply it, and check what the report says beyond its check: read what changed, or have another member read the diff or run the check.",
+   "graphBy": "the member of your team that does it, by its tag",
+   "graphTask": "- Give every task its member, a goal, its steps in order and its acceptance check, and a task of `builder` the files it writes. Filament starts its worker by itself once its needs are done and a slot is free, briefs it from these fields, your team's words for that member and what the tasks it needs reported; a change that reports done with its check passed waits in its worktree until you apply it. With review: true `reviewer` reads that change first, and the changes it asks go back to the same worker, two rounds at most. You do not start or finish a task yourself.",
+   "toolRoles": "as one member of your team, with the session's hands and MCP servers — builder (changes files), reviewer (changes nothing).",
+   "toolWorktree": "`builder` works in its own git worktree when the folder is a repository: its changes reach your folder only when you apply them (worker with apply_changes: true). A review, for `reviewer`, names the worker whose change, not applied yet, it reads ahead of its brief.",
+   "applies": "applies the changes a worker made in its own git worktree to your folder",
+   "tasksBy": "by — the tag of the member that does it —",
+   "tasksWho": "`reviewer` changes nothing that is kept, and names no writes. `builder` changes the files its writes name — with review: true, `reviewer` reads the change before it merges, and the changes it asks go back to the same worker, two rounds at most.",
+   "tasksBrief": "in your team's words for that member",
+   "roleField": "One of your team's members, by its tag. `builder` — Builder: Makes one change, and only that. It changes files. `reviewer` — Reviewer: Reads a change: what holds, what breaks, what is missing. It changes nothing.",
+   "reviewField": "For `reviewer` only: the agent_id of the worker whose change, made in its own worktree and not applied yet, it reads ahead of its brief.",
+   "byField": "The member that does it, by its tag — required: builder (it changes the files in writes), reviewer (it names no writes).",
+   "reviewTaskField": "A task of `builder`: true, and `reviewer` reads its change before it merges — the changes it asks go back to the same worker, two rounds at most."
+  },
+  "tools": "3a3156ab06e7c63c1ae441c8cf7d707849ba80431567ce6b6779335ce3203f5e"
+ }
+}

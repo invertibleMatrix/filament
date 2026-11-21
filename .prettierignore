@@ -1,0 +1,9 @@
+# Formatting is the IDE's job, over the whole tree in one pass (the owner, 2026-09-20); nothing in CI or the test suite
+# measures it. This file only keeps a formatter — Prettier from the IDE, or `npm run format` — off the files that are
+# GENERATED and compared byte-for-byte by a gate: the docs `npm run docs` writes (the docs-drift check), the golden wire
+# corpus (`UPDATE_GOLDEN=1` rewrites it in the generator's shape), and npm's lock file.
+/docs/PARAMETERS.md
+/docs/TEMPLATES.md
+/docs/COMMANDS.md
+/test/fixtures/golden/expected
+/package-lock.json

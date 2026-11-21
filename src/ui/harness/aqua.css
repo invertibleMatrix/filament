@@ -1,0 +1,1749 @@
+/* Aqua (HarnessV3 §15 item 92 — the vault's HarnessV3-Aqua-Design): the harness in the macOS language the
+   Instruments started. Glass surfaces over the conversation, capsule controls, app-icon tiles in each thing's own
+   color, the system accent for the one thing a surface is about, and motion that settles on a spring. Loaded last:
+   it builds on harness.css (the zai tokens, `--color-sys-*`, `.ios-switch`) and instruments.css (`--inst-*`, the
+   segmented control, the grouped rows, `inst-in`), and restyles their components rather than forking them. */
+
+/* ---- tokens ---------------------------------------------------------------------------------------------------- */
+.theme-zai-dark {
+  --aq-glass: color-mix(in oklab, #252528 80%, transparent);
+  --aq-glass-focus: color-mix(in oklab, #2a2a2e 88%, transparent);
+  --aq-hairline: rgba(255, 255, 255, 0.09);
+  --aq-hairline-strong: rgba(255, 255, 255, 0.15);
+  --aq-edge: rgba(255, 255, 255, 0.06);
+  --aq-lift: 0 18px 40px -18px rgba(0, 0, 0, 0.75), 0 4px 14px -6px rgba(0, 0, 0, 0.45);
+  --aq-control: rgba(255, 255, 255, 0.055);
+  --aq-control-hover: rgba(255, 255, 255, 0.1);
+  --aq-control-press: rgba(255, 255, 255, 0.14);
+  --aq-label: rgba(255, 255, 255, 0.92);
+  --aq-label-2: rgba(235, 235, 245, 0.62);
+  --aq-label-3: rgba(235, 235, 245, 0.36);
+  --aq-menu: color-mix(in oklab, #2a2a2d 84%, transparent);
+  --aq-key: rgba(255, 255, 255, 0.1);
+  --aq-key-label: rgba(235, 235, 245, 0.62);
+  --aq-stop-bg: rgba(255, 255, 255, 0.92);
+  --aq-stop-fg: #1c1c1e;
+  --aq-panel: color-mix(in oklab, #1f1f22 94%, transparent);
+  --aq-panel-solid: #1f1f22;
+  --aq-bubble: #2c2c2e;
+  --aq-card: rgba(255, 255, 255, 0.04);
+  --aq-code: rgba(255, 255, 255, 0.035);
+  --aq-code-block: rgba(255, 255, 255, 0.035);
+  --aq-code-head: rgba(255, 255, 255, 0.025);
+  --aq-bar: rgba(255, 255, 255, 0.2);
+  --aq-sidebar: #1e1e21;
+  --aq-code-chip: rgba(255, 255, 255, 0.085);
+  /* A field you type in (the Instruments' field), and under the pointer: a lifted control here, white on the light theme. */
+  --aq-field: var(--inst-field);
+  --aq-field-hover: rgba(255, 255, 255, 0.1);
+  /* What a see-through layer is mixed from (`color-mix(in srgb, var(--aq-tint) N%, transparent)`): white lifts dark
+     glass, black lays a shade on white. A well's is `--aq-shade`: as dark as its N% here, a fifth of it on white. */
+  --aq-tint: #ffffff;
+  --aq-shade: #000000;
+  /* What a coloured word's own tint is mixed into where it sits on the grey sidebar: nothing here; white on light, so
+     its words keep 4.5:1 there, on a row under the pointer too. */
+  --aq-chip-base: transparent;
+  /* A tone in words, on dark glass or on its own tint: light pastels here, deep ones on white. */
+  --aq-blue-text: #7cbcff;
+  --aq-purple-text: #c58cff;
+  --aq-pink-text: #ff8aa2;
+  --aq-indigo-text: #b4b2ff;
+  --aq-teal-text: #7fdcef;
+  --aq-orange-text: #ffbf5c;
+  --aq-red-text: #ff8a80;
+  --aq-needs-text: #ffb340;
+  --aq-error-text: #ff6d63;
+  /* Gold, the colour of what is in charge: a glyph or a radio in it, and words in it. */
+  --aq-gold: #ffd60a;
+  --aq-gold-text: #ffd60a;
+  /* A page in a stack (the Brief's "This whole chat"): the pages under, and the one in front. */
+  --aq-paper: #3a3a3f;
+  --aq-paper-2: #4a4a50;
+}
+.theme-zai-light {
+  --aq-glass: color-mix(in oklab, #ffffff 92%, transparent);
+  --aq-glass-focus: color-mix(in oklab, #ffffff 98%, transparent);
+  --aq-hairline: rgba(0, 0, 0, 0.16);
+  --aq-hairline-strong: rgba(0, 0, 0, 0.27);
+  --aq-edge: rgba(255, 255, 255, 0.9);
+  --aq-lift: 0 1px 3px rgba(0, 0, 0, 0.1), 0 16px 36px -16px rgba(0, 0, 0, 0.32);
+  --aq-control: rgba(0, 0, 0, 0.06);
+  --aq-control-hover: rgba(0, 0, 0, 0.095);
+  --aq-control-press: rgba(0, 0, 0, 0.13);
+  --aq-label: rgba(0, 0, 0, 0.87);
+  --aq-label-2: rgba(60, 60, 67, 0.86);
+  --aq-label-3: rgba(60, 60, 67, 0.76);
+  --aq-menu: color-mix(in oklab, #ffffff 95%, transparent);
+  --aq-key: rgba(0, 0, 0, 0.08);
+  --aq-key-label: rgba(60, 60, 67, 0.88);
+  --aq-stop-bg: #1c1c1e;
+  --aq-stop-fg: #ffffff;
+  --aq-panel: color-mix(in oklab, #ffffff 97%, transparent);
+  --aq-panel-solid: #ffffff;
+  --aq-bubble: #e0e0e7;
+  --aq-card: #ffffff;
+  --aq-code: rgba(0, 0, 0, 0.035);
+  --aq-code-block: #ffffff;
+  --aq-code-head: rgba(0, 0, 0, 0.035);
+  --aq-bar: rgba(0, 0, 0, 0.2);
+  --aq-sidebar: #e6e6eb;
+  --aq-code-chip: rgba(0, 0, 0, 0.07);
+  --aq-field: var(--inst-field);
+  --aq-field-hover: #fafafc;
+  --aq-tint: #000000;
+  --aq-shade: rgba(0, 0, 0, 0.2);
+  --aq-chip-base: #ffffff;
+  --aq-blue-text: var(--color-sys-blue-text);
+  --aq-purple-text: var(--color-sys-purple-text);
+  --aq-pink-text: var(--color-sys-pink-text);
+  --aq-indigo-text: var(--color-sys-indigo-text);
+  --aq-teal-text: var(--color-sys-teal-text);
+  --aq-orange-text: var(--color-sys-orange-text);
+  --aq-red-text: var(--color-sys-red-text);
+  --aq-needs-text: #9a4a00;
+  --aq-error-text: #c21d12;
+  --aq-gold: #b98a00;
+  --aq-gold-text: var(--color-sys-yellow-text);
+  --aq-paper: #dcdce2;
+  --aq-paper-2: #ffffff;
+}
+/* The accent: a button, a selected row and a link. White words sit on it and it colours words, so it is blue's deep
+   shade — the system blue itself on dark. */
+:root { --aq-accent: var(--color-sys-blue-text); --aq-ease: cubic-bezier(0.25, 1, 0.5, 1); }
+
+/* An app-icon tile in a color: the thing's glyph, white on its hue, lit from above. */
+.zc-menu-tile, .slash-tile, .mp-tile, .att-file, .cc-ic, .tk-tile, .mcps-tile, .prov-tile {
+  display: grid; place-items: center; flex: none; color: #fff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone, var(--tile, #8e8e93)) 76%, #fff) 0%, var(--tone, var(--tile, #8e8e93)) 58%, color-mix(in oklab, var(--tone, var(--tile, #8e8e93)) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), inset 0 -1px 0 rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+}
+.zc-menu-tile svg, .slash-tile svg, .mp-tile svg, .att-file svg, .cc-ic svg, .tk-tile svg, .mcps-tile svg, .prov-tile svg { stroke-width: 2.2; }
+
+/* A keycap. */
+.zc-menu-kbd, .slash-key kbd, .slash-trigger {
+  display: inline-grid; place-items: center; font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+
+/* ---- the composer --------------------------------------------------------------------------------------------- */
+.composer { padding: 0 20px 2px; }
+/* The blur rides a layer under the shell, not the shell itself: an element with a backdrop filter becomes the backdrop
+   root of everything inside it, and the Spotlight panel — inside the shell, drawn above it — would blur nothing. */
+.composer-shell {
+  gap: 6px; padding: 12px 10px 9px 14px; border-radius: 22px;
+  background: var(--aq-glass);
+  border: 1px solid var(--aq-hairline);
+  box-shadow: inset 0 1px 0 var(--aq-edge), var(--aq-lift);
+  transition: border-color 220ms var(--aq-ease), box-shadow 260ms var(--aq-ease), background-color 220ms var(--aq-ease);
+}
+.composer-shell::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7);
+}
+.composer-shell:hover { border-color: var(--aq-hairline-strong); }
+.composer-shell:focus-within {
+  background: var(--aq-glass-focus);
+  border-color: color-mix(in oklab, var(--aq-accent) 42%, var(--aq-hairline));
+  box-shadow: inset 0 1px 0 var(--aq-edge), 0 0 0 3px color-mix(in oklab, var(--aq-accent) 16%, transparent), var(--aq-lift);
+}
+.composer-shell .composer-input { min-height: 46px; padding: 1px 4px 0; font-size: var(--text-ui-base); line-height: 1.55; color: var(--aq-label); caret-color: var(--aq-accent); }
+.composer-shell .composer-input.is-empty::before { color: var(--aq-label-3); }
+.composer-bar { gap: 4px; }
+
+/* The bar's controls: capsules, a faint fill at rest, the glyph in its own tone. */
+.composer-bar .attach, .mode-chip, .model-chip, .effort-btn {
+  height: 28px; gap: 6px; padding: 0 10px; border-radius: 14px;
+  background: var(--aq-control); color: var(--aq-label);
+  font-size: var(--text-ui-caption); font-weight: 500; letter-spacing: -0.005em;
+  transition: background-color 160ms var(--aq-ease), color 160ms var(--aq-ease), transform 160ms var(--aq-ease);
+}
+.composer-bar .attach:hover, .mode-chip:hover, .model-chip:hover, .effort-btn:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.composer-bar .attach:active, .mode-chip:active, .model-chip:active, .effort-btn:active { background: var(--aq-control-press); transform: scale(0.97); }
+.composer-bar .attach:focus-visible, .mode-chip:focus-visible, .model-chip:focus-visible, .effort-btn:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.composer-bar .attach { width: 28px; padding: 0; border-radius: 50%; }
+.composer-bar .attach svg { width: 16px; height: 16px; stroke-width: 2.2; color: var(--aq-label-2); }
+.composer-bar .attach:hover svg { color: var(--aq-label); }
+.mode-caret svg { width: 12px; height: 12px; color: var(--aq-label-3); }
+
+/* The permission chip: its mode's tone on the glyph; Full access says it in red on the words too. */
+.mode-chip .mode-ic { color: var(--tone, var(--aq-label-2)); }
+.mode-chip .mode-ic svg { width: 15px; height: 15px; stroke-width: 2.2; }
+.mode-chip.warn, .mode-chip.warn:hover { color: var(--color-sys-red-text); background: color-mix(in oklab, var(--color-sys-red) 13%, transparent); }
+
+/* The model chip: the maker's tile, the name. */
+.model-chip { max-width: 17rem; padding-left: 6px; }
+.model-chip-tile { display: inline-flex; flex: none; }
+.model-chip .model-name { font-weight: 550; }
+.model-chip.is-locked { opacity: 0.6; cursor: default; }
+.mp-tile.is-sm { width: 16px; height: 16px; border-radius: 4.5px; font-size: 9.5px; font-weight: 750; line-height: 1; }
+.mp-tile.is-sm svg { width: 10px; height: 10px; }
+.mp-tile.is-empty { background: var(--aq-control-hover); box-shadow: none; color: var(--aq-label-2); }
+
+/* The tuning chip: the reasoning meter lit in the accent, a bolt for fast mode, the window's size, thinking's glyph. */
+.tune-chip .tune-glyph { color: var(--aq-accent); }
+.tune-chip.is-auto .tune-glyph { color: var(--aq-label-2); }
+.tune-chip .tune-glyph svg { display: block; width: 15px; height: 15px; }
+.tune-glyph-art { display: block; line-height: 0; }
+.tune-chip .tune-label:empty { display: none; }
+.tune-badges { display: inline-flex; align-items: center; gap: 3px; }
+.tune-badges:empty { display: none; }
+.tune-badge { display: inline-grid; place-items: center; }
+.tune-badge svg { width: 12px; height: 12px; stroke-width: 2.3; }
+.tune-badge.is-fast { color: var(--color-sys-orange-text); }
+.tune-badge.is-fast svg { fill: currentColor; }
+.tune-badge.is-think { color: var(--color-sys-purple-text); }
+.tune-badge.is-window { height: 16px; padding: 0 5px; border-radius: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.01em; color: var(--aq-label-2); background: var(--aq-control-hover); }
+.effort.hidden { display: none; }
+
+/* Send and stop: circles. The send is the one lit thing on the bar — the accent, the arrow in white — and dims to a
+   quiet disc while there is nothing to send; while a run is live it steps back and the stop takes the light, a
+   ring turning round it. */
+.composer-shell .send, .composer-shell .stop {
+  position: relative; width: 30px; height: 30px; margin-left: 6px; border-radius: 50%;
+  transition: background-color 180ms var(--aq-ease), color 180ms var(--aq-ease), transform 200ms var(--ease-spring), opacity 180ms var(--aq-ease), box-shadow 180ms var(--aq-ease);
+}
+.composer-shell .send { background: var(--aq-accent); color: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.composer-shell .send svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.composer-shell .send:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+.composer-shell .send:active { transform: scale(0.92); }
+.composer-shell .send.idle { opacity: 1; background: var(--aq-control-hover); color: var(--aq-label-3); box-shadow: none; }
+.composer-shell .send.live { background: var(--aq-control-hover); color: var(--aq-label); box-shadow: none; }
+.composer-shell .send.live.idle { color: var(--aq-label-3); }
+.composer-shell .stop { background: var(--aq-stop-bg); color: var(--aq-stop-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+.composer-shell .stop:hover { background: var(--aq-stop-bg); transform: scale(1.05); }
+.composer-shell .stop:active { transform: scale(0.92); }
+.composer-shell .stop svg { width: 12px; height: 12px; }
+.composer-shell .stop::before {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: var(--aq-accent); border-right-color: color-mix(in oklab, var(--aq-accent) 40%, transparent);
+  animation: aq-spin 1.1s linear infinite;
+}
+.composer-shell .stop.hidden::before { animation: none; }
+/* A stop on its way (BUG-09): the ring rests and the button stands down until the turn ends. */
+.composer-shell .stop.stopping { opacity: 0.55; cursor: default; transform: none; }
+/* Force stop (F2 item 13): a capsule beside the resting Stop button, in the stop's own color — it ends the turn now. */
+.composer-shell .force-stop {
+  height: 26px; padding: 0 12px; border-radius: 999px; border: 0; cursor: pointer;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: var(--aq-stop-bg); color: var(--aq-stop-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.composer-shell .force-stop:active { transform: scale(0.96); }
+.composer-shell .force-stop.hidden { display: none; }
+.composer-shell .stop.stopping::before { animation: none; opacity: 0.35; }
+/* A tab that follows its session (decision 22): a quiet line over the box, the window glyph and where the chat is open.
+   Typing here takes it over (the owner's of 11-14), so there is nothing to press. */
+.read-only-bar {
+  display: flex; align-items: center; gap: 8px; padding: 0 0 8px; margin-bottom: 2px; border-bottom: 1px solid var(--aq-hairline);
+  font-size: var(--text-ui-caption); color: var(--aq-label-2);
+}
+.read-only-bar.hidden { display: none; }
+.read-only-bar .ro-ic { display: inline-flex; flex: none; }
+.read-only-bar .ro-ic svg { width: 15px; height: 15px; }
+.read-only-bar .ro-words { flex: 1; min-width: 0; }
+/* The plan's notice (HarnessV3-ACP AC3-6): a line over the box — the gauge's glyph in amber, red once a window is
+   spent — the words, Details, and its ✕. */
+.plan-bar {
+  display: flex; align-items: center; gap: 8px; padding: 0 0 8px; margin-bottom: 2px; border-bottom: 1px solid var(--aq-hairline);
+  font-size: var(--text-ui-caption); color: var(--aq-label);
+}
+.plan-bar.hidden { display: none; }
+.plan-bar .plan-ic { display: inline-flex; flex: none; color: var(--color-sys-orange-text); }
+.plan-bar.is-error .plan-ic { color: var(--color-sys-red-text); }
+.plan-bar .plan-ic svg { width: 15px; height: 15px; }
+.plan-bar .plan-words { flex: 1; min-width: 0; }
+.plan-bar .plan-more {
+  flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 999px; cursor: pointer;
+  font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--aq-control); color: var(--aq-label);
+}
+.plan-bar .plan-more:hover { background: var(--aq-control-hover); }
+.plan-bar .plan-x {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: var(--aq-label-2); cursor: pointer;
+}
+.plan-bar .plan-x svg { width: 12px; height: 12px; }
+.plan-bar .plan-x:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.plan-bar .plan-more:focus-visible, .plan-bar .plan-x:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.composer-shell .send:disabled { opacity: 0.45; cursor: default; transform: none; }
+@keyframes aq-spin { to { transform: rotate(360deg); } }
+.composer-shell .send-mod { width: 22px; height: 30px; margin-left: 2px; border-radius: 11px; color: var(--aq-label-2); }
+.composer-shell .send-mod:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+
+/* Attachments: cards — an image shows itself, a file its kind on a tile; the remove disc on the corner. */
+.atts { gap: 8px; padding: 2px 0 4px; }
+.att {
+  position: relative; display: inline-flex; align-items: center; gap: 9px; max-width: 240px; height: 48px; padding: 6px 12px 6px 6px;
+  border-radius: 12px; border: 1px solid var(--aq-hairline); background: var(--aq-control); font-size: 12px; color: var(--aq-label);
+}
+.att-thumb { flex: none; width: 36px; height: 36px; border-radius: 8px; object-fit: cover; box-shadow: 0 0 0 0.5px var(--aq-hairline); }
+.att-file { width: 36px; height: 36px; border-radius: 8px; --tone: var(--color-sys-blue); }
+.att-file svg { width: 18px; height: 18px; }
+.att-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.att-name { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-size { font-size: 11px; color: var(--aq-label-2); white-space: nowrap; }
+.att .x {
+  position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
+  border: 2px solid var(--color-background); border-radius: 50%; cursor: pointer;
+  background: color-mix(in oklab, var(--aq-label) 64%, transparent); color: var(--color-background);
+  opacity: 0.55; transform: scale(0.9); transition: opacity 140ms var(--aq-ease), transform 200ms var(--ease-spring);
+}
+.att:hover .x, .att:focus-within .x { opacity: 1; transform: none; }
+.att .x svg { width: 10px; height: 10px; stroke-width: 3.2; }
+/* Dropping files: the box takes the accent. */
+.drop-overlay {
+  z-index: 2; border-radius: inherit; font-size: 13px; font-weight: 600; color: var(--aq-accent);
+  background: color-mix(in oklab, var(--aq-accent) 12%, var(--aq-glass-focus));
+  border: 2px dashed color-mix(in oklab, var(--aq-accent) 60%, transparent);
+}
+/* The queue: the messages waiting for the run to end, a quiet list above the text. */
+.queue { display: flex; flex-direction: column; padding: 0 0 6px; margin-bottom: 2px; border-bottom: 1px solid var(--aq-hairline); }
+.queue-head { padding: 0 2px 4px; font-size: 11.5px; font-weight: 600; color: var(--aq-label-2); }
+.queue-row { min-height: 34px; gap: 6px; padding: 0 2px 0 0; border-radius: 8px; }
+.queue-row:hover { background: var(--aq-control); }
+.queue-grip { color: var(--aq-label-3); opacity: 0; transition: opacity 140ms var(--aq-ease); }
+.queue-row:hover .queue-grip { opacity: 1; }
+.queue-text { font-size: 13px; color: var(--aq-label); }
+.queue-row .ghost.icon { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--aq-label-3); cursor: pointer; }
+.queue-row .ghost.icon:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.queue-row .ghost.icon svg { width: 14px; height: 14px; }
+
+/* The strip under the box stays quiet: words, no fills. */
+.composer-strip { margin-top: 6px; }
+
+/* ---- menus: glass, the highlight in the accent, tiles, keycaps --------------------------------------------------- */
+.zc-menu {
+  padding: 5px; gap: 1px; border-radius: 12px;
+  background: var(--aq-menu); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8);
+  border: 1px solid var(--inst-border);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+  animation: aq-menu-in 170ms var(--aq-ease) both;
+}
+.zc-menu[data-side="top"] { transform-origin: bottom left; }
+.zc-menu[data-side="bottom"] { transform-origin: top left; }
+@keyframes aq-menu-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+.zc-menu-item { min-height: 28px; padding: 4px 8px; gap: 9px; border-radius: 7px; font-size: 13px; color: var(--aq-label); }
+.zc-menu-item.has-check { padding-right: 30px; }
+.zc-menu-item[data-highlighted] { background: var(--aq-accent); color: #fff; }
+.zc-menu-item[data-highlighted] .zc-menu-ic,
+.zc-menu-item[data-highlighted] .zc-menu-desc,
+.zc-menu-item[data-highlighted] .zc-menu-sub,
+.zc-menu-item[data-highlighted] .zc-menu-check { color: rgba(255, 255, 255, 0.86); }
+.zc-menu-item.destructive { color: var(--color-sys-red-text); }
+.zc-menu-item.destructive[data-highlighted] { background: var(--color-sys-red-text); color: #fff; }
+.zc-menu-item .zc-menu-ic { color: var(--aq-label-2); }
+.zc-menu-item .zc-menu-check { color: var(--aq-accent); }
+.zc-menu-item .zc-menu-check svg { stroke-width: 2.6; width: 15px; height: 15px; }
+.zc-menu-tile { width: 22px; height: 22px; border-radius: 6px; }
+.zc-menu-tile svg { width: 13px; height: 13px; }
+.zc-menu-item.has-desc { min-height: 46px; gap: 11px; padding-top: 6px; padding-bottom: 6px; align-items: center; }
+.zc-menu-item.has-desc .zc-menu-tile { width: 28px; height: 28px; border-radius: 7px; }
+.zc-menu-item.has-desc .zc-menu-tile svg { width: 16px; height: 16px; }
+.zc-menu-label-line { font-weight: 550; }
+.zc-menu-desc { font-size: 11.5px; line-height: 1.35; color: var(--aq-label-2); }
+.zc-menu-item .zc-menu-kbd {
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; margin-left: auto;
+  font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--aq-key-label);
+  background: var(--aq-key); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.zc-menu-item[data-highlighted] .zc-menu-kbd { color: #fff; background: rgba(255, 255, 255, 0.2); box-shadow: none; }
+.zc-menu-label { padding: 6px 8px 3px; font-size: 11px; font-weight: 600; letter-spacing: 0.01em; color: var(--aq-label-3); }
+.zc-menu-sep { margin: 4px 8px; background: var(--inst-sep); }
+.zc-menu .model-inforce { padding: 2px 8px 6px; font-size: 11.5px; color: var(--aq-label-2); }
+/* The permission switch's remembered rules (HarnessV3-AtHome AH-D7): the rule in words, where it comes from, its Forget. */
+.zc-menu .mode-rule { display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 8px; border-radius: 7px; }
+.zc-menu .mode-rule:hover { background: var(--aq-control-hover); }
+.mode-rule-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.3; }
+.mode-rule-words { font-size: 13px; color: var(--aq-label); overflow-wrap: anywhere; }
+.mode-rule-code { font-family: var(--mono); font-size: 12px; }
+.mode-rule-from { font-size: 11.5px; color: var(--aq-label-2); }
+.mode-rule-forget {
+  height: 24px; padding: 0 10px; flex: none;
+  border: 0; border-radius: 12px; background: var(--inst-btn); color: var(--aq-label); font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.mode-rule-forget:hover { background: var(--inst-btn-hover); }
+.mode-rule-forget:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+
+/* Every popover is glass (the Instruments and the pickers style their own insides). */
+.zc-popover {
+  border-radius: 14px; color: var(--aq-label);
+  background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(44px) saturate(1.9); backdrop-filter: blur(44px) saturate(1.9);
+  border: 1px solid var(--inst-border);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+  animation: inst-in 240ms var(--ease-spring) both; --inst-rise: 6px;
+}
+.zc-popover[data-side="bottom"] { --inst-rise: -6px; }
+.zc-popover.aq-pop { padding: 0; gap: 0; overflow: hidden; overscroll-behavior: contain; }
+
+/* ---- the model picker ----------------------------------------------------------------------------------------- */
+/* min-height 0: a popover held to the room by its anchor (positionOverlay) shrinks it, the list scrolling. */
+.mp { display: flex; flex-direction: column; min-height: 0; max-height: min(540px, calc(100vh - 140px)); font-size: 13px; }
+.mp-search { display: flex; align-items: center; gap: 8px; height: 32px; margin: 10px 10px 8px; padding: 0 10px; border-radius: 9px; background: var(--inst-seg-bg); }
+.mp-search:focus-within { box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--aq-accent) 26%, transparent); }
+.mp-search-ic { display: inline-flex; color: var(--aq-label-3); }
+.mp-search-ic svg { width: 14px; height: 14px; stroke-width: 2.3; }
+.mp-search-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; background: none; color: var(--aq-label); font-size: 13px; }
+.mp-search-input::placeholder { color: var(--aq-label-3); }
+.mp-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--inst-sep); }
+.mp-sources { display: flex; flex-direction: column; gap: 1px; padding: 8px 6px; overflow-y: auto; border-right: 1px solid var(--inst-sep); background: color-mix(in oklab, var(--inst-well) 60%, transparent); }
+.mp-source {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; padding: 0 9px; flex: none;
+  border: 0; border-radius: 7px; background: none; color: var(--aq-label); font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.mp-source:hover { background: var(--inst-well-hover); }
+.mp-source.is-on { background: var(--aq-accent); color: #fff; }
+.mp-source-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-source-count { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.mp-source.is-on .mp-source-count { color: rgba(255, 255, 255, 0.75); }
+/* A coding agent's tab carries its plan (HarnessV3-ACP AC3-6): the fullest window's gauge, and a chip where it warns or
+   stops. On the chosen tab both turn white, as a selected row's glyphs do; the chip still says it in words. */
+.mp-source-plan { display: inline-flex; flex: none; }
+.mp-source-plan svg { display: block; overflow: visible; }
+.mp-source-plan .inst-track { stroke: var(--inst-track); }
+.mp-source-chip { flex: none; padding: 0 5px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mp-source-chip.is-warn { color: var(--color-sys-orange-text); background: color-mix(in oklab, var(--color-sys-orange) 14%, transparent); }
+.mp-source-chip.is-error { color: var(--color-sys-red-text); background: color-mix(in oklab, var(--color-sys-red) 14%, transparent); }
+.mp-source.is-on .mp-source-plan .inst-track { stroke: color-mix(in srgb, var(--color-on-accent) 30%, transparent); }
+.mp-source.is-on .mp-source-plan .inst-arc { stroke: var(--color-on-accent) !important; }
+.mp-source.is-on .mp-source-chip { color: var(--color-on-accent); background: color-mix(in srgb, var(--color-on-accent) 22%, transparent); }
+/* Another machine's tab (the remote-agents plan's m-ui): a dot, green while it answers, amber while it was found offline;
+   on the chosen tab a white ring keeps it apart from the accent. Its words under the list. */
+.mp-source-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-green); }
+.mp-source-dot.is-off { background: var(--color-sys-orange); }
+.mp-source-dot.is-unknown { background: var(--aq-label-3); }
+.mp-source.is-on .mp-source-dot { box-shadow: 0 0 0 1.5px var(--color-on-accent); }
+.mp-source-note { flex: none; margin: 6px 8px 0; padding: 7px 9px; border-radius: 8px; font-size: 12px; line-height: 1.4; color: var(--color-sys-orange-text); background: color-mix(in oklab, var(--color-sys-orange) 12%, transparent); }
+.mp-list { display: flex; flex-direction: column; gap: 1px; min-height: 260px; padding: 6px 6px 14px; overflow-y: auto;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent); }
+.mp-group { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--aq-label-3); }
+.mp-row {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; flex: none;
+  padding: 7px 8px; border: 0; border-radius: 9px; background: none; text-align: left; color: var(--aq-label); cursor: pointer;
+}
+.mp-row.is-hi { background: var(--aq-accent); color: #fff; }
+.mp-tile { width: 30px; height: 30px; border-radius: 8px; font-size: 14px; font-weight: 750; letter-spacing: -0.02em; }
+.mp-tile svg { width: 17px; height: 17px; }
+.mp-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mp-row-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-row-default { flex: none; height: 17px; padding: 0 6px; border-radius: 9px; font-size: 10.5px; font-weight: 600; line-height: 17px; color: var(--aq-label-2); background: var(--inst-seg-bg); }
+.mp-row.is-hi .mp-row-default { color: #fff; background: rgba(255, 255, 255, 0.2); }
+.mp-row-facts { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 0; font-size: 11.5px; color: var(--aq-label-2); }
+.mp-row.is-hi .mp-row-facts { color: rgba(255, 255, 255, 0.82); }
+.mp-fact { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mp-fact-ic { display: inline-flex; }
+.mp-fact-ic svg { width: 11px; height: 11px; stroke-width: 2.4; }
+.mp-fact.is-effort .mp-fact-ic { color: var(--aq-accent); }
+.mp-fact.is-fast .mp-fact-ic { color: var(--color-sys-orange-text); }
+.mp-fact.is-think .mp-fact-ic { color: var(--color-sys-purple-text); }
+.mp-row.is-hi .mp-fact-ic { color: #fff; }
+.mp-row-check { display: inline-flex; color: var(--aq-accent); }
+.mp-row-check svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.mp-row.is-hi .mp-row-check { color: #fff; }
+.mp-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; flex: 1; padding: 36px 12px; font-size: 12.5px; color: var(--aq-label-3); text-align: center; }
+.mp-empty-ic svg { width: 22px; height: 22px; }
+.mp-empty-link { color: var(--aq-accent); font-weight: 500; text-decoration: none; }
+.mp-empty-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.mp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; border-top: 1px solid var(--inst-sep); font-size: 11.5px; color: var(--aq-label-2); }
+.mp-foot-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-foot-btn, .tp-reset {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; flex: none;
+  border: 0; border-radius: 12px; background: var(--inst-btn); color: var(--aq-label); font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.mp-foot-btn:hover, .tp-reset:hover { background: var(--inst-btn-hover); }
+.mp-foot-ic, .tp-reset-ic { display: inline-flex; }
+.mp-foot-ic svg, .tp-reset-ic svg { width: 12px; height: 12px; stroke-width: 2.3; }
+
+/* ---- an agent's effort beside its model (lib/effort-chip.js; the owner's word of 11-05) ------------------------- */
+.ec { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px 0 7px; border: 0; border-radius: 8px; background: var(--aq-control); cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 550; color: var(--aq-label); white-space: nowrap; transition: background-color 160ms var(--aq-ease); }
+.ec:hover { background: var(--aq-control-hover); }
+.ec:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.ec:disabled { cursor: default; opacity: 0.55; }
+/* A chip with nothing to set — memory's model off (settings/memory.js) — goes. */
+.ec[hidden] { display: none; }
+.ec-ic, .ec-caret { display: inline-flex; color: var(--aq-label-2); }
+.ec-ic svg { width: 13px; height: 13px; }
+.ec-caret svg { width: 11px; height: 11px; color: var(--aq-label-3); }
+.ec.is-default .ec-words { color: var(--aq-label-2); }
+
+/* ---- the pool of models for agents on the side (HarnessV4_Tasks E15 step 8, AG-240) ---------------------------- */
+/* Its chip: a capsule like the model's, the list in a line. */
+.pool-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 22rem; height: 28px; padding: 0 10px;
+  border: 0; border-radius: 14px; background: var(--aq-control); color: var(--aq-label); cursor: pointer;
+  font-size: var(--text-ui-caption); font-weight: 550; letter-spacing: -0.005em;
+  transition: background-color 160ms var(--aq-ease), transform 160ms var(--aq-ease);
+}
+.pool-chip:hover { background: var(--aq-control-hover); }
+.pool-chip:active { background: var(--aq-control-press); transform: scale(0.97); }
+.pool-chip:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.pool-chip-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Whose list it is, before the list (the Agents tab's chips): a quiet tag the list never pushes out. */
+.pool-chip-tag { flex: none; padding: 1px 6px; border-radius: 6px; background: var(--aq-control-hover); font-size: 11px; font-weight: 600; line-height: 1.4; color: var(--aq-label-2); }
+.pool-chip-tag:empty { display: none; }
+.pool-chip .mode-caret { display: inline-flex; flex: none; }
+/* Who runs on what (widgets/runs-on.js): one folded row, then an agent or a team's part a row, its list's chip trailing */
+.runs-on { display: flex; flex-direction: column; gap: 6px; }
+.runs-on-chev { display: inline-flex; color: var(--aq-label-2); transition: transform 0.15s ease; }
+.runs-on-chev.is-open { transform: rotate(90deg); }
+.runs-on-row .pool-chip { max-width: 62%; }
+
+/* Its editor: the head says whose agents and how many at once; one inset group of rows, the order a launch takes. */
+.pool { display: flex; flex-direction: column; max-height: min(540px, calc(100vh - 140px)); font-size: 13px; }
+.pool-head { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 10px; }
+.pool-title { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; color: var(--aq-label); }
+.pool-from { font-size: 11.5px; color: var(--aq-label-3); }
+.pool-rows { display: flex; flex-direction: column; margin: 0 10px; border-radius: 11px; background: var(--inst-well); overflow-y: auto; }
+.pool-row { display: flex; flex-direction: column; gap: 4px; padding: 7px 8px 7px 10px; }
+.pool-row + .pool-row { border-top: 1px solid var(--inst-sep); }
+.pool-row-main { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 122px auto; align-items: center; gap: 8px; }
+.pool-n { font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: center; color: var(--aq-label-3); }
+.pool-model { display: flex; min-width: 0; }
+.pool-model .model-chip { max-width: 100%; }
+.pool-main { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 6px; overflow: hidden; font-weight: 550; white-space: nowrap; text-overflow: ellipsis; color: var(--aq-label); }
+.pool-main-name { font-size: 11.5px; font-weight: 400; color: var(--aq-label-2); }
+.pool-step { display: inline-flex; align-items: center; height: 24px; border-radius: 12px; background: var(--inst-seg-bg); }
+.pool-seats { min-width: 22px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; color: var(--aq-label); }
+.pool-act { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 12px; background: none; color: var(--aq-label-2); cursor: pointer; }
+.pool-act:hover:not([disabled]) { background: var(--inst-btn-hover); color: var(--aq-label); }
+.pool-act:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -1px; }
+.pool-act[disabled] { opacity: 0.3; cursor: default; }
+.pool-act-ic { display: inline-flex; }
+.pool-act-ic svg { width: 13px; height: 13px; stroke-width: 2.3; }
+.pool-price { font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--aq-label-2); }
+.pool-acts { display: inline-flex; align-items: center; }
+.pool-row.is-off .pool-model, .pool-row.is-off .pool-step, .pool-row.is-off .pool-price { opacity: 0.5; }
+.pool-note { padding-left: 24px; font-size: 11.5px; line-height: 1.35; color: var(--aq-label-2); }
+.pool-note.is-warn { color: var(--color-sys-orange-text); }
+.pool-add { display: flex; align-items: center; gap: 8px; padding: 10px 16px 4px; font-size: 12px; color: var(--aq-label-2); }
+.pool-add-label { flex: none; }
+.pool-add-main { height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--inst-btn); color: var(--aq-label); font-size: 12px; font-weight: 500; cursor: pointer; }
+.pool-add-main:hover { background: var(--inst-btn-hover); }
+.pool-add-note { color: var(--aq-label-3); }
+.pool-foot { margin: 0; padding: 8px 16px 12px; font-size: 11.5px; line-height: 1.4; color: var(--aq-label-3); }
+
+/* ---- the tuning popover --------------------------------------------------------------------------------------- */
+.inst.tp { gap: 14px; padding: 16px 14px 12px; --accent: var(--aq-accent); --accent-text: var(--aq-accent); }
+.tp .mp-tile { width: 30px; height: 30px; }
+.tp-section { gap: 7px; }
+.tp-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.tp-section-head .inst-section-title { padding: 0; }
+.tp-section-value { font-size: 11.5px; font-weight: 500; color: var(--aq-label-2); }
+.tp-meter { display: flex; align-items: stretch; gap: 4px; padding: 6px; border-radius: 12px; background: var(--inst-well); }
+.tp-auto, .tp-level {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; padding: 8px 2px 6px;
+  border: 0; border-radius: 8px; background: none; color: var(--aq-label-2); cursor: pointer;
+  transition: background-color 140ms var(--aq-ease), color 140ms var(--aq-ease);
+}
+.tp-auto { flex: none; width: 50px; }
+.tp-auto-ic { display: grid; place-items: center; height: 38px; }
+.tp-auto-ic svg { width: 18px; height: 18px; }
+.tp-auto:hover, .tp-level:hover { background: var(--inst-well-hover); color: var(--aq-label); }
+.tp-auto.is-on { background: color-mix(in oklab, var(--aq-accent) 18%, transparent); color: var(--aq-accent); }
+.tp-auto:focus-visible, .tp-level:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.tp-levels { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 2px; flex: 1; min-width: 0; }
+.tp-bar {
+  position: relative; display: block; width: min(100%, 22px); height: calc(8px + var(--k, 1) * 30px); border-radius: 5px;
+  background: var(--aq-bar); transform-origin: bottom;
+  transition: background-color 180ms var(--aq-ease), transform 260ms var(--ease-spring);
+}
+.tp-level.is-lit .tp-bar { background: linear-gradient(180deg, color-mix(in oklab, var(--aq-accent) 78%, #fff), var(--aq-accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.tp-level.is-preview:not(.is-lit) .tp-bar { background: color-mix(in oklab, var(--aq-accent) 45%, var(--aq-bar)); }
+.tp-level.is-on .tp-bar { transform: scaleY(1.04); }
+.tp-level:active .tp-bar { transform: scaleY(0.94); }
+.tp-level.is-capped:not(.is-lit) .tp-bar { background: repeating-linear-gradient(135deg, var(--aq-bar) 0 3px, color-mix(in oklab, var(--color-sys-purple) 34%, transparent) 3px 6px); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-sys-purple) 30%, transparent); }
+.tp-bar-mark { position: absolute; left: 50%; top: -15px; transform: translateX(-50%); display: inline-flex; color: var(--color-sys-purple-text); }
+.tp-bar-mark svg { width: 11px; height: 11px; stroke-width: 2.4; }
+.tp-level-name { font-size: 11px; font-weight: 500; white-space: nowrap; }
+.tp-level.is-on, .tp-level.is-on .tp-level-name { color: var(--aq-label); font-weight: 650; }
+.tp-caption { margin: 0; padding: 0 4px; font-size: 12px; line-height: 1.4; color: var(--aq-label-2); }
+/* The reasoning caption changes as the pointer previews a level: two lines held so the popover never jumps. */
+.tp-meter + .tp-caption { min-height: 2.8em; }
+.tp-think-row { cursor: pointer; }
+.tp-seg .inst-seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.tp-seg-ic { display: inline-flex; color: var(--color-sys-orange-text); }
+.tp-seg-ic svg { width: 12px; height: 12px; stroke-width: 2.4; fill: currentColor; }
+.tp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 -14px; padding: 10px 12px 0 18px; border-top: 1px solid var(--inst-sep); font-size: 11.5px; color: var(--aq-label-2); }
+.tp-foot-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- the slash and mention panels: Spotlight ------------------------------------------------------------------ */
+.slash-panel {
+  bottom: calc(100% + 10px); left: 0; right: 0; width: min(600px, 100%); max-height: none; margin: 0 auto; padding: 0;
+  display: flex; flex-direction: column; overflow: hidden; border-radius: 16px;
+  background: var(--aq-panel); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(44px) saturate(1.9); backdrop-filter: blur(44px) saturate(1.9);
+  border: 1px solid var(--inst-border);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+  animation: inst-in 240ms var(--ease-spring) both; --inst-rise: 8px; transform-origin: bottom center;
+  /* Over whatever the chat draws behind it: the empty chat's greeting is lifted (z-index 1) and drew through the panel. */
+  z-index: 10;
+}
+.slash-panel.hidden { display: none; }
+.slash-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px 10px; border-bottom: 1px solid var(--inst-sep); font-size: 13px; color: var(--aq-label); }
+.slash-trigger { width: 24px; height: 24px; border-radius: 7px; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; background: var(--aq-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.slash-head-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; letter-spacing: -0.01em; }
+.slash-query { font-family: var(--mono); font-size: 12.5px; }
+.slash-head-count { flex: none; font-size: 11.5px; color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.slash-list { display: flex; flex-direction: column; gap: 1px; max-height: min(320px, 44vh); padding: 6px 6px 14px; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent); }
+.slash-section { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.01em; color: var(--aq-label-3); text-transform: none; }
+.slash-row {
+  display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 8px; flex: none;
+  border: 0; border-radius: 9px; background: none; text-align: left; color: var(--aq-label); cursor: pointer; font-size: 13px;
+}
+.slash-row:hover { background: none; }
+.slash-row.on { background: var(--aq-accent); color: #fff; }
+.slash-tile { width: 28px; height: 28px; border-radius: 7px; }
+.slash-tile svg { width: 15px; height: 15px; }
+.slash-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.slash-label { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slash-label.mono { font-family: var(--mono); font-size: 12.5px; font-weight: 550; }
+.slash-detail { font-size: 11.5px; color: var(--aq-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slash-row.on .slash-detail { color: rgba(255, 255, 255, 0.8); }
+.slash-mark { padding: 0 1px; border-radius: 3px; color: inherit; background: color-mix(in oklab, var(--color-sys-yellow) 34%, transparent); }
+.slash-row.on .slash-mark { background: rgba(255, 255, 255, 0.24); }
+.slash-action { display: inline-flex; color: var(--color-sys-pink-text); }
+.slash-action svg { width: 14px; height: 14px; }
+.slash-row.on .slash-action { color: #fff; }
+.slash-enter { display: none; color: rgba(255, 255, 255, 0.85); }
+.slash-enter svg { width: 15px; height: 15px; stroke-width: 2.3; }
+.slash-row.on .slash-enter { display: inline-flex; }
+.slash-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 8px; font-size: 12.5px; color: var(--aq-label-3); }
+.slash-empty-ic svg { width: 20px; height: 20px; }
+.slash-foot { display: flex; align-items: center; gap: 16px; padding: 7px 14px 8px; border-top: 1px solid var(--inst-sep); font-size: 11px; color: var(--aq-label-2); }
+.slash-key { display: inline-flex; align-items: center; gap: 4px; }
+.slash-tip { margin-left: auto; min-width: 0; color: var(--aq-label-3); }
+.slash-key kbd { min-width: 18px; height: 18px; padding: 0 4px; border-radius: 5px; font-size: 10.5px; font-weight: 600; color: var(--aq-key-label); background: var(--aq-key); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.16); }
+
+/* The typing row as its room runs out (the owner's of 11-14; composer/bar-fit.js): each pill at its own width, never
+   squeezed under the next; while the row is wider than its room one pill more folds to its glyph — the permission, the
+   plan's usage, the team, the Context, the model, the effort — a name it reads by kept for a screen reader, its
+   tooltip whole. Past the last fold the widgets give way, so nothing covers Send. */
+.composer-bar > :not(.grow) { flex-shrink: 0; }
+.composer-bar :is(.mode-chip, .model-chip) { position: relative; }
+.composer-bar.fold-mode .mode-chip .mode-label, .composer-bar.fold-model .model-chip .model-name {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.composer-bar.fold-mode .mode-chip .mode-caret, .composer-bar.fold-model .model-chip .mode-caret,
+.composer-bar.fold-usage .widget-account :is(.inst-face-tag, .inst-face-text),
+.composer-bar.fold-team .widget-team .widget-value,
+.composer-bar.fold-context .widget-context :is(.widget-label, .widget-more, .inst-face-text),
+.composer-bar.fold-effort .tune-chip :is(.tune-label, .tune-badge.is-window) { display: none; }
+.composer-bar.fold-mode .mode-chip, .composer-bar.fold-model .model-chip, .composer-bar.fold-effort .tune-chip { padding: 0 7px; }
+.composer-bar.fold-usage .widget-account.widget-pill, .composer-bar.fold-team .widget-team.widget-pill, .composer-bar.fold-context .widget-context.widget-pill { padding: 0 6px; }
+.composer-bar.is-squeezed .widget-slot { flex-shrink: 1; overflow-x: clip; }
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-shell .stop::before { animation: none; border-color: color-mix(in oklab, var(--aq-accent) 50%, transparent); }
+  .zc-menu, .zc-popover, .slash-panel { animation: none; }
+  .tp-bar { transition: none; }
+}
+
+
+/* ==== the conversation ============================================================================================
+   The transcript reads like a macOS document: the person's messages in a gray bubble, the model's reply as text
+   with its work folded above it behind a disclosure, each tool call a row whose glyph wears its family's color on a
+   soft tile, outputs and code in quiet rounded wells, Filament's own answers as grouped cards. Reading text follows
+   the person's font-size setting (the --text-ui-* scale); only chrome sizes are fixed. */
+
+/* The person's message. */
+.u-bubble-wrap { max-width: min(38rem, 82%); }
+.u-bubble { padding: 9px 15px; border-radius: 18px; background: var(--aq-bubble); color: var(--aq-label); line-height: 1.5; }
+.u-clamp { background: var(--aq-glass-focus); color: var(--aq-label-2); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--aq-hairline); }
+.ref-chip { padding: 0 6px; border-radius: 6px; background: color-mix(in oklab, var(--aq-accent) 18%, transparent); color: var(--aq-label); }
+.ref-chip .ref-ic { color: var(--aq-accent); }
+.u-act, .a-act { width: 26px; height: 26px; border-radius: 50%; color: var(--aq-label-3); }
+.u-act:hover, .a-act:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.steer-text { border-radius: 16px 4px 16px 16px; border-color: var(--aq-hairline); background: var(--aq-control); color: var(--aq-label); }
+
+/* The work above a reply: a disclosure, its chevron first, the steps on a rail under it. */
+.work-fold { color: var(--aq-label-2); }
+.work-fold > summary {
+  align-self: flex-start; gap: 6px; padding: 3px 10px 3px 6px; margin: 0 0 4px -6px; border: 0; border-radius: 999px;
+  color: var(--aq-label-2); transition: background-color 140ms var(--aq-ease), color 140ms var(--aq-ease);
+}
+.work-fold > summary:hover { background: var(--aq-control); color: var(--aq-label); }
+.work-fold > summary .work-chev { order: -1; opacity: 1; color: var(--aq-label-3); }
+.work-fold > summary .work-chev svg { width: 14px; height: 14px; }
+.work-fold .work-counts, .work-fold > summary .muted { color: var(--aq-label-3); }
+.work-fold[open] > summary { margin-bottom: 10px; }
+/* A stopped turn that did no work keeps its header bare: the words, nothing to open (LD-D7). */
+.work-fold.bare > summary { cursor: default; }
+.work-fold.bare > summary:hover { background: transparent; color: var(--aq-label-2); }
+.work-fold.bare > summary .work-chev { visibility: hidden; }
+.work-fold > .work-body { margin-left: 3px; padding: 2px 0 4px 16px; border-left: 2px solid var(--aq-hairline); }
+/* The fold's own rule reached every summary inside it (a hairline under each tool row and the reasoning): only its own. */
+.work-body summary { margin-bottom: 0; padding-bottom: 3px; border-bottom: 0; }
+
+/* Appearance's Show reasoning and Show todos, off: every thinking block but a turn's first, and every plan card. */
+:root[data-hide-reasoning] .a-think:not(.is-first), :root[data-hide-todos] .todo-card { display: none; }
+
+/* The reasoning: a purple glyph, and its words on a purple rail. */
+.a-think > summary { padding: 3px 10px 3px 4px; margin-left: -4px; border-radius: 8px; color: var(--aq-label-2); transition: background-color 140ms var(--aq-ease); }
+.a-think > summary:hover { background: var(--aq-control); }
+.a-think .think-ic { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; color: var(--color-sys-purple-text); background: color-mix(in oklab, var(--color-sys-purple) 16%, transparent); }
+.a-think .think-ic svg { width: 12px; height: 12px; stroke-width: 2.3; }
+.a-think .think-word { color: var(--aq-label); font-weight: 600; }
+.a-think .a-think-body { margin: 8px 0 2px 9px; padding: 2px 0 2px 16px; border-left: 2px solid color-mix(in oklab, var(--color-sys-purple) 40%, transparent); color: var(--aq-label-2); line-height: 1.6; }
+
+/* A tool call: its family's glyph on a soft tile, the verb, the subject, the facts; a failure is a red capsule. */
+.tool-row { --tool-tone: var(--color-sys-gray); --tool-tone-text: var(--color-sys-gray-text); }
+.tool-row[data-tone="explore"] { --tool-tone: var(--color-sys-blue); --tool-tone-text: var(--color-sys-blue-text); }
+.tool-row[data-tone="changes"] { --tool-tone: var(--color-sys-orange); --tool-tone-text: var(--color-sys-orange-text); }
+.tool-row[data-tone="terminal"] { --tool-tone: var(--color-sys-green); --tool-tone-text: var(--color-sys-green-text); }
+.tool-row[data-tone="memory"] { --tool-tone: var(--color-sys-pink); --tool-tone-text: var(--color-sys-pink-text); }
+.tool-row[data-tone="agent"] { --tool-tone: var(--color-sys-purple); --tool-tone-text: var(--color-sys-purple-text); }
+/* A work row (AC1-6): its sentence is its label (`fit`), set lighter than a verb. */
+.tool-row[data-tone="work"] .tool-kind { font-weight: 500; }
+/* Its header starts 4px left of the row, so its glyph lines up with the text beside it: it may be 4px wider than the
+   row, or a row as wide as its words (a group's) cuts them 4px short. */
+.tool-row > summary {
+  gap: 7px; padding: 3px 10px 3px 4px; margin-left: -4px; max-width: calc(100% + 4px);
+  border-radius: 8px; color: var(--aq-label-2);
+  transition: background-color 140ms var(--aq-ease);
+}
+.tool-row > summary:hover { background: var(--aq-control); }
+.tool-row .tool-ic { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; color: var(--tool-tone-text); background: color-mix(in oklab, var(--tool-tone) 16%, transparent); }
+.tool-row .tool-ic svg { width: 12px; height: 12px; stroke-width: 2.3; }
+.tool-row .tool-kind { color: var(--aq-label); font-weight: 600; }
+.tool-row .tool-primary { color: var(--aq-label); }
+.tool-row .tool-primary .file-chip { color: var(--aq-label); }
+.tool-row .tool-secondary { color: var(--aq-label-3); }
+/* A page a call named on another site (claude.ai): a link, in the accent. */
+.tool-row .tool-link { color: var(--aq-accent); text-decoration: none; }
+.tool-row .tool-link:not(:first-child) { margin-left: 7px; }
+.tool-row .tool-link:hover { text-decoration: underline; }
+.tool-row .tool-status { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--color-sys-red-text); background: color-mix(in oklab, var(--color-sys-red) 15%, transparent); }
+.tool-row .tool-status.soft { color: var(--aq-label-2); background: var(--aq-control-hover); }
+.tool-row .tool-source { border-color: var(--aq-hairline); border-radius: 999px; color: var(--aq-label-2); }
+.tool-row .tool-chev { color: var(--aq-label-3); }
+.tool-row .tool-chev svg { width: 14px; height: 14px; }
+.tool-children { margin: 2px 0 4px 13px; padding-left: 12px; border-left: 2px solid var(--aq-hairline); gap: 1px; }
+.file-chip { color: var(--aq-label-2); }
+.file-chip:hover { color: var(--aq-accent); text-decoration: none; }
+
+/* Outputs, previews and commands: quiet rounded wells. */
+.term-card { margin: 4px 0 8px 27px; padding: 10px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-code-block); }
+.term-cmd { color: var(--aq-label); font-size: var(--text-ui-caption); line-height: 1.45; }
+.term-out { color: var(--aq-label-2); font-size: var(--text-ui-caption); line-height: 1.45; }
+.term-card pre.fail, .term-out.fail { color: var(--color-sys-red-text); }
+.term-card .pane-note, .pane-note { color: var(--aq-label-3); }
+
+/* The files a turn changed: a grouped card, the counts in green and red. */
+.file-card { margin: 8px 0; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); }
+.file-card > summary { height: 44px; gap: 9px; padding: 0 10px 0 12px; font-weight: 600; color: var(--aq-label); }
+.file-card > summary:hover { background: var(--aq-control); }
+.file-card .file-diff-ic {
+  width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; color: #fff; --tone: var(--color-sys-orange);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone) 76%, #fff) 0%, var(--tone) 58%, color-mix(in oklab, var(--tone) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.file-card .file-diff-ic svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.file-card .file-chev { color: var(--aq-label-3); }
+.file-card .file-undo { height: 26px; padding: 0 11px; border: 0; border-radius: 13px; background: var(--aq-control-hover); color: var(--aq-label); font-size: 12px; font-weight: 500; cursor: pointer; }
+.file-card .file-undo:hover { background: var(--aq-control-press); }
+.file-list { border-top-color: var(--aq-hairline); }
+.file-row { padding: 9px 14px; gap: 8px; }
+/* A row opens Changes on its turn, its file open: a button that reads as the row it was. */
+button.file-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.file-row + .file-row { border-top: 1px solid var(--aq-hairline); }
+.file-row:hover { background: var(--aq-control); }
+/* The row after a turn's first 500 that reads the rest: a link's colour, quiet while it reads. */
+button.file-row.file-all { color: var(--aq-accent); font-weight: 500; }
+button.file-row.file-all:disabled { color: var(--aq-label-3); cursor: progress; background: none; }
+.file-leaf { color: var(--aq-label); }
+.file-path { color: var(--aq-label-3); }
+.file-place, .file-via { color: var(--aq-label-2); }
+.file-during { padding: 9px 14px; color: var(--aq-label-3); border-top-color: var(--aq-hairline); }
+.file-outside { padding: 9px 14px; color: var(--aq-label-3); border-top-color: var(--aq-hairline); }
+.file-counts { display: inline-flex; gap: 6px; font-family: var(--mono); font-size: 11.5px; font-weight: 600; }
+.fc-add { color: var(--color-sys-green-text); }
+.fc-del { color: var(--color-sys-red-text); }
+
+/* A visual the agent drew (HarnessV4_Visuals_Plan §5): a card in the answer — a header that names it a visual, with
+   Save, Code and Copy — over the picture in its closed frame, which draws on a clear ground at the column's width. */
+.visual-card { margin: 8px 0; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); overflow: hidden; }
+.visual-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--aq-hairline); min-width: 0; }
+.visual-ic {
+  width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 6px; color: #fff; --tone: var(--color-sys-purple);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone) 76%, #fff) 0%, var(--tone) 58%, color-mix(in oklab, var(--tone) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.visual-ic svg { width: 13px; height: 13px; stroke-width: 2.2; }
+.visual-kind { flex: none; color: var(--aq-label-3); font-size: 12px; font-weight: 500; }
+.visual-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); font-size: 13px; font-weight: 600; }
+.visual-acts { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.visual-act {
+  display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 10px; border: 0; border-radius: 13px;
+  background: var(--aq-control); color: var(--aq-label); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.visual-act:hover:not(:disabled) { background: var(--aq-control-hover); }
+.visual-act:active:not(:disabled) { background: var(--aq-control-press); }
+.visual-act:disabled { opacity: 0.45; cursor: default; }
+.visual-act.on { background: color-mix(in oklab, var(--aq-accent) 18%, transparent); color: var(--aq-accent); }
+.visual-act svg { width: 13px; height: 13px; }
+.visual-copy { width: 26px; padding: 0; justify-content: center; }
+.visual-copy.copied { color: var(--color-sys-green-text); }
+.visual-caret { display: inline-flex; color: var(--aq-label-3); }
+.visual-body { padding: 12px 14px; }
+/* The frame takes the page's color-scheme, which its document says too: were they to differ, the browser would paint
+   the frame an opaque ground. */
+.visual-frame { display: block; width: 100%; height: 160px; border: 0; background: transparent; }
+.visual-code { padding: 0; }
+.visual-code .code-block { margin: 0; border: 0; border-radius: 0; }
+.visual-writing { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; font-size: var(--text-ui-base); }
+.visual-writing-line { color: var(--aq-label-2); }
+.visual-writing-size { color: var(--aq-label-3); font-size: var(--text-ui-caption); font-variant-numeric: tabular-nums; }
+.visual-unread { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.visual-note { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-top: 1px solid var(--aq-hairline); color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.visual-note-ic { display: inline-flex; flex: none; color: var(--color-sys-orange-text); }
+.visual-note-ic svg { width: 14px; height: 14px; }
+.visual-note-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* A picture drawn in Claude desktop and imported with its chat (HarnessV4_Visuals_Plan VS-D56): where it was made. */
+.visual-origin { padding: 6px 10px 8px 14px; border-top: 1px solid var(--aq-hairline); color: var(--aq-label-3); font-size: var(--text-ui-xs); }
+.visual-tell { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--aq-control-hover); color: var(--aq-label); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.visual-tell:hover { background: var(--aq-control-press); }
+/* A helper's pictures (HarnessV4_Visuals_Plan E16 step 4): in its thread each stands in its round after the calls; under
+   the card that launched or asked it, a "Drew" line names each one, a pill that opens it under the card and folds it.
+   What it published (HarnessV4_Artifacts_Plan AFC-100) is a "Made" line in the same look, each pill opening its tab. */
+.sav-pics { display: flex; flex-direction: column; gap: 8px; }
+.sav-pics:empty { display: none; }
+.sav-pics > .visual-card, .sav-pics > .artifact-card { margin: 0; }
+.ask-card-drew, .ask-card-made { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 8px; color: var(--aq-label-3); font-size: var(--text-ui-sm); }
+.ask-card-drew-ic { display: inline-flex; flex: none; color: var(--color-sys-purple-text); }
+.ask-card-drew-ic svg { width: 13px; height: 13px; }
+.ask-card-drew-label { flex: none; }
+.ask-card-drew-pic {
+  max-width: 100%; height: 22px; padding: 0 10px; border: 0; border-radius: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--aq-control); color: var(--aq-label); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.ask-card-drew-pic:hover { background: var(--aq-control-hover); }
+.ask-card-drew-pic:active { background: var(--aq-control-press); }
+.ask-card-drew-pic.is-open { background: color-mix(in oklab, var(--aq-accent) 18%, transparent); color: var(--aq-accent); }
+.ask-card-drawn { padding: 0 12px; }
+.ask-card-drawn:empty { display: none; }
+.ask-card-drawn > .visual-card { margin: 0 0 8px; }
+.sub-drew { display: flex; flex-direction: column; min-width: 0; }
+.sub-drew > .ask-card-drew, .sub-drew > .ask-card-made { padding: 2px 0 4px 27px; }
+.sub-drew > .ask-card-drawn { padding: 0 0 0 27px; }
+
+/* A page an agent published (HarnessV4_Artifacts_Plan E18): its card in the answer — its mark, its title, the word
+   "Artifact" with its version and type, its description, Open and the arrow to the browser — and its page in a frame,
+   in the side pane's tab and in its full view, with one line under the page for what failed in it. */
+.artifact-card {
+  display: flex; align-items: center; gap: 12px; min-width: 0; margin: 8px 0; padding: 10px 10px 10px 12px;
+  border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); cursor: pointer;
+}
+.artifact-card:hover { border-color: var(--aq-hairline-strong); }
+.artifact-card.is-unread { cursor: default; }
+.artifact-tile {
+  width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 9px; color: #fff; --tone: var(--aq-accent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone) 76%, #fff) 0%, var(--tone) 58%, color-mix(in oklab, var(--tone) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.artifact-tile svg { width: 18px; height: 18px; stroke-width: 2; }
+.artifact-tile.sm { width: 24px; height: 24px; border-radius: 6px; }
+.artifact-tile.sm svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.artifact-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.artifact-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); font-size: var(--text-ui-base); font-weight: 600; }
+.artifact-meta { color: var(--aq-label-3); font-size: var(--text-ui-sm); overflow-wrap: anywhere; }
+.artifact-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.artifact-acts { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+a.visual-act { text-decoration: none; }
+.artifact-act-ic { display: inline-flex; }
+.artifact-act-ic svg { width: 13px; height: 13px; }
+.artifact-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.artifact-pane-head, .artifact-view-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-bottom: 1px solid var(--aq-hairline); }
+.artifact-view-head { padding: 10px 14px; }
+.artifact-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.artifact-frame { display: block; flex: 1; min-height: 0; width: 100%; border: 0; background: var(--color-background); }
+.artifact-unframed { flex: 1; }
+.artifact-note { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-top: 1px solid var(--aq-hairline); color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.artifact-note-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.artifact-view { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--color-background); }
+@media (max-width: 520px) {
+  .artifact-card { flex-wrap: wrap; }
+  .artifact-card > .artifact-acts { width: 100%; justify-content: flex-end; }
+}
+/* The full view's hand on it (E18 step 4): its head's acts wrap on a narrow window; an old version is labelled in a
+   band under the head; Ask for a change is one line under its page. */
+.artifact-view-head { flex-wrap: wrap; }
+.artifact-view-acts { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.artifact-old {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--aq-hairline);
+  background: color-mix(in oklab, var(--aq-accent) 9%, transparent); color: var(--aq-label); font-size: var(--text-ui-sm);
+}
+.artifact-ask { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--aq-hairline); }
+.artifact-ask-label { flex: none; color: var(--aq-label-2); font-size: var(--text-ui-sm); white-space: nowrap; }
+.artifact-ask-in { flex: 1; min-width: 0; }
+.artifact-why { color: var(--color-sys-red-text); font-size: var(--text-ui-sm); }
+.artifact-info { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-ui-sm); }
+.artifact-info-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+.artifact-info-k { color: var(--aq-label-3); }
+.artifact-info-v { color: var(--aq-label); overflow-wrap: anywhere; }
+.artifact-info-versions { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--aq-hairline); }
+.artifact-info-version { display: flex; justify-content: space-between; gap: 12px; }
+@media (max-width: 520px) {
+  .artifact-ask { flex-wrap: wrap; }
+  .artifact-ask-label { width: 100%; }
+}
+/* A Doc's or a deck's Edit (E18 step 6, AFC-115): its Markdown on the left, its page on the right, each changing as it
+   is typed; on a narrow frame the text over the page. Save is the head's one filled button. */
+.artifact-view { container-type: inline-size; }
+.artifact-view-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.artifact-view.is-editing .artifact-view-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@container (max-width: 760px) {
+  .artifact-view.is-editing .artifact-view-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.artifact-view.is-editing .artifact-stage { min-width: 0; }
+.artifact-edit { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--aq-hairline); }
+@container (max-width: 760px) {
+  .artifact-edit { border-right: 0; border-bottom: 1px solid var(--aq-hairline); }
+}
+.artifact-edit-head { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--aq-hairline); color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.artifact-edit-hint { color: var(--aq-label-3); white-space: nowrap; }
+.artifact-edit-stale {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--aq-hairline);
+  background: color-mix(in oklab, var(--color-sys-orange) 12%, transparent); color: var(--aq-label); font-size: var(--text-ui-sm);
+}
+.artifact-edit-text {
+  flex: 1; min-height: 0; width: 100%; margin: 0; padding: 12px 14px; border: 0; outline: none; resize: none; background: transparent;
+  color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-sm); line-height: 1.55; tab-size: 2;
+}
+.artifact-save { background: var(--aq-accent); color: var(--color-on-accent); }
+.artifact-save:hover:not(:disabled) { background: color-mix(in oklab, var(--aq-accent) 88%, #000); }
+.artifact-save:active:not(:disabled) { background: color-mix(in oklab, var(--aq-accent) 78%, #000); }
+
+/* The Artifacts page (E18 step 4, AF-D9): a full-frame screen like Settings — its bar, the tiles that start one, and
+   the artifacts by month, as a grid of cards with still previews or as a list of rows. */
+.artifacts-page { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--color-background); }
+.artifacts-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 40px; }
+/* Settings' heading words pad their own sides; here the scroll does, so they line up with the bar and the cards. */
+.artifacts-scroll > .set-title, .artifacts-scroll > .set-desc { max-width: none; padding-inline: 0; }
+.artifacts-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+.artifacts-search { width: 220px; }
+.artifacts-layouts { display: inline-flex; gap: 2px; }
+.artifacts-layout { color: var(--aq-label-3); }
+.artifacts-layout.on { background: var(--aq-control-hover); color: var(--aq-label); }
+.artifacts-filter { display: inline-flex; align-items: center; gap: 6px; }
+.artifacts-filter.on { color: var(--aq-accent); }
+.artifacts-filter-ic { display: inline-flex; }
+.artifacts-filter-ic svg { width: 14px; height: 14px; }
+.artifacts-h { margin: 20px 0 8px; color: var(--aq-label-2); font-size: var(--text-ui-sm); font-weight: 650; }
+.artifacts-tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.artifacts-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px; width: 132px; padding: 12px; border: 1px solid var(--aq-hairline);
+  border-radius: 12px; background: var(--aq-card); color: var(--aq-label); font: inherit; text-align: left; cursor: pointer;
+}
+.artifacts-tile:hover { border-color: var(--aq-hairline-strong); background: var(--aq-control); }
+.artifacts-tile-label { font-size: var(--text-ui-base); font-weight: 600; }
+.artifacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.artifacts-card { min-width: 0; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; cursor: pointer; }
+.artifacts-card:hover, .artifacts-row:hover { border-color: var(--aq-hairline-strong); }
+.artifacts-card:focus-visible, .artifacts-row:focus-visible { outline: 2px solid var(--aq-accent); outline-offset: 1px; }
+.artifact-peek { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-bottom: 1px solid var(--aq-hairline); background: var(--color-background); }
+.artifact-peek-frame { position: absolute; top: 0; left: 0; width: 400%; height: 400%; border: 0; transform: scale(0.25); transform-origin: 0 0; pointer-events: none; }
+.artifacts-card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 6px 8px 10px; }
+.artifacts-pin { display: inline-flex; flex: none; color: var(--aq-label-3); }
+.artifacts-pin svg { width: 12px; height: 12px; }
+.artifacts-more { flex: none; }
+.artifacts-list { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.artifacts-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 6px 8px 10px; border: 1px solid transparent; border-top-color: var(--aq-hairline); cursor: pointer; }
+.artifacts-row:first-child { border-top-color: transparent; }
+.artifacts-when { flex: none; color: var(--aq-label-3); font-size: var(--text-ui-sm); white-space: nowrap; }
+.artifacts-empty { max-width: 560px; padding: 28px 0; color: var(--aq-label-2); }
+.artifacts-empty p { margin: 0 0 10px; }
+@media (max-width: 520px) {
+  .artifacts-scroll { padding: 0 16px 32px; }
+  .artifacts-search { flex: 1 1 100%; width: auto; order: 1; }
+}
+
+/* The reply's text. */
+.a-md { color: var(--aq-label); line-height: 1.72; letter-spacing: 0; }
+.a-md .md-h { font-weight: 650; letter-spacing: -0.015em; color: var(--aq-label); }
+.a-md .md-h1 { font-size: calc(var(--text-ui-base) * 1.6); }
+.a-md .md-h2 { font-size: calc(var(--text-ui-base) * 1.3); }
+.a-md .md-h3 { font-size: calc(var(--text-ui-base) * 1.12); }
+.a-md code { padding: 1.5px 6px; margin: 0 1px; border-radius: 6px; background: var(--aq-control-hover); color: var(--aq-label); font-size: 0.86em; }
+.a-md a { color: var(--aq-accent); }
+.a-md blockquote { border-left: 3px solid color-mix(in oklab, var(--aq-accent) 45%, transparent); color: var(--aq-label-2); }
+.a-md hr { border-top-color: var(--aq-hairline); margin: 16px 0; }
+.a-md ul, .a-md ol { padding-left: 20px; }
+.a-md li::marker { color: var(--aq-label-3); }
+.a-md .code-block { margin: 14px 0; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-code-block); }
+.a-md .code-head { height: 34px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--aq-hairline); background: var(--aq-code-head); }
+.a-md .code-lang { font-family: var(--font); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--aq-label-3); }
+.a-md .code-copy, .a-md .code-wrap { width: 26px; height: 26px; border-radius: 7px; color: var(--aq-label-3); }
+.a-md .code-copy:hover, .a-md .code-wrap:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.a-md pre.code { padding: 10px 14px 12px; font-size: var(--text-ui-caption); line-height: 1.55; }
+.a-md .table-wrap { margin: 12px 0; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.a-md table { width: 100%; border-collapse: collapse; }
+.a-md th { padding: 8px 12px; text-align: left; font-size: var(--text-ui-sm); font-weight: 650; color: var(--aq-label-2); background: var(--aq-code-head); border-bottom: 1px solid var(--aq-hairline); }
+.a-md td { padding: 8px 12px; border-top: 1px solid var(--aq-hairline); vertical-align: top; }
+.a-md tr:first-child td { border-top: 0; }
+.a-md .table-bar button { border-color: var(--aq-hairline); border-radius: 7px; background: var(--aq-glass-focus); color: var(--aq-label-2); }
+
+/* Under a reply: the actions, the facts, the flags. */
+.a-meta { color: var(--aq-label-3); }
+.a-status { color: var(--aq-label-2); }
+.a-flag.warn { color: var(--color-sys-orange-text); }
+.a-flag.err { color: var(--color-sys-red-text); }
+
+/* Between turns: a centred capsule on a hairline — a settings change you can open. */
+.boundary-row { gap: 12px; padding: 8px 0; color: var(--aq-label-3); }
+.boundary-row::before, .boundary-row::after { border-top: 1px solid var(--aq-hairline); }
+button.boundary-row { width: 100%; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); cursor: pointer; text-align: center; }
+.boundary-row .boundary-label { height: 24px; padding: 0 11px; border-radius: 12px; background: var(--aq-control); color: var(--aq-label-2); }
+button.boundary-row:hover .boundary-label { background: var(--aq-control-hover); color: var(--aq-label); }
+button.boundary-row:focus-visible { outline: none; }
+button.boundary-row:focus-visible .boundary-label { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.boundary-row.is-compaction .boundary-label { color: var(--color-sys-teal-text); background: color-mix(in oklab, var(--color-sys-teal) 14%, transparent); }
+/* A compaction's row says a lot (its figures, who wrote it, what it cost, what came back): narrow, its words wrap inside
+   the pill and its buttons stay whole, instead of the row running past the transcript's column (HarnessV4_Tasks U3-11). */
+.boundary-row.is-compaction .boundary-label { white-space: normal; height: auto; min-height: 24px; min-width: 0; padding-top: 2px; padding-bottom: 2px; text-wrap: balance; }
+.boundary-row.is-compaction .boundary-toggle { flex: none; white-space: nowrap; }
+/* A move to another place (HarnessV4_Git_Plan GW-D77): in purple, apart from a compaction's teal; Move back beside it
+   while it can. */
+.boundary-row.is-moved .boundary-label { color: var(--color-sys-purple-text); background: color-mix(in oklab, var(--color-sys-purple) 14%, transparent); }
+.boundary-row.is-moved .boundary-toggle.is-undo { flex: none; white-space: nowrap; color: var(--color-sys-purple-text); }
+/* A worktree template's copy (HarnessV4_Four_Plan FO-D37): the move's purple, as its other half; its words wrap in the
+   pill as a compaction's do; running dims it, a cut copy is orange; what it did not copy opens under it. */
+.boundary-row.is-copied .boundary-label { color: var(--color-sys-purple-text); background: color-mix(in oklab, var(--color-sys-purple) 10%, transparent); white-space: normal; height: auto; min-height: 24px; min-width: 0; padding-top: 2px; padding-bottom: 2px; text-wrap: balance; }
+.boundary-row.is-copied.is-running .boundary-label { color: var(--aq-label-2); }
+.boundary-row.is-copied.is-cut .boundary-label { color: var(--color-sys-orange-text); background: color-mix(in oklab, var(--color-sys-orange) 12%, transparent); }
+.boundary-row.is-copied .boundary-toggle { flex: none; white-space: nowrap; }
+.copied-notes { margin: 0; padding-left: 28px; }
+/* A turn the agent began by itself: a neutral capsule, its tasks' ends in quiet lines under it; a long one's chevron as
+   quiet as the glyph, its hover a work row's. */
+.own-task { color: var(--aq-label-2); }
+.own-task-ic { color: var(--aq-label-3); }
+.own-task-chev { color: var(--aq-label-3); }
+.own-task.is-fold:hover { background: var(--aq-control); }
+.boundary-text { border-radius: 10px; background: var(--aq-code); color: var(--aq-label-2); }
+/* A sync from the project's Space: the Space's teal capsule; the message the agent read folds under it. */
+.boundary-row.is-sync .boundary-label { color: var(--color-sys-teal-text); background: color-mix(in oklab, var(--color-sys-teal) 12%, transparent); }
+.sync-read { margin: 0 auto 6px; max-width: 640px; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.sync-read > summary { cursor: pointer; text-align: center; }
+.sync-text { margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: var(--aq-code); color: var(--aq-label-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A team beside's result sent to the agent: a purple capsule (team_v2_plan §5.4); the lead's record folds the same way. */
+.own-turn.is-beside .boundary-row.is-sync .boundary-label { color: var(--color-sys-purple-text); background: color-mix(in oklab, var(--color-sys-purple) 12%, transparent); }
+.u-record { margin-top: 6px; }
+.u-record .sync-text { max-height: 360px; overflow: auto; text-align: left; }
+/* A team beside's two marks in the transcript: where it was fired, where its result came — the page's, never sent. */
+.boundary-row.is-beside { justify-content: stretch; }
+.bes-mark { display: flex; align-items: flex-start; gap: 10px; width: 100%; max-width: 680px; margin: 0 auto; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.bes-mark-ic { flex: none; display: inline-flex; margin-top: 2px; color: var(--color-sys-purple-text); }
+.bes-mark-ic.is-done { color: var(--color-sys-green-text); }
+.bes-mark-ic svg { width: 15px; height: 15px; }
+.bes-mark-body { display: contents; }
+.bes-mark-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.bes-mark-text { font-size: var(--text-ui-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.bes-mark-ask { color: var(--aq-label-2); }
+.bes-mark-facts { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--aq-label-3); }
+.bes-mark-switches { display: flex; flex-wrap: wrap; gap: 14px; }
+.bes-mark-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--aq-label-2); }
+.bes-mark-result { font-size: 12px; line-height: 1.45; color: var(--aq-label-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 7.5em; overflow: auto; padding: 8px 10px; border-radius: 10px; background: var(--aq-code); }
+.bes-mark-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bes-mark-acts:empty { display: none; }
+/* Where its result stands with your agent: quiet while it has not seen it, green once it went. */
+.bes-mark-sent { font-size: 12px; color: var(--aq-label-3); }
+.bes-mark-sent.is-sent { color: var(--color-sys-green-text); }
+/* In the transcript its row's rule takes a note's padding away: the card keeps its own, so nothing touches its edge. */
+.boundary-row.is-subagent.is-beside > .tool-note.bes-mark { padding: 10px 12px 10px 14px; }
+.bes-mark > .bes-mark-body > .subagent-open { align-self: flex-start; margin-top: 1px; }
+/* Its fold (the owner's ask of 10-23): folded, its head line alone. */
+.bes-mark-fold { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: -2px -4px 0 0; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--aq-label-3); cursor: pointer; }
+.bes-mark-fold:hover { background: var(--aq-code); color: var(--aq-label); }
+.bes-mark-fold:focus-visible { outline: 2px solid var(--color-sys-blue); outline-offset: 1px; }
+.bes-mark-fold svg { width: 14px; height: 14px; }
+.bes-mark.is-folded { align-items: center; padding-top: 7px; padding-bottom: 7px; }
+.boundary-row.is-subagent.is-beside > .tool-note.bes-mark.is-folded { padding-top: 7px; padding-bottom: 7px; }
+.bes-mark.is-folded .bes-mark-ic { margin-top: 0; }
+.bes-mark.is-folded > .bes-mark-body > .subagent-open { align-self: center; margin-top: 0; }
+.bes-mark-sent.is-folded { flex: none; white-space: nowrap; }
+/* A long ask shows three lines until Show all. */
+.bes-mark-text.is-clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.bes-mark-more { align-self: flex-start; margin: -2px 0 0; }
+/* A thread's brief (core/threads.js): another chat's agent's words for this one, a card across the column under who
+   wrote them and the way to that chat, never the person's bubble on the right; a thread's own indigo marks it. A long
+   one clamps at a dozen lines as a message does, fading out, its chevron opening it. */
+.u.is-brief { align-items: stretch; }
+.brief-card { padding: 12px 16px 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); }
+.brief-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+/* "Brief from" on one line; the starter's long name is what gives up its room, cut with an ellipsis (a flex chip cuts
+   no text: it lays out as a line). */
+.brief-who { flex: none; white-space: nowrap; }
+.brief-head > .ref-chip, .brief-named { display: inline-block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); font-weight: 500; }
+.brief-head > .ref-chip .ref-ic { vertical-align: -2px; margin-right: 2px; }
+.brief-ic { flex: none; display: inline-flex; color: var(--color-sys-indigo-text); }
+.brief-ic svg { width: 15px; height: 15px; }
+.brief-named { color: var(--aq-label-2); }
+.brief-wrap { position: relative; }
+.brief-text { max-height: calc(1.72em * 12); overflow: hidden; overflow-wrap: anywhere; }
+.brief-text > :first-child { margin-top: 0; }
+.brief-text > :last-child { margin-bottom: 0; }
+.brief-text:not(.open):has(+ .u-clamp:not(.hidden)) { mask-image: linear-gradient(to bottom, #000 72%, transparent); }
+.brief-text.open { max-height: none; overflow: visible; }
+.brief-text.open + .u-clamp svg { transform: rotate(180deg); }
+.u.is-brief > .u-meta { padding-left: 4px; }
+/* A watcher in the transcript (the plan of 11-11, its w8), in one teal wherever it shows: the capsule of the turn it
+   woke and of the turn its guidance began, their words wrapping inside the pill as a compaction's do — a wake names a
+   chat, whose name is a link in the sentence, not a chip in it. */
+.own-turn.is-watched .boundary-label, .own-turn.is-guided .boundary-label { color: var(--color-sys-teal-text); background: color-mix(in oklab, var(--color-sys-teal) 12%, transparent); white-space: normal; height: auto; min-height: 24px; min-width: 0; padding-top: 2px; padding-bottom: 2px; text-wrap: balance; }
+.own-turn.is-watched .boundary-words .ref-chip { display: inline; padding: 0; background: none; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.own-turn.is-watched .boundary-words .ref-ic { display: none; }
+/* Its guidance, where it lands: the reviewer's words across the column behind a teal rule, nothing filled — whose they
+   are and how they weigh in the meta's size above them, Open its chat and Pause quiet at the right; the words read as
+   an answer's do, a dozen lines until Show all. Narrow, its buttons go under its title. */
+.guide-card { margin: 2px 0 8px; padding: 2px 0 2px 14px; border-left: 2px solid var(--color-sys-teal); container-type: inline-size; }
+.guide-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.guide-who { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.guide-title { font-size: var(--text-ui-sm); font-weight: 600; color: var(--color-sys-teal-text); overflow-wrap: anywhere; }
+.guide-sub, .guide-state, .guide-paused { font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.guide-acts { flex: none; display: flex; align-items: baseline; gap: 2px; }
+.guide-acts .guide-state, .guide-acts .guide-paused { margin-right: 6px; white-space: nowrap; }
+.guide-acts button.ghost.sm { padding: 0 6px; min-height: 0; font-size: var(--text-ui-sm); }
+.guide-text { font-size: var(--text-ui-base); line-height: 1.72; color: var(--aq-label); overflow-wrap: anywhere; max-height: calc(1.72em * 12); overflow: hidden; }
+.guide-text > :first-child { margin-top: 0; }
+.guide-text > :last-child { margin-bottom: 0; }
+.guide-text:not(.open):has(+ .guide-more:not(.hidden)) { mask-image: linear-gradient(to bottom, black 72%, transparent); }
+.guide-text.open { max-height: none; overflow: visible; }
+.guide-more { margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label-3); cursor: pointer; text-decoration: underline dotted; }
+.guide-more:hover { color: var(--aq-label); }
+.guide-card.is-paused { border-left-color: var(--aq-hairline); }
+.guide-card.is-paused .guide-title { color: var(--aq-label-2); }
+.steer.undelivered .guide-state { color: var(--color-sys-red-text); }
+@container (max-width: 480px) {
+  .guide-head { flex-direction: column; align-items: stretch; gap: 4px; }
+  .guide-acts { flex-wrap: wrap; }
+}
+/* A turn a watcher read: a chip at the far end of its footer's row, no louder than the meta — a muted outline, the
+   watcher's teal where it wrote the chat guidance, which a press goes to. It stays while the actions beside it hide. */
+.a-reviewed { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; height: 20px; padding: 0 8px; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label-3); border: 1px solid var(--aq-hairline); border-radius: 10px; white-space: nowrap; cursor: default; }
+.a-reviewed.is-guided { color: var(--color-sys-teal-text); border-color: color-mix(in oklab, var(--color-sys-teal) 45%, transparent); cursor: pointer; }
+.a-reviewed.is-guided:hover { background: color-mix(in oklab, var(--color-sys-teal) 10%, transparent); }
+.a-reviewed-ic { display: inline-flex; }
+.a-reviewed-ic svg { width: 12px; height: 12px; }
+/* The side-by-side card (Phase 5, conversation/side-offer.js): the tasks that can run at once, Accept and Ignore. */
+.boundary-row.is-side { justify-content: stretch; }
+.so-card { display: flex; align-items: flex-start; gap: 10px; width: 100%; max-width: 680px; margin: 0 auto; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.boundary-row.is-subagent.is-side > .tool-note.so-card { padding: 10px 12px 10px 14px; }
+.so-body { display: contents; }
+.so-ic { flex: none; display: inline-flex; margin-top: 2px; color: var(--color-sys-cyan-text); }
+.so-ic svg { width: 15px; height: 15px; }
+.so-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.so-head { font-size: var(--text-ui-sm); }
+.so-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.so-task { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; font-size: var(--text-ui-sm); line-height: 1.45; }
+.so-id { flex: none; font-family: var(--mono); font-size: 12px; color: var(--aq-label-3); }
+.so-name { min-width: 0; overflow-wrap: anywhere; }
+.so-sub { font-size: 12px; color: var(--aq-label-3); overflow-wrap: anywhere; }
+.so-line { margin: 0; font-size: 12px; line-height: 1.45; color: var(--aq-label-2); }
+.so-line.is-warn { color: var(--color-sys-orange-text); }
+.so-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* The card for sub-agents that change files: the side card's look, its clock's figures steady as they count. */
+.hl-clock { font-variant-numeric: tabular-nums; }
+.boundary-row.is-held.is-answered > .so-card { background: transparent; }
+/* Answered, one line where its agent asked: what it held, then what happened. */
+.boundary-row.is-held.is-answered > .so-card { padding-top: 4px; padding-bottom: 4px; }
+.hl-done { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.hl-names { color: var(--aq-label); }
+/* A routine or a watcher proposed in the chat (the owner's of 11-12, conversation/routine-card.js): under its call's
+   row, the Switch on sheet's parts in a card — or, once on, folded, changed later or gone, one line. */
+.rp-call { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rp-card { display: flex; flex-direction: column; min-width: 0; max-width: 680px; margin: 0 0 4px 27px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.rp-card.is-sheet { border-color: color-mix(in oklab, var(--color-sys-cyan) 38%, var(--aq-hairline)); }
+.rp-card.is-sheet.is-on { border-color: var(--aq-hairline); }
+.rp-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 14px 0; }
+.rp-head .sp-sheet-title { flex: 1; min-width: 0; font-size: var(--text-ui-base); font-weight: 650; overflow-wrap: anywhere; }
+.rp-tag { flex: none; height: 20px; padding: 0 8px; border-radius: 10px; font-size: var(--text-ui-xs); font-weight: 600; line-height: 20px; color: var(--color-sys-cyan-text); background: color-mix(in oklab, var(--color-sys-cyan) 12%, transparent); }
+.rp-card.is-on .rp-tag { color: var(--color-sys-green-text); background: color-mix(in oklab, var(--color-sys-green) 12%, transparent); }
+.rp-ic { flex: none; display: inline-flex; color: var(--color-sys-cyan-text); }
+.rp-ic svg { width: 15px; height: 15px; }
+.rp-card .sdb-keep-body { padding: 4px 14px 10px; }
+.rp-card .sdb-keep-foot { flex-wrap: wrap; row-gap: 6px; padding: 10px 14px; border-top: 1px solid var(--aq-hairline); }
+.rp-card .sdb-keep-foot > .sp-quiet { flex: 1 1 180px; min-width: 0; font-size: 12px; }
+.rp-card.is-sheet { container-type: inline-size; }
+/* Narrow, the foot's note takes a line of its own and its presses keep together at its end. */
+@container (max-width: 560px) {
+  .rp-card .sdb-keep-foot > .sp-quiet { flex-basis: 100%; }
+  .rp-card .sdb-keep-foot > .sb-sp { flex: 1; }
+}
+.rp-line { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; font-size: var(--text-ui-sm); line-height: 1.45; }
+.rp-words { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.rp-acts { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 12px; }
+.rp-card .inst-link { display: inline-flex; align-items: center; padding: 2px 0; border: 0; background: none; cursor: pointer; font: inherit; font-size: var(--text-ui-sm); font-weight: 550; color: var(--color-sys-blue-text); white-space: nowrap; }
+.rp-card .inst-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.rp-card .inst-link:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 2px; border-radius: 3px; }
+.rp-card .inst-btn { flex: none; height: 26px; padding: 0 10px; font-size: var(--text-ui-sm); }
+.rp-line.is-quiet { color: var(--aq-label-2); }
+.rp-line.is-quiet .rp-ic { color: var(--aq-label-3); }
+.rp-line.is-on .rp-ic { color: var(--color-sys-green-text); }
+.rp-line.is-waits .rp-ic { color: var(--color-sys-orange-text); }
+
+/* Filament's own answers: a grouped card, marked as Filament's. */
+.shim-answer { margin: 4px 0 10px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); color: var(--aq-label); }
+.shim-answer .shim-mark { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.01em; color: var(--aq-label-3); }
+.shim-card .card-lead { color: var(--aq-label); }
+.shim-card .card-title { font-size: var(--text-ui-caption); font-weight: 650; color: var(--aq-label); }
+/* Under a card's sentence its rows are folded: one quiet line that opens them. */
+.shim-card .card-detail > summary.card-title { margin: 0; font-weight: 500; color: var(--aq-label-3); cursor: pointer; }
+.shim-card .card-detail > summary.card-title:hover { color: var(--aq-label-2); }
+.shim-card .card-detail[open] > summary.card-title { margin-bottom: 4px; }
+.shim-card .card-row { border-top-color: var(--aq-hairline); }
+.shim-card .card-path { color: var(--aq-label-3); }
+.shim-card .card-sources { color: var(--aq-label-3); }
+.memory-note .card-title { color: var(--aq-label-3); }
+.memory-note-date, .memory-note-summary { color: var(--aq-label-3); }
+
+/* A question or a permission: a card that asks. */
+.ix-block { gap: 12px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 16px; background: var(--aq-card); box-shadow: var(--aq-lift); }
+/* A question's inline code, a chip as the conversation draws it; and the command a choice names (Always allow in this
+   chat, d-allow), which breaks where its row ends. */
+.ix-option-desc code { overflow-wrap: anywhere; }
+.ix-reason code, .ix-option-desc code { padding: 1px 5px; border-radius: 5px; background: var(--aq-code-chip); box-shadow: inset 0 0 0 0.5px var(--aq-hairline); color: var(--aq-label); font-family: var(--mono); font-size: 0.88em; }
+.ix-head { gap: 10px; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.ix-head-ic { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: #fff; background: var(--color-sys-orange); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 2px rgba(0, 0, 0, 0.25); }
+.ix-head-ic.ask { background: var(--aq-accent); color: #fff; }
+.ix-head-ic svg { width: 15px; height: 15px; }
+/* A review rule's ask (HarnessV4_Space_Plan SG-D13): the rule at the head's end, the Reviewer's second look under it. */
+.ix-rule { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); font-weight: 400; color: var(--aq-label-3); }
+.ix-rule code { font-family: var(--mono); font-size: 0.95em; color: var(--aq-label-2); }
+/* The Reviewer's second look: purple is the Reviewer's, its five lines numbered, its label words bold. */
+.slk { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--color-sys-purple) 45%, var(--aq-hairline)); border-radius: 10px; background: color-mix(in oklab, var(--color-sys-purple) 14%, transparent); font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label); }
+.slk-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; color: var(--aq-label); }
+.slk-ic { display: inline-flex; color: var(--color-sys-purple-text); }
+.slk-ic svg { width: 13px; height: 13px; }
+.slk-state { font-weight: 500; color: var(--aq-label-2); font-variant-numeric: tabular-nums; }
+.slk-doing { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.slk-doing[hidden], .slk-lines:empty { display: none; }
+.slk-lines { margin: 0; padding-left: 18px; }
+.slk-line { margin: 2px 0; overflow-wrap: anywhere; }
+.slk-label { font-weight: 650; }
+.slk.is-none { padding: 7px 12px; border-style: dashed; border-color: var(--aq-hairline); background: transparent; }
+.slk.is-none .slk-ic { color: var(--aq-label-3); }
+.slk.is-none .slk-state { font-weight: 400; }
+/* What runs it, under its head (the owner's word of 10-31): its model and provider, What it was asked, its card. */
+.slk-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.slk-meta[hidden], .slk-asked[hidden] { display: none; }
+.slk-sep { color: var(--aq-label-3); }
+.slk-link { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--accent-text); }
+.slk-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.slk-asked { margin: 0; max-height: 220px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--aq-code); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--aq-label); }
+.ix-preview { border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-code); color: var(--aq-label); }
+.ix-change { border-color: var(--aq-hairline); border-radius: 10px; background: var(--aq-code); }
+.ix-change-head { border-bottom-color: var(--aq-hairline); color: var(--aq-label-2); }
+.ix-change-name { color: var(--aq-label); }
+.ix-change-dir, .ix-change-more { color: var(--aq-label-3); }
+.ix-change-tag { background: var(--aq-control); color: var(--aq-label-2); }
+.ix-option { min-height: 36px; padding: 7px 10px; border-radius: 9px; }
+.ix-option:hover { background: var(--aq-control); }
+.ix-option.on { background: color-mix(in oklab, var(--aq-accent) 16%, transparent); }
+.ix-option.on .ix-option-mark { color: var(--aq-accent); }
+.ix-feedback { border-color: var(--aq-hairline); border-radius: 10px; background: var(--aq-code); }
+.ix-error { border-color: color-mix(in oklab, var(--color-sys-red) 30%, transparent); border-radius: 12px; background: color-mix(in oklab, var(--color-sys-red) 10%, transparent); }
+.ix-error-msg { color: var(--color-sys-red-text); }
+.ix-error-more { color: var(--aq-label-2); }
+.ix-error-repeat { color: var(--color-sys-red-text); }
+.ix-error.is-inset { border-radius: 9px; }
+.ix-limit .ix-error-ic, .ix-limit-title { color: var(--color-sys-red-text); }
+.ix-limit-line { color: var(--aq-label-2); }
+.ix-error.ix-resume { border-color: color-mix(in oklab, var(--color-sys-teal) 30%, transparent); background: color-mix(in oklab, var(--color-sys-teal) 8%, transparent); }
+.ix-resume .ix-error-msg { color: var(--aq-label); }
+.ix-resume .ix-error-ic { color: var(--color-sys-teal-text); }
+.ix-ask-fact { background: var(--aq-code); color: var(--aq-label-2); }
+.ix-ask-once { color: var(--aq-label-2); }
+.ix-ask-lead { color: var(--aq-label); }
+.ix-ask-tail { border-color: var(--aq-hairline); border-radius: 7px; background: var(--aq-code); }
+/* The card's ways (proposal_ux §4.12): rows on the code well, the chosen one in the compaction's teal. */
+.ix-ask .ix-way { border-color: var(--aq-hairline); background: var(--aq-code); }
+.ix-ask .ix-way.is-on { border-color: color-mix(in oklab, var(--color-sys-teal) 60%, transparent); background: color-mix(in oklab, var(--color-sys-teal) 12%, transparent); }
+.ix-ask .ix-way-text > b, .ix-ask-title { color: var(--aq-label); }
+.ix-ask .ix-way-text > span, .ix-ask .ix-way-fig { color: var(--aq-label-2); }
+.ix-ask .ix-way-text > .ix-way-sub { color: var(--aq-label-3); }
+.ix-way-dot { border-color: var(--aq-label-3); }
+/* A coding agent's question (HarnessV3-ACP AC2-4) in the card's materials: its number keys as keycaps, the header chip,
+   a choice of several as a box in the accent, and the plan's and the link's wells. */
+.ax-chip { background: var(--aq-control); color: var(--aq-label-2); }
+.ax-key { border: 0; background: var(--aq-key); color: var(--aq-key-label); }
+.ix-option.on .ax-key { background: color-mix(in oklab, var(--aq-accent) 22%, transparent); color: var(--aq-accent); }
+.ix-option.is-check .ix-option-mark { border-color: var(--aq-hairline-strong); }
+.ix-option.is-check.on .ix-option-mark { border-color: var(--aq-accent); background: var(--aq-accent); }
+.ax-step, .ax-detail, .ax-overview, .ax-todos-head { color: var(--aq-label-2); }
+.ax-plan, .ax-link { border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-code); }
+.ax-url { color: var(--aq-label); }
+.ax-err { color: var(--color-sys-red-text); }
+.ax-todo-ic { color: var(--aq-label-3); }
+.ax-todo.is-done .ax-todo-ic { color: var(--color-sys-green-text); }
+.ax-todo.is-doing .ax-todo-ic, .ax-link-ic { color: var(--aq-accent); }
+
+/* Links out: a web card. */
+.web-card { border-color: var(--aq-hairline); border-radius: 14px; background: var(--aq-card); }
+.web-card:hover { background: var(--aq-control); }
+.web-ic { border-radius: 10px; background: color-mix(in oklab, var(--aq-accent) 14%, transparent); color: var(--aq-accent); }
+
+/* Getting around a long conversation. */
+.to-bottom {
+  padding: 6px 14px; border: 1px solid var(--inst-border); border-radius: 999px; color: var(--aq-label); font-size: 12px; font-weight: 500;
+  background: var(--aq-panel); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--aq-lift);
+}
+.to-bottom:hover { background: var(--aq-glass-focus); }
+.load-earlier { height: 30px; padding: 0 14px; border-radius: 15px; background: var(--aq-control); color: var(--aq-label-2); font-size: 12px; }
+.load-earlier:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+
+/* The status capsule and its panel: glass. */
+.sp-capsule {
+  border-color: var(--inst-border); background: var(--aq-panel); color: var(--aq-label-2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--inst-edge), 0 4px 14px -6px rgba(0, 0, 0, 0.35);
+}
+.status-panel.expanded .sp-body {
+  border-color: var(--inst-border); border-radius: 16px; background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(44px) saturate(1.9); backdrop-filter: blur(44px) saturate(1.9);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+}
+.sp-pill { background: color-mix(in oklab, var(--color-sys-green) 16%, transparent); color: var(--color-sys-green-text); }
+.sp-pill.paused { background: color-mix(in oklab, var(--color-sys-orange) 16%, transparent); color: var(--color-sys-orange-text); }
+
+/* The Context pill with no window known yet (a new chat): a quiet solid ring — a dashed one read as a spinner. */
+.widget-context.hollow .inst-face-ring .inst-track { stroke-dasharray: none; opacity: 0.55; }
+
+/* ==== the chrome: the sidebar, the header, the side pane, the new-chat page ======================================
+   The sidebar is a macOS source list: New task on the accent's tile, Search as a field, the Project/Timeline switch
+   a segmented control, projects under a small header with their folders in blue, the open chat a rounded gray
+   selection. The header is a toolbar of quiet glyph buttons around the title; the side pane floats as glass with
+   its blocks as grouped cards; the new-chat page's choices are capsules and cards. */
+.conv-frame { border-color: var(--aq-hairline); border-radius: 14px; }
+.side-frame { background: var(--aq-sidebar); }
+.collapsed-rail { background: var(--aq-sidebar); border-right-color: var(--aq-hairline); }
+html.app-frame-left .collapsed-rail::after { background: var(--aq-hairline); }
+.collapsed-mark, .sess-top-btn { color: var(--aq-label-2); }
+.collapsed-mark:hover, .sess-top-btn:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+
+.sess-head { gap: 4px; padding: 6px 8px 4px; }
+.sess-new { height: 34px; gap: 10px; padding: 0 8px; border-radius: 8px; font-weight: 550; color: var(--aq-label); }
+.sess-new:hover { background: var(--aq-control); }
+.sess-new-ic {
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: #fff; --tone: var(--aq-accent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone) 76%, #fff) 0%, var(--tone) 58%, color-mix(in oklab, var(--tone) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.sess-new-ic svg { width: 13px; height: 13px; stroke-width: 2.4; }
+.sess-search-row { height: 30px; gap: 7px; padding: 0 8px; border-radius: 8px; background: var(--aq-field); color: var(--aq-label-3); }
+.sess-search-row:hover { background: var(--aq-field-hover); }
+.sess-search-row .sess-search-ic { color: var(--aq-label-3); }
+.sess-search-row .sess-search-ic svg { width: 14px; height: 14px; stroke-width: 2.3; }
+.sess-search { color: var(--aq-label-3); }
+.sess-new-hint { padding: 1px 5px; border-radius: 5px; font-size: 10.5px; font-weight: 600; color: var(--aq-label-3); background: var(--aq-key); }
+
+/* A segmented control wherever the pills are (the find bar, Settings). */
+.zc-pills { height: 28px; padding: 2px; border-radius: 8px; background: var(--inst-seg-bg); }
+.zc-pill-ind { top: 2px; bottom: 2px; border-radius: 6px; background: var(--inst-seg-on); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06); }
+.zc-pill { height: 24px; padding: 0 10px 0 8px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--aq-label-2); }
+.zc-pill.on { color: var(--aq-label); }
+
+.projects-head { height: 26px; font-size: 11px; font-weight: 650; letter-spacing: 0.01em; color: var(--aq-label-3); background: var(--aq-sidebar); }
+.sess-group > summary { height: 30px; padding: 0 8px; gap: 7px; border-radius: 7px; font-weight: 550; color: var(--aq-label); }
+.sess-group > summary:hover { background: var(--aq-control); color: var(--aq-label); }
+.sess-group summary .proj-ic { color: var(--color-sys-blue-text); }
+.sess-group summary .proj-count { margin-left: auto; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.sess-row { min-height: 30px; padding: 3px 4px 3px 10px; border-radius: 7px; }
+.sess-row:hover { background: var(--aq-control); }
+.sess-row.current { background: var(--aq-control-press); }
+.sess-row.current .sess-title { font-weight: 550; }
+.sess-title { color: var(--aq-label); }
+.sess-age { font-size: 11.5px; color: var(--aq-label-3); }
+.sess-row .pin { border-radius: 6px; color: var(--aq-label-3); }
+.sess-row .pin:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.sess-row .pin.on { color: var(--color-sys-orange-text); }
+
+/* The left bar's sections and Now, as the mock draws them: small capitals, the rows' two lines, the Library's
+   quiet glyphs, the rail's count. */
+.lb-sec, .projects-head { color: var(--aq-label-3); }
+.lb-sec-name { font-size: 10.5px; }
+.now-head:hover:not(:disabled) { background: var(--aq-control); }
+.now-group { font-size: 11px; color: var(--aq-label-3); }
+.now-row:hover { background: var(--aq-control); }
+.now-row.is-current { background: var(--aq-control-press); }
+.now-under:hover { background: var(--aq-control); }
+.now-title { font-size: 13.5px; color: var(--aq-label); }
+.now-fact { font-size: 12px; color: var(--aq-label-2); }
+.now-fact.asks { color: var(--aq-needs-text); }
+.now-fact.error { color: var(--aq-error-text); }
+.now-age, .lib-count { font-size: 11px; color: var(--aq-label-3); }
+.now-proj { font-size: 10.5px; }
+.now-where { font-size: 11.5px; color: var(--aq-label-3); }
+.now-apart, .row-apart { font-size: 10.5px; }
+.now-under { font-size: 12.5px; color: var(--aq-label-2); }
+.row-two { color: var(--aq-label-3); }
+.row-two.needs { color: var(--aq-needs-text); }
+.lb-foot { border-top-color: var(--aq-hairline); }
+.now-slot.is-foot { border-top-color: var(--aq-hairline); }
+.now-unread { background: var(--aq-accent); }
+/* A lifted row on its flight between Now and its project: the sidebar's own grey, raised. */
+.lb-ghost { border-radius: 7px; background: var(--aq-sidebar); box-shadow: 0 0 0 0.5px var(--aq-hairline-strong), var(--aq-lift); }
+.lib-row { font-size: 13.5px; color: var(--aq-label); }
+.lib-row:hover { background: var(--aq-control); }
+.lib-ic { color: var(--aq-label-2); }
+.rail-new {
+  width: 26px; height: 26px; margin: 4px 0 2px; border-radius: 7px; color: #fff; --tone: var(--aq-accent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tone) 76%, #fff) 0%, var(--tone) 58%, color-mix(in oklab, var(--tone) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.rail-new:hover { color: #fff; filter: brightness(1.08); }
+.rail-new svg { width: 14px; height: 14px; stroke-width: 2.4; }
+.rail-now.has-needs { color: var(--aq-needs-text); }
+.zc-menu-switch.on { background: var(--color-sys-green); }
+
+/* The header: a toolbar — the crumb in words, the place a gray capsule (green while the agent works elsewhere), the
+   pane buttons quiet until their pane shows. */
+.c-bar { border-bottom-color: var(--aq-hairline); }
+.app-shell.panes-docked .c-right { border-left-color: var(--aq-hairline); }
+.c-title { font-weight: 650; letter-spacing: -0.01em; color: var(--aq-label); }
+.c-title-btn:hover { background: var(--aq-control); }
+.c-sep, .c-title-chev { color: var(--aq-label-3); }
+.ws-chip { height: 28px; padding: 0 8px; border-radius: 8px; color: var(--aq-label-2); }
+.ws-chip:hover { background: var(--aq-control); color: var(--aq-label); }
+.ws-chip-ic { color: var(--color-sys-blue-text); }
+.ws-ahead { color: var(--aq-label-3); }
+.place-chip { background: var(--aq-control-hover); color: var(--aq-label-2); }
+.place-chip:hover { background: var(--aq-control-press); color: var(--aq-label); }
+.place-chip.away { background: color-mix(in oklab, var(--color-sys-green) 16%, transparent); color: var(--aq-label); }
+.place-ahead, .place-more, .place-sec-label { color: var(--aq-label-3); }
+.c-diff:hover { background: var(--aq-control); }
+.c-div { background: var(--aq-hairline); }
+.pbtn { color: var(--aq-label-2); }
+.pbtn:hover { background: var(--aq-control); color: var(--aq-label); }
+.pbtn.on { background: var(--aq-control-hover); color: var(--aq-label); }
+.pbtn-chev { color: var(--aq-label-3); }
+.row-where { color: var(--aq-label-3); }
+.c-bar .ghost.icon { width: 28px; height: 28px; border-radius: 7px; color: var(--aq-label-2); }
+.c-bar .ghost.icon:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+
+/* The panes: docked, a well beside the chat with each tile a card in it, the one in use ringed in the accent;
+   floating, one card of glass over the chat. */
+.pane-frame { background: var(--aq-sidebar); border-left-color: var(--aq-hairline); }
+.app-shell.pane-float .pane-frame {
+  border-color: var(--inst-border); border-radius: 16px; background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+}
+.tile { background: var(--aq-panel-solid); border-color: var(--aq-hairline); }
+.tile.in-use { border-color: color-mix(in oklab, var(--aq-accent) 55%, transparent); }
+.app-shell.pane-float .tile { background: transparent; border-color: transparent; }
+.tile-head, .tile.multi > .tile-bar { border-bottom-color: var(--aq-hairline); }
+.tile-name { color: var(--aq-label); }
+.tile-btn { color: var(--aq-label-2); }
+.tile-btn:not(.is-off):hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.tile-tab { color: var(--aq-label-2); }
+.tile-tab:hover { background: var(--aq-control); color: var(--aq-label); }
+.tile-tab.on { background: var(--aq-control-hover); color: var(--aq-label); }
+.tile-tab-x { color: var(--aq-label-3); }
+.tile-gap:hover, .tile-gap.drag { background: color-mix(in oklab, var(--aq-accent) 45%, transparent); }
+.tile-ghost {
+  border: 1px solid var(--inst-border); background: var(--aq-menu); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8); box-shadow: var(--aq-lift);
+}
+.pane-empty { color: var(--aq-label-3); }
+.prompt-card { border-color: var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+
+/* The new-chat page: the greeting, the folder and the start as capsules and cards. */
+.empty-chat .greet { font-weight: 700; letter-spacing: -0.025em; color: var(--aq-label); }
+.chooser { color: var(--aq-label-2); }
+.chooser-chip { height: 30px; padding: 0 12px 0 10px; border-radius: 15px; background: var(--aq-control); color: var(--aq-label); }
+.chooser-chip:hover { background: var(--aq-control-hover); }
+.chooser-ic { color: var(--color-sys-blue-text); }
+
+/* ==== sheets, buttons, fields, tooltips, toasts ====================================================================
+   A dialog is a sheet of glass over a dimmed window; the default button is the accent (the one to press), the rest
+   are gray capsules; a field focuses with the accent's ring. Toasts and tooltips are glass too. */
+.zc-dialog-overlay { background: rgba(0, 0, 0, 0.34); }
+.zc-dialog {
+  gap: 14px; padding: 20px 20px 16px; border-color: var(--inst-border); border-radius: 16px; background: var(--aq-panel);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--aq-edge), 0 24px 70px rgba(0, 0, 0, 0.42), 0 0 0 0.5px rgba(0, 0, 0, 0.22);
+}
+.zc-dialog-title { font-size: calc(var(--ui-font-size) + 1px); font-weight: 650; letter-spacing: -0.01em; color: var(--aq-label); }
+.zc-dialog-desc { font-size: var(--text-ui-caption); line-height: 1.5; color: var(--aq-label-2); }
+.zc-dialog .zc-dialog-x { border-radius: 50%; color: var(--aq-label-3); }
+.zc-dialog .zc-dialog-x:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.zc-dialog-foot { gap: 8px; padding-top: 2px; }
+.zc-dialog-foot .zc-btn { min-width: 84px; height: 30px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
+.zc-dialog .muted.small { font-size: calc(var(--ui-font-size) - 2.5px); font-weight: 650; color: var(--aq-label-3); }
+.pick-recent { display: flex; flex-direction: column; gap: 2px; }
+.pick-recent-row { height: 30px; padding: 0 10px; border-radius: 8px; color: var(--aq-label); }
+.pick-recent-row:hover { background: var(--aq-accent); color: #fff; }
+
+.zc-btn:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.zc-btn-v-default { background: var(--aq-accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.25); }
+.zc-btn-v-default:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+.zc-btn-v-default:active { background: color-mix(in oklab, var(--aq-accent) 86%, #000); }
+.zc-btn-v-outline, .zc-btn-v-secondary { border-color: transparent; background: var(--aq-control-hover); color: var(--aq-label); }
+.zc-btn-v-outline:hover, .zc-btn-v-secondary:hover { border-color: transparent; background: var(--aq-control-press); }
+.zc-btn-v-ghost { color: var(--aq-label-2); }
+.zc-btn-v-ghost:hover, .zc-btn-v-ghost[aria-expanded="true"] { background: var(--aq-control-hover); color: var(--aq-label); }
+
+.zc-input { height: 30px; padding: 2px 10px; border-color: var(--aq-hairline-strong); border-radius: 8px; background: var(--aq-field); color: var(--aq-label); }
+.zc-input:hover { border-color: var(--aq-hairline-strong); background: var(--aq-field-hover); }
+.zc-input:focus { outline: none; border-color: color-mix(in oklab, var(--aq-accent) 60%, transparent); background: var(--aq-field); box-shadow: 0 0 0 3px color-mix(in oklab, var(--aq-accent) 22%, transparent); }
+textarea.zc-input { height: auto; padding: 8px 10px; }
+
+.zc-tooltip {
+  border-color: var(--inst-border); border-radius: 8px; background: var(--aq-panel); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--aq-lift);
+}
+.zc-toast {
+  border-color: var(--inst-border); border-radius: 14px; background: var(--aq-panel); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--aq-edge), var(--inst-shadow);
+}
+.zc-toast.err { border-color: color-mix(in oklab, var(--color-sys-red) 50%, var(--inst-border)); }
+
+/* The header's widgets and the strip under the composer: quiet capsules. The editor split is one gray capsule with
+   a hairline between its halves. */
+.widget-pill { border-radius: 14px; color: var(--aq-label-2); }
+.composer-strip .widget-pill { border-radius: 12px; }
+.widget-pill:hover, .widget-pill.is-open { background: var(--aq-control-hover); color: var(--aq-label); }
+.widget-pill:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.hdr-editor, .hdr-help, .pbtn-more { border-radius: 7px; color: var(--aq-label-2); }
+.hdr-editor:hover, .hdr-help:hover, .pbtn-more:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+
+/* ==== sub-agents, questions, steers, the tree card =================================================================
+   A sub-agent's card and a question sit under their tool row as cards with a rail in the agent's purple (a question's
+   in blue); a steer is the person's own bubble, its state a quiet caption under it (red when it did not land). The
+   working-tree card is one grouped row that opens into the file rows. */
+.sub-card, .ask-card {
+  margin: 4px 0 8px 27px; padding: 10px 12px 10px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px;
+  background: var(--aq-card); box-shadow: inset 3px 0 0 color-mix(in oklab, var(--color-sys-purple) 55%, transparent);
+}
+.ask-card { box-shadow: inset 3px 0 0 color-mix(in oklab, var(--card-tone, var(--color-sys-blue)) 55%, transparent); }
+/* A saved agent's card folded is one line in its agent's colour (E37, the owner's 10-24: "collapsed into single colored
+   line, that keeps shimmering as long as the side agent is running"): its rail and a tint of it, the line alone; a band
+   of the colour sweeps across while the agent works — moved, not repainted, so it costs the page nothing. */
+.ask-card:not(.is-open) { padding: 0; background: color-mix(in oklab, var(--card-tone, var(--color-sys-blue)) 8%, var(--aq-card)); }
+.ask-card:not(.is-open) > .ask-card-line { padding: 6px 10px 6px 15px; border-radius: 11px; }
+.ask-card:not(.is-open) > :is(.ask-card-passed, .ask-card-drew, .ask-card-drawn, .ask-card-made) { display: none; }
+.ask-card-line { position: relative; overflow: hidden; cursor: pointer; }
+.ask-card-first[role="button"]:focus-visible { outline: 2px solid var(--color-sys-blue); outline-offset: 1px; border-radius: 4px; }
+.ask-card.is-running > .ask-card-line::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--card-tone, var(--color-sys-blue)) 26%, transparent) 50%, transparent 100%);
+  transform: translateX(-100%); animation: card-sweep 2.4s ease-in-out infinite;
+}
+@keyframes card-sweep { to { transform: translateX(100%); } }
+[data-motion="off"] .ask-card.is-running > .ask-card-line::after { animation: none; display: none; }
+/* Reduced stops every loop (the Designer's of 10-28): the band stands still, as under Off. */
+[data-motion="reduced"] .ask-card.is-running > .ask-card-line::after { animation: none; display: none; }
+@media (prefers-reduced-motion: reduce) { .ask-card.is-running > .ask-card-line::after { animation: none; display: none; } }
+.sub-card > .sub-meta { color: var(--aq-label-3); }
+.sub-label, .ask-q { color: var(--aq-label); font-weight: 600; }
+.ask-a { color: var(--aq-label-2); }
+.sub-prompt { border-color: var(--aq-hairline); border-radius: 10px; background: var(--aq-code); color: var(--aq-label); }
+.image-card .code-img { border: 1px solid var(--aq-hairline); }
+.tool-shot { border-color: var(--aq-hairline); }
+
+.steer-state { color: var(--aq-label-3); }
+.steer .u-atts.refused .att { text-decoration: line-through; color: var(--aq-label-3); }
+.steer.unread .steer-text, .steer.undelivered .steer-text { border-color: color-mix(in oklab, var(--color-sys-red) 50%, var(--aq-hairline)); }
+.steer.unread .steer-state, .steer.undelivered .steer-state { color: var(--color-sys-red-text); }
+
+.tree-card { border-color: var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.tree-card > summary { border-radius: 12px; color: var(--aq-label-2); }
+.tree-card > summary:hover { background: var(--aq-control); color: var(--aq-label); }
+.sub-report { white-space: normal; }
+.sub-report > :first-child { margin-top: 0; }
+.sub-report > :last-child { margin-bottom: 0; }
+
+/* ==== the Settings screen and the session's Context page: System Settings ========================================
+   A source list on the left, each section on its own colored tile; a page's rows grouped on inset cards (a run of
+   rows is one card: the first rounds the top, the last the bottom); switches in the accent; a select is a pop-up
+   button; a few choices are a segmented control. Section headings read in sentence case, not small caps. */
+.settings-nav { border-right-color: var(--aq-hairline); background: var(--aq-sidebar); }
+.settings-nav { width: 236px; padding: 10px; }
+.settings-group { padding: 14px 8px 5px; font-size: 11px; font-weight: 650; color: var(--aq-label-3); }
+.settings-item { height: 30px; gap: 9px; padding: 0 8px 0 5px; border-radius: 7px; font-size: 13px; font-weight: 500; color: var(--aq-label); }
+.settings-item:hover { background: var(--aq-control); color: var(--aq-label); }
+.settings-item.on { background: var(--aq-accent); color: #fff; font-weight: 500; }
+.settings-item .settings-ic, .mset-tile {
+  width: 22px; height: 22px; display: grid; place-items: center; flex: none; border-radius: 6px; color: #fff; opacity: 1; --tile: var(--color-sys-gray);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tile) 76%, #fff) 0%, var(--tile) 58%, color-mix(in oklab, var(--tile) 86%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.settings-item .settings-ic svg { width: 13px; height: 13px; stroke-width: 2.2; }
+.settings-item[href$="/appearance"] .settings-ic { --tile: var(--color-sys-blue); }
+.settings-item[href$="/memory"] .settings-ic { --tile: var(--color-sys-pink); }
+.settings-item[href$="/teams"] .settings-ic { --tile: var(--color-sys-purple); }
+.settings-item[href$="/agents"] .settings-ic { --tile: var(--color-sys-cyan); }
+.settings-item[href$="/models"] .settings-ic { --tile: var(--color-sys-indigo); }
+.settings-item[href$="/usage"] .settings-ic { --tile: var(--color-sys-green); }
+.settings-item[href$="/records"] .settings-ic { --tile: var(--color-sys-orange); }
+.settings-item[href$="/features"] .settings-ic { --tile: var(--color-sys-teal); }
+.settings-item[href$="/providers"] .settings-ic { --tile: var(--color-sys-orange); }
+.settings-item[href$="/permissions"] .settings-ic { --tile: var(--color-sys-green); }
+.settings-item[href$="/instructions"] .settings-ic { --tile: var(--color-sys-yellow); }
+
+.settings-top { padding: 12px 24px; border-bottom-color: var(--aq-hairline); }
+.settings-crumb { font-size: 13px; color: var(--aq-label-2); }
+.set-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--aq-label); }
+.set-title { margin: 22px 0 4px; }
+.set-desc, .set-group-doc { color: var(--aq-label-2); }
+
+/* The rows: grouped inset cards. */
+.settings-body { padding: 10px 24px 28px; }
+.settings-row { padding: 11px 14px; border: 1px solid var(--aq-hairline); border-top-width: 0; background: var(--aq-card); }
+:not(.settings-row) + .settings-row, .settings-row:first-child { border-top-width: 1px; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.settings-row:has(+ :not(.settings-row)), .settings-row:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.settings-row-label { color: var(--aq-label); font-weight: 550; }
+.settings-row-desc { color: var(--aq-label-2); }
+
+/* The controls. */
+.set-switch { width: 38px; height: 22px; border: 0; background: var(--aq-control-press); transition: background-color 180ms var(--aq-ease); }
+.set-switch::after { top: 2px; left: 2px; width: 18px; height: 18px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.08); transition: transform 220ms var(--aq-ease); }
+.set-switch.on { border: 0; background: var(--aq-accent); }
+.set-switch:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 2px; }
+.set-select, .knob select {
+  -webkit-appearance: none; appearance: none; height: 26px; padding: 0 26px 0 10px; border: 0; border-radius: 7px; color: var(--aq-label);
+  background: var(--aq-control-hover) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='m7 15 5 5 5-5'/><path d='m7 9 5-5 5 5'/></svg>") no-repeat right 7px center / 12px 12px;
+  box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.12);
+}
+.set-select:hover, .knob select:hover { background-color: var(--aq-control-press); }
+.set-select:focus, .knob select:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--aq-accent) 24%, transparent); }
+.set-num, .settings-num, .knob-input, .knob-json { border-color: var(--aq-hairline-strong); border-radius: 7px; background: var(--aq-field); color: var(--aq-label); }
+.set-num:focus, .settings-num:focus, .knob-input:focus, .knob-json:focus { outline: none; border-color: color-mix(in oklab, var(--aq-accent) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--aq-accent) 22%, transparent); }
+.set-seg, .settings-seg { padding: 2px; gap: 0; border: 0; border-radius: 8px; background: var(--inst-seg-bg); }
+.set-seg-btn, .settings-seg-btn { border-radius: 6px; color: var(--aq-label-2); }
+.set-seg-btn.on, .settings-seg-btn.on { background: var(--inst-seg-on); color: var(--aq-label); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06); }
+.set-pill, .knob-phase { border-radius: 999px; }
+
+/* The setup sheets (Overview's How it is set up): their blocks as grouped cards, headings in sentence case. */
+.setup-sheet .s-block { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.setup-sheet .s-block h4, .setup-sheet .insp-head h4 { font-size: 13px; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--aq-label); }
+.knob { border-bottom-style: solid; border-bottom-color: var(--aq-hairline); }
+.knob-label { color: var(--aq-label); }
+.knob-key, .knob-doc { color: var(--aq-label-3); }
+
+/* ==== the review round (Phases 2-3) ==============================================================================
+   The floating pane: the conversation and the new-chat page yield to it the way the composer does, so nothing reads
+   under it. The conversation fades out above the composer instead of being cut at its edge. */
+.app-shell.pane-float-open .transcript, .app-shell.pane-float-open .empty-chat { padding-right: calc(var(--pane-w, 0px) + 16px); transition: padding-right 280ms var(--aq-ease); }
+[data-motion="off"] .app-shell.pane-float-open .transcript, [data-motion="off"] .app-shell.pane-float-open .empty-chat { transition: none; }
+.transcript { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); }
+
+/* While a run is live, the send (it steers) and its options are one split capsule; the stop keeps the light. */
+.composer-shell .send.live { width: 32px; border-radius: 15px 5px 5px 15px; }
+.composer-shell .send.live + .send-mod { width: 24px; margin-left: 1px; border-radius: 5px 15px 15px 5px; background: var(--aq-control-hover); }
+.composer-shell .send.live + .send-mod:hover { background: var(--aq-control-press); }
+
+/* A steer the run never read is a warning (orange); one never delivered stays red. */
+.steers { margin: 4px 0 10px; }
+.steer.unread .steer-text { border-color: color-mix(in oklab, var(--color-sys-orange) 55%, var(--aq-hairline)); }
+.steer.unread .steer-state { color: var(--color-sys-orange-text); }
+
+/* Inline code reads as code in both themes. */
+.a-md :not(pre) > code { background: var(--aq-code-chip); color: var(--aq-label); box-shadow: inset 0 0 0 0.5px var(--aq-hairline); }
+
+/* The folder sheet: Browse is a button, a recent folder a row that looks like one. */
+.zc-dialog .ghost.sm { align-self: flex-start; height: 26px; padding: 0 12px; border-radius: 7px; background: var(--aq-control-hover); color: var(--aq-label); }
+.zc-dialog .ghost.sm:hover { background: var(--aq-control-press); }
+.pick-recent-row { background: var(--aq-control); }
+
+/* The rhythm between turns: a boundary slot with no row shown — none, or only closed cards' — adds no gap of its own to
+   the column. */
+.turn > .boundaries:not(:has(> :not(.hidden))) { display: none; }
+.pick-recent-row { align-self: stretch; }
+
+/* ==== the command center: Spotlight ===============================================================================
+   No title bar: the field is the panel's head, its magnifier in front and an esc key at its end. A row wears its
+   kind's tile (an action its own, a task gray, a change green, a file blue), the typed text marked, and an action its
+   shortcut in keycaps; the highlighted row takes the accent, as a menu's does, with the return glyph for Enter. */
+.zc-dialog-overlay:has(> .zc-dialog.is-cc) { align-items: flex-start; padding-top: 12vh; background: rgba(0, 0, 0, 0.22); }
+.zc-dialog.is-cc { max-width: min(calc(100% - 2rem), 640px); gap: 0; padding: 0; overflow: hidden; border-radius: 18px; }
+.zc-dialog.is-cc > :first-child { display: none; }
+.cc { gap: 0; }
+.cc-field { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 14px; border-bottom: 1px solid var(--inst-sep); cursor: text; }
+.cc-field-ic { display: inline-flex; color: var(--aq-label-3); }
+.cc-field-ic svg { width: 19px; height: 19px; stroke-width: 2.2; }
+.cc-field .cc-input, .cc-field .cc-input:focus, .cc-field .cc-input:focus-visible {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; outline: none;
+  font-size: 18px; letter-spacing: -0.01em; color: var(--aq-label); caret-color: var(--aq-accent);
+}
+.cc-field .cc-input::placeholder { color: var(--aq-label-3); }
+.cc-esc {
+  flex: none; height: 22px; padding: 0 7px; border: 0; border-radius: 6px; cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 600; color: var(--aq-label-3); background: var(--aq-key); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.16);
+}
+.cc-esc:hover { color: var(--aq-label); }
+.cc > .zc-pills { align-self: flex-start; margin: 10px 16px 2px; }
+.cc-list { gap: 1px; max-height: min(400px, 52vh); padding: 4px 8px 10px; overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 16px), transparent); }
+.cc-label { padding: 10px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.01em; color: var(--aq-label-3); }
+.cc-row { align-items: center; gap: 10px; min-height: 38px; padding: 5px 8px; border-radius: 9px; font-size: 13px; color: var(--aq-label); }
+.cc-row:hover { background: none; }
+.cc-row.on { background: var(--aq-accent); color: #fff; }
+.cc-row.on .cc-ic { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.25); }
+.cc-ic { width: 24px; height: 24px; padding: 0; border-radius: 6px; }
+.cc-ic svg { width: 14px; height: 14px; }
+.cc-main { gap: 1px; }
+.cc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; letter-spacing: -0.005em; }
+.cc-name.mono { font-family: var(--mono); font-size: 12.5px; }
+.cc-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex-shrink: 3; font-size: 11.5px; color: var(--aq-label-3); }
+.cc-snippet { font-size: 11.5px; color: var(--aq-label-2); }
+.cc-row.on .cc-detail, .cc-row.on .cc-snippet { color: rgba(255, 255, 255, 0.78); }
+.cc-mark { padding: 0 1px; border-radius: 3px; color: inherit; background: color-mix(in oklab, var(--color-sys-yellow) 34%, transparent); }
+.cc-row.on .cc-mark { background: rgba(255, 255, 255, 0.3); }
+.cc-keys { display: inline-flex; gap: 3px; flex: none; }
+.cc-keys kbd, .cc-foot kbd {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px;
+  font-family: var(--font); font-size: 11px; font-weight: 600; color: var(--aq-key-label); background: var(--aq-key); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.16);
+}
+.cc-row.on .cc-keys kbd { color: #fff; background: rgba(255, 255, 255, 0.28); box-shadow: none; }
+.cc-enter { display: none; flex: none; color: rgba(255, 255, 255, 0.85); }
+.cc-enter svg { width: 15px; height: 15px; stroke-width: 2.3; }
+.cc-row.on .cc-enter { display: inline-flex; }
+.cc-empty { padding: 26px 8px; text-align: center; font-size: 12.5px; color: var(--aq-label-3); }
+/* Ctrl+K's settings (the design pass of 10-24, UX7): why a setting typed is not offered, under This chat; Also type's
+   examples as chips, each a press that types it. */
+.cc-why { padding: 3px 8px 5px 42px; font-size: 12px; color: var(--aq-label-2); }
+.cc-try { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 6px; }
+.cc-try-chip {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 9px; border: 1px solid var(--inst-sep); border-radius: 999px;
+  font: inherit; font-size: 12px; color: var(--aq-label-2); background: none; cursor: pointer; white-space: nowrap;
+}
+.cc-try-chip:hover { background: var(--aq-control); color: var(--aq-label); }
+.cc-try-chip code { font-family: var(--mono); font-size: 11.5px; color: var(--aq-label); }
+.cc-history { margin-top: 6px; padding-top: 4px; border-top-color: var(--inst-sep); }
+.cc-history-head { border-radius: 7px; font-size: 11px; font-weight: 600; color: var(--aq-label-3); }
+.cc-history-head:hover, .cc-history .cc-row:hover { background: var(--aq-control); color: var(--aq-label); }
+.cc-foot { display: flex; align-items: center; gap: 16px; padding: 8px 16px 9px; border-top: 1px solid var(--inst-sep); font-size: 11px; color: var(--aq-label-2); }
+.cc-foot > span { display: inline-flex; align-items: center; gap: 4px; }
+.cc-foot kbd { min-width: 18px; height: 18px; padding: 0 4px; font-size: 10.5px; }
+
+/* ==== find in task: a glass bar under the header ==================================================================
+   Below the toolbar, never over its buttons; the status capsule steps aside, left of it, while it is open. The field is a search
+   field with its count inside, Previous and Next a pair, the scope a segmented control across the bar. */
+.find-bar {
+  top: 10px; right: 16px; width: 336px; gap: 6px; padding: 6px; z-index: 21;
+  border: 1px solid var(--inst-border); border-radius: 14px; background: var(--aq-panel); color: var(--aq-label);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--aq-lift);
+  animation: inst-in 200ms var(--ease-spring) both; --inst-rise: -6px; transform-origin: top right;
+}
+.conv-frame > .status-panel:has(~ .find-bar:not(.hidden)) { --sp-right: 368px; } /* the bar's 336px and its 16px either side */
+.find-row { gap: 4px; }
+.find-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; border-radius: 8px; background: var(--aq-field); cursor: text; }
+.find-field:focus-within { box-shadow: 0 0 0 3px color-mix(in oklab, var(--aq-accent) 22%, transparent); }
+.find-ic { display: inline-flex; color: var(--aq-label-3); }
+.find-ic svg { width: 14px; height: 14px; stroke-width: 2.3; }
+.find-input { flex: 1; min-width: 0; width: auto; padding: 0; font-size: 13px; color: var(--aq-label); caret-color: var(--aq-accent); }
+.find-input::placeholder { color: var(--aq-label-3); }
+.find-count { flex: none; font-size: 11.5px; color: var(--aq-label-2); font-variant-numeric: tabular-nums; }
+.find-steps { display: inline-flex; flex: none; border-radius: 8px; background: var(--aq-control); }
+.find-bar .find-steps .ghost.icon { width: 28px; height: 30px; border-radius: 8px 0 0 8px; color: var(--aq-label-2); }
+.find-bar .find-steps .ghost.icon + .ghost.icon { border-left: 1px solid var(--inst-sep); border-radius: 0 8px 8px 0; }
+.find-bar .find-steps .ghost.icon:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.find-bar .ghost.icon.find-x { width: 30px; height: 30px; border-radius: 50%; color: var(--aq-label-3); }
+.find-bar .ghost.icon.find-x:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.find-bar .ghost.icon svg { width: 15px; height: 15px; }
+.find-bar > .zc-pills { align-self: stretch; display: flex; width: auto; }
+.find-bar > .zc-pills .zc-pill { flex: 1; justify-content: center; white-space: nowrap; }
+.find-hit { border-radius: 3px; background: color-mix(in oklab, var(--color-sys-yellow) 42%, transparent); }
+.find-hit.active { color: #1d1d1f; background: var(--color-sys-yellow); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }

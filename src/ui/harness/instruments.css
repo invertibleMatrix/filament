@@ -1,0 +1,816 @@
+/* Instruments (HarnessV3 Step 6 design — the vault's HarnessV3-Step6-Design): every widget's pill and popover.
+   macOS vibrancy, a System-Settings tile per instrument in its accent, big tabular figures, SVG rings and bars,
+   inset grouped rows and the system control set. Each instrument names its accent once (`--accent`, on its pill
+   `.widget-<id>` and its popover `.inst-<id>`); nothing else hard-codes a hue. Loaded after harness.css, whose
+   glass tokens (`--color-sys-*`, `.ios-switch`) it builds on. */
+
+/* The one motion curve harness.css does not have: a spring that overshoots a hair and settles (a var() that resolves
+   to nothing voids the whole transition or animation it sits in, so it is defined here, not assumed). */
+:root { --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1); }
+
+.theme-zai-dark {
+  --color-sys-teal: #40c8e0;
+  --color-sys-cyan: #64d2ff;
+  --color-sys-mint: #63e6e2;
+  --color-sys-pink: #ff375f;
+  --color-sys-yellow: #ffd60a;
+  --color-sys-gray: #98989d;
+  /* Their words, and the fill under white words: the colour itself on dark (harness.css's `--color-sys-*-text`). */
+  --color-sys-teal-text: var(--color-sys-teal);
+  --color-sys-cyan-text: var(--color-sys-cyan);
+  --color-sys-mint-text: var(--color-sys-mint);
+  --color-sys-pink-text: var(--color-sys-pink);
+  --color-sys-yellow-text: var(--color-sys-yellow);
+  --color-sys-gray-text: var(--color-sys-gray);
+  --inst-bg: color-mix(in oklab, #1d1d20 80%, transparent);
+  --inst-card: rgba(255, 255, 255, 0.055);
+  --inst-card-hover: rgba(255, 255, 255, 0.09);
+  /* A card is what stands on the page (a tile, a quick start, a Plan card); a well is a group inside a panel that floats
+     (a popover's rows, an editor's group); a field is where you type. All three a lifted tint on dark glass. */
+  --inst-well: rgba(255, 255, 255, 0.055);
+  --inst-well-hover: rgba(255, 255, 255, 0.09);
+  --inst-field: rgba(255, 255, 255, 0.055);
+  --inst-sep: rgba(255, 255, 255, 0.075);
+  --inst-track: rgba(255, 255, 255, 0.09);
+  --inst-label: rgba(255, 255, 255, 0.93);
+  --inst-label-2: rgba(235, 235, 245, 0.6);
+  --inst-label-3: rgba(235, 235, 245, 0.34);
+  --inst-border: rgba(255, 255, 255, 0.12);
+  --inst-edge: rgba(255, 255, 255, 0.1);
+  --inst-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.7), 0 12px 28px -10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.55);
+  --inst-seg-bg: rgba(118, 118, 128, 0.22);
+  --inst-seg-on: #636366;
+  --inst-seg-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --inst-btn: rgba(255, 255, 255, 0.08);
+  --inst-btn-hover: rgba(255, 255, 255, 0.13);
+  --inst-thumb: #ffffff;
+}
+.theme-zai-light {
+  --color-sys-teal: #30b0c7;
+  --color-sys-cyan: #32ade6;
+  --color-sys-mint: #00c7be;
+  --color-sys-pink: #ff2d55;
+  --color-sys-yellow: #f5b800;
+  --color-sys-gray: #8e8e93;
+  /* Their words, and the fill under white words: deep shades that read at 4.5:1 or more on white, the page, the sidebar
+     and their own tint (harness.css's `--color-sys-*-text`); yellow's is the gold words are written in. */
+  --color-sys-teal-text: #0a6f80;
+  --color-sys-cyan-text: #036c95;
+  --color-sys-mint-text: #04726d;
+  --color-sys-pink-text: #b8143a;
+  --color-sys-yellow-text: #805c00;
+  --color-sys-gray-text: #636368;
+  /* Light (the legibility pass of 10-26): a popover is white over the grey page and its groups grey wells in it; a card
+     on the page is white; a field is white. */
+  --inst-bg: color-mix(in oklab, #ffffff 96%, transparent);
+  --inst-card: #ffffff;
+  --inst-card-hover: #f6f6f9;
+  --inst-well: rgba(116, 116, 128, 0.08);
+  --inst-well-hover: rgba(116, 116, 128, 0.14);
+  --inst-field: #ffffff;
+  --inst-sep: rgba(60, 60, 67, 0.2);
+  --inst-track: rgba(60, 60, 67, 0.16);
+  --inst-label: rgba(0, 0, 0, 0.88);
+  --inst-label-2: rgba(60, 60, 67, 0.86);
+  --inst-label-3: rgba(60, 60, 67, 0.76);
+  --inst-border: rgba(0, 0, 0, 0.18);
+  --inst-edge: rgba(255, 255, 255, 0.9);
+  --inst-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.12), 0 26px 56px -12px rgba(0, 0, 0, 0.32);
+  --inst-seg-bg: rgba(118, 118, 128, 0.16);
+  --inst-seg-on: #ffffff;
+  --inst-seg-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --inst-btn: rgba(0, 0, 0, 0.065);
+  --inst-btn-hover: rgba(0, 0, 0, 0.11);
+  --inst-thumb: #ffffff;
+}
+
+/* Each instrument's accent, on its pill and its popover alike. */
+.widget-context, .inst-context { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); }
+.widget-cache, .inst-cache { --accent: var(--color-sys-green); --accent-text: var(--color-sys-green-text); }
+.widget-spend, .inst-spend { --accent: var(--color-sys-orange); --accent-text: var(--color-sys-orange-text); }
+.widget-memory, .inst-memory { --accent: var(--color-sys-pink); --accent-text: var(--color-sys-pink-text); }
+.widget-speed, .inst-speed { --accent: var(--color-sys-mint); --accent-text: var(--color-sys-mint-text); }
+.widget-account, .inst-account { --accent: var(--color-sys-cyan); --accent-text: var(--color-sys-cyan-text); }
+
+/* ---- the pills ------------------------------------------------------------------------------------------------ */
+/* The strip under the composer: the Session door, how Filament treats this conversation on the left, what it costs
+   on the right. The glyph is the label (its tooltip and the popover's title name it); the value stays quiet until
+   the pointer comes near, the macOS menu-bar way. */
+/* The left group keeps its pills whole, and the right group stands apart at the right end: a column too narrow for
+   both sends the right one under the left, never over it. */
+.composer-strip { gap: 4px; flex-wrap: wrap; row-gap: 2px; }
+.composer-strip .session-extras { gap: 2px; flex: 1 1 auto; min-width: auto; }
+.composer-strip .widget-slot.slot-meters { margin-left: auto; padding-left: 10px; }
+.composer-strip .session-main { width: 26px; height: 26px; padding: 0; justify-content: center; border-radius: 8px; color: var(--inst-label-2); }
+.composer-strip .session-main .session-main-label { display: none; }
+.composer-strip .session-main .strip-ic svg { width: 15px; height: 15px; }
+.composer-strip .strip-sep { flex: none; width: 1px; height: 14px; margin: 0 4px; background: var(--inst-sep); }
+.composer-strip .session-main.hidden + .strip-sep { display: none; }
+/* With the instruments up, the typing hint steps aside — they are the strip now. The strip says so and the hint asks
+   it: a `:has()` before a combinator restyled the whole page at each change anywhere in it (css-has.test.js). */
+.composer-strip:has(.widget-pill:not(.hidden)) { --strip-pills: on; }
+@container style(--strip-pills: on) { .composer-strip > .composer-hint { display: none; } }
+.composer-strip .widget-pill {
+  height: 26px; padding: 0 8px; gap: 6px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 450; letter-spacing: -0.005em; font-variant-numeric: tabular-nums;
+  color: var(--inst-label-2);
+}
+.composer-strip .widget-pill.on .widget-value { color: inherit; }
+.composer-strip .widget-pill .widget-label { display: none; }
+/* A gauge that says what it is (the design pass of 10-24): its name quiet before the figure, and the figure's own word
+   fainter after it — "Cache 80% warm 3:43", "Memory on 0 recalled", "Context 6% 11K". The narrow composer keeps the
+   figures alone. */
+.widget-pill.is-named .widget-label { display: inline; color: var(--inst-label-3); }
+.widget-pill .widget-more { display: none; }
+.widget-pill.is-named .widget-more:not(:empty) { display: inline; color: var(--inst-label-3); white-space: nowrap; }
+@container composer (max-width: 640px) { .composer-strip .widget-pill.is-named .widget-label { display: none; } }
+.widget-pill .widget-ic { position: relative; color: var(--accent-text, currentColor); }
+.widget-pill .widget-ic svg { width: 14px; height: 14px; }
+.widget-pill .widget-value { color: inherit; max-width: 9rem; }
+.widget-pill:hover, .widget-pill.is-open { background: var(--inst-btn); color: var(--inst-label); }
+.widget-pill.is-open { background: var(--inst-btn-hover); }
+.widget-pill:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent, var(--color-sys-blue)) 70%, transparent); outline-offset: 1px; }
+.widget-pill.warn .widget-ic, .widget-pill.warn .widget-value { color: var(--color-sys-orange-text); }
+.widget-pill.error .widget-ic, .widget-pill.error .widget-value { color: var(--color-sys-red-text); }
+/* The cache went cold since the last request: its rate is history now, so the glyph and the figure step back. */
+.widget-pill.cold .widget-ic, .widget-pill.cold .widget-value { color: var(--inst-label-3); }
+/* The speed between replies is the last reply's average: the glyph and the figure step back until the next writes. */
+.widget-pill.still .widget-ic, .widget-pill.still .widget-value { color: var(--inst-label-3); }
+/* The Context face, in the typing row: a ring that fills toward the compaction notch, and the percent. The Account
+   face beside it (HarnessV3-ACP AC3-6): a half-ring gauge for the plan's fullest window, its tag and its share — the
+   plan's name where no share is said — or the person's glyph alone, where the agent has no windows to show. */
+.widget-context.widget-pill, .widget-account.widget-pill { gap: 6px; padding: 0 8px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+.inst-face { display: inline-flex; align-items: center; gap: 6px; }
+.inst-face-ring { display: inline-flex; }
+.inst-face-ring svg { display: block; overflow: visible; }
+.inst-face-ring .inst-track { stroke: var(--inst-track); }
+.inst-face-ring .inst-notch { stroke: var(--inst-label-3); }
+/* No window known yet (a new chat, an unpriced model): the ring is drawn dashed — a gauge with no scale. */
+.widget-context.hollow .inst-face-ring .inst-track { stroke-dasharray: 2 2.4; }
+.inst-face-text { font-size: 12.5px; font-weight: 500; color: var(--inst-label-2); }
+/* A long plan's name (a business plan's) is cut short on the pill: the popover names it whole. */
+.widget-account .inst-face-text { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-context:hover .inst-face-text, .widget-context.is-open .inst-face-text,
+.widget-account:hover .inst-face-text, .widget-account.is-open .inst-face-text { color: var(--inst-label); }
+.widget-context.warn .inst-face-text, .widget-account.warn .inst-face-text { color: var(--color-sys-orange-text); }
+.widget-context.error .inst-face-text, .widget-account.error .inst-face-text { color: var(--color-sys-red-text); }
+.inst-face-gauge { display: inline-flex; }
+.inst-face-gauge svg { display: block; overflow: visible; }
+.inst-face-gauge .inst-track { stroke: var(--inst-track); }
+/* Nothing to read yet (no window, or no share said): the track alone, quieter. */
+.widget-account.hollow .inst-face-gauge .inst-track { opacity: 0.55; }
+.inst-face-tag { margin-right: 4px; font-weight: 450; color: var(--inst-label-3); }
+.widget-account.warn .inst-face-tag, .widget-account.error .inst-face-tag { color: inherit; opacity: 0.72; }
+.inst-face-glyph { display: inline-flex; color: var(--inst-label-2); }
+.inst-face-glyph svg { width: 15px; height: 15px; }
+.widget-account:hover .inst-face-glyph, .widget-account.is-open .inst-face-glyph { color: var(--inst-label); }
+/* A face that carries its own glyph (the team's crown). */
+.inst-pill-face { display: inline-flex; align-items: center; gap: 6px; }
+.inst-pill-glyph svg { width: 14px; height: 14px; }
+.widget-pill.dirty .inst-pill-glyph::after {
+  content: ""; position: absolute; top: -2px; right: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-sys-orange); box-shadow: 0 0 0 1.5px var(--color-background);
+}
+
+/* Taller rows for a name and its line; the applied one is marked by its check. */
+.inst-row.inst-row-tall { min-height: 48px; }
+.inst-row.inst-row-tall .inst-row-ic { width: 26px; height: 26px; border-radius: 50%; }
+.inst-row.inst-row-tall .inst-row-ic svg { width: 14px; height: 14px; }
+.inst-row.inst-row-tall.has-ic + .inst-row.inst-row-tall.has-ic::before { left: 48px; }
+.inst-row-tall .inst-row-sub { white-space: normal; }
+/* A callout: an icon, a sentence, a link at its end. */
+.inst-callout { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; font-size: 12px; line-height: 1.4; background: var(--inst-well); color: var(--inst-label); }
+.inst-callout > span:not(.inst-ic) { flex: 1; min-width: 0; }
+.inst-callout .inst-ic svg { width: 15px; height: 15px; }
+.inst-callout.is-warn { background: color-mix(in oklab, var(--color-sys-orange) 14%, transparent); }
+.inst-callout.is-warn .inst-ic { color: var(--color-sys-orange-text); }
+.inst-callout.is-info .inst-ic { color: var(--accent-text); }
+
+/* ---- the popover ---------------------------------------------------------------------------------------------- */
+.zc-popover:has(> .widget-panel > .inst) {
+  padding: 0; border-radius: 16px; color: var(--inst-label);
+  background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(44px) saturate(1.9); backdrop-filter: blur(44px) saturate(1.9);
+  border: 1px solid var(--inst-border);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+  animation: inst-in 260ms var(--ease-spring) both;
+  --inst-rise: 6px;
+  overscroll-behavior: contain;
+}
+.zc-popover[data-side="bottom"]:has(> .widget-panel > .inst) { --inst-rise: -6px; transform-origin: top center; }
+.zc-popover[data-side="top"]:has(> .widget-panel > .inst) { transform-origin: bottom center; }
+@keyframes inst-in { from { opacity: 0; transform: translateY(var(--inst-rise, 6px)) scale(0.97); } to { opacity: 1; transform: none; } }
+.inst {
+  display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 14px;
+  font-size: 13px; line-height: 1.35; color: var(--inst-label); font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+.inst button { font: inherit; color: inherit; }
+
+/* The header: the tile, the title and its line, an optional control at the end. */
+.inst-head { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.inst-tile {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px; color: #fff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 78%, #fff) 0%, var(--accent) 58%, color-mix(in oklab, var(--accent) 88%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+}
+.inst-tile svg { width: 17px; height: 17px; stroke-width: 2.1; }
+.inst-head-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.inst-title { font-size: 14px; font-weight: 650; letter-spacing: -0.012em; color: var(--inst-label); }
+.inst-sub { font-size: 11.5px; line-height: 1.35; color: var(--inst-label-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* The hero figure. */
+.inst-hero { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.inst-hero-line { display: flex; align-items: baseline; gap: 5px; }
+.inst-hero-num { font-size: 32px; line-height: 1; font-weight: 650; letter-spacing: -0.03em; color: var(--inst-label); }
+.inst-hero-unit { font-size: 13px; font-weight: 500; color: var(--inst-label-2); }
+.inst-hero-cap { font-size: 12.5px; line-height: 1.4; color: var(--inst-label-2); }
+.inst-hero.is-good .inst-hero-num { color: var(--color-sys-green-text); }
+.inst-hero.is-warn .inst-hero-num { color: var(--color-sys-orange-text); }
+.inst-hero.is-error .inst-hero-num { color: var(--color-sys-red-text); }
+
+/* The one sentence under a figure: what it means for you, in words. */
+.inst-lede { font-size: 13px; line-height: 1.4; font-weight: 500; color: var(--inst-label); }
+.inst-lede.is-warn { color: var(--color-sys-orange-text); }
+.inst-lede.is-error { color: var(--color-sys-red-text); }
+.inst-lede.is-good { color: var(--color-sys-green-text); }
+.inst-lede small { font-size: 12px; font-weight: 400; color: var(--inst-label-2); }
+
+/* Rings and donuts: the track, the arcs drawn in, the notch. */
+.inst-ring { position: relative; display: grid; place-items: center; flex: none; }
+.inst-ring-svg { display: block; line-height: 0; }
+.inst-ring svg { display: block; overflow: visible; }
+.inst-ring .inst-track { stroke: var(--inst-track); }
+.inst-ring .inst-notch { stroke: var(--inst-label); opacity: 0.75; }
+.inst-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; }
+.inst-ring-num { font-size: 26px; line-height: 1; font-weight: 650; letter-spacing: -0.03em; }
+.inst-ring-num small { font-size: 14px; font-weight: 600; letter-spacing: 0; margin-left: 1px; color: var(--inst-label-2); }
+.inst-ring-cap { font-size: 11px; color: var(--inst-label-2); }
+/* Words in the number's place: an agent that has counted nothing yet (V4-D212). */
+.inst-ring-num.is-words { font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--inst-label-2); }
+@keyframes inst-draw { from { stroke-dasharray: 0 var(--c); } }
+.inst-draw { animation: inst-draw 820ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* A figure beside its ring. */
+.inst-duo { display: flex; align-items: center; gap: 16px; }
+.inst-duo > :last-child { flex: 1; min-width: 0; }
+
+/* The legend. */
+.inst-legend { display: flex; flex-direction: column; gap: 1px; }
+.inst-legend-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; min-height: 22px; font-size: 12.5px; }
+.inst-dot { width: 8px; height: 8px; border-radius: 50%; }
+.inst-dot.is-hollow { box-shadow: inset 0 0 0 1.5px var(--inst-label-3); }
+.inst-legend-label { color: var(--inst-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inst-legend-val { color: var(--inst-label); font-weight: 500; }
+.inst-legend-share { min-width: 32px; text-align: right; color: var(--inst-label-3); font-size: 11.5px; }
+
+/* One bar of parts, a hairline between them. */
+.inst-stack { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--inst-track); }
+.inst-stack.is-tall { height: 12px; border-radius: 6px; }
+.inst-stack-part { flex: 0 0 auto; min-width: 3px; }
+/* A ceiling, not a figure (memory's "up to"): striped in its color. The notch is a line the parts do not move. */
+.inst-stack-part.is-hatch { background: repeating-linear-gradient(135deg, var(--c) 0 3px, color-mix(in oklab, var(--c) 28%, transparent) 3px 6px); }
+.inst-stack:has(> .inst-stack-notch) { position: relative; }
+.inst-stack-notch { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--inst-label); opacity: 0.75; }
+.inst-stack.is-draw { animation: inst-reveal 700ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes inst-reveal { from { clip-path: inset(0 100% 0 0 round 6px); } to { clip-path: inset(0 0 0 0 round 6px); } }
+
+/* The per-turn columns: a calendar chart's rhythm, the newest in the accent. */
+.inst-bars { display: grid; grid-template-columns: repeat(var(--n, 12), minmax(0, 1fr)); align-items: end; column-gap: 4px; }
+.inst-bar { justify-self: center; width: min(100%, 14px); border-radius: 4px 4px 2px 2px; background: color-mix(in oklab, var(--accent) 58%, transparent); }
+.inst-bar.is-mark { background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 80%, #fff), var(--accent)); }
+.inst-bar.is-empty { background: var(--inst-track); }
+/* A column nothing measured: its place kept and its tooltip reachable, nothing drawn — a stub would read as 0. */
+.inst-bar.is-gap { background: none; }
+.inst-bar.is-ghost { height: 4px; width: 4px; border-radius: 2px; background: var(--inst-track); }
+.inst-bars.is-draw .inst-bar { transform-origin: bottom; animation: inst-grow 620ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 28ms); }
+@keyframes inst-grow { from { transform: scaleY(0); } }
+/* Your line, labelled under the ring popover's bar (proposal_ux §4.12 step 2): its name, its figure as a chip whose menu
+   holds the line's stops, and the stops in words; the chip gives way to a field for a number of your own. It starts
+   below the thumb, which reaches 7 px under the bar and its ring 2 px more. */
+.inst-line-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--inst-label-2); }
+/* Your line, how room is made and whether a message asks (the design pass of 10-24): one small table under the bar,
+   each name at the left and its control at the right, a hairline between. */
+.inst-sets { display: flex; flex-direction: column; margin-top: 8px; }
+.inst-sets > :is(.inst-line-row, .inst-set-row) { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; margin: 0; font-size: 12px; color: var(--inst-label-2); }
+.inst-sets > :is(.inst-line-row, .inst-set-row):not(.hidden) ~ .inst-set-row { border-top: 1px solid var(--inst-sep); }
+.inst-set-row .inst-line-chip { max-width: 62%; min-width: 0; }
+.inst-set-row .inst-line-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+label.inst-set-row { cursor: pointer; }
+/* The window is the model's, every chat's on it: said apart at the popover's foot. */
+.inst-scope { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--inst-sep); font-size: 11.5px; color: var(--inst-label-3); }
+.inst-scope-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inst-scope .inst-link { flex: none; }
+.inst-line-label { flex: none; }
+.inst-line-chip {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; height: 24px; padding: 0 6px 0 9px; border: 0; border-radius: 7px;
+  background: var(--inst-btn); cursor: pointer; font: inherit; font-weight: 600; color: var(--inst-label); font-variant-numeric: tabular-nums;
+}
+.inst-line-chip:hover { background: var(--inst-btn-hover); }
+.inst-line-chev { display: inline-flex; color: var(--inst-label-3); }
+.inst-line-chev svg { width: 12px; height: 12px; }
+.inst-line-row .inst-field.inst-line-field, .inst-how-line .inst-field.inst-line-field { flex: 0 0 110px; width: 110px; height: 24px; }
+.inst-line-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--inst-label-3); }
+
+/* The chart card: a title line with its figure, the chart under. */
+.inst-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--inst-well); }
+.inst-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.inst-card-title { font-size: 12px; font-weight: 600; color: var(--inst-label-2); }
+.inst-card-fig { font-size: 12.5px; font-weight: 600; color: var(--inst-label); }
+.inst-card-fig.is-warn { color: var(--color-sys-orange-text); }
+.inst-card-fig.is-error { color: var(--color-sys-red-text); }
+
+/* The Account popover (HarnessV3-ACP AC3-6): each window of the plan a level meter — its name and share, the bar, its
+   reset and pace — then the extra usage and credits, and the one sentence the account calls for. The email in the
+   header stays masked until clicked. */
+.inst-account-body { display: flex; flex-direction: column; gap: 12px; }
+/* Switch account (HarnessV3-ACP AC3-7): the agent's other accounts as inset rows, each with its gauge (the person's
+   glyph where there's nothing to gauge) and its glance; one nobody is signed in to offers Sign in in the accent, and
+   one that can't be signed in here is dimmed. */
+.inst-switch-gauge { display: inline-flex; flex: none; }
+.inst-switch-glyph { display: inline-flex; flex: none; justify-content: center; width: 16px; color: var(--inst-label-3); }
+.inst-switch-glyph svg { width: 14px; height: 14px; }
+.inst-switch-fig { flex: none; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--inst-label-2); }
+.inst-switch-fig.is-warn { color: var(--color-sys-orange-text); }
+.inst-switch-fig.is-error { color: var(--color-sys-red-text); }
+.inst-switch-fig.is-act { font-weight: 500; color: var(--accent-text); }
+.inst-account-body:empty, .inst-account-actions:empty { display: none; }
+.inst-meters { gap: 14px; }
+.inst-meter { display: flex; flex-direction: column; gap: 6px; }
+.inst-meter-cap { font-size: 11.5px; line-height: 1.35; color: var(--inst-label-2); }
+.inst .inst-email { display: inline; padding: 0; border: 0; background: none; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.inst .inst-email:hover { color: var(--inst-label); }
+.inst .inst-email:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: 1px; border-radius: 3px; }
+
+/* Inset grouped rows. */
+.inst-section { display: flex; flex-direction: column; gap: 6px; }
+.inst-section-title { padding: 0 4px; font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.inst-group { display: flex; flex-direction: column; border-radius: 11px; background: var(--inst-well); overflow: hidden; }
+.inst-row {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 8px 12px;
+  border: 0; background: none; text-align: left; color: var(--inst-label);
+}
+.inst-row + .inst-row::before { content: ""; position: absolute; top: 0; left: 12px; right: 0; height: 1px; background: var(--inst-sep); }
+/* Between two rows with glyphs the hairline starts at the words; `has-ic` is the row's own (kit.js row). */
+.inst-row.has-ic + .inst-row.has-ic::before { left: 44px; }
+.inst-row.is-button { cursor: pointer; transition: background-color var(--t-fast) var(--ease); }
+.inst-row.is-button:hover:not(:disabled) { background: var(--inst-well-hover); }
+.inst-row.is-button:disabled { cursor: default; }
+.inst-row.is-button:disabled .inst-row-label { color: var(--inst-label-2); }
+.inst-row.is-button:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: -2px; border-radius: 11px; }
+.inst-row-ic { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: var(--accent); }
+.inst-row-ic svg { width: 13px; height: 13px; stroke-width: 2.2; }
+.inst-row-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.inst-row-label { font-size: 13px; color: var(--inst-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inst-row-sub { font-size: 11.5px; line-height: 1.35; color: var(--inst-label-2); }
+.inst-row-value { flex: none; font-size: 13px; color: var(--inst-label-2); }
+.inst-row-chev { display: inline-flex; flex: none; color: var(--inst-label-3); }
+.inst-row-chev svg { width: 14px; height: 14px; }
+.inst-check { display: inline-flex; flex: none; color: var(--accent-text); }
+.inst-check svg { width: 16px; height: 16px; stroke-width: 2.6; }
+/* A choice that is not this session's to make (switched off elsewhere): present, dimmed, no hover. */
+/* The row "The main agent may ask" (HarnessV4_Tasks E15 step 3): its value is names, cut to the room the label
+   leaves, with the chevron of a row that opens a menu; its sub-line turns orange while it says why nobody is asked. */
+.inst-row.may-ask .inst-row-value { flex: 0 1 auto; min-width: 0; max-width: 58%; }
+.may-ask-value { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.may-ask-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.may-ask-chev { display: inline-flex; flex: none; color: var(--inst-label-3); }
+.may-ask-chev svg { width: 13px; height: 13px; }
+.inst-row.may-ask.is-warned .inst-row-sub { color: var(--color-sys-orange-text); }
+.may-ask-gone { color: var(--color-foreground-subtle); }
+.inst-row.is-off .inst-row-ic { filter: grayscale(1); opacity: 0.5; }
+.inst-row.is-off .inst-row-label { color: var(--inst-label-3); }
+.inst-sub .is-warn { color: var(--color-sys-orange-text); }
+
+/* A quiet sentence. */
+.inst-note { margin: 0; padding: 0 2px; font-size: 12px; line-height: 1.45; color: var(--inst-label-2); }
+.inst-note.is-warn { color: var(--color-sys-orange-text); }
+.inst-note.is-error { color: var(--color-sys-red-text); }
+.inst-note.is-good { color: var(--color-sys-green-text); }
+.inst-note b { font-weight: 600; color: var(--inst-label); }
+
+/* The segmented control. */
+.inst-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 2px; border-radius: 9px; background: var(--inst-seg-bg); }
+.inst-seg-btn {
+  height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; color: var(--inst-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background-color 200ms var(--ease), box-shadow 200ms var(--ease);
+}
+.inst-seg-btn.is-on { background: var(--inst-seg-on); box-shadow: var(--inst-seg-shadow); }
+.inst-seg-btn:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: 1px; }
+
+/* The slider: the accent fills the track up to a white thumb. */
+.inst-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer; }
+.inst-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--inst-track) var(--fill, 50%)); }
+.inst-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: var(--inst-thumb);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.1); transition: transform 160ms var(--ease-spring);
+}
+.inst-slider:active::-webkit-slider-thumb { transform: scale(1.08); }
+.inst-slider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--inst-track); }
+.inst-slider::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+.inst-slider::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--inst-thumb); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.inst-slider:focus-visible { outline: none; }
+.inst-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 45%, transparent), 0 1px 4px rgba(0, 0, 0, 0.35); }
+
+/* Buttons and links at the foot. */
+.inst-actions { display: flex; gap: 8px; }
+.inst-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 0; min-width: 0; height: 30px; padding: 0 12px;
+  border: 0; border-radius: 8px; background: var(--inst-btn); cursor: pointer; font-size: 12.5px; font-weight: 550; color: var(--inst-label);
+  white-space: nowrap; transition: background-color var(--t-fast) var(--ease), transform 140ms var(--ease-spring);
+}
+.inst-btn:hover { background: var(--inst-btn-hover); }
+.inst-btn:active:not(:disabled) { transform: scale(0.98); }
+.inst .inst-btn.is-primary { background: var(--accent-text); color: #fff; }
+.inst .inst-btn.is-primary:hover { background: color-mix(in oklab, var(--accent-text) 88%, #fff); }
+.inst-btn:disabled { opacity: 0.45; cursor: default; }
+.inst-btn .inst-ic svg { width: 14px; height: 14px; }
+.inst-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.inst .inst-link { display: inline-flex; align-items: center; gap: 1px; padding: 2px 0; border: 0; background: none; cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--accent-text); }
+.inst a.inst-link { text-decoration: none; }
+.inst-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.inst-link-chev { display: inline-flex; }
+.inst-link-chev svg { width: 13px; height: 13px; }
+.inst-foot-note { font-size: 11.5px; color: var(--inst-label-3); }
+.inst-ic { display: inline-flex; }
+
+/* Key and value on one line, the value tabular at the end. */
+.inst-kv { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--inst-label-2); }
+.inst-kv > b { font-weight: 600; color: var(--inst-label); }
+.inst-kv > b.is-good { color: var(--color-sys-green-text); }
+
+/* Cache: how long the provider keeps the prefix — a dot that breathes while warm, a bar that drains. */
+.inst-cache-side { display: flex; flex-direction: column; gap: 8px; }
+.inst-warmth { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--inst-label-2); }
+.inst-warmth-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--inst-label-3); flex: none; }
+.inst-warmth.is-warm { color: var(--inst-label); }
+.inst-warmth.is-warm .inst-warmth-dot { background: var(--color-sys-green); box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-sys-green) 60%, transparent); animation: inst-breathe 2.2s ease-in-out infinite; }
+@keyframes inst-breathe { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-sys-green) 55%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
+.inst-cache-warmth { display: flex; flex-direction: column; gap: 6px; }
+.inst-drain { height: 4px; border-radius: 2px; background: var(--inst-track); overflow: hidden; }
+.inst-drain > span { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--color-sys-green), var(--color-sys-mint)); transition: width 1s linear; }
+
+/* The prediction: the next turn's share in large figures, the reason under it. */
+.inst-predict { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 16%, transparent), color-mix(in oklab, var(--accent) 5%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent); }
+.inst-predict-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--inst-label-2); }
+.inst-predict-head > span:first-child { font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10.5px; color: var(--accent-text); margin-right: auto; }
+.inst-predict-head > b { font-size: 22px; line-height: 1; font-weight: 650; letter-spacing: -0.02em; color: var(--inst-label); }
+.inst-predict-unit { font-size: 12px; }
+.inst-predict-words { font-size: 12px; line-height: 1.45; color: var(--inst-label-2); }
+/* A poor prediction (a cold cache, a rewrite of most of the history) wears orange; no prediction yet, gray. */
+.inst-predict.is-warn { --accent: var(--color-sys-orange); --accent-text: var(--color-sys-orange-text); }
+.inst-predict.is-none { --accent: var(--color-sys-gray); --accent-text: var(--color-sys-gray-text); }
+
+.inst-good { color: var(--color-sys-green-text); font-weight: 600; }
+
+/* View: a thumbnail of the history's shape, the name and its line, the next turn's size as a bar and a saving. */
+.inst-row.inst-view-row { min-height: 54px; align-items: center; gap: 12px; }
+.inst-row.inst-view-row + .inst-row.inst-view-row::before { left: 58px; }
+.inst-thumb { display: grid; place-items: center; flex: none; width: 36px; height: 32px; border-radius: 8px; background: color-mix(in oklab, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent); }
+.inst-thumb svg { display: block; }
+/* A way of an agent's session (HarnessV3-ACP AC5-8) drawn by its glyph, in the thumbnails' accent. */
+.inst-thumb.is-glyph { color: var(--accent-text); }
+.inst-thumb.is-glyph svg { width: 17px; height: 17px; }
+.inst-view-row.is-on { background: color-mix(in oklab, var(--accent) 12%, transparent); }
+.inst-view-row.is-on .inst-thumb { background: color-mix(in oklab, var(--accent) 22%, transparent); }
+.inst-view-row .inst-row-label { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.inst-inline-check { display: inline-flex; color: var(--accent-text); }
+.inst-inline-check svg { width: 13px; height: 13px; stroke-width: 3; }
+.inst-view-row .inst-row-sub { white-space: normal; }
+.inst-view-fig { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; width: 64px; }
+.inst-view-fig > b { font-size: 13px; font-weight: 600; color: var(--inst-label); }
+.inst-view-bar { display: block; width: 100%; height: 4px; border-radius: 2px; background: var(--inst-track); overflow: hidden; }
+.inst-view-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.inst-view-save { font-size: 11px; font-weight: 600; color: var(--color-sys-green-text); }
+
+/* The context ring's popover: the capacity bar is the control — filled to now, the band the line may take hatched in the
+   accent, and the line itself as the thumb (a tall pill) on a rail laid over exactly that band, so both share the
+   bar's scale. The band shows while the line is handled (hovered, focused, dragged): at rest it read as part of what
+   the window holds (V4-D211). */
+.inst-cap-bar { position: relative; height: 14px; margin: 6px 0 2px; border-radius: 7px; background: var(--inst-track); }
+.inst-cap-zone { position: absolute; top: 0; bottom: 0; border-radius: 0 7px 7px 0; background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--accent) 22%, transparent) 0 3px, transparent 3px 7px); opacity: 0; transition: opacity 150ms var(--ease-out); }
+.inst-cap-bar:hover .inst-cap-zone, .inst-cap-bar:focus-within .inst-cap-zone, .inst-cap-bar.is-moving .inst-cap-zone { opacity: 1; }
+.inst-cap-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; min-width: 7px; background: linear-gradient(90deg, color-mix(in oklab, var(--color-sys-blue) 80%, #fff), var(--color-sys-blue)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); transition: background 200ms var(--ease-out); }
+.inst-cap-fill.is-near { background: linear-gradient(90deg, color-mix(in oklab, var(--color-sys-orange) 80%, #fff), var(--color-sys-orange)); }
+.inst-cap-fill.is-over { background: linear-gradient(90deg, color-mix(in oklab, var(--color-sys-red) 80%, #fff), var(--color-sys-red)); }
+.inst-cap-rail { position: absolute; top: -7px; bottom: -7px; z-index: 1; }
+.inst-cap-slider { position: absolute; inset: 0; width: 100%; height: 100%; }
+.inst-cap-slider::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.inst-cap-slider::-webkit-slider-thumb { width: 8px; height: 28px; margin-top: 0; border-radius: 4px; background: var(--inst-thumb); box-shadow: 0 0 0 2px var(--accent), 0 1px 5px rgba(0, 0, 0, 0.4); }
+.inst-cap-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in oklab, var(--accent) 40%, transparent), 0 1px 5px rgba(0, 0, 0, 0.4); }
+.inst-cap-slider::-moz-range-track { height: 100%; background: transparent; }
+.inst-cap-slider::-moz-range-progress { background: transparent; }
+.inst-cap-slider::-moz-range-thumb { width: 8px; height: 28px; border-radius: 4px; background: var(--inst-thumb); box-shadow: 0 0 0 2px var(--accent), 0 1px 5px rgba(0, 0, 0, 0.4); }
+.inst-danger { color: var(--color-sys-red-text); }
+
+.inst .inst-link.inst-danger { color: var(--color-sys-red-text); }
+.inst-cap-rail .inst-cap-slider { pointer-events: none; }
+.inst-cap-rail .inst-cap-slider::-webkit-slider-thumb { pointer-events: auto; cursor: grab; }
+.inst-cap-rail .inst-cap-slider::-moz-range-thumb { pointer-events: auto; cursor: grab; }
+
+/* The ring's popover (HarnessV4_Tasks U3-2): the same capacity bar, filled with the window's parts — each in its
+   legend's color, a hairline between them — and a coding agent's own point, where it is not the line, as a dashed
+   tick; Compact now takes the room its way's name needs, cut with an ellipsis past it. */
+.inst-meter { display: flex; flex-direction: column; gap: 4px; }
+.inst-meter-head { display: flex; align-items: baseline; gap: 8px; }
+.inst-cap-fill.is-parts { display: flex; gap: 2px; overflow: hidden; background: none; box-shadow: none; }
+.inst-cap-part { flex: 0 0 auto; min-width: 3px; height: 100%; }
+.inst-cap-point { position: absolute; top: -4px; bottom: -4px; width: 0; margin-left: -1px; border-left: 2px dashed var(--inst-label); opacity: 0.7; pointer-events: none; }
+.inst-actions > .inst-btn.is-wide { flex-grow: 2; }
+/* Compact now… at its width, the sheet's link beside it (§4.12 step 2). */
+.inst-context .inst-actions { align-items: center; justify-content: space-between; gap: 12px; }
+/* The instant fold's offer (the owner's rules of 10-31): its count in a line, Fold now beside it where it is offered. */
+.inst-context .inst-fold-offer { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--inst-label-2); }
+.inst-context .inst-fold-offer.hidden { display: none; }
+.inst-context .inst-actions > .inst-btn { flex: 0 0 auto; }
+.inst-context .inst-actions > .inst-link { flex: none; }
+.inst-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.inst-foot-links { display: inline-flex; align-items: center; gap: 12px; }
+
+/* How earlier turns are kept (HarnessV4_Tasks U3-3; proposal_ux §4.12 step 4): the sheet's section and Settings', in
+   parts — a quiet heading, then its rows on one card. A row: its name with what it is under it on the left, a figure,
+   and its choice at the end — a control, or a button whose ▾ opens the row's list under it; the lines under a row run
+   the card's width. ▸ Advanced, what every request carries, opens under the parts. */
+.inst.inst-how { gap: 14px; padding: 4px 0 12px; border-bottom: 1px solid var(--inst-sep); }
+.inst-how-title { padding: 0 2px; font-size: 13px; font-weight: 650; letter-spacing: -0.01em; color: var(--inst-label); }
+.inst-how-part { display: flex; flex-direction: column; gap: 6px; }
+.inst-how-sec { display: flex; align-items: baseline; gap: 8px; padding: 0 2px; font-size: 12px; font-weight: 650; color: var(--inst-label-2); }
+.inst-how-sec-aside { font-weight: 500; color: var(--inst-label-3); }
+.inst-how-list { display: flex; flex-direction: column; border-radius: 11px; background: var(--inst-well); }
+.inst-how-item { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 9px 12px; }
+.inst-how-item + .inst-how-item::before { content: ""; position: absolute; top: 0; left: 12px; right: 0; height: 1px; background: var(--inst-sep); }
+.inst-how-row { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.inst-how-label { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
+.inst-how-name { font-size: 13px; font-weight: 550; color: var(--inst-label); }
+.inst-how-label-sub { font-size: 11.5px; color: var(--inst-label-3); }
+.inst-how-value { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; }
+.inst-how-lead { font-size: 12px; color: var(--inst-label-2); }
+.inst-how-line { display: inline-flex; align-items: center; }
+.inst-how-item.is-dim .inst-how-name, .inst-how-item.is-dim .inst-how-choice { color: var(--inst-label-3); }
+/* Settings (U3-8) and an agent's Advanced: rows under their own small title. */
+.inst-how-sub { margin: 6px 0 -2px; padding: 0 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--inst-label-3, var(--inst-label-2)); }
+.inst .inst-how-pick { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 4px 9px; border: 0; border-radius: 7px; background: var(--inst-btn); cursor: pointer; text-align: left; font-weight: 600; }
+.inst-how-pick:hover, .inst-how-item.is-open .inst-how-pick { background: var(--inst-btn-hover); }
+.inst-how-pick:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: 1px; }
+.inst-how-choice { min-width: 0; font-size: 12.5px; color: var(--inst-label); }
+.inst-how-choice.is-still { font-weight: 500; color: var(--inst-label-2); }
+.inst-how-chev { display: inline-flex; flex: none; color: var(--inst-label-3); transition: transform 160ms var(--ease); }
+.inst-how-chev svg { width: 13px; height: 13px; }
+.inst-how-item.is-open .inst-how-chev { transform: rotate(180deg); }
+.inst-how-fig { font-size: 12px; color: var(--inst-label-2); white-space: nowrap; }
+.inst-how-under { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--inst-label-2); }
+.inst-how-open { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+/* "Carry earlier turns as" under an agent's fresh-start row (widgets/carry.js, U3-7): the pane's own type sizes. */
+.inst-how-open .carry-label, .inst-how-open .carry-line { font-size: 12px; color: var(--inst-label-2); }
+.inst-how-open .carry-seg { font-size: 12px; }
+.inst .inst-how-more { display: flex; align-items: baseline; gap: 6px; padding: 2px; border: 0; background: none; cursor: pointer; text-align: left; }
+.inst-how-more-chev { display: inline-flex; align-self: center; color: var(--inst-label-3); transition: transform 160ms var(--ease); }
+.inst-how-more-chev svg { width: 13px; height: 13px; }
+.inst-how-more.is-open .inst-how-more-chev { transform: rotate(90deg); }
+.inst-how-more-title { font-size: 12.5px; font-weight: 600; color: var(--inst-label); }
+.inst-how-more-sub { font-size: 11.5px; color: var(--inst-label-3); }
+.inst-row.inst-how-stack { flex-direction: column; align-items: stretch; gap: 8px; }
+
+/* Pages inside one popover (kit `pages`): a pushed page springs in from the right, the page gone back to from the
+   left; a page lays out its parts as the instrument does. */
+.inst-pages { display: grid; min-width: 0; }
+.inst-page { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.inst-page-in-fwd { animation: inst-page-fwd 280ms var(--ease-spring) both; }
+.inst-page-in-back { animation: inst-page-back 280ms var(--ease-spring) both; }
+@keyframes inst-page-fwd { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
+@keyframes inst-page-back { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }
+
+/* The How page: method rows in the View pattern, what each would cost under its line, the figure with the target's
+   tick on its bar and whether it reaches it; a method that cannot run is dimmed with its reason. */
+.inst-method-row .inst-row-text, .inst-way-row .inst-row-text { gap: 2px; }
+.inst-method-cost { font-size: 11px; color: var(--inst-label-3); }
+.inst-row.is-off { cursor: default; }
+.inst-row.is-off .inst-thumb { filter: grayscale(1); opacity: 0.5; }
+.inst-row.is-off .inst-row-sub { color: var(--inst-label-3); }
+.inst-row .inst-seg { flex: none; min-width: 124px; }
+.inst-writer-row { min-height: 46px; }
+.inst-writer-row.is-on { background: color-mix(in oklab, var(--accent) 10%, transparent); }
+.inst-writer-row .inst-row-label { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.inst-writer-row .inst-row-sub { white-space: normal; }
+.inst-writer-row .inst-view-fig { width: 78px; }
+.inst .inst-undo { flex: none; font-size: 12px; }
+
+/* Loading: a shimmer where a figure is on its way. */
+.inst-skel { height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--inst-track) 0%, var(--inst-card-hover) 50%, var(--inst-track) 100%); background-size: 200% 100%; animation: inst-shimmer 1.4s linear infinite; }
+@keyframes inst-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+[data-motion="reduced"] .inst-draw, [data-motion="reduced"] .inst-bars.is-draw .inst-bar, [data-motion="reduced"] .inst-stack.is-draw { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+[data-motion="reduced"] .zc-popover:has(> .widget-panel > .inst) { animation: inst-fade 120ms var(--ease-out); }
+[data-motion="reduced"] .inst-page-in-fwd, [data-motion="reduced"] .inst-page-in-back { animation: inst-fade 120ms var(--ease-out); }
+@keyframes inst-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .inst-draw, .inst-bars.is-draw .inst-bar, .inst-stack.is-draw, .inst-skel { animation: none !important; }
+  .zc-popover:has(> .widget-panel > .inst) { animation: none; }
+  .inst-page-in-fwd, .inst-page-in-back { animation: none; }
+}
+
+/* ---- the Start (proposal_ux §4.13, mock-newtask; one screen since the design pass of 10-24, UX5) ------------------
+   Under the project chooser: the three questions in one card, each a row — its words on the left with a quiet line
+   under them, its controls on the right; then the first request's bar, as a card; then every card, open, in two stacks
+   of three, in the instruments' own language (the glass of a popover, a System-Settings tile in the card's accent,
+   inset grouped rows). A row the chat changed has a blue dot and ↺. The columns follow the board's own width, not the
+   window's — the side pane can take half the frame. */
+.nt-host { display: flex; justify-content: center; width: 100%; padding: 0 16px; container-type: inline-size; }
+.nt-board { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 1020px; }
+/* Before its first answer only the questions stand: the bar and the cards wait for the figures. */
+.nt-board.is-blank > :not(.nt-ask) { display: none; }
+
+.nt-ask.nt-card { display: flex; flex-direction: column; border-radius: 14px; }
+.nt-q { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 6px 14px; min-height: 52px; padding: 10px 14px; }
+.nt-q + .nt-q { border-top: 1px solid var(--inst-sep); }
+.nt-q-k { display: flex; flex-direction: column; gap: 1px; font-size: 13px; font-weight: 600; color: var(--inst-label); }
+.nt-q-k small { font-size: 11.5px; font-weight: 400; line-height: 1.3; color: var(--inst-label-3); }
+.nt-q-ctl { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.nt-q-under { grid-column: 2; min-width: 0; }
+.nt-q-note { font-size: 11.5px; line-height: 1.4; color: var(--inst-label-3); }
+.nt-q-note:empty { display: none; }
+.nt-seg-ic { display: inline-flex; }
+.nt-seg-ic svg { width: 14px; height: 14px; }
+/* Starts from: where the start comes from, how many changes are held and their Undo all. */
+.nt-changed { color: var(--color-sys-blue-text); }
+.nt-status { font-size: 12px; color: var(--color-sys-orange-text); }
+.nt-status:empty { display: none; }
+
+/* What the chat changed (UX5): a blue dot before the row's name and ↺ at its end, beside the row (a row can be a
+   button); a section's title carries both; the first question's name its dot. Undo all sits at the Starts from row's end. */
+.nt-undo-all { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-size: 11.5px; color: var(--inst-label-3); }
+.nt-undo-all.is-on { font-size: 12px; font-weight: 500; }
+.nt-undo {
+  display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: none; color: var(--color-sys-blue-text); cursor: pointer; transition: background-color var(--t-fast) var(--ease);
+}
+.nt-undo:hover { background: var(--inst-btn-hover); }
+.nt-undo:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: 1px; }
+.nt-undo-ic { display: inline-flex; }
+.nt-undo svg { width: 13px; height: 13px; }
+.nt-own { position: relative; display: flex; align-items: center; min-width: 0; padding-right: 6px; }
+.nt-own > .inst-row { flex: 1; min-width: 0; }
+.inst-row + .nt-own::before, .nt-own + .inst-row::before, .nt-own + .nt-own::before {
+  content: ""; position: absolute; z-index: 1; top: 0; left: 12px; right: 0; height: 1px; background: var(--inst-sep);
+}
+.nt-own-k { display: inline-flex; align-items: center; gap: 2px; }
+.nt-own-k .nt-undo { width: 20px; height: 20px; margin: -4px 0; }
+.nt-own .inst-row-label::before, .nt-own-k::before, .nt-q.is-changed .nt-q-name::before {
+  content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%;
+  background: var(--color-sys-blue); vertical-align: middle;
+}
+/* A card's head says at its end what its tile said (UX5): quieter where the engine does not read the card. */
+.nt-card-tag { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--inst-label-2); }
+.nt-card-tag.is-dim { color: var(--inst-label-3); }
+.nt-card-tag.is-warn { color: var(--color-sys-orange-text); }
+.nt-card-tag.is-error { color: var(--color-sys-red-text); }
+
+/* Two stacks of three: a short card leaves no hole beside a tall one. */
+.nt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.nt-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* What a card holds that its engine does not read (D8): greyed under the line that says why. */
+.nt-dim { display: flex; flex-direction: column; gap: 10px; opacity: 0.5; }
+
+/* The first request: what the model will get with your message, its bar with the line notched, the parts in one line,
+   and what the Context card said — who builds it, where its prompt says it runs (UX5). */
+.nt-first { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; }
+.nt-first-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; }
+.nt-first-title { font-weight: 600; color: var(--inst-label); }
+.nt-first-sub { flex: 1; min-width: 0; color: var(--inst-label-3); }
+.nt-first-fig { color: var(--inst-label-3); }
+.nt-first-fig b { font-weight: 650; color: var(--inst-label); }
+.nt-first-fig.is-warn b { color: var(--color-sys-orange-text); }
+.nt-first-fig.is-error b { color: var(--color-sys-red-text); }
+.nt-first-line { color: var(--inst-label-3); }
+.nt-first-line:empty { display: none; }
+.nt-first-more { display: flex; flex-direction: column; gap: 2px; }
+.nt-first-more:empty { display: none; }
+.nt-first-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--inst-label-2); }
+.nt-first-part { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.nt-first-note:empty { display: none; }
+
+@container (max-width: 760px) {
+  .nt-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 560px) {
+  .nt-q { grid-template-columns: minmax(0, 1fr); }
+  .nt-q-under { grid-column: 1; }
+}
+
+.nt-card {
+  min-width: 0; border-radius: 16px; background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(1.7); backdrop-filter: blur(30px) saturate(1.7);
+  border: 1px solid var(--inst-border);
+  box-shadow: inset 0 1px 0 var(--inst-edge), 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 28px -14px rgba(0, 0, 0, 0.28);
+}
+.inst-nt-context { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); }
+.inst-nt-memory { --accent: var(--color-sys-pink); --accent-text: var(--color-sys-pink-text); }
+.inst-nt-tools { --accent: var(--color-sys-gray); --accent-text: var(--color-sys-gray-text); }
+.inst-nt-subagents { --accent: var(--color-sys-indigo); --accent-text: var(--color-sys-indigo-text); }
+.inst-nt-skills { --accent: var(--color-sys-mint); --accent-text: var(--color-sys-mint-text); }
+.inst-nt-compaction { --accent: var(--color-sys-teal); --accent-text: var(--color-sys-teal-text); }
+.inst-nt-instructions { --accent: var(--color-sys-yellow); --accent-text: var(--color-sys-yellow-text); }
+.nt-card-body { display: flex; flex-direction: column; gap: 10px; }
+/* An answer that takes a moment dims the figures; a quick one never flickers them. */
+.nt-grid, .nt-first { transition: opacity 160ms var(--ease) 240ms; }
+.nt-board.is-pending :is(.nt-grid, .nt-first) { opacity: 0.66; }
+
+/* A tool's chip: on as a segmented control's chosen face, off struck through. */
+.nt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nt-chip {
+  height: 24px; padding: 0 10px; border: 0; border-radius: 12px; cursor: pointer;
+  font-family: var(--mono); font-size: 11.5px; color: var(--inst-label-3);
+  background: var(--inst-seg-bg); text-decoration: line-through; text-decoration-color: color-mix(in oklab, currentColor 60%, transparent);
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.nt-chip.is-on { color: var(--inst-label); background: var(--inst-seg-on); text-decoration: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08); }
+.nt-chip:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: 1px; }
+/* A tool named, not switched: a team's tool that reaches a coding agent, or the loop's tools another engine does not
+   read. */
+.nt-chip.is-named { cursor: default; text-decoration: none; }
+/* An MCP server's chip: not a switch, with a dot for its last test in Settings › MCP servers (none: never tested). */
+.nt-chip.nt-mcp { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+.nt-mcp-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--inst-label-3); opacity: 0.45; }
+.nt-mcp-dot.is-ok { background: var(--color-sys-green); opacity: 1; }
+.nt-mcp-dot.is-bad { background: var(--color-sys-red); opacity: 1; }
+.nt-mcp-from { margin-left: -6px; color: var(--inst-label-3); }
+
+/* The permission modes' labels differ in length: each segment takes its label's width, the rest shared. */
+.nt-perm .inst-seg { grid-auto-columns: auto; }
+.nt-line { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
+.nt-line .inst-slider { flex: 1; min-width: 0; }
+.nt-line-fig { flex: none; min-width: 96px; text-align: right; font-size: 12px; color: var(--inst-label-2); }
+.inst-row.is-triggered .inst-row-value { color: var(--accent-text); font-weight: 600; }
+
+.nt-extra {
+  width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--inst-border); background: var(--inst-field); color: var(--inst-label);
+  font: inherit; font-size: 13px; line-height: 1.4;
+}
+.nt-extra::placeholder { color: var(--inst-label-3); }
+.nt-extra:focus { outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: 0; }
+.nt-extra:disabled { opacity: 0.5; resize: none; }
+
+/* Who runs it (HarnessV4_Tasks E15 step 6, AG-173): the first question. */
+.nt-who { --accent: var(--color-sys-purple); --accent-text: var(--color-sys-purple-text); }
+.nt-who-seg { grid-auto-columns: auto; }
+.nt-who-seg .inst-seg-btn { display: inline-flex; align-items: center; gap: 4px; padding: 0 12px; }
+.nt-who-seg .inst-seg-btn:disabled { opacity: 0.45; cursor: default; }
+.nt-who-chev { display: inline-flex; }
+.nt-who-chev svg { width: 13px; height: 13px; }
+.nt-who-mark { font-size: 11.5px; color: var(--inst-label-3); }
+.nt-who-mark:empty { display: none; }
+.nt-who-run { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; font-size: 12.5px; color: var(--inst-label-2); }
+.nt-who-run.hidden { display: none; }
+.nt-who-why { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-3); }
+.nt-who-why:empty { display: none; }
+.nt-who-why.is-warn { color: var(--color-sys-orange-text); }
+
+
+/* The Memory instrument (HarnessV3-Memory M6-4). A dot on the glyph: memory spoke at one of the turn's calls (its
+   accent), or it asks the user something (orange: it waits on them). Each memory is a row in two lines; its actions
+   show on hover or focus (always on a touch screen), named by their tooltips. */
+.widget-pill.acted .widget-ic::after, .widget-pill.asking .widget-ic::after {
+  content: ""; position: absolute; top: -2px; right: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 1.5px var(--color-background);
+}
+.widget-pill.asking .widget-ic::after { background: var(--color-sys-orange); }
+.inst-claim { align-items: flex-start; }
+.inst-claim .inst-row-ic { margin-top: 1px; }
+.inst-claim .inst-row-label { white-space: normal; }
+.inst-claim-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; overflow-wrap: anywhere; }
+.inst-claim.is-retired .inst-claim-text { color: var(--inst-label-3); text-decoration: line-through; text-decoration-color: color-mix(in oklab, currentColor 50%, transparent); }
+.inst-claim-acts { display: flex; gap: 2px; flex: none; align-self: center; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.inst-claim:hover .inst-claim-acts, .inst-claim:focus-within .inst-claim-acts, .inst-claim-acts.is-shown { opacity: 1; }
+@media (hover: none) { .inst-claim-acts { opacity: 1; } }
+.inst-claim-act {
+  display: inline-grid; place-items: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 6px;
+  background: var(--inst-btn); color: var(--inst-label-2); cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.inst-claim-act:hover { background: var(--inst-btn-hover); color: var(--accent-text); }
+.inst-claim-act:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: 1px; }
+.inst-claim-act:disabled { opacity: 0.45; cursor: default; }
+.inst-claim-act .inst-ic { display: inline-flex; }
+.inst-claim-act .inst-ic svg { width: 13px; height: 13px; }
+.inst-claim-act-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.inst-row.inst-claim.is-editing { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; }
+.inst-claim-edit-head { font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.inst-field {
+  width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px; border-radius: 9px;
+  border: 1px solid var(--inst-border); background: var(--inst-bg); color: var(--inst-label);
+  font: inherit; font-size: 13px; line-height: 1.4;
+}
+.inst-field:focus { outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: 0; }
+.inst-field.is-line { min-height: 0; height: 28px; resize: none; padding: 0 9px; flex: 1 1 auto; min-width: 0; }
+/* The model's window, where nobody knows it or the person said it (the Context popover). */
+.inst-window { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+.inst-window .inst-note { margin: 0; }
+.inst-window.is-unknown .inst-note { color: var(--inst-label); }
+.inst-window-row { display: flex; align-items: center; gap: 6px; }
+.inst-window-row .inst-btn { flex: 0 0 auto; }
+.inst-claim.is-editing .inst-actions { justify-content: flex-end; }
+.inst-memory.is-busy { cursor: progress; }

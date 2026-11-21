@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What the hardened runtime lets Filament's Mac app do (electron-builder.yml's mac.entitlements, its helpers' too):
+     V8 compiles JavaScript as it runs, and node-pty's module and Electron's frameworks load as Electron loads them. No
+     App Sandbox: Filament runs shells, coding agents and git in the person's folders, which a sandboxed app cannot. -->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

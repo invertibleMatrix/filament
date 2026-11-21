@@ -1,0 +1,20 @@
+{
+  "title": "Pipeline",
+  "description": "This project's scripts, each run by a button, with its log",
+  "icon": "rocket",
+  "sources": {
+    "scripts": { "command": ["node", "{{folder}}/reads/scripts.mjs"], "rows": "scripts", "key": "name", "every": "10m" }
+  },
+  "actions": {
+    "run": {
+      "label": "Run",
+      "on": "scripts",
+      "command": ["npm", "run", "{row.name}"],
+      "check": { "row.name": "^[A-Za-z0-9][A-Za-z0-9:._-]*$" },
+      "says": "Run npm run {row.name} in this project?",
+      "effect": "writes"
+    }
+  },
+  "howto": "Each row is one of package.json's scripts: Run runs it with npm, its log streaming in the page.",
+  "state": { "scripts": "package.json's scripts, each by its name with the command it runs" }
+}

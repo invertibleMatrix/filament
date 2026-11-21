@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Filament doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. For a security problem, please don't open an issue: see SECURITY.md.
+        Leave keys, tokens and private code out of logs and screenshots.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it
+      placeholder: |
+        1. Open …
+        2. Press …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Filament version
+      description: Settings › About, or `filament --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows
+        - macOS
+        - Linux (desktop)
+        - Linux (server)
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: The model or coding agent involved, a screenshot, or log lines.

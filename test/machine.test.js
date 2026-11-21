@@ -1,0 +1,178 @@
+// @ts-check
+// This machine as another Filament knows it (the owner's remote Filament of 11-06, Part 1): its id and name in
+// <dataDir>/machine.json, said at /.well-known/filament before any pairing, and in /api/state with who reads it.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { computerName, createMachine, cleanName, MACHINE_PROTOCOL, NAME_MAX } from "../src/services/machine.js";
+import { createFrontDoor } from "../src/http/front-door.js";
+import { defaultConfig } from "../src/config.js";
+import { startApp } from "./helpers/app.js";
+
+const fresh = () => mkdtempSync(join(tmpdir(), "filament-machine-"));
+
+// (fails before: yes — there was no machine id: memory.json's deviceId belongs to the memory folder and is absent with memory off)
+test("a machine's id is made once and kept in machine.json; its name is the hostname until the person names it", () => {
+  const dir = fresh();
+  try {
+    const m = createMachine({ dataDir: dir, host: () => "WORKSTATION" });
+    const { id, name } = m.get();
+    assert.match(id, /^[0-9a-f-]{36}$/);
+    assert.equal(name, "WORKSTATION");
+    const onDisk = JSON.parse(readFileSync(join(dir, "machine.json"), "utf8"));
+    assert.deepEqual([onDisk.id, onDisk.name], [id, "WORKSTATION"], "written as it was made");
+    assert.deepEqual(createMachine({ dataDir: dir, host: () => "renamed-box" }).get(), { id, name: "WORKSTATION" }, "read again, the same machine");
+    assert.deepEqual(m.rename("  Home\tworkstation \n"), { id, name: "Home workstation" });
+    assert.equal(createMachine({ dataDir: dir, host: () => "x" }).get().name, "Home workstation", "a name kept");
+    assert.deepEqual(m.rename(""), { id, name: "WORKSTATION" }, "an empty name is the machine's own");
+    assert.deepEqual(readdirSync(dir).sort(), ["machine.json"], "no temporary file left behind");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// (fails before: yes — the owner's MacBook of 11-09 named itself "192.168.0.77": its hostname is the address its
+// network's DNS names, and it was kept so)
+test("a Mac's own name is its Computer Name, else its hostname; elsewhere the hostname, and nothing is run", () => {
+  /** @type {string[][]} */
+  const ran = [];
+  const run = (/** @type {string} */ cmd, /** @type {string[]} */ args) => (ran.push([cmd, ...args]), "Kai’s MacBook Air\n");
+  assert.equal(computerName({ platform: "darwin", run, host: () => "192.168.0.77" }), "Kai’s MacBook Air");
+  assert.deepEqual(ran, [["/usr/sbin/scutil", "--get", "ComputerName"]]);
+  assert.equal(computerName({ platform: "darwin", run: () => "  \n", host: () => "mac.local" }), "mac.local", "none set: the hostname");
+  assert.equal(computerName({ platform: "darwin", run: () => { throw new Error("no scutil"); }, host: () => "mac.local" }), "mac.local");
+  assert.equal(computerName({ platform: "win32", run: () => { throw new Error("never run"); }, host: () => "TOWER" }), "TOWER");
+  assert.equal(computerName({ platform: "linux", run: () => { throw new Error("never run"); }, host: () => "box" }), "box");
+});
+
+// (fails before: yes — a name kept as an address stayed so, on every machine that paired with it)
+test("a kept name that is only an address the machine was named by is its own name again, and kept so; one the person gave stays", () => {
+  const dir = fresh();
+  const file = join(dir, "machine.json");
+  try {
+    const id = "1a8abe5b-793a-444b-81d9-f37af35b242e";
+    writeFileSync(file, JSON.stringify({ version: 1, id, name: "192.168.0.77" }));
+    assert.deepEqual(createMachine({ dataDir: dir, host: () => "Kai’s MacBook Air" }).get(), { id, name: "Kai’s MacBook Air" });
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { version: 1, id, name: "Kai’s MacBook Air" }, "kept anew: the app reads the file");
+    writeFileSync(file, JSON.stringify({ version: 1, id, name: "fe80::1" }));
+    assert.equal(createMachine({ dataDir: dir, host: () => "box" }).get().name, "box", "an IPv6 address too");
+    writeFileSync(file, JSON.stringify({ version: 1, id, name: "10.0.0.7" }));
+    assert.equal(createMachine({ dataDir: dir, host: () => "10.0.0.7" }).get().name, "10.0.0.7", "no better name: the address it has");
+
+    const m = createMachine({ dataDir: dir, host: () => "box" });
+    assert.equal(m.rename("10.0.0.8").name, "10.0.0.8");
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).named, true);
+    assert.equal(createMachine({ dataDir: dir, host: () => "box" }).get().name, "10.0.0.8", "the person's own: kept");
+    assert.equal(m.rename("").name, "box");
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).named, undefined, "the machine's own name again");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a machine.json that cannot be read is set aside, never overwritten, and said in the log; a new id is made", () => {
+  for (const body of ["{ not json", JSON.stringify({ name: "no id" })]) {
+    const dir = fresh();
+    try {
+      writeFileSync(join(dir, "machine.json"), body);
+      /** @type {string[]} */
+      const said = [];
+      const m = createMachine({ dataDir: dir, host: () => "box", log: (level, msg) => said.push(`${level} ${msg}`), now: () => 42 });
+      assert.match(m.get().id, /^[0-9a-f-]{36}$/);
+      assert.equal(readFileSync(join(dir, "machine.json.unreadable-42"), "utf8"), body, "the old file, as it was");
+      assert.equal(said.length, 1);
+      assert.match(said[0], /^warn \[machine\] could not read .*machine\.json .*set aside as .*machine\.json\.unreadable-42: this machine has a new id, and a machine paired with the old one asks to pair again$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a name as kept: no control characters, one space between words, at most NAME_MAX characters; no hostname at all says This machine", () => {
+  assert.equal(cleanName("a\u0000b\u001fc\u007fd"), "a b c d");
+  assert.equal(cleanName("x".repeat(NAME_MAX + 10)).length, NAME_MAX);
+  assert.equal(cleanName(null), "");
+  assert.equal(createMachine({ host: () => "  " }).get().name, "This machine");
+});
+
+/** A GET over node:http, which sends the Host given (fetch refuses to). @param {number} port @param {string} path @param {Record<string, string>} headers */
+const get = (port, path, headers) =>
+  new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path, headers }, (res) => {
+      let b = "";
+      res.on("data", (d) => (b += d));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+// (fails before: yes — nothing answered /.well-known/filament, and /api/state said neither the machine nor who reads it)
+test("/.well-known/filament says who answers — its id, name, wire and version — by any name that reached it; /api/state says the machine and who reads it", async () => {
+  /** @type {Awaited<ReturnType<typeof startApp>> | null} */
+  let running = await startApp({ configure: (cfg) => (cfg.server.adminToken = "tok-1234"), keep: true });
+  const shim = running;
+  const dataDir = shim.dataDir;
+  try {
+    const r = await fetch(`${shim.url}/.well-known/filament`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("cache-control"), "no-store");
+    const said = await r.json();
+    assert.deepEqual(Object.keys(said).sort(), ["id", "name", "protocol", "version"], "nothing a stranger could use");
+    assert.equal(said.protocol, MACHINE_PROTOCOL);
+    assert.equal(said.id, JSON.parse(readFileSync(join(shim.dataDir, "machine.json"), "utf8")).id);
+    // A tailnet name no Host check knows yet: who answers is said; the admin API is not reached by it.
+    const named = /** @type {any} */ (await get(shim.port, "/.well-known/filament", { host: "box.tail1234.ts.net" }));
+    assert.deepEqual([named.status, JSON.parse(named.body).id], [200, said.id]);
+    assert.equal(/** @type {any} */ (await get(shim.port, "/api/state", { host: "box.tail1234.ts.net" })).status, 421);
+    const state = await (await fetch(`${shim.url}/api/state`)).json();
+    assert.deepEqual(state.machine, { id: said.id, name: said.name });
+    assert.equal(state.viewer, "local");
+    const proxied = await (await fetch(`${shim.url}/api/state`, { headers: { "x-forwarded-for": "100.101.102.103", "x-filament-admin": "tok-1234" } })).json();
+    assert.equal(proxied.viewer, "remote", "through a proxy, with the admin token");
+    running = null;
+    await shim.stop();
+    running = await startApp({ dataDir, keep: true });
+    assert.equal((await (await fetch(`${running.url}/.well-known/filament`)).json()).id, said.id, "the same machine after a restart");
+  } finally {
+    // Stopped whatever failed: an app left running holds the test's process open.
+    await running?.stop();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("/.well-known/filament answers while memory opens, as /health does", async () => {
+  const door = createFrontDoor(
+    /** @type {any} */ ({
+      config: { get: () => defaultConfig() },
+      log: () => {},
+      deps: {},
+      pipeline: {},
+      responsesDoor: {},
+      mcp: {},
+      memoryMcp: {},
+      admin: async () => {},
+      artifacts: async () => {},
+      opening: () => new Promise(() => {}),
+      openingWaitMs: 5000,
+      isDraining: () => false,
+      VERSION: "9.9.9",
+      startedAt: 0,
+      machine: { get: () => ({ id: "m-1", name: "Box" }) },
+    }),
+  );
+  const server = http.createServer(door);
+  await new Promise((r) => server.listen(0, "127.0.0.1", () => r(undefined)));
+  try {
+    const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+    const r = /** @type {any} */ (await Promise.race([get(port, "/.well-known/filament", {}), new Promise((res) => setTimeout(() => res(null), 2000))]));
+    assert.ok(r, "answered, not held");
+    assert.deepEqual([r.status, JSON.parse(r.body)], [200, { id: "m-1", name: "Box", protocol: MACHINE_PROTOCOL, version: "9.9.9" }]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(() => r(undefined)));
+  }
+});

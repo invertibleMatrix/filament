@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- The app's own page over the harness window (the owner's remote Filament of 11-06, Part 3; a popover in the rail's
+     place since the owner's of 11-08): see-through but for what shows on it. The machines popover, under the chip a
+     harness page pressed left of Changes — each machine a menu item, drawn from the state the app sends (lib/rail.js
+     railState, every word in it escaped there), its ⋯ its menu (Remove), and Add a machine —; a press outside it or
+     Escape closes it. The Add sheet over the whole window (rail-page.js addFlow), the app making each step's ask. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>Filament</title>
+<style>
+  :root { --bg: #202020; --fg: #ffffff; --bar: 0px; color-scheme: light dark;
+    --panel: #ffffff; --ink: rgba(0,0,0,.88); --quiet: rgba(60,60,67,.66); --hover: rgba(0,0,0,.055); --edge: rgba(0,0,0,.1); --shade: 0 12px 32px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.08); }
+  :root.dark { --panel: #2a2a2e; --ink: rgba(255,255,255,.93); --quiet: rgba(235,235,245,.6); --hover: rgba(255,255,255,.075); --edge: rgba(255,255,255,.1); --shade: 0 12px 32px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; color: var(--fg); cursor: default; user-select: none;
+    font: 12px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  /* A press anywhere but the popover closes it; the page under it stays seen. */
+  #scrim { display: none; position: fixed; inset: 0; }
+  body.pop #scrim { display: block; }
+  #pop { display: none; position: fixed; left: 8px; top: 8px; width: 300px; max-width: calc(100vw - 16px); box-sizing: border-box; flex-direction: column; padding: 6px;
+    border-radius: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--edge); box-shadow: var(--shade); font-size: 13px; overflow-y: auto; }
+  body.pop #pop { display: flex; animation: pop-in 120ms ease-out; }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { body.pop #pop { animation: none; } }
+  #pop h2 { margin: 2px 8px 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--quiet); }
+  .row { position: relative; display: flex; }
+  .pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent;
+    color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .pick:hover, .row:hover .pick, .pick:focus-visible { background: var(--hover); outline: none; }
+  .pick:focus-visible { box-shadow: inset 0 0 0 2px #0a84ff; }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
+  .s-online .dot { background: #30d158; }
+  .s-reconnecting .dot { background: #ff9f0a; }
+  .s-offline .dot { background: #ff453a; }
+  /* Disconnected: a ring, never asked — not a state it is in, but one it was put in. */
+  .s-disconnected .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #8e8e93; }
+  .s-disconnected .nm b { opacity: .72; }
+  .nm { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .nm b { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nm small { font-size: 11.5px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* How many of its chats wait on you. */
+  .ct { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: #ff453a; color: #fff;
+    font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
+  .tick { flex: none; width: 14px; height: 14px; color: #0a84ff; display: grid; place-items: center; }
+  kbd { flex: none; min-width: 34px; font: 11px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--quiet); text-align: right; }
+  /* Another machine's own menu (Remove), over its key while the pointer is on its row or the keys on it. */
+  .more { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 26px; border: 0; border-radius: 6px; padding: 0;
+    display: grid; place-items: center; background: transparent; color: var(--quiet); cursor: pointer; opacity: 0; }
+  .row:hover .more, .more:focus-visible, .row:focus-within .more { opacity: 1; }
+  .row:hover kbd, .row:focus-within kbd { visibility: hidden; }
+  .row:not(:has(.more)) kbd { visibility: visible; }
+  .more:hover { background: var(--hover); color: var(--ink); }
+  .more:focus-visible { outline: 2px solid #0a84ff; outline-offset: -2px; opacity: 1; }
+  .sep { height: 1px; margin: 5px 4px; background: var(--edge); }
+  .pick.add svg { flex: none; width: 16px; margin: 0 -4px 0 -4px; color: var(--quiet); }
+  .pick.add .nm b { font-weight: 500; }
+  /* The Add sheet: over the whole window, its top row dragging it as the title bar under it did. */
+  #sheet { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; background: var(--bg); }
+  #sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: var(--bar); -webkit-app-region: drag; }
+  body.adding #sheet { display: flex; }
+  body.adding #pop, body.adding #scrim { display: none; }
+  .card { width: min(460px, calc(100% - 48px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 24px; border-radius: 12px;
+    background: color-mix(in srgb, var(--fg) 5%, var(--bg)); border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); user-select: text; font-size: 13px; }
+  .card h1 { margin: 0; font-size: 17px; font-weight: 650; }
+  .card p { margin: 0; }
+  .quiet { opacity: .7; }
+  .card label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+  .card input { font: inherit; font-weight: 400; padding: 8px 10px; border-radius: 8px; color: var(--fg); background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent); }
+  .card input:focus { outline: 2px solid #0a84ff; outline-offset: -1px; }
+  .card input:disabled { opacity: .6; }
+  code { font: 12px/1.5 "Cascadia Mono", Consolas, ui-monospace, monospace; word-break: break-all; }
+  .box { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .box b { font-weight: 600; }
+  /* Words, not a fingerprint, in the fingerprint's place: the sheet's own type, wrapped between words. */
+  code.prose { font: inherit; word-break: normal; opacity: .7; }
+  [hidden] { display: none !important; }
+  #add-said { min-height: 1.4em; }
+  #add-said.err { color: #ff453a; }
+  .acts { display: flex; justify-content: flex-end; gap: 8px; }
+  /* The tailnet's machines that answer as a Filament (rail-page.js drawPeers): a press fills the address. */
+  .peers { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+  /* Its name above, its address and owner below, whole: who owns it is what tells a machine of yours from another's. */
+  .peer { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; font: inherit; padding: 6px 8px; border-radius: 6px; border: 0; cursor: pointer;
+    color: var(--fg); background: transparent; }
+  .peer:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .peer:focus-visible { outline: 2px solid #0a84ff; outline-offset: -2px; }
+  .peer:disabled { opacity: .55; cursor: default; }
+  .peer b { font-weight: 600; }
+  .peer span { opacity: .66; overflow-wrap: anywhere; }
+  .b { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer; color: var(--fg); background: transparent; border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent); }
+  .b:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .b.primary { background: #0a84ff; border-color: #0a84ff; color: #fff; }
+  .b:disabled { opacity: .55; cursor: default; }
+  .b:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div id="scrim"></div>
+<div id="pop" role="menu" aria-labelledby="pop-title"><h2 id="pop-title">Machines</h2><div id="pop-list" role="none"></div></div>
+<div id="sheet">
+  <form class="card" id="add-form" role="dialog" aria-modal="true" aria-labelledby="add-title" novalidate autocomplete="off">
+    <h1 id="add-title">Add a machine</h1>
+    <p class="quiet">Drive another machine's Filament from this window. On that machine, open Settings › Remote access, turn on Reach this machine on my network or Share on my tailnet, and make a code: paste its link here, or its address and the code. A machine you reach by SSH needs no code: type ssh:// and its Host.</p>
+    <div class="box" id="add-peers" hidden><p class="quiet" id="add-peers-said"></p><div class="peers" id="add-peers-list"></div></div>
+    <label>Address or link<input id="add-link" type="text" spellcheck="false" placeholder="https://192.168.1.20:20343, the pairing link, or ssh://user@host"></label>
+    <label>Code<input id="add-code" type="text" spellcheck="false" placeholder="ABCD-EFGH — the link carries it"></label>
+    <div class="box" id="add-print" hidden><p>Its certificate's SHA-256 fingerprint. Settings › Remote access on that machine must show the same:</p><code id="add-print-fp"></code></div>
+    <div class="box" id="add-who" hidden><b id="add-who-name"></b><code id="add-who-print"></code><p class="quiet" id="add-who-kept" hidden>It is in this window already: pairing again replaces this window's sign-in there.</p></div>
+    <p id="add-said" role="status" aria-live="polite"></p>
+    <div class="acts"><button class="b" type="button" id="add-cancel">Cancel</button><button class="b" type="button" id="add-back" hidden>Not the same</button><button class="b primary" type="submit" id="add-go">Continue</button></div>
+  </form>
+</div>
+<script src="rail-page.js"></script>
+</body>
+</html>

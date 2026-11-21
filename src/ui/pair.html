@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" class="theme-zai-dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pair with Filament</title>
+  <link rel="icon" type="image/png" href="/ui/filament-icon.png" />
+  <link rel="stylesheet" href="/ui/harness/zc.css" />
+  <link rel="stylesheet" href="/ui/harness.css" />
+  <link rel="stylesheet" href="/ui/harness/aqua.css" />
+  <!-- The pairing page (the owner's remote Filament of 11-06): another machine's browser claims the code Settings ›
+       Remote access made on the machine Filament runs on. Its script is pair.js. -->
+  <style>
+    html, body { height: 100dvh; margin: 0; }
+    html { color-scheme: dark; }
+    body { display: grid; place-items: center; background: var(--aq-paper); color: var(--aq-label); font: var(--text-ui-base)/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+    .pair { width: min(420px, calc(100vw - 32px)); padding: 28px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-panel-solid); }
+    .pair h1 { margin: 12px 0 6px; font-size: var(--text-ui-lg); font-weight: 650; }
+    .pair p { margin: 0 0 14px; font-size: var(--text-ui-sm); color: var(--aq-label-2); line-height: 1.45; }
+    .pair form { display: flex; flex-direction: column; gap: 12px; }
+    .pair label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+    .pair input { padding: 9px 11px; border: 1px solid var(--aq-hairline); border-radius: 8px; background: var(--aq-field); color: var(--aq-label); font-size: var(--text-ui-sm); }
+    .pair input#pair-code { font-family: var(--mono); font-size: var(--text-ui-lg); letter-spacing: 0.12em; text-transform: uppercase; }
+    .pair button.primary { padding: 9px 14px; border-radius: 8px; font-weight: 600; }
+    #pair-open { width: 100%; }
+    .pair button[disabled] { opacity: 0.6; cursor: default; }
+    .pair #pair-said { margin: 14px 0 0; min-height: 1.4em; }
+    .pair #pair-said.is-err { color: var(--aq-error-text); }
+    .pair[hidden], .pair [hidden] { display: none; }
+    .pair #pair-print code { display: block; margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: var(--aq-code-chip); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); overflow-wrap: anywhere; user-select: all; }
+  </style>
+</head>
+<body>
+  <main class="pair">
+    <img src="/ui/filament-icon.png" alt="" width="40" height="40" />
+    <h1>Pair with <span id="pair-machine">Filament</span></h1>
+    <p id="pair-lead">Type the code Settings › Remote access shows on that machine. This browser then reaches its Filament until the device is revoked there.</p>
+    <p id="pair-print" hidden><span id="pair-print-words"></span><code id="pair-print-fp" hidden></code></p>
+    <form id="pair-form" autocomplete="off">
+      <label>Code <input id="pair-code" name="code" placeholder="XXXX-XXXX" maxlength="9" autocapitalize="characters" spellcheck="false" required /></label>
+      <label>This device's name <input id="pair-name" name="name" maxlength="64" /></label>
+      <button id="pair-go" class="primary" type="submit">Pair</button>
+    </form>
+    <button id="pair-open" class="primary" type="button" hidden>Open Filament</button>
+    <p id="pair-said" role="status"></p>
+  </main>
+  <script type="module" src="/ui/pair.js"></script>
+</body>
+</html>

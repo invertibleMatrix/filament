@@ -1,0 +1,11 @@
+#!/bin/sh
+# Filament's command line, for Git Bash (which finds a program by its name or its .exe, never a .cmd): the app's own
+# Electron, run as Node, runs bin/filament.js — as filament.cmd beside it does for cmd and PowerShell. Its folder as
+# Windows writes it (cygpath -m), and no word of the command rewritten as a path by MSYS: `filament chat "/plan it"`
+# reaches Filament as typed.
+dir=$(cd "$(dirname "$0")/.." && pwd)
+if command -v cygpath >/dev/null 2>&1; then
+  dir=$(cygpath -m "$dir")
+  export MSYS2_ARG_CONV_EXCL='*'
+fi
+ELECTRON_RUN_AS_NODE=1 exec "$dir/Filament.exe" "$dir/resources/app/bin/filament.js" "$@"

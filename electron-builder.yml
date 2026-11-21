@@ -1,0 +1,134 @@
+# The desktop app's builds (HarnessV3-Native NA-D11; macOS and Linux the owner's of 11-07): `npm run dist` builds this
+# machine's — Windows' installer on Windows, macOS's on a Mac, Linux's on Linux — into dist/<windows|mac|linux>/<version>
+# (scripts/dist.mjs says the folder). Each is built on its own system: the memory engine's bundle is built on the
+# machine it is for, and electron-builder signs a Mac app only on a Mac. The checkout as it is, with no asar archive:
+# Filament starts files from its own folder — the memory engine's Python, its docs — that other programs cannot read
+# inside one. Windows x64 per user (no administrator), unsigned; macOS Apple Silicon, signed with the owner's Developer
+# ID and notarized where the build has them; Linux x64.
+appId: com.filamentdev.desktop
+productName: Filament
+asar: false
+# node-pty is built on N-API: its binary loads under Electron's Node as it is (NA0), so nothing is rebuilt. Linux has no
+# prebuilt one: npm ci builds it there, as it does any N-API module.
+npmRebuild: false
+# electron-builder run by itself; `npm run dist` sends it to dist/<platform>/<version>.
+directories:
+  output: dist
+# Where the installed app looks for its updates (desktop/lib/updates.js): the public repository that holds Filament's
+# releases alone, apart from the code.
+# Named so electron-builder writes latest.yml, latest-mac.yml and latest-linux.yml beside the builds — the SHA-512 the
+# app checks a download by — and the app's resources/app-update.yml, which the app reads this repository from. Nothing
+# is published from a build: `npm run dist` runs electron-builder with --publish never; CI drafts a release there on a
+# tag v<version>.
+publish:
+  provider: github
+  owner: invertibleMatrix
+  repo: filament-releases
+# The app's own entry; the package's `main` stays the server for those who import it. The author, as LICENSE names
+# it: the app's publisher in Windows' file details (Electron's own otherwise: GitHub, Inc.); the deb's maintainer.
+# desktopName: the Linux app's .desktop entry (linux.executableName's), which Electron gives its windows as their app
+# id, so a dock shows a running Filament as the one it launched; the other systems read none.
+extraMetadata:
+  main: desktop/main.js
+  desktopName: filament-desktop.desktop
+  author:
+    name: Filament contributors
+    email: hello@filamentdev.com
+files:
+  - package.json
+  - LICENSE
+  - NOTICE
+  - THIRD_PARTY_NOTICES.md
+  - README.md
+  - bin/**
+  - src/**
+  - desktop/**
+  - docs/**
+  # ＋ New app's starters (10-29): real folders copied into a project for an agent to adapt.
+  - starters/**
+  - sidecar/*.py
+  - tray/filament.ico
+  - tray/filament-tray.ico
+  - tray/filament-*.png
+  # node-pty: its binaries alone — not its sources or debug symbols; each system keeps its own below.
+  - "!node_modules/node-pty/{deps,third_party,src,scripts}/**"
+  - "!**/*.pdb"
+# Each system's files add to the ones above: the memory engine this release was tested with (HarnessV3-AtHome AH-D2),
+# which Filament installs from here alone and never downloads — built by `npm run engine:bundle`; `npm run dist`
+# refuses to build without a whole one and checks the copy in the app after — and node-pty's binaries for it alone.
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: tray/filament.ico
+  files:
+    - vendor/memory-engine/win32-x64/**
+    - "!node_modules/node-pty/prebuilds/{darwin-arm64,darwin-x64,win32-arm64}/**"
+  # The command line (`filament status`, `filament setup`…): its two shims in the app's bin folder, which the installer
+  # puts on the person's PATH (build/installer.nsh) — filament.cmd for cmd and PowerShell, filament for Git Bash.
+  extraFiles:
+    - from: build/cli
+      to: bin
+nsis:
+  oneClick: true
+  perMachine: false
+  # The installer's own id, from the app's id before it was com.filamentdev.desktop (filament.desktop): kept, so a
+  # Filament installed under that id is upgraded in place, never installed beside.
+  guid: f1a146da-8fb9-54f2-a195-f42a9d2d8ce4
+  # Filament's data folder (%APPDATA%\Filament: keys, sessions, memory) is the person's: an uninstall never removes it,
+  # and an install over it keeps it.
+  deleteAppDataOnUninstall: false
+  # A running Filament is asked to quit, as the tray's Quit does, before anything is installed or uninstalled.
+  include: build/installer.nsh
+  artifactName: Filament-${version}-setup-x64.${ext}
+mac:
+  # The disk image people download, and the zip the installed app updates itself from (Squirrel.Mac: lib/updates.js).
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+  # The logo on macOS's icon grid: 824 of 1024, centred, so it sits in the Dock as large as the apps beside it.
+  icon: build/icon-mac.png
+  category: public.app-category.developer-tools
+  # Electron 45 runs on macOS 12 and later.
+  minimumSystemVersion: "12.0"
+  # Signed with the Developer ID Application certificate electron-builder finds — the Mac's keychain, or CSC_LINK on CI —
+  # and notarized where APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER are set (docs/releasing.md); a build
+  # with neither is unsigned, and opens only on the Mac that built it.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  # The memory engine's bundle is signed as it is built (scripts/build-memory-bundle.mjs), before its manifest is
+  # written: signed again here, its files would no longer be the ones the manifest names, and Filament would refuse it.
+  signIgnore:
+    - /vendor/memory-engine/
+  files:
+    - vendor/memory-engine/darwin-arm64/**
+    - "!node_modules/node-pty/prebuilds/{win32-x64,win32-arm64,darwin-x64}/**"
+  artifactName: Filament-${version}-mac-${arch}.${ext}
+dmg:
+  artifactName: Filament-${version}-mac-${arch}.${ext}
+linux:
+  # The AppImage runs on any distribution and updates itself in place; the deb installs on Debian and Ubuntu, with the
+  # sandbox Chromium wants set up by its install, and updates through the system's password prompt.
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  icon: assets/filament-logo.png
+  category: Development
+  synopsis: Your coding agent on any model, with a memory of every session
+  # The app's program is filament-desktop, so `filament` stays the command line's name.
+  executableName: filament-desktop
+  files:
+    - vendor/memory-engine/linux-x64/**
+    - "!node_modules/node-pty/prebuilds/**"
+  artifactName: Filament-${version}-linux-${arch}.${ext}

@@ -1,0 +1,381 @@
+/* The Agents tab (HarnessV4_Tasks E15 step 5; U12; U13-D5, views/side.js): the session's agents and its teams on the
+   left by what they need of you — a team's row with its crew under it — its gear over them, this chat's agent settings
+   in a sheet: whom the main agent may ask, who runs on what, the seat; the open one's thread — or the launcher, a team's pane, or Watch all's
+   tiles (side-watch.js) — on the right; and under both a strip that says what the main agent does. The dock is not in
+   this tab (AG-100): a thread has its own box — but under the team in charge, whose lead is who you talk to. Tokens
+   only: every colour and size comes from the theme's sheets. */
+
+.conv-frame.view-side > .vw-side { display: flex; flex: 1 1 auto; min-height: 0; container: side / inline-size; }
+.conv-frame.view-side:not(.side-team) > .dock { display: none; }
+.sd { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; color: var(--inst-label); font-variant-numeric: tabular-nums; }
+.sd-main { flex: 1; min-height: 0; display: flex; }
+.sd .sd-caret { display: inline-flex; flex: none; color: var(--inst-label-3); }
+.sd .sd-caret svg { width: 12px; height: 12px; }
+.sd :is(button, textarea, input):focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.sd .inst-btn.is-primary { background: var(--aq-accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.2); }
+.sd .inst-btn.is-primary:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+
+/* ---- the list: the session's agents by what they need of you (U12-D3) ---- */
+.sd-list { flex: none; width: 300px; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--inst-sep); }
+/* Its head (U13-D5): who the list is, in a line; the gear beside its title. */
+.sd-list-head { flex: none; padding: 14px 16px 0; }
+.sd-list-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sd-list-title { flex: 1; min-width: 0; margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--inst-label); }
+/* The gear (the owner's of 11-05): this chat's agent settings in a sheet; a dot where any is this chat's own. */
+.sd-gear {
+  position: relative; flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; margin: -4px -6px -4px 0;
+  padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; color: var(--inst-label-2);
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.sd-gear:hover { background: var(--inst-btn); color: var(--inst-label); }
+.sd-gear-ic { display: inline-flex; }
+.sd-gear-ic svg { width: 15px; height: 15px; }
+.sd-gear.is-own::after { content: ""; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-sys-blue); box-shadow: 0 0 0 1.5px var(--inst-bg, var(--aq-bg)); }
+.sd-list-line { margin: 4px 0 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--inst-label-3); }
+.sd-new {
+  flex: none; display: flex; align-items: center; gap: 8px; height: 32px; margin: 12px 12px 4px; padding: 0 10px;
+  border: 0; border-radius: 8px; background: var(--inst-btn); cursor: pointer;
+  font: inherit; font-size: var(--text-ui-caption); font-weight: 550; color: var(--inst-label);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.sd-new:hover { background: var(--inst-btn-hover); }
+.sd-new.is-on { background: var(--inst-seg-on); box-shadow: var(--inst-seg-shadow); }
+.sd-new-ic { display: inline-flex; color: var(--inst-label-2); }
+.sd-new-ic svg { width: 14px; height: 14px; }
+.sd-new-kbd { margin-left: auto; padding: 1px 6px; border-radius: 5px; background: var(--inst-well); box-shadow: inset 0 0 0 1px var(--inst-sep); font: 500 var(--text-ui-xs) var(--font); color: var(--inst-label-3); }
+/* A team's row (U13-D5): its lead's face in its team's colour, how it works for the chat in a tag — gold in charge, blue
+   on the side — and its crew under it, a line each. */
+.sd-av.is-team { background: color-mix(in oklab, var(--pf, var(--color-sys-purple)) 16%, transparent); color: var(--pf-text, var(--color-sys-purple-text)); }
+.sd-row-tag { flex: none; padding: 0 6px; border-radius: 5px; font-size: var(--text-ui-xs); font-weight: 600; white-space: nowrap; background: var(--inst-btn); color: var(--inst-label-2); }
+.sd-row-tag.is-side { background: color-mix(in oklab, var(--color-sys-blue) 15%, transparent); color: color-mix(in oklab, var(--color-sys-blue-text) 72%, var(--inst-label)); }
+.sd-row-tag.is-charge { background: color-mix(in oklab, var(--color-sys-yellow) 14%, transparent); color: color-mix(in oklab, var(--color-sys-yellow-text) 80%, var(--inst-label)); }
+.sd-team-row.is-charge { box-shadow: inset 2px 0 0 color-mix(in oklab, var(--color-sys-yellow) 70%, transparent); }
+.sd-crew-row { align-items: center; gap: 8px; padding: 4px 8px 4px 22px; }
+.sd-av.is-crew { width: 22px; height: 22px; margin: 0; border-radius: 6px; background: color-mix(in oklab, var(--pf, var(--color-sys-blue)) 14%, transparent); color: var(--pf-text, var(--color-sys-blue-text)); }
+.sd-av.is-crew svg { width: 12px; height: 12px; }
+.sd-crew-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+.sd-crew-row .sd-row-fact { flex: none; font-size: var(--text-ui-xs); }
+/* The Teams row at the list's foot: what a team is and each one. */
+.sd-teams-row { margin-top: 10px; box-shadow: inset 0 1px 0 var(--inst-sep); border-radius: 0 0 10px 10px; }
+/* A team's pane: the Team view, scrolled on its own. */
+.sd-team { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; container: team / inline-size; }
+/* No thread yet: what a new thread is. */
+.sd-none { margin: 14px 8px 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--inst-label-2); }
+.sd-groups { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 1px; }
+.sd-group { display: flex; align-items: center; gap: 6px; margin: 14px 0 4px; padding: 0 8px; font-size: var(--text-ui-xs); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--inst-label-3); }
+.sd-group-n { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--inst-btn); font-size: var(--text-ui-xs); letter-spacing: 0; text-align: center; color: var(--inst-label-2); }
+.sd-group.is-needs { color: var(--color-sys-orange-text); }
+.sd-group.is-needs .sd-group-n { background: color-mix(in oklab, var(--color-sys-orange) 18%, transparent); color: var(--color-sys-orange-text); }
+.sd-group.is-works .sd-group-n { background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); }
+.sd-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 10px;
+  background: none; cursor: pointer; text-align: left; font: inherit; color: var(--inst-label);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.sd-row:hover { background: var(--inst-card); }
+.sd-row.is-on { background: var(--inst-card-hover); box-shadow: inset 0 0 0 1px var(--inst-sep); }
+/* A row's face (U12-D4): blue for a worker, purple for a lead, grey for a coding agent's own. */
+.sd-av { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px; border-radius: 8px; background: color-mix(in oklab, var(--color-sys-blue) 14%, transparent); color: var(--color-sys-blue-text); }
+.sd-av.is-own { background: var(--inst-btn); color: var(--inst-label-2); }
+.sd-av svg { width: 15px; height: 15px; }
+.sd-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sd-row-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.sd-row-name { flex: none; max-width: 60%; font-size: var(--text-ui-caption); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Who started it (U12-D2). */
+.sd-row-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.sd-row-task { font-size: var(--text-ui-sm); color: var(--inst-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-row-meta { display: flex; align-items: center; gap: 8px; font-size: var(--text-ui-xs); color: var(--inst-label-3); white-space: nowrap; }
+.sd-row-fact { min-width: 0; display: inline-flex; align-items: center; gap: 5px; }
+.sd-row-fact-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sd-row-fact.is-works { color: var(--color-sys-blue-text); }
+.sd-row-fact.is-asks { color: var(--color-sys-orange-text); font-weight: 600; }
+.sd-row-fact.is-apply { color: var(--color-sys-green-text); font-weight: 600; }
+.sd-row-fact.is-error { color: var(--color-sys-red-text); }
+.sd-row-right { margin-left: auto; flex: none; }
+.sd-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-gray); }
+.sd-dot.is-works { background: var(--color-sys-blue); animation: view-dot-breathe 1.6s ease-in-out infinite; }
+.sd-dot.is-asks { background: var(--color-sys-orange); }
+.sd-dot:is(.is-ok, .is-apply) { background: var(--color-sys-green); }
+.sd-dot.is-error { background: var(--color-sys-red); }
+/* An answer of yours not opened yet (lib/side.js `unopened`): the sidebar's unread dot, at the row's top right. */
+.sd-unread { flex: none; align-self: center; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--color-dot-unread); }
+.sd-row.is-unread .sd-row-name { font-weight: 700; }
+.sd-earlier {
+  display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; height: 26px; margin: 2px 4px; padding: 0 8px;
+  border: 0; border-radius: 7px; background: none; cursor: pointer; font: inherit; font-size: var(--text-ui-sm); font-weight: 550; color: var(--inst-label-2);
+}
+.sd-earlier:hover { background: var(--inst-btn); color: var(--inst-label); }
+
+/* ---- the gear's sheet (the owner's of 11-05), centred: whom the main agent may ask, who runs on what, then the seat
+   (U12-D5): the chip, and a meter of what is in use of it ---- */
+.zc-sheet-overlay:has(> .sd-gear-sheet) { align-items: center; justify-content: center; }
+.zc-sheet.sd-gear-sheet { width: min(600px, calc(100vw - 32px)); height: auto; max-height: calc(100dvh - 40px); margin: 0; border-radius: 18px; animation: zc-dialog-in 140ms ease-out; }
+/* In the desktop app too, as tall as what it holds: the app's sheet height is a side sheet's. */
+html.app-frame .zc-sheet.sd-gear-sheet { height: auto; }
+.sd-gear-head { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sd-gear-title { font-size: var(--text-ui-base); font-weight: 650; color: var(--inst-label); }
+.sd-gear-line { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label-2); }
+.sd-gear-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.sd-gear-gap { flex: 1; }
+.sd-gear-foot .inst-btn { flex: none; }
+.sd-gear-foot .sd-gear-done { min-width: 72px; }
+.sd-gear-sheet .inst-btn.is-primary { background: var(--aq-accent); color: #fff; }
+.sd-gear-sheet .inst-btn.is-primary:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+.sd-seats { flex: none; display: flex; flex-direction: column; gap: 16px; padding: 4px 18px 18px; }
+.sd-seats.hidden { display: none; }
+.sd-foot-rows > .inst-group { margin: 0 -6px; background: none; box-shadow: none; }
+.sd-foot-rows .inst-row { min-height: 30px; padding: 2px 6px; }
+.sd-foot-rows .inst-row-label { font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+/* The seat (the owner's 10-25): Agents run on and Use the default where the list is the chat's own; the chip, its tag
+   saying whose list it is; a line tying it to Library's Models for agents; the meter and what it counts. */
+.sd-seat { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sd-seat-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-ui-xs); }
+.sd-seat-name { flex: none; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--inst-label-3); }
+.sd-seat-back { margin-left: auto; }
+.sd-seat .inst-link { display: inline; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 550; color: var(--color-sys-blue-text); }
+.sd-seat .inst-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sd-seat-from { margin: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--inst-label-3); }
+.sd-seat-use { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--text-ui-xs); }
+.sd-seat-use .sd-meter { flex: 1 1 auto; min-width: 40px; }
+.sd-seat-count { flex: none; max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--inst-label-2); }
+.sd-meter { height: 4px; border-radius: 999px; background: var(--inst-btn); overflow: hidden; }
+.sd-meter-fill { display: block; height: 100%; border-radius: inherit; background: var(--color-sys-blue); transition: width 320ms var(--ease); }
+.sd-meter.is-full .sd-meter-fill { background: var(--color-sys-orange); }
+.sd-seat .pool-chip { width: 100%; max-width: none; height: 28px; }
+.sd-seat .pool-chip-line { flex: 1 1 auto; text-align: left; }
+
+/* ---- the thread: the open agent's conversation, the part the pane beside the chat draws too ---- */
+.sd-thread { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: side-thread / inline-size; }
+/* The bar over the thread: Threads or Watch all, Watch all's line; narrow, the list's menu and the seats' chip. */
+.sd-bar { display: flex; flex: none; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border-bottom: 1px solid var(--inst-sep); box-sizing: border-box; }
+.sd-bar > .inst-seg { flex: none; }
+.sd-bar-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+.sd-bar-gap { flex: 1; }
+.sd-bar .sd-gear { display: none; margin: 0; }
+.sd-bar .sd-threads { display: none; }
+.sd-beside { flex: none; font-size: var(--text-ui-sm); white-space: nowrap; }
+.sd-threads {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; height: 28px; padding: 0 10px; border: 0; border-radius: 8px;
+  background: var(--inst-btn); cursor: pointer; font: inherit; font-size: var(--text-ui-caption); font-weight: 550; color: var(--inst-label);
+}
+.sd-threads:hover { background: var(--inst-btn-hover); }
+.sd-threads-ic { display: inline-flex; color: var(--inst-label-2); }
+.sd-threads-ic svg { width: 14px; height: 14px; }
+.sd-threads-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sd-head { flex: none; display: flex; padding: 12px 20px; border-bottom: 1px solid var(--inst-sep); }
+/* The name and its facts take the row, the state and its buttons the next: the facts never stand in a sliver. */
+.sd-head .sav-head { flex-wrap: wrap; row-gap: 8px; }
+.sd-head .sav-head-text { flex: 1 1 calc(100% - 46px); }
+.sd-head .sav-head > .sav-status, .sd-head .sav-head-acts { margin-left: 46px; }
+.sd-head .sav-head-acts { flex: 1 1 100%; flex-wrap: wrap; row-gap: 8px; }
+.sd-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.sd-scroll > .sav-body { max-width: 760px; }
+.sd-asks { flex: none; width: 100%; max-width: 760px; margin: 0 auto; padding: 0 20px 8px; box-sizing: border-box; }
+.sd-asks .ask-strip .ask-who-name { flex: none; font-weight: 650; white-space: nowrap; }
+.sd-foot { flex: none; width: 100%; max-width: 760px; margin: 0 auto; padding: 0 20px 14px; box-sizing: border-box; }
+
+/* ---- a new thread, the launcher (U12-D6): the starts as tiles, the box with its @ agent, the chips under it ---- */
+.sd-fresh { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; width: 100%; max-width: 800px; margin: 0 auto; padding: 0 20px 14px; box-sizing: border-box; }
+.sd-fresh-top { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 28px 0 22px; }
+.sd-hello { display: flex; flex-direction: column; gap: 4px; }
+.sd-title { margin: 0; font-size: var(--text-ui-xl); font-weight: 650; letter-spacing: -0.01em; color: var(--inst-label); }
+.sd-lead { margin: 0; max-width: 60ch; font-size: var(--text-ui-base); line-height: 1.5; color: var(--inst-label-2); }
+/* Start… (U13 W3): the quick starts under their cap, then who and how in the box's head. */
+.sd-quick { display: flex; flex-direction: column; gap: 8px; }
+.sd-cap { font-size: var(--text-ui-xs); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--inst-label-3); }
+.sd-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sd-short {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 11px 12px; border: 0; border-radius: 12px;
+  background: var(--inst-card); box-shadow: inset 0 0 0 1px var(--inst-sep); cursor: pointer; text-align: left; font: inherit; color: var(--inst-label);
+  transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), transform 140ms var(--ease-spring);
+}
+.sd-short:hover:not(:disabled) { background: var(--inst-card-hover); }
+.sd-short:active:not(:disabled) { transform: scale(0.985); }
+.sd-short:disabled { opacity: 0.5; cursor: default; }
+.sd-short.is-on { background: color-mix(in oklab, var(--color-sys-blue) 12%, var(--inst-card)); box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-sys-blue) 70%, transparent); }
+.sd-short-name { display: flex; align-items: center; gap: 7px; font-size: var(--text-ui-caption); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sd-short-ic { display: inline-flex; flex: none; color: var(--color-sys-blue-text); }
+.sd-short-ic svg { width: 15px; height: 15px; }
+.sd-short-sub { font-size: var(--text-ui-xs); line-height: 1.35; color: var(--inst-label-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.sd-fresh-foot { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.sd-notes { display: flex; flex-direction: column; gap: 4px; }
+.sd-notes:empty { display: none; }
+.sd-note { margin: 0; padding: 0 7px; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label-2); }
+.sd-note.is-warn { color: var(--color-sys-orange-text); }
+.sd-note.is-stop { color: var(--inst-label); }
+.sd-note.is-stop.is-pressed { color: var(--color-sys-orange-text); font-weight: 600; }
+/* A team picked in Start… (the owner's 10-21): what it runs on, as its Brief opens on it. */
+.sd-note.sd-team-line { display: flex; align-items: flex-start; gap: 6px; color: var(--inst-label); }
+.sd-team-line-ic { display: inline-flex; flex: none; margin-top: 2px; color: var(--color-sys-yellow-text); }
+.sd-team-line-ic svg { width: 13px; height: 13px; }
+.sd-link { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 550; color: var(--color-sys-blue-text); }
+.sd-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sd-enhanced { display: flex; align-items: baseline; gap: 8px; padding: 0 7px; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label-2); }
+.sd-enhanced-ic { display: inline-flex; flex: none; align-self: center; color: var(--color-sys-purple-text); }
+.sd-enhanced-ic svg { width: 13px; height: 13px; }
+.sd-enhanced-words { flex: 1; min-width: 0; }
+.sd-enhanced-words b { font-weight: 600; color: var(--inst-label); }
+/* The box: who gets the words, the words, what goes with them, Enhance and Send. */
+.sd-box {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 8px 12px; border-radius: 14px;
+  background: var(--aq-field); border: 1px solid var(--inst-border);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.sd-box:focus-within { border-color: color-mix(in oklab, var(--color-sys-blue) 70%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 22%, transparent); }
+.sd-box-head { display: flex; align-items: center; gap: 8px; }
+.sd-agent {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 26px; padding: 0 9px 0 7px; border: 0; border-radius: 999px;
+  background: color-mix(in oklab, var(--color-sys-blue) 15%, transparent); cursor: pointer; font: inherit; font-size: var(--text-ui-sm); font-weight: 600; color: var(--color-sys-blue-text);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.sd-agent:hover { background: color-mix(in oklab, var(--color-sys-blue) 22%, transparent); }
+.sd-agent.is-team { background: color-mix(in oklab, var(--color-sys-yellow) 16%, transparent); color: color-mix(in oklab, var(--color-sys-yellow-text) 55%, var(--inst-label)); }
+.sd-agent.is-team:hover { background: color-mix(in oklab, var(--color-sys-yellow) 24%, transparent); }
+.sd-agent .sd-caret { color: inherit; opacity: 0.7; }
+.sd-how { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.sd-way {
+  display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: 999px; background: none;
+  box-shadow: inset 0 0 0 1px var(--inst-sep); cursor: pointer; font: inherit; font-size: var(--text-ui-sm); color: var(--inst-label-2);
+  transition: background-color var(--t-fast) var(--ease);
+}
+.sd-way:hover { background: var(--inst-card-hover); color: var(--inst-label); }
+.sd-way { color: var(--inst-label); }
+.sd-way.is-usual { box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-sys-yellow) 60%, transparent); }
+.sd-way-ic { display: inline-flex; color: var(--color-sys-yellow-text); }
+.sd-way-ic svg { width: 13px; height: 13px; }
+.sd-agent-ic { display: inline-flex; margin-right: 2px; }
+.sd-agent-ic svg { width: 14px; height: 14px; }
+.sd-agent-at { opacity: 0.7; }
+.sd-agent-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-task { width: 100%; min-height: 44px; max-height: 240px; resize: none; border: 0; outline: 0; background: none; padding: 2px 0; box-sizing: border-box; field-sizing: content; color: var(--inst-label); font: var(--text-ui-base)/1.45 var(--font); }
+.sd .sd-task:focus-visible { outline: none; }
+.sd-task::placeholder { color: var(--inst-label-3); }
+.sd-box-bar { display: flex; align-items: center; gap: 8px; }
+.sd-box-gap { flex: 1; }
+.sd-attach { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: none; cursor: pointer; color: var(--inst-label-2); }
+.sd-attach:hover { background: var(--inst-btn); color: var(--inst-label); }
+.sd-attach svg { width: 15px; height: 15px; }
+.sd-enhance {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px;
+  background: color-mix(in oklab, var(--color-sys-purple) 16%, transparent); cursor: pointer;
+  font: inherit; font-size: var(--text-ui-sm); font-weight: 550; color: var(--color-sys-purple-text);
+  transition: background-color var(--t-fast) var(--ease), transform 140ms var(--ease-spring);
+}
+.sd-enhance:hover:not(:disabled) { background: color-mix(in oklab, var(--color-sys-purple) 24%, transparent); }
+.sd-enhance:active:not(:disabled) { transform: scale(0.97); }
+.sd-enhance:disabled { opacity: 0.4; cursor: default; }
+.sd-enhance.busy:disabled { opacity: 1; }
+.sd-enhance-ic { display: inline-flex; }
+.sd-enhance-ic svg { width: 13px; height: 13px; }
+.sd-enhance.busy .sd-enhance-ic { animation: spin 1.4s linear infinite; }
+.sd-send { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--aq-accent); color: #fff; cursor: pointer; transition: transform 140ms var(--ease-spring), opacity var(--t-fast) var(--ease); }
+.sd-send:active:not(:disabled) { transform: scale(0.94); }
+.sd-send:disabled { opacity: 0.35; cursor: default; }
+.sd-send svg { width: 16px; height: 16px; }
+/* The chips under the box (U12-D7): each one choice, each the face of a menu. */
+.sd-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sd-part {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 26px; padding: 0 9px; border: 0; border-radius: 999px;
+  background: var(--inst-card); box-shadow: inset 0 0 0 1px var(--inst-sep); cursor: pointer; font: inherit; font-size: var(--text-ui-sm); color: var(--inst-label);
+  text-align: left; transition: background-color var(--t-fast) var(--ease);
+}
+.sd-part:hover:not(:disabled) { background: var(--inst-card-hover); }
+.sd-part:disabled { cursor: default; color: var(--inst-label-3); }
+.sd-part-ic { display: inline-flex; flex: none; color: var(--inst-label-2); }
+.sd-part-ic svg { width: 13px; height: 13px; }
+.sd-part-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-part.is-effort.is-default .sd-part-words::after { content: " · default"; color: var(--inst-label-3); }
+.sd-model { display: inline-flex; align-items: center; }
+/* The Sees menu's last row: everything since a commit, a tag or a branch. */
+.sd-since { display: flex; align-items: center; gap: 8px; padding: 6px 10px 4px; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+.sd-since.is-on .sd-since-label { color: var(--inst-label); font-weight: 600; }
+.sd-since-label { flex: none; white-space: nowrap; }
+.sd-since-in { flex: 1; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--inst-border); border-radius: 7px; background: var(--aq-field); color: var(--inst-label); font: var(--text-ui-sm) var(--mono); }
+.sd-since-go { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: var(--inst-btn); cursor: pointer; font: inherit; font-size: var(--text-ui-sm); font-weight: 550; color: var(--inst-label); }
+.sd-since-go:hover { background: var(--inst-btn-hover); }
+
+/* ---- the thread's foot, wherever the thread shows: the words held for an agent still at work, why there is no box ---- */
+.sav-foot-box { display: flex; flex-direction: column; gap: 6px; }
+.sav-held { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-blue) 10%, transparent); font-size: var(--text-ui-sm); color: var(--color-foreground); }
+.sav-held-words { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sav-held-when { flex: none; color: var(--color-foreground-subtle); white-space: nowrap; }
+.sav-held-when.is-error { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-sys-red-text); }
+.sav-held-btn, .sav-why-btn { flex: none; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 550; color: var(--color-sys-blue-text); white-space: nowrap; }
+.sav-held-btn:hover, .sav-why-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sav-why { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 8px 12px; border-radius: 10px; background: var(--color-glass-card); border: 1px solid var(--color-glass-sep); font-size: var(--text-ui-sm); line-height: 1.45; color: var(--color-foreground-subtle); }
+.sav-why-btn { font-family: var(--mono); }
+
+/* The floating side pane overlays the frame: the tab yields to it, as the other views do. */
+.app-shell.pane-float-open .vw-side { padding-right: calc(var(--pane-w, 0px) + 16px); transition: padding-right 280ms var(--ease-out); }
+[data-motion="off"] .app-shell.pane-float-open .vw-side { transition: none; }
+/* A view drawn inside the tab (a team's cards, its plan) yields nothing of its own: the tab's room is the pane's whole
+   width, and the same room made twice leaves a card some 30 px wide beside a result opened there. */
+.app-shell.pane-float-open .vw-side :is(.vw-plan, .vw-team, .vw-pane) { padding-right: 0; }
+
+/* Narrow, the list folds into a menu in the bar, with the seats' chip beside it; Watch all's line gives them its room;
+   the strip keeps Stop. */
+@container side (max-width: 720px) {
+  .sd-list { display: none; }
+  .sd-bar .sd-threads { display: inline-flex; }
+  .sd-bar .sd-gear { display: inline-grid; }
+  .sd-bar-line { display: none; }
+  .sd-head, .sd-foot, .sd-asks, .sd-fresh { padding-left: 12px; padding-right: 12px; }
+}
+
+/* ---- Watch all (side-watch.js): a tile for each agent at work, two across, three where the tab is wide ---- */
+.sw { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 18px; container: side-watch / inline-size; }
+.sw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(260px, auto); gap: 12px; }
+.sw-grid:empty { display: none; }
+.sw-empty { margin: 40px auto 0; max-width: 46ch; text-align: center; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--inst-label-2); }
+.sw-tile { display: flex; flex-direction: column; min-width: 0; border-radius: 14px; background: var(--inst-card); box-shadow: inset 0 0 0 1px var(--inst-sep); overflow: hidden; }
+.sw-tile.is-asks { box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-sys-orange) 75%, transparent); }
+.sw-head { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px; border-bottom: 1px solid var(--inst-sep); font-size: var(--text-ui-sm); }
+.sw-av { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: color-mix(in oklab, var(--color-sys-blue) 14%, transparent); color: var(--color-sys-blue-text); }
+.sw-av.is-own { background: var(--inst-btn); color: var(--inst-label-2); }
+.sw-av svg { width: 13px; height: 13px; }
+.sw-name { flex: none; max-width: 40%; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-size: var(--text-ui-caption); font-weight: 650; color: var(--inst-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sw-tag { flex: none; padding: 1px 7px; border-radius: 6px; background: color-mix(in oklab, var(--color-sys-indigo) 16%, transparent); font-size: var(--text-ui-xs); font-weight: 550; color: var(--color-sys-indigo-text); white-space: nowrap; }
+.sw-tile.is-own .sw-tag { background: color-mix(in oklab, var(--color-sys-orange) 16%, transparent); color: var(--color-sys-orange-text); }
+.sw-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.sw-sp { flex: 1; }
+.sw-state { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-ui-xs); color: var(--inst-label-2); white-space: nowrap; }
+.sw-state.is-asks { font-weight: 600; color: var(--color-sys-orange-text); }
+.sw-spin { display: inline-flex; color: var(--color-sys-blue-text); animation: spin 1.4s linear infinite; }
+.sw-spin svg { width: 12px; height: 12px; }
+.sw-stop { flex: none; height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: var(--inst-btn); cursor: pointer; font: inherit; font-size: var(--text-ui-xs); font-weight: 600; color: var(--inst-label); }
+.sw-stop:hover { background: var(--inst-btn-hover); }
+.sw-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; cursor: pointer; overflow: hidden; }
+.sw-work { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--text-ui-sm); }
+.sw-work-label { flex: none; font-weight: 600; color: var(--inst-label); }
+.sw-work-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--inst-label-2); }
+code.sw-work-text { font: var(--text-ui-xs) var(--mono); }
+.sw-words { margin: 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--inst-label); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden; }
+.sw-note { margin: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--inst-label-3); }
+.sw-ask { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-orange) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-sys-orange) 40%, transparent); cursor: default; }
+.sw-ask-q { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label); }
+.sw-ask-q code { min-width: 0; overflow-wrap: anywhere; font: var(--text-ui-xs) var(--mono); color: var(--inst-label-2); }
+.sw-ask-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.sw-ask-open { height: 26px; font-size: var(--text-ui-xs); }
+.sw-ask-note { font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.sw-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--inst-sep); font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.sw-figs { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-foot .inst-link { font-size: var(--text-ui-xs); }
+.sw-open { display: inline-flex; align-items: center; gap: 2px; }
+.sw-open .sd-caret { color: inherit; }
+@container side-watch (min-width: 1100px) {
+  .sw-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container side-watch (max-width: 560px) {
+  .sw-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Where the thread's column is narrow — beside the list, or the pane — the tiles stand two by two. */
+@container side-thread (max-width: 620px) {
+  .sd-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sd-dot.is-works, .sd-enhance.busy .sd-enhance-ic, .sw-spin { animation: none; }
+  .sd-meter-fill { transition: none; }
+}
+[data-motion="off"] .sd-dot.is-works, [data-motion="off"] .sd-meter-fill, [data-motion="off"] .sw-spin { animation: none; transition: none; }

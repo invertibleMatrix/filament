@@ -1,0 +1,71 @@
+{
+  "_about": "Filament's first-run tips: small bubbles beside one control each, shown once. Edit by hand; a page reload reads it again. enabled: false turns every tip off; a step's own enabled: false turns that one off. replayOnRestart: true shows every tip again after each restart of Filament (Settings › About › Restart Filament), and replayWelcomeTour opens the welcome tour too, from its first step. Keep replayOnRestart false in what ships. dim: how dark the page goes behind a tip, from 0 (not at all) to 0.9; a step's own dim is that tip's. A step: id (never reuse one), group (steps of a group show in a row, 1 of 3), target (a CSS selector), when (a page condition: subagent, context-half), after (a step to be seen first), place (top, bottom, left, right), title, text, dim.",
+  "enabled": true,
+  "replayOnRestart": false,
+  "replayWelcomeTour": true,
+  "dim": 0.7,
+  "steps": [
+    {
+      "id": "start-folder",
+      "enabled": true,
+      "group": "start",
+      "target": ".chooser-chip",
+      "place": "bottom",
+      "title": "First, check the project",
+      "text": "Your agent reads and edits files in this folder, and the chat joins that project's Space and memory. Choose it before you send."
+    },
+    {
+      "id": "start-compaction",
+      "enabled": true,
+      "group": "start",
+      "target": "#nt-card-compaction",
+      "place": "left",
+      "title": "When the chat gets full",
+      "text": "How the chat makes room near the model's limit. It starts from your defaults; a change here holds for this chat only. Later, click the ring by the message box."
+    },
+    {
+      "id": "start-subagents",
+      "enabled": true,
+      "group": "start",
+      "target": "#nt-card-subagents:not(:has(.nt-dim))",
+      "place": "left",
+      "title": "Who helps your agent",
+      "text": "Who your agent may use by itself, what they run on and where they edit. It starts from your defaults for this project; a change here is for this chat. Later: the gear in the Agents tab."
+    },
+    {
+      "id": "agents-tab",
+      "enabled": true,
+      "target": ".view-tab[data-view=\"side\"]",
+      "when": "subagent",
+      "place": "bottom",
+      "title": "A sub-agent is helping",
+      "text": "Everyone working for this chat shows in the Agents tab. Open it to follow each one's work as it happens."
+    },
+    {
+      "id": "agents-gear",
+      "enabled": true,
+      "target": ".sd-gear.is-head",
+      "after": "agents-tab",
+      "place": "left",
+      "title": "This chat's agent settings",
+      "text": "Who your agent may use and what each runs on, for this chat only. Edit defaults in Library sets them for every chat."
+    },
+    {
+      "id": "plan-tab",
+      "enabled": true,
+      "target": ".view-tab[data-view=\"plan\"]",
+      "place": "bottom",
+      "title": "Your agent made a plan",
+      "text": "Its tasks are drawn in the Plan tab in order, ticked off live as they run. The chat goes on as before."
+    },
+    {
+      "id": "context-ring",
+      "enabled": true,
+      "target": ".widget-pill.widget-context",
+      "when": "context-half",
+      "place": "top",
+      "title": "How full this chat is",
+      "text": "The ring fills as the chat grows. At its notch, the chat makes room as it's set to. Click it to see what fills it, or to change how."
+    }
+  ]
+}

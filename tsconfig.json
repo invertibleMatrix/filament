@@ -1,0 +1,20 @@
+{
+  // Type-checks the JavaScript as it is; nothing is compiled or emitted. Files opt in with `// @ts-check` at the top
+  // as they are typed (JSDoc @typedef/@param), so the check only ever reports on code that claims to be typed.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2023", "dom"],
+    "types": ["node"],
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.js", "bin/**/*.js", "desktop/**/*.js", "test/**/*.js", "scripts/**/*.js", "scripts/**/*.mjs"],
+  "exclude": ["node_modules", "sidecar", "tray"]
+}

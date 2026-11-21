@@ -1,0 +1,1344 @@
+/* The Settings page's own CSS (AgentPlanUX §5.10) — rows live in harness.css; every control this page
+   adds is styled here. Tokens only: colours are var(--color-*), sizes are var(--text-ui-*); the one
+   numeric font-size exception is the code presentation, which reads --code-font-size (set by theme.js). */
+
+/* --- Controls ----------------------------------------------------------------------------------------------- */
+
+/* Switch: h-5 w-9 rounded-full (§5.10). */
+.set-switch {
+  position: relative; flex: none; width: 36px; height: 20px; border-radius: 9999px;
+  border: 1px solid var(--color-border); background: var(--color-input); cursor: pointer; padding: 0;
+  transition: background 150ms ease-out;
+}
+.set-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 9999px;
+  background: var(--color-primary-foreground); transition: transform 150ms ease-out;
+}
+.set-switch.on { background: var(--color-primary); border-color: var(--color-primary); }
+.set-switch.on::after { transform: translateX(16px); }
+.set-switch:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+
+/* Select: h-7 rounded-md. */
+.set-select {
+  height: 28px; max-width: 240px; padding: 0 8px; border-radius: 6px;
+  border: 1px solid var(--color-input-border); background: var(--color-input); color: var(--color-foreground);
+  font-size: var(--text-ui-base); font-family: inherit;
+}
+.set-select:hover { border-color: var(--color-input-border-hover); }
+.set-select:focus { border-color: var(--color-input-border-focused); outline: none; }
+.set-select:disabled { opacity: 0.5; }
+
+/* Number input: the FontSizeInput, w-28. */
+.set-num {
+  width: 112px; height: 28px; padding: 2px 8px; border-radius: 6px; text-align: right;
+  border: 1px solid var(--color-input-border); background: var(--color-input); color: var(--color-foreground);
+  font-size: var(--text-ui-base); font-family: var(--mono);
+}
+.set-num:hover { border-color: var(--color-input-border-hover); }
+.set-num:focus { border-color: var(--color-input-border-focused); outline: none; }
+
+/* Segmented tabs (settings): list h-8 rounded-lg p-[3px], triggers rounded-md; the control sizes to its content. */
+.set-seg {
+  display: inline-flex; align-items: center; gap: 2px; width: fit-content; padding: 3px;
+  border-radius: 8px; background: var(--color-surface);
+}
+.set-seg-btn {
+  height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: none; cursor: pointer;
+  font-size: var(--text-ui-base); font-weight: 500; color: var(--color-foreground-subtle); white-space: nowrap;
+}
+.set-seg-btn.on { background: var(--color-tab-active); color: var(--color-foreground); }
+
+/* A line of a field and its button (a marketplace's add line). */
+.set-list-row { display: flex; align-items: center; gap: 6px; }
+.set-list-row .zc-input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); }
+
+/* Trust pill: unproven / proven / deprecated. */
+.set-pill {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: var(--text-ui-xs); font-weight: 500; border: 1px solid transparent;
+}
+.set-pill.unproven { color: var(--color-foreground-subtle); border-color: var(--color-border); }
+.set-pill.proven { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 14%, transparent); }
+.set-pill.deprecated { color: var(--color-destructive); background: color-mix(in srgb, var(--color-destructive) 14%, transparent); }
+
+/* --- Sections ------------------------------------------------------------------------------------------------- */
+
+/* The section's title and line share the body's left edge and column. */
+.set-title { max-width: 768px; padding: 0 24px; font-size: var(--text-ui-xl); font-weight: 600; margin: 20px 0 2px; }
+.set-desc { max-width: 768px; padding: 0 24px; font-size: var(--text-ui-caption); color: var(--color-foreground-subtle); margin: 0 0 8px; }
+.settings-ic { display: inline-flex; flex: none; color: var(--color-foreground-subtlest); }
+.settings-ic svg { width: 16px; height: 16px; }
+
+/* Settings search (HS-6): the field heads the sidebar; while it has words its results take the sections' place, each
+   a row's name over its section, the one Enter opens marked. A result opened lights its row for two seconds. */
+.settings-search { width: 100%; height: 28px; margin: 0 0 6px; font-size: var(--text-ui-base); }
+.settings-hits { display: none; flex-direction: column; gap: 1px; }
+.settings-nav.is-searching .settings-hits { display: flex; }
+.settings-nav.is-searching > .settings-group, .settings-nav.is-searching > .settings-item { display: none; }
+.settings-hit {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; padding: 5px 8px;
+  border: 0; border-radius: 7px; background: none; color: var(--color-foreground); text-align: left; cursor: pointer;
+}
+.settings-hit:hover { background: var(--color-surface-hover); }
+.settings-hit.is-marked { background: var(--aq-accent); color: var(--color-on-accent); }
+.settings-hit-label { font-size: var(--text-ui-base); font-weight: 500; }
+.settings-hit-where { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.settings-hit.is-marked .settings-hit-where { color: inherit; opacity: 0.85; }
+.settings-hits-none, .settings-hits-note { margin: 6px 8px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.settings-hits-note.is-warn { color: var(--color-sys-orange-text); }
+.settings-body .is-lit {
+  border-radius: 8px; background: color-mix(in srgb, var(--aq-accent) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--aq-accent) 55%, transparent);
+}
+.set-group-doc { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); margin: 20px 0 2px; }
+.set-note { font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest); margin: 12px 0; }
+.set-error { font-size: var(--text-ui-sm); color: var(--color-destructive); margin: 8px 0; }
+/* Settings › Context (U3-8): the Context tab's section, at the page's reading width. */
+.set-context { max-width: 768px; padding: 4px 0 24px; }
+.set-desc.set-context-start { padding: 0; }
+
+/* --- Keyboard shortcuts table ---------------------------------------------------------------------------------- */
+
+.set-table { display: flex; flex-direction: column; margin-top: 8px; }
+.set-table-head, .set-tr {
+  display: grid; grid-template-columns: minmax(0, 1fr) 140px 90px 90px; gap: 8px; align-items: center;
+}
+.set-table-head {
+  padding: 4px 8px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest);
+  border-bottom: 1px solid var(--color-border);
+}
+.set-tr { min-height: 36px; padding: 3px 8px; border-radius: 6px; font-size: var(--text-ui-base); }
+.set-tr:hover { background: var(--color-surface-hover); }
+.set-tr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-tr-scope { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.set-tr-acts { display: flex; justify-content: flex-end; }
+.set-tr-none, .set-tr-where { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.set-recording { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.set-conflict { font-size: var(--text-ui-sm); color: var(--color-warning); }
+.set-search-row { display: flex; gap: 8px; margin-top: 12px; }
+.set-search-row .zc-input { width: 240px; }
+
+/* --- Memory (HarnessV3-Memory M6-5) ----------------------------------------------------------------------------
+   The models above; where claims live on the left; on the right the one picked: its claims as cards, its dossier by
+   section, memory's questions. Memory's accent is pink. A card's actions show on hover or focus (always on a touch
+   screen) at the end of its meta row; the tile's gloss is Aqua's (aqua.css). The two columns stack by the frame's own
+   width: beside the sidebars a 960px window leaves the page some 450px (M6-7). */
+
+.mset-pick { display: flex; align-items: center; gap: 10px; }
+/* Other agents (M7-D46): the command to add memory's door, whole and selectable, its copy button beside it. */
+.mset-mcp { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mset-mcp-line { display: flex; align-items: flex-start; gap: 6px; }
+.mset-mcp-cmd {
+  flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; background: var(--aq-code-chip); color: var(--aq-label);
+  font-family: var(--mono); font-size: var(--code-font-size, var(--text-ui-sm)); line-height: 1.45; overflow-wrap: anywhere; user-select: all;
+}
+.mset-frame { container: mset / inline-size; margin-top: 16px; }
+.mset { display: flex; gap: 18px; min-height: 0; }
+.mset-scopes { width: 208px; flex: none; display: flex; flex-direction: column; gap: 1px; }
+.mset-scopes-head { padding: 12px 8px 4px; font-size: var(--text-ui-xs); font-weight: 650; color: var(--aq-label-3); }
+.mset-scope {
+  display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 7px; border: 0; border-radius: 7px;
+  background: none; color: var(--aq-label); font-size: var(--text-ui-base); text-align: left; cursor: pointer;
+}
+.mset-scope:hover { background: var(--aq-control); }
+.mset-scope.on { background: color-mix(in oklab, var(--color-sys-pink) 16%, transparent); }
+.mset-scope:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.mset-scope.is-archived { color: var(--aq-label-2); }
+.mset-scope-ic { display: inline-flex; flex: none; color: var(--color-sys-pink-text); }
+.mset-scope-ic svg { width: 14px; height: 14px; }
+.mset-scope-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mset-count { flex: none; font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.mset-quiet { margin: 4px 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mset-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.mset-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.mset-title { min-width: 0; }
+.mset-name { font-size: var(--text-ui-lg); font-weight: 650; color: var(--aq-label); }
+.mset-sub { font-size: var(--text-ui-sm); color: var(--aq-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mset-tools { display: flex; flex-direction: column; gap: 8px; }
+.mset-tools:empty { display: none; }
+.mset-tools-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.mset-search { flex: 1 1 180px; max-width: 300px; }
+.mset-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.mset-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; border-radius: 999px;
+  background: var(--aq-control); color: var(--aq-label); font-size: var(--text-ui-sm); cursor: pointer;
+}
+.mset-chip:hover { background: var(--aq-control-hover); }
+.mset-chip.on { background: color-mix(in oklab, var(--color-sys-pink) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-sys-pink) 55%, transparent); }
+.mset-chip:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.mset-chip-n { font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.mset-list { display: flex; flex-direction: column; gap: 8px; }
+.mset-claim {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px 10px 12px; border: 1px solid var(--aq-hairline);
+  border-radius: 12px; background: var(--aq-card);
+}
+.mset-claim.is-retired, .mset-claim.is-held { background: transparent; }
+.mset-claim.is-held .mset-claim-text { color: var(--aq-label-2); }
+.mset-claim.is-retired .mset-claim-text { color: var(--aq-label-2); text-decoration: line-through; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); }
+.mset-claim.is-editing { flex-direction: column; align-items: stretch; gap: 8px; }
+.mset-tile { display: grid; place-items: center; flex: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 6px; background: var(--tile); color: var(--color-primary-foreground); }
+.mset-tile svg { width: 13px; height: 13px; }
+.mset-claim-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mset-claim-text { font-size: var(--text-ui-base); line-height: 1.45; color: var(--aq-label); overflow-wrap: anywhere; }
+.mset-claim-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mset-kind { color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.mset-flag { color: var(--color-sys-orange-text); }
+.mset-meter { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.mset-meter-bar { position: relative; width: 44px; height: 4px; border-radius: 2px; background: var(--aq-control-press); overflow: hidden; }
+.mset-meter-fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--color-sys-pink); }
+.mset-meter.is-low { color: var(--color-sys-orange-text); }
+.mset-meter.is-low .mset-meter-fill { background: var(--color-sys-orange); }
+.mset-trigger { display: flex; align-items: baseline; gap: 6px; font-size: var(--text-ui-sm); line-height: 1.6; color: var(--aq-label-2); }
+.mset-trigger-ic { display: inline-flex; flex: none; align-self: center; color: var(--color-sys-red-text); }
+.mset-trigger-ic svg { width: 12px; height: 12px; }
+.mset-code { padding: 1px 5px; border-radius: 4px; background: var(--aq-code-chip); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); }
+.mset-acts { display: flex; gap: 2px; flex: none; margin-left: auto; opacity: 0; transition: opacity 120ms ease-out; }
+.mset-claim:hover .mset-acts, .mset-claim:focus-within .mset-acts, .mset-acts.is-shown { opacity: 1; }
+@media (hover: none) { .mset-acts { opacity: 1; } }
+/* With a pointer, a claim's actions float on its card's top edge while it is hovered or focused, and take no room from
+   its words or its meta row; on a touch screen they stay at the row's end, always shown (M6-7). */
+@media (hover: hover) {
+  .mset-claim { position: relative; }
+  .mset-claim-meta .mset-acts {
+    position: absolute; top: -12px; right: 10px; padding: 2px; border-radius: 8px; pointer-events: none;
+    background: var(--aq-menu); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+    box-shadow: 0 0 0 1px var(--aq-hairline), var(--aq-lift);
+  }
+  .mset-claim:hover .mset-claim-meta .mset-acts, .mset-claim:focus-within .mset-claim-meta .mset-acts { pointer-events: auto; }
+}
+.mset-act {
+  display: inline-grid; place-items: center; width: 26px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--aq-label-2); cursor: pointer;
+}
+.mset-act:hover, .mset-act.on { background: var(--aq-control-hover); color: var(--aq-label); }
+.mset-act:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.mset-act:disabled { opacity: 0.45; cursor: default; }
+.mset-act svg { width: 14px; height: 14px; }
+.mset-history {
+  display: flex; flex-direction: column; gap: 3px; margin: 6px 0 0; padding: 0 0 0 12px; list-style: none;
+  border-left: 2px solid color-mix(in oklab, var(--color-sys-pink) 40%, transparent);
+}
+.mset-event { display: flex; gap: 10px; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.mset-event.is-undone { color: var(--aq-label-3); }
+.mset-event-when { flex: none; width: 104px; color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.mset-event-what { min-width: 0; overflow-wrap: anywhere; }
+.mset-event-why { color: var(--aq-label-2); }
+.mset-cite {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 0; border-radius: 5px; cursor: pointer;
+  background: color-mix(in oklab, var(--color-sys-pink) 14%, transparent); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs);
+}
+.mset-cite:hover { background: color-mix(in oklab, var(--color-sys-pink) 26%, transparent); }
+.mset-cite:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.mset-edit-head { font-size: var(--text-ui-sm); font-weight: 600; color: var(--aq-label-2); }
+.mset-field { width: 100%; min-height: 72px; height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
+.mset-edit-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.mset-dsec { padding: 10px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.mset-dsec-title { margin: 0 0 4px; font-size: var(--text-ui-sm); font-weight: 650; color: var(--aq-label-2); }
+.mset-dline { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--aq-hairline); font-size: var(--text-ui-base); color: var(--aq-label); }
+.mset-dline:first-of-type { border-top: 0; }
+.mset-dline-text { min-width: 0; line-height: 1.45; }
+.mset-dline-cites { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; flex: none; max-width: 40%; }
+/* How models did (HarnessV3-Memory M7-D53): a card per model and kind of work; figures big, the ends as one bar —
+   held in memory's pink, done then corrected orange, failed red, stopped gray — with their words beside it. */
+.mset-model { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.mset-model-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mset-model-head .mset-tile { margin-top: 0; }
+.mset-model-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.mset-model-head .mset-kind { margin-left: auto; flex: none; font-size: var(--text-ui-sm); }
+.mset-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.mset-fig { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mset-fig-n { font-size: var(--text-ui-xl); font-weight: 650; font-variant-numeric: tabular-nums; color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mset-fig-l { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.mset-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--aq-control-press); }
+.mset-bar-seg { min-width: 3px; }
+.mset-bar-seg.is-held { background: var(--color-sys-pink); }
+.mset-bar-seg.is-corrected { background: var(--color-sys-orange); }
+.mset-bar-seg.is-failed { background: var(--color-sys-red); }
+.mset-bar-seg.is-stopped { background: var(--color-sys-gray); }
+.mset-model-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: var(--text-ui-sm); color: var(--aq-label-2); font-variant-numeric: tabular-nums; }
+.mset-did { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding-top: 6px; border-top: 1px solid var(--aq-hairline); font-size: var(--text-ui-sm); color: var(--aq-label); }
+.mset-did .mset-bar { height: 4px; }
+.mset-did-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mset-did-n { color: var(--aq-label-2); font-variant-numeric: tabular-nums; }
+@container mset (max-width: 599px) {
+  .mset { flex-direction: column; }
+  .mset-scopes { width: auto; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .mset-scopes-head { display: none; }
+  .mset-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --- Item lists (Models, Usage) ------------------------------------------------------------------------------ */
+
+.set-kind-head {
+  font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest); padding: 10px 0 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+.set-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent); }
+.set-item-text { min-width: 0; font-size: var(--text-ui-base); overflow-wrap: break-word; }
+.set-item-status { font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest); }
+
+/* A text area that grows with its words. */
+.set-area { min-height: 96px; height: auto; padding: 8px; resize: vertical; font-family: var(--mono); line-height: 1.45; }
+
+/* --- Teams (HarnessV3-Views V5) ----------------------------------------------------------------------------------
+   The workers' model above; your teams, then those that ship, each a card in one column, so a card opened to how
+   its team works stretches no neighbour. A team wears the Team view's purple tile (views/team.css) and a role its
+   glyph, lit purple when the team adds words to it. The editor takes the list's place, its foot kept in sight at the
+   body's bottom edge: why Save waits, or a refusal, then Cancel, a gray capsule, and Save, the page's one blue button.
+   Beside the sidebars a 960px window leaves the page some 450px: a card's buttons wrap under its name. */
+
+.tset-model { margin-top: 4px; }
+.tset-sec { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+.tset-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tset-h { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.tset-n { font-size: var(--text-ui-sm); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.tset-new, .tset-back { display: inline-flex; align-items: center; gap: 4px; }
+.tset-ic { display: inline-flex; flex: none; }
+.tset-ic svg { width: 13px; height: 13px; }
+.tset-quiet { margin: -4px 0 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.tset-empty { margin: 0; padding: 16px; border: 1px dashed var(--aq-hairline); border-radius: 12px; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label-2); }
+.tset-list { display: flex; flex-direction: column; gap: 8px; }
+.tset-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.tset-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.tset-tile { width: 30px; height: 30px; border-radius: 8px; }
+.tset-tile svg { width: 17px; height: 17px; }
+.tset-who { flex: 1 1 200px; min-width: 0; }
+.tset-name { font-size: var(--text-ui-base); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tset-line { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label-2); }
+.tset-acts { display: flex; gap: 6px; flex: none; margin-left: auto; }
+.tset-del:hover { color: var(--color-sys-red-text); }
+.tset-card-foot { display: flex; align-items: center; gap: 10px; padding-left: 42px; }
+.tset-roles { display: inline-flex; gap: 8px; color: var(--aq-label-3); }
+.tset-role { display: inline-flex; opacity: 0.55; }
+.tset-role.is-on { opacity: 1; color: var(--color-sys-purple-text); }
+.tset-role svg { width: 13px; height: 13px; }
+.tset-more {
+  display: inline-flex; align-items: center; gap: 2px; margin-left: auto; padding: 2px 6px; border: 0; border-radius: 6px;
+  background: none; cursor: pointer; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-accent);
+}
+.tset-more:hover { background: var(--aq-control-hover); }
+.tset-more:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.tset-more-ic { display: inline-flex; }
+.tset-more-ic svg { width: 13px; height: 13px; }
+.tset-detail { display: flex; flex-direction: column; gap: 6px; margin-left: 42px; padding-top: 10px; border-top: 1px solid var(--aq-hairline); }
+.tset-d-h { font-size: var(--text-ui-xs); font-weight: 650; color: var(--aq-label-3); }
+.tset-persona { margin: 0 0 8px; font-size: var(--text-ui-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--aq-label); }
+.tset-drole { display: grid; grid-template-columns: 16px 5.5em minmax(0, 1fr); align-items: start; gap: 8px; font-size: var(--text-ui-sm); line-height: 1.45; }
+.tset-drole .role-tile { margin-top: 1px; }
+.tset-drole-word { font-weight: 600; }
+.tset-drole-words { overflow-wrap: anywhere; }
+.tset-drole-words.is-none { color: var(--aq-label-3); }
+.tset-d-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.tset-code { padding: 1px 5px; border-radius: 4px; background: var(--aq-code-chip); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); }
+.tset-from::before { content: "·"; margin-right: 6px; color: var(--aq-label-3); }
+
+.tset-hint { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+/* A team's models in order and its most at once (team_v2_plan TV2-D8). */
+.tset-models-ed { display: flex; flex-direction: column; gap: 6px; }
+.tset-model-row { display: flex; align-items: center; gap: 8px; }
+.tset-model-n { min-width: 40px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.tset-models { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.tset-input { width: 100%; max-width: 360px; }
+.tset-area { width: 100%; min-height: 132px; height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.tset-area.is-role { min-height: 56px; }
+.tset-count { align-self: flex-end; font-size: var(--text-ui-xs); font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.tset-count:empty { display: none; }
+.tset-count.is-near { color: var(--color-sys-orange-text); }
+.tset-count.is-over { color: var(--color-sys-red-text); }
+.tset-erole { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.tset-erole-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tset-erole-word { flex: none; font-size: var(--text-ui-sm); font-weight: 650; color: var(--aq-label); }
+.tset-erole-does { min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+/* A member's own model and effort, in the team's editor: one row under its line. */
+.tset-member-runs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tset-member-runs .tset-models-ed { flex: 1; min-width: 180px; }
+.tset-error, .tset-why { flex: 1; min-width: 0; margin: 0; font-size: var(--text-ui-sm); line-height: 1.4; }
+.tset-error { color: var(--color-sys-red-text); }
+.tset-why { color: var(--aq-label-2); }
+.tset-error:empty, .tset-why:empty, .tset-error:not(:empty) + .tset-why { display: none; }
+.tset-failed { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* --- Agents: your saved agents (HarnessV4_Tasks E15 steps 2 and 4) -----------------------------------------------
+   A card per agent, in the frame a team's card has: its name with the tag you type, its good-for line, the model under it.
+   Opened, a card is a short table — Good for, Thinks, May do, Model, Sees, Its answer, Used by — a label column and
+   its words. */
+.aset-tag { margin-left: 8px; font-weight: 500; }
+.aset-model { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.aset-group-does { font-size: var(--text-ui-sm); font-weight: 400; color: var(--aq-label-2); }
+.aset-half { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 -2px; font-size: var(--text-ui-sm); font-weight: 650; color: var(--aq-label); }
+.aset-team-who { color: var(--aq-label-3); }
+.aset-groups .tset-drole { grid-template-columns: 16px 9em minmax(0, 1fr); }
+.aset-groups .tset-drole-word { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.aset-groups .tset-drole-words { display: flex; flex-direction: column; gap: 1px; }
+.tset-drole-facts { color: var(--aq-label-3); }
+.tset-drole-line.is-none { color: var(--aq-label-3); }
+.aset-members { display: flex; flex-direction: column; gap: 8px; }
+.aset-members .tset-erole-does { flex: 1; }
+.aset-lead-line { margin: 0; }
+.aset-fact { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); align-items: start; gap: 10px; font-size: var(--text-ui-sm); line-height: 1.45; }
+.aset-fact-label { font-weight: 600; color: var(--aq-label-2); }
+.aset-fact-value { overflow-wrap: anywhere; color: var(--aq-label); }
+.aset-fact-value .tset-persona { margin: 0; }
+.aset-hint { color: var(--aq-label-3); }
+.aset-fixed { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.aset-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-ui-sm); color: var(--aq-label); }
+/* A card's one tick, "The main agent may ask it" (step 3): on the card's foot, after its model. */
+.aset-ask { gap: 6px; color: var(--aq-label-2); cursor: pointer; }
+.aset-ask:has(> input:checked) { color: var(--aq-label); }
+.aset-ask-does { margin-top: 0; }
+/* Step 4: one of your agents says its kind after its tag; Builder and Reviewer say they are always there where the others
+   carry the tick; a copy of either says whose place it takes; a card whose own model cannot run an agent says why. */
+.aset-kind { margin-left: 8px; font-size: var(--text-ui-xs); font-weight: 400; color: var(--aq-label-3); }
+.aset-always { font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+/* Where a card is listed, and why its own model cannot run an agent. */
+.aset-place, .aset-problem { margin: 0; padding-left: 42px; font-size: var(--text-ui-sm); line-height: 1.45; }
+.aset-place { color: var(--aq-label-2); }
+.aset-problem { color: var(--color-sys-red-text); overflow-wrap: anywhere; }
+.aset-problem:empty { display: none; }
+/* The editor: May do one of three said whole, each on its own line. */
+.aset-levels { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.aset-levels[hidden] { display: none; }
+.aset-levels .aset-check { cursor: pointer; }
+/* What a card runs without asking in its own copy (AG-267): under May do, one command a line. */
+.aset-runs-box { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.aset-runs-box[hidden] { display: none; }
+.aset-sublabel { font-size: var(--text-ui-sm); font-weight: 500; color: var(--aq-label); }
+.ed-sheet .aset-runs { font-family: var(--mono); }
+.aset-run + .aset-run { margin-left: 6px; }
+.ed-sheet .aset-problem { padding-left: 0; }
+.tset-card-foot { flex-wrap: wrap; row-gap: 4px; }
+
+/* --- Coding agents (HarnessV3-ACP AC3-7, AC3-8) -------------------------------------------------------------------
+   Your agents, then the ones to add. A card per agent wears its maker's mark: the registry's one-colour icon, tinted
+   with the theme on a neutral tile, as a third-party app's icon sits in a list; one without a mark, its name's first
+   letter. Under its name, what it does in a chat as quiet chips and its models as a count; then its accounts as
+   inset rows: a dot for where an account stands (green signed in, red nobody, blue signing in, gray not heard from),
+   its name and who it runs as, then a small meter per window of its plan, tinted as the Account instrument tints it.
+   A turned-off agent is a short card, its mark grayed. The agents to add are one inset list, the registry's after a
+   line that says where they come from; each row's one action sits at its end. Sign in is the page's one blue button;
+   the rest are gray capsules and quiet icons; a program that's gone is an orange callout with its fix inline. Beside
+   the sidebars a 960px window leaves the page some 450px: buttons wrap under the name. */
+
+.cag-page { display: flex; flex-direction: column; gap: 28px; margin-top: 8px; container: cag / inline-size; }
+.cag-sec { display: flex; flex-direction: column; gap: 10px; }
+.cag-sec-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.cag-h { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.cag-n { font-size: var(--text-ui-sm); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--aq-label-3); }
+.cag-search { flex: 0 1 240px; min-width: 0; }
+.cag-list { display: flex; flex-direction: column; gap: 14px; }
+.cag-mark {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px;
+  background: linear-gradient(180deg, var(--aq-edge), transparent 70%), var(--aq-bubble); box-shadow: inset 0 0 0 0.5px var(--aq-hairline-strong);
+}
+.cag-mark-letter { font-size: var(--text-ui-lg); font-weight: 650; line-height: 1; color: var(--aq-label-2); }
+.cag-mark-glyph {
+  width: 18px; height: 18px; background: var(--aq-label);
+  -webkit-mask-size: contain; mask-size: contain; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+}
+.cag-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.cag-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cag-head-text { flex: 1 1 220px; min-width: 0; }
+.cag-name { margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.cag-style { margin: 2px 0 0; font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label-2); }
+.cag-head-acts { display: flex; flex: none; align-items: center; gap: 6px; margin-left: auto; }
+.cag-head-acts:empty { display: none; }
+.cag-card.is-off { padding: 10px 14px; background: transparent; }
+.cag-card.is-off .cag-mark { filter: grayscale(1); opacity: 0.55; }
+.cag-card.is-off .cag-name { color: var(--aq-label-2); }
+.cag-facts { display: flex; flex-direction: column; gap: 8px; padding-left: 42px; }
+.cag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cag-chip { padding: 1px 8px; border-radius: 999px; background: var(--aq-control-hover); font-size: var(--text-ui-xs); line-height: 1.5; color: var(--aq-label-2); cursor: help; }
+.cag-models { display: flex; align-items: center; gap: 2px; min-height: 24px; font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.cag-models.is-error { color: var(--color-sys-red-text); }
+.cag-models .cag-icon { width: 24px; height: 24px; }
+.cag-callout {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 8px 10px 8px 12px;
+  border: 1px solid color-mix(in oklab, var(--color-sys-orange) 35%, transparent); border-radius: 10px;
+  background: color-mix(in oklab, var(--color-sys-orange) 10%, transparent); font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label);
+}
+.cag-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.cag-wait { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.cag-rows { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+.cag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; }
+.cag-row + .cag-row { border-top: 1px solid var(--aq-hairline); }
+.cag-dot { flex: none; align-self: flex-start; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--color-sys-gray); }
+.cag-row.is-in .cag-dot { background: var(--color-sys-green); }
+.cag-row.is-out .cag-dot { background: var(--color-sys-red); }
+.cag-row.is-signing .cag-dot { background: var(--color-sys-blue); animation: glass-pulse 1.6s ease-in-out infinite; }
+/* An account turned off by itself: the dot hollow, its name quiet; Turn on stands where its acts were. */
+.cag-row.is-off .cag-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-sys-gray); }
+.cag-row.is-off .cag-label { color: var(--aq-label-2); }
+.cag-main { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.cag-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.cag-label { font-size: var(--text-ui-base); font-weight: 650; }
+.cag-who { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.cag-who.is-out { color: var(--color-sys-red-text); }
+.cag-who.is-signing { color: var(--color-sys-blue-text); }
+.cag-who.is-quiet { color: var(--aq-label-3); }
+.cag-plan { font-weight: 550; color: var(--aq-label); }
+.cag-org::before, .cag-email::before { content: "·"; margin-right: 8px; color: var(--aq-label-3); }
+.cag-email { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--aq-label-2); }
+.cag-email:hover { color: var(--aq-label); }
+.cag-email:focus-visible, .cag-icon:focus-visible, .cag-reg-refresh:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+.cag-wins { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.cag-win { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-ui-xs); font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.cag-win-tag { font-weight: 600; }
+.cag-win-bar { position: relative; width: 56px; height: 5px; overflow: hidden; border-radius: 3px; background: var(--aq-bar); }
+.cag-win-fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--color-sys-cyan); }
+.cag-win.is-warn { color: var(--color-sys-orange-text); }
+.cag-win.is-warn .cag-win-fill { background: var(--color-sys-orange); }
+.cag-win.is-error { color: var(--color-sys-red-text); }
+.cag-win.is-error .cag-win-fill { background: var(--color-sys-red); }
+.cag-age, .cag-quiet { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.cag-failed { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--color-sys-red-text); }
+.cag-held { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label-2); }
+.cag-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.cag-line-text { padding: 1px 6px; border-radius: 4px; background: var(--aq-code-chip); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); }
+.cag-acts { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; min-width: 0; margin-left: auto; }
+.cag-icon {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px;
+  background: none; color: var(--aq-label-2); cursor: pointer;
+}
+.cag-icon:hover:not(:disabled) { background: var(--aq-control-hover); color: var(--aq-label); }
+.cag-icon:disabled { opacity: 0.45; cursor: default; }
+.cag-icon svg { width: 14px; height: 14px; }
+.cag-icon.is-busy svg { animation: spin 1s linear infinite; }
+.cag-empty { margin: 0; padding: 16px; border: 1px dashed var(--aq-hairline); border-radius: 12px; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label-2); }
+.cag-ask { display: flex; flex-direction: column; gap: 6px; }
+.cag-name-input { width: 100%; }
+.cag-error { margin: 0; font-size: var(--text-ui-sm); line-height: 1.4; color: var(--color-sys-red-text); }
+.cag-error:empty { display: none; }
+.cag-adds { display: flex; flex-direction: column; gap: 10px; }
+.cag-group { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.cag-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.cag-item + .cag-item { border-top: 1px solid var(--aq-hairline); }
+.cag-item-main { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.cag-item-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cag-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.cag-item-ver { flex: none; font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.cag-item-about { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.cag-item-about.is-whole { overflow: visible; white-space: normal; line-height: 1.4; }
+.cag-item-meta, .cag-item-hint { margin: 0; overflow-wrap: anywhere; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.cag-item-hint code { padding: 0 4px; border-radius: 4px; background: var(--aq-code-chip); font-family: var(--mono); color: var(--aq-label); }
+.cag-item-act { display: flex; flex: none; align-items: center; gap: 8px; }
+.cag-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+.cag-link-ic { display: inline-flex; }
+.cag-link-ic svg { width: 12px; height: 12px; }
+.cag-reg { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 6px 2px 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.cag-reg > * + *::before { content: "·"; margin-right: 8px; color: var(--aq-label-3); }
+.cag-reg-from { font-weight: 600; color: var(--aq-label); }
+.cag-reg-refresh { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; color: var(--aq-accent); }
+.cag-reg-refresh:hover { text-decoration: underline; }
+.cag-reg-error { flex-basis: 100%; color: var(--color-sys-red-text); }
+.cag-reg > .cag-reg-error::before { content: none; }
+.cag-none { margin: 0; padding: 12px 2px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+/* A narrow window: the tile keeps its name beside it, who an account runs as reads one fact a line, a row's action
+   goes under its words, and the registry's line names it above its age (no line starts with a dot). */
+@container cag (max-width: 460px) {
+  .cag-head-text { flex-basis: 120px; }
+  .cag-reg-from { flex-basis: 100%; }
+  .cag-reg > .cag-reg-from + *::before { content: none; }
+  .cag-who { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .cag-org::before, .cag-email::before { content: none; }
+  .cag-facts { padding-left: 0; }
+  .cag-item { flex-wrap: wrap; align-items: flex-start; }
+  .cag-item-main { flex-basis: calc(100% - 42px); }
+  .cag-item-act { margin-left: 42px; }
+}
+@media (prefers-reduced-motion: reduce) { .cag-row.is-signing .cag-dot { animation: none; } }
+[data-motion="reduced"] .cag-row.is-signing .cag-dot { animation: none; }
+
+/* --- Usage stats ------------------------------------------------------------------------------------------------- */
+
+/* The whole breakdown of a range in the settings' one column (some 720px): a head with the range and the export, then
+   a section a question — its head, a quiet line that says where its numbers come from, its figures. Figures line up
+   (tabular), a table's row never wraps, a bar is one hue for one series and two for the list price's two parts
+   (metered keys, plans), with their legend. While a range is read what is drawn stays, dimmed. */
+.uset { container: uset / inline-size; display: flex; flex-direction: column; gap: 28px; margin-top: 8px; color: var(--aq-label); font-variant-numeric: tabular-nums; }
+.uset-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.uset-kept { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.uset-said:empty { display: none; }
+.uset-said { margin: -16px 0; }
+.uset-main { display: flex; flex-direction: column; gap: 28px; transition: opacity 150ms ease-out; }
+.uset-main[aria-busy="true"] { opacity: 0.6; }
+.uset-empty { margin: 0; padding: 24px 0; font-size: var(--text-ui-base); color: var(--aq-label-2); }
+.uset-sec { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.uset-h-row { display: flex; align-items: center; gap: 12px; min-height: 28px; }
+.uset-h { margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.uset-src, .uset-note, .uset-none, .uset-line { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+.uset-src { margin-top: -6px; color: var(--aq-label-3); }
+.uset-src:empty { display: none; }
+.uset-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.uset-say { margin: 0; font-size: var(--text-ui-base); line-height: 1.45; color: var(--aq-label); }
+
+.set-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.set-tiles.is-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* In a narrow column two a row, and a row's odd one out takes the whole row: under Paid and Covered by plans, their sum. */
+@container uset (max-width: 560px) {
+  .set-tiles, .set-tiles.is-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .set-tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+.set-tile { min-width: 0; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-card); }
+.set-tile-label { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.set-tile-value { margin-top: 2px; font-size: var(--text-ui-xl); font-weight: 650; line-height: 1.25; color: var(--aq-label); }
+.set-tile-line { min-height: 1.4em; margin-top: 2px; font-size: var(--text-ui-xs); line-height: 1.4; color: var(--aq-label-3); }
+.uset-saved { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-card); }
+.uset-saved-label { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.uset-saved-value { font-size: var(--text-ui-lg); font-weight: 650; }
+
+.uset-over { display: flex; align-items: center; gap: 12px; min-height: 18px; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.uset-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.uset-key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.uset-swatch { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--color-usage-chart-1); }
+.uset-swatch.is-plans { background: var(--color-usage-chart-5); }
+.uset-peak { color: var(--aq-label-3); white-space: nowrap; }
+.uset-chart { display: flex; align-items: stretch; gap: 2px; height: 128px; padding-top: 4px; border-bottom: 1px solid var(--aq-hairline); }
+.uset-chart.is-dense { gap: 1px; }
+.uset-chart.is-packed { gap: 0; }
+.uset-chart.is-hours { height: 72px; }
+.uset-bar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column-reverse; gap: 2px; border-radius: 3px 3px 0 0; }
+.uset-bar:hover { background: color-mix(in srgb, var(--aq-label) 8%, transparent); }
+.uset-seg { display: block; flex: none; min-height: 1px; background: var(--color-usage-chart-1); }
+.uset-seg:last-child { border-radius: 3px 3px 0 0; }
+.uset-seg.is-plans { background: var(--color-usage-chart-5); }
+.uset-chart.is-packed .uset-seg:last-child { border-radius: 0; }
+.uset-axis { display: flex; justify-content: space-between; margin-top: -6px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+
+/* A row's figures keep their widths and its name what is left, never less than a name needs: a column narrower than
+   that scrolls the table sideways in its own box. */
+.uset-scroll { overflow-x: auto; }
+.uset-table { --figs: 4; width: 100%; min-width: calc(170px + var(--figs) * 78px); border-collapse: collapse; table-layout: fixed; font-size: var(--text-ui-sm); }
+.uset-table.is-figs-5 { --figs: 5; }
+.uset-table.is-figs-6 { --figs: 6; }
+.uset-table th, .uset-table td { padding: 7px 0 7px 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; border-bottom: 1px solid var(--aq-hairline); }
+.uset-table th { padding-top: 4px; padding-bottom: 4px; font-weight: 500; color: var(--aq-label-3); }
+.uset-table th:first-child, .uset-table td:first-child { padding-left: 0; text-align: left; }
+.uset-table th.uset-num { width: 72px; }
+.uset-table th.uset-wide { width: 104px; }
+.uset-table tbody tr:last-child td { border-bottom: 0; }
+.uset-table td { color: var(--aq-label); }
+.uset-all td { font-weight: 600; }
+.uset-open { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin-left: -4px; padding: 0 4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; font-weight: 550; text-align: left; cursor: pointer; }
+.uset-open:hover { background: var(--color-surface-hover); }
+.uset-open:focus-visible { outline: 2px solid var(--aq-accent); outline-offset: 1px; }
+.uset-open-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.uset-chev { display: inline-flex; flex: none; color: var(--aq-label-3); transition: transform 150ms ease-out; }
+.uset-chev svg { width: 12px; height: 12px; }
+.uset-open[aria-expanded="true"] .uset-chev { transform: rotate(90deg); }
+.uset-what { overflow: hidden; text-overflow: ellipsis; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.uset-name { font-weight: 550; }
+.uset-share { height: 3px; max-width: 240px; margin-top: 6px; overflow: hidden; border-radius: 2px; background: var(--aq-hairline); }
+.uset-share-fill { display: block; min-width: 2px; height: 100%; border-radius: 2px; background: var(--color-usage-chart-1); }
+.uset-plan { display: block; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.uset-under td { color: var(--aq-label-2); }
+.uset-table td.uset-sub { padding-left: 16px; }
+.uset-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; padding: 2px 0 4px 16px; text-align: left; white-space: normal; }
+.uset-details dt { color: var(--aq-label-3); }
+.uset-details dd { margin: 0; overflow-wrap: anywhere; color: var(--aq-label-2); }
+
+.set-break-row { display: flex; align-items: center; gap: 10px; min-height: 26px; font-size: var(--text-ui-sm); }
+.set-break-name { width: 160px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.set-break-track { flex: 1 1 0; min-width: 0; }
+.set-break-bar { display: block; min-width: 2px; height: 6px; border-radius: 3px; background: var(--color-usage-chart-1); }
+.set-break-n { width: 56px; flex: none; text-align: right; color: var(--aq-label-2); }
+@media (prefers-reduced-motion: reduce) { .uset-main, .uset-chev { transition: none; } }
+[data-motion="reduced"] .uset-main, [data-motion="reduced"] .uset-chev { transition: none; }
+
+/* --- Import (HarnessV4_Tasks E17): chats from other coding agents ------------------------------------------- */
+.imp-page { display: flex; flex-direction: column; gap: 28px; margin-top: 8px; }
+.imp-sec { display: flex; flex-direction: column; gap: 10px; }
+.imp-h { margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.imp-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); color: var(--aq-label); }
+.imp-quiet { font-size: var(--text-ui-sm); line-height: 1.4; font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.imp-grow { flex: 1 1 0; }
+/* The Sync card: what a click brings, said before the click. */
+.imp-sync-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.imp-sync-text { flex: 1 1 260px; min-width: 0; }
+.imp-sync-head { font-size: var(--text-ui-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.imp-sync-sub { margin-top: 2px; font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.imp-sync-btn { flex: none; }
+.imp-sync-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 10px; border-top: 1px solid var(--aq-hairline); }
+.imp-reach { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.imp-callout {
+  padding: 8px 12px; border: 1px solid color-mix(in oklab, var(--color-sys-orange) 35%, transparent); border-radius: 10px;
+  background: color-mix(in oklab, var(--color-sys-orange) 10%, transparent); font-size: var(--text-ui-sm); line-height: 1.4;
+}
+/* A run: a bar that means how much has been read, its words, Stop; then how it ended. */
+.imp-run-host:empty { display: none; }
+.imp-run { display: flex; flex-direction: column; gap: 8px; }
+.imp-bar { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--aq-bar); }
+.imp-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--aq-accent); transition: width 300ms ease-out; }
+.imp-run-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.imp-run-words { font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.imp-end { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label); }
+.imp-end.is-quiet { color: var(--aq-label-2); }
+.imp-end.is-bad { color: var(--color-sys-red-text); }
+.imp-end-errors { margin: 4px 0 0; padding-left: 18px; color: var(--aq-label-2); overflow-wrap: anywhere; }
+/* An agent's row: where its chats are, how they stand in Filament, its Sync switch and Browse. */
+.imp-agents { display: flex; flex-direction: column; gap: 10px; }
+.imp-agent { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.imp-agent.is-missing { background: transparent; }
+.imp-agent.is-missing .cag-mark { filter: grayscale(1); opacity: 0.55; }
+.imp-agent-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 280px; min-width: 0; }
+.imp-agent-top { display: flex; align-items: baseline; gap: 8px; }
+.imp-agent-name { font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.imp-found { font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.imp-agent-where, .imp-agent-states { font-size: var(--text-ui-sm); line-height: 1.4; font-variant-numeric: tabular-nums; color: var(--aq-label-2); overflow-wrap: anywhere; }
+.imp-agent-acts { display: flex; flex: none; align-items: center; gap: 12px; margin-left: auto; }
+.imp-agent-sync { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+/* Memory's part: whether it reads what comes in, and what it has not read. */
+.imp-memory { gap: 0; padding: 0 14px; }
+.imp-mem-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 0; }
+.imp-mem-row + .imp-mem-row { border-top: 1px solid var(--aq-hairline); }
+.imp-mem-text { flex: 1 1 280px; min-width: 0; }
+.imp-mem-label { font-size: var(--text-ui-base); color: var(--aq-label); }
+.imp-memory .imp-run-host:not(:empty) { padding: 12px 0; border-top: 1px solid var(--aq-hairline); }
+/* Browse: an agent's chats by project folder. */
+.imp-browse { display: flex; flex-direction: column; gap: 14px; padding: 12px 14px 16px; }
+.imp-browse-head { flex: 1 1 0; min-width: 0; }
+/* The sheet's foot says the files are only read, until a run has something to say there. */
+.imp-sheet-foot .imp-run-host:not(:empty) + .imp-quiet { display: none; }
+.imp-filter { width: 100%; }
+.imp-browse-list { display: flex; flex-direction: column; gap: 16px; }
+.imp-group { display: flex; flex-direction: column; gap: 6px; }
+.imp-group-head { display: flex; align-items: baseline; gap: 8px; min-height: 28px; }
+.imp-folder { flex: none; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.imp-folder-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.imp-chats { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+.imp-chat { display: flex; align-items: center; gap: 8px 12px; padding: 8px 12px; }
+.imp-chat + .imp-chat { border-top: 1px solid var(--aq-hairline); }
+.imp-chat-main { flex: 1 1 0; min-width: 0; }
+.imp-chat-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-base); color: var(--aq-label); }
+.imp-state { flex: none; padding: 1px 8px; border-radius: 999px; background: var(--aq-control-hover); font-size: var(--text-ui-xs); line-height: 1.5; color: var(--aq-label-2); }
+.imp-state.is-new, .imp-state.is-grown { background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); }
+.imp-chat-acts { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 4px; min-width: 64px; }
+.imp-pointer { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.imp-pointer a { color: var(--aq-accent); text-decoration: none; }
+.imp-pointer a:hover { text-decoration: underline; }
+
+/* --- Applies to (HarnessV4_Settings_Plan HS-D6) ------------------------------------------------------------------
+   One control at the top of MCP servers and of every page in New chats (lib/applies-to.js): the segmented All chats |
+   A project ▾, and beside it what the pick means there. */
+
+.set-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 2px 0 14px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.set-scope-note { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+
+/* --- New chats' pages over a place (HarnessV4_Settings_Plan HS-3; settings/place-page.js) --------------------------
+   Grouped rows under small headings, as System Settings draws a pane: each row's label, its words, and a quiet line
+   saying where the value comes from, with Reset where this place holds its own. A wide row's control sits under its
+   words across the row. A list (folders, rules) is an inset list inside the row, a chip per item saying whose it is. */
+
+.nset { display: flex; flex-direction: column; }
+.nset-h { margin: 18px 0 6px; font-size: var(--text-ui-sm); font-weight: 600; color: var(--aq-label-2); }
+.nset-h:first-child { margin-top: 0; }
+/* A part of a page drawn on its own (Experimental's Weigh your messages aside): its heading is first in the part, not the page. */
+.nset-part > .nset-h:first-child { margin-top: 18px; }
+.nset-row.is-wide { flex-direction: column; align-items: stretch; gap: 8px; }
+/* The row's words keep their own height: the shared row's flex basis is a width, which a column would make a height. */
+.nset-row.is-wide > .settings-row-text { flex: none; }
+.nset-wide { width: 100%; min-width: 0; }
+.nset-from { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 3px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.nset-reset { padding: 0; border: 0; background: none; color: var(--aq-accent); font: inherit; cursor: pointer; }
+.nset-reset:hover { text-decoration: underline; }
+/* Your own instruction files: whether each is there, or Claude Code's own offered. */
+.inst-yours { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.inst-yours:empty { display: none; }
+.inst-yours-line.is-missing { color: var(--aq-label-3); }
+.inst-yours-add { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--aq-accent); font: inherit; cursor: pointer; }
+.inst-yours-add:hover { text-decoration: underline; }
+.nset-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.nset-items { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 9px; background: var(--aq-panel-solid); overflow: hidden; }
+.nset-item { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 5px 6px 5px 11px; }
+.nset-item + .nset-item { border-top: 1px solid var(--aq-hairline); }
+.nset-path, .nset-rule { flex: 1; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label); overflow-wrap: anywhere; }
+.nset-path { font-family: var(--mono); font-size: var(--text-ui-xs); }
+.nset-code { padding: 0 4px; border-radius: 4px; background: var(--aq-code-chip); color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); }
+.nset-src {
+  flex: none; display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  font-size: var(--text-ui-xs); font-weight: 500; color: var(--aq-label-2); background: var(--aq-control);
+}
+.nset-src.is-here { color: var(--aq-accent); background: color-mix(in oklab, var(--aq-accent) 14%, transparent); }
+.nset-x {
+  flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--aq-label-2); cursor: pointer;
+}
+.nset-x:hover:not(:disabled) { background: var(--aq-control-hover); color: var(--aq-label); }
+.nset-x:disabled { cursor: default; opacity: 0.45; }
+.nset-x svg { width: 13px; height: 13px; }
+.nset-none { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.nset-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nset-add .nset-in { flex: 1 1 260px; }
+.nset-add-acts { display: flex; gap: 6px; flex: none; }
+.nset-in { width: 100%; min-width: 0; }
+.nset-mono { font-family: var(--mono); font-size: var(--text-ui-sm); }
+.nset-num { width: 84px; }
+.set-area.nset-prose { font-family: inherit; }
+.nset-wide .set-area { display: block; width: 100%; box-sizing: border-box; }
+.nset-wide .set-seg { flex-wrap: wrap; height: auto; }
+.mset-chats { margin-bottom: 18px; }
+
+/* A row of an inset list with a name, chips and a line (Language servers'): its name with chips for whose it is, its line,
+   and its actions. */
+.nset-headrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 6px; }
+.nset-headrow .nset-h { margin: 0; }
+.nset-headrow + .nset-none { margin-bottom: 10px; max-width: 640px; line-height: 1.5; }
+.nset-preset-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.nset-preset-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.nset-preset-title { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.nset-preset-line { font-size: var(--text-ui-sm); color: var(--aq-label-2); overflow-wrap: anywhere; }
+.nset-pick { min-width: 120px; justify-content: space-between; }
+.nset-sheet { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.nset-sheet-names { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 8px; }
+.nset-editor { min-width: 0; }
+@media (max-width: 1000px) { .nset-sheet-names { grid-template-columns: minmax(0, 1fr); } }
+
+/* --- Filament's pages (HarnessV4_Settings_Plan HS-4; lib/config-rows.js) --------------------------------------------
+   New chats' rows, drawn from the schema: a quiet line of the page's own words between them (an orange one warns), a
+   value or a path in a code chip with its Copy, a block to copy with its button in its corner, checkboxes for a list
+   of choices, and the engine's buttons in a row, its line a card of its own over memory's settings. */
+.nset-note { margin: 2px 0 8px; max-width: 720px; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label-2); }
+.nset-note.is-warn { color: var(--color-sys-orange-text); }
+.nset-text { width: 260px; max-width: 100%; }
+.nset-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.nset-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-ui-sm); color: var(--aq-label); cursor: pointer; }
+.nset-check input { margin: 0; accent-color: var(--aq-accent); }
+.nset-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: none; }
+.cset-copy { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Show what's sent (Data and privacy): the telemetry body last sent, as it went. */
+.cset-sent { max-height: 320px; margin: 0 0 12px; padding: 8px 10px; overflow: auto; border-radius: 8px; background: var(--aq-code); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--aq-label); }
+.cset-code {
+  padding: 2px 6px; border-radius: 5px; background: var(--aq-code-chip); color: var(--aq-label);
+  font-family: var(--mono); font-size: var(--text-ui-xs); overflow-wrap: anywhere;
+}
+.cset-plain { font-size: var(--text-ui-sm); color: var(--aq-label); }
+/* Settings › Remote access (the owner's remote Filament of 11-06): the pairing code, read aloud or typed; its time left. */
+.rset-start { display: flex; align-items: center; gap: 10px; }
+.rset-code {
+  padding: 4px 10px; border-radius: 6px; background: var(--aq-code-chip); color: var(--aq-label);
+  font-family: var(--mono); font-size: var(--text-ui-lg); letter-spacing: 0.12em; user-select: all;
+}
+.rset-left { font-family: var(--mono); font-size: var(--text-ui-sm); color: var(--aq-label); font-variant-numeric: tabular-nums; }
+.rset-links { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+/* Machines, a card each (the owner's redesign of 11-09): its name and state - a dot and words - over a line for each
+   way, who acts on which machine as its title, set in under the head; and the browsers and command lines, a line each
+   in one list. A line has its name, quiet lines under it, and a pill for each thing it may do - pressed while on, a
+   check before its name, a lock after it while Full control holds it; its link's state a dot. A way paired no way is
+   quiet; a revoked one is struck through. A long list has a filter over it. A line is never cut: it says what to do;
+   one that warns is said so. */
+.rset-cards { display: flex; flex-direction: column; gap: 10px; }
+.rset-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; min-height: 38px; }
+.rset-card-name { flex: 1 1 auto; min-width: 0; font-weight: 600; color: var(--aq-label); }
+.rset-state { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--aq-label-2); font-size: var(--text-ui-sm); }
+.rset-state.is-bad { color: var(--color-sys-orange-text); }
+.rset-item { min-height: 40px; flex-wrap: wrap; row-gap: 6px; }
+.rset-item .nset-preset-text { flex: 1 1 240px; gap: 1px; }
+.rset-item .rset-line.is-warn { color: var(--color-sys-orange-text); }
+.rset-item.is-away .rset-name { color: var(--aq-label-2); }
+.rset-item.is-off .rset-name { color: var(--aq-label-2); text-decoration: line-through; }
+.rset-way { padding-left: 28px; }
+.rset-way .rset-name { font-weight: 500; }
+.rset-way.is-muted .rset-name, .rset-way.is-muted .rset-line { color: var(--aq-label-3); }
+.rset-end { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
+.rset-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 0; }
+.rset-pill {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border: 1px solid var(--aq-hairline);
+  border-radius: 999px; background: none; color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-xs);
+  font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.rset-pill:hover:not(:disabled) { background: var(--aq-control-hover); color: var(--aq-label); }
+.rset-pill.is-on {
+  padding-left: 6px; border-color: color-mix(in oklab, var(--aq-accent) 40%, transparent); color: var(--aq-accent);
+  background: color-mix(in oklab, var(--aq-accent) 14%, transparent);
+}
+.rset-pill.is-on:hover:not(:disabled) { background: color-mix(in oklab, var(--aq-accent) 22%, transparent); color: var(--aq-accent); }
+.rset-pill:disabled { cursor: default; opacity: 0.45; }
+.rset-pill.is-held:disabled { opacity: 1; }
+/* On there or off, unknown while the machine does not answer. */
+.rset-pill.is-unknown { border-style: dashed; }
+.rset-pill.is-unknown:disabled { opacity: 0.7; }
+.rset-pill:focus-visible { outline: 2px solid var(--aq-accent); outline-offset: 1px; }
+.rset-pill-check { display: inline-grid; place-items: center; }
+.rset-pill-check svg { width: 11px; height: 11px; }
+.rset-pill-lock { display: inline-grid; place-items: center; }
+.rset-pill-lock svg { width: 10px; height: 10px; }
+.rset-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+.rset-dot.is-ok { background: var(--color-sys-green); }
+.rset-dot.is-wait { background: var(--color-sys-orange); }
+.rset-dot.is-bad { background: var(--color-sys-red); }
+.rset-dot.is-off { background: var(--aq-label-3); }
+.rset-filter { width: 260px; max-width: 100%; }
+.rset-none { padding: 9px 11px; }
+.cset-setup { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 6px; }
+.cset-setup > .set-seg { align-self: flex-start; }
+.cset-setup > .nset-note { margin: 0; }
+.cset-block { position: relative; }
+.cset-pre {
+  margin: 0; padding: 10px 40px 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 8px; background: var(--aq-code-chip);
+  color: var(--aq-label); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.55; white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cset-block-copy { position: absolute; top: 6px; right: 6px; }
+.mset-engine { margin-top: 22px; }
+.mset-engine-line { margin-bottom: 12px; }
+
+/* --- MCP servers (HarnessV4_Settings_Plan HS-1) ------------------------------------------------------------------
+   One grouped inset list, as System Settings draws one: a row per server — its test's dot, its name and a chip for
+   where it comes from (blue where this place said so), the same chip where its tools are always loaded, what it runs
+   in mono, its tools or its failure in red — then ↺, the switch and ⋯. The same list stands in a chat's own settings
+   (lib/mcp-list.js). The sheet is a form in two columns, its foot the test's word on the left and Test, Cancel, Save on
+   the right; at 960px its labels go above. */
+
+.mcps { display: flex; flex-direction: column; gap: 10px; }
+.mcps-h { margin: 0; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.mcps-rows { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.mcps-row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 14px; }
+.mcps-row + .mcps-row { border-top: 1px solid var(--aq-hairline); }
+.mcps-row.is-off .mcps-label, .mcps-row.is-off .mcps-sub { opacity: 0.55; }
+.mcps-dot { flex: none; align-self: flex-start; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--color-sys-gray); }
+.mcps-dot.is-ok { background: var(--color-sys-green); }
+.mcps-dot.is-bad { background: var(--color-sys-red); }
+.mcps-dot.is-wait { background: var(--color-sys-blue); animation: glass-pulse 1.6s ease-in-out infinite; }
+.mcps-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mcps-label { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.mcps-name { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.mcps-src, .mcps-load {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+  font-size: var(--text-ui-xs); font-weight: 500; color: var(--aq-label-2); background: var(--aq-control);
+}
+.mcps-src.is-here, .mcps-load.is-here { color: var(--aq-accent); background: color-mix(in oklab, var(--aq-accent) 14%, transparent); }
+.mcps-sub { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label-2); overflow-wrap: anywhere; }
+.mcps-sub.is-bad { color: var(--color-sys-red-text); }
+.mcps-mono { font-family: var(--mono); font-size: var(--text-ui-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mcps-ctl { display: flex; flex: none; align-items: center; gap: 6px; }
+.mcps-more, .mcps-back, .mcps-x {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--aq-label-2); cursor: pointer;
+}
+.mcps-more:hover, .mcps-back:hover, .mcps-x:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.mcps-more svg, .mcps-back svg, .mcps-x svg { width: 14px; height: 14px; }
+.mcps-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mcps-foot, .mcps-quiet, .mcps-empty { margin: 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label-2); max-width: 640px; }
+.mcps-empty { padding: 16px; border: 1px dashed var(--aq-hairline); border-radius: 12px; }
+.mcps-failed, .mcps-unread { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--color-sys-red-text); }
+.mcps-sub.is-warn { color: var(--color-sys-orange-text); }
+/* The address a hand-made client comes back to (HS-D86): shown whole and selectable, to copy into the server's site. */
+.mcps-back-at { white-space: normal; overflow-wrap: anywhere; user-select: all; padding: 6px 8px; border-radius: 6px; background: var(--aq-control); }
+/* A registration turned down (the Designer's of 10-26): what happened, the service's words quieter, its guide, and the
+   client made on the service's site folded under them. */
+.mcps-turned p { margin: 0; }
+.mcps-fold { display: flex; flex-direction: column; gap: 10px; padding: 8px 10px; border: 1px solid var(--aq-hairline); border-radius: 8px; }
+.mcps-fold > summary { cursor: pointer; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mcps-fold[open] > summary { margin-bottom: 4px; }
+.mcps-fold > :not(summary) { margin: 0; }
+
+/* Import from other apps (HS-6): each app's file — its name, what became of it, its path in mono — then its servers in
+   the list's own rows, a tick where one can be added; a row that cannot be added stays dimmed with its reason. */
+.mcps-imp { display: flex; flex-direction: column; gap: 14px; }
+.mcps-imp-app { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mcps-imp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.mcps-imp-app > .mcps-rows { margin-top: 4px; }
+.mcps-imp .mcps-row > .mrow-tick { align-self: flex-start; margin-top: 3px; }
+.mcps-imp-gap { flex: none; width: 15px; }
+
+/* Add a connector (lib/connector-pick.js, the Designer's of 10-26): the search, the count line, then the groups in the
+   list's own rows — a name, the marketplace's line, where it connects or what it runs in the quiet line — with Add on
+   the right; the hand-made form's way quiet in the foot's left. The second step: a line that says what it still needs,
+   its fields, a test's answer, the foot. */
+.cpick-search { width: 100%; }
+.cpick-count { margin: -4px 0 0; }
+/* While plugins are still read: a spinner and how far it has got, under the count (the owner's of 10-31); a search's
+   plugins whose connectors are not known yet say Checking… by the spinner, or that they could not be read. */
+.mcps-hint.cpick-progress { display: flex; align-items: center; gap: 6px; margin: -8px 0 0; color: var(--aq-label-2); }
+.mcps-hint.cpick-progress[hidden] { display: none; }
+.cpick-progress .tk-spin svg, .cpick-checking .tk-spin svg { width: 12px; height: 12px; }
+.cpick-checking { display: inline-flex; align-items: center; gap: 6px; }
+.cpick-row.is-failed .mcps-name { color: var(--aq-label-2); }
+@media (prefers-reduced-motion: reduce) { .cpick-progress .tk-spin svg, .cpick-checking .tk-spin svg { animation: none; } }
+.cpick-list { display: flex; flex-direction: column; gap: 8px; min-height: 120px; max-height: min(56vh, 520px); overflow-y: auto; }
+/* The list scrolls: its groups keep their height, never squeezed to fit it (rows drawn over each other). */
+.cpick-list > * { flex-shrink: 0; }
+.cpick-group { margin: 6px 0 0; font-size: var(--text-ui-xs); font-weight: 600; letter-spacing: 0.02em; color: var(--aq-label-2); }
+.cpick-row .mcps-text { gap: 2px; }
+.cpick-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpick-how { color: var(--aq-label-2); font-size: var(--text-ui-xs); }
+.cpick-state { font-size: var(--text-ui-sm); color: var(--aq-label-2); white-space: nowrap; }
+.cpick-none { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px; border: 1px dashed var(--aq-hairline); border-radius: 12px; }
+.cpick-foot { justify-content: space-between; }
+.cpick-hand { padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-accent); cursor: pointer; }
+.cpick-hand:hover { text-decoration: underline; }
+.cpick-lead { margin: 0; font-size: var(--text-ui-base); line-height: 1.5; color: var(--aq-label); }
+.cpick-status:empty { display: none; }
+
+/* The sheet's glyph: the app-icon tile (aqua.css) in the MCP servers' hue, the one their nav item wears. */
+.mcps-tile { --tile: var(--color-sys-teal); width: 30px; height: 30px; border-radius: 8px; }
+.mcps-tile svg { width: 17px; height: 17px; }
+.mcps-sheet { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mcps-fields { display: flex; flex-direction: column; gap: 9px; }
+.mcps-fields[hidden], .mcps-paste-area[hidden], .mcps-result[hidden] { display: none; }
+.mcps-field { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: start; gap: 12px; }
+.mcps-k { padding-top: 5px; text-align: right; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mcps-v { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
+.mcps-v > .set-seg { align-self: flex-start; }
+.mcps-input { width: 100%; font-family: var(--mono); font-size: var(--text-ui-sm); }
+.mcps-hint { font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.mcps-pairs { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.mcps-pair { display: flex; align-items: center; gap: 6px; width: 100%; }
+.mcps-pair > .mcps-key { flex: 0 0 38%; }
+.mcps-pair > .mcps-input:not(.mcps-key), .mcps-masked { flex: 1; min-width: 0; }
+.mcps-masked {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; padding: 0 2px 0 9px;
+  border: 1px solid var(--aq-hairline); border-radius: 7px; letter-spacing: 1px; color: var(--aq-label-2);
+}
+.mcps-warn { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--color-sys-orange-text); }
+.mcps-warn:empty, .mcps-error:empty { display: none; }
+.mcps-disclose {
+  display: flex; align-items: center; gap: 6px; align-self: flex-start; padding: 2px 0; border: 0; background: none;
+  font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label-2); cursor: pointer;
+}
+.mcps-caret { display: inline-flex; transition: transform 0.15s var(--aq-ease, ease); }
+.mcps-caret svg { width: 12px; height: 12px; }
+.mcps-disclose[aria-expanded="true"] .mcps-caret { transform: rotate(90deg); }
+.mcps-paste-area { display: flex; flex-direction: column; gap: 8px; }
+.mcps-paste { width: 100%; min-height: 110px; height: auto; padding: 8px 10px; resize: vertical; font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; }
+/* What this project uses…: words a person writes, not a program's, so the page's own face. */
+.mcps-note { min-height: 64px; height: auto; padding: 7px 10px; resize: vertical; font-family: inherit; line-height: 1.45; }
+.mcps-paste-acts, .mcps-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mcps-result { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-green) 13%, transparent); }
+.mcps-result.is-bad { background: color-mix(in oklab, var(--color-sys-red) 13%, transparent); }
+.mcps-result-head { display: flex; align-items: center; gap: 7px; font-size: var(--text-ui-sm); font-weight: 600; color: var(--aq-label); }
+.mcps-result-head .mcps-dot { align-self: center; margin-top: 0; }
+.mcps-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.mcps-tool { padding: 1px 6px; border: 1px solid var(--aq-hairline-strong); border-radius: 5px; font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.mcps-tool.is-read { border-style: dashed; }
+.mcps-output { max-height: 160px; margin: 0; padding: 8px 10px; overflow: auto; border-radius: 8px; background: var(--aq-code); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; white-space: pre-wrap; color: var(--aq-label); }
+.mcps-error { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--color-sys-red-text); }
+.mcps-sheet-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.mcps-says { flex: 1 1 220px; min-width: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.mcps-sheet-foot .zc-btn { min-width: 76px; height: 30px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
+@media (max-width: 1000px) {
+  .mcps-field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .mcps-k { padding-top: 0; text-align: left; }
+}
+
+/* --- Providers (HarnessV4_Settings_Plan HS-2) -------------------------------------------------------------------
+   The list is one grouped inset list: a row per provider — its health dot, its name and plan (or its failure in red),
+   today's spend, a chevron — the whole row a button to its page. A provider's page takes the list's place: a back link,
+   a head with its tile, name and last test, then grouped cards whose rows hold a label and its words on the left and
+   the control on the right, as System Settings draws them. The Add sheet numbers its steps down a column. */
+
+.prov-page { container: prov / inline-size; display: flex; flex-direction: column; gap: 12px; }
+.prov-search { width: 100%; max-width: 320px; height: 28px; }
+.prov-list, .prov-card { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.prov-row {
+  display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 9px 12px 9px 14px; border: 0; background: none;
+  font: inherit; text-align: left; color: inherit; cursor: pointer;
+}
+.prov-row + .prov-row { border-top: 1px solid var(--aq-hairline); }
+.prov-row:hover { background: var(--aq-control); }
+.prov-row:focus-visible { outline: 2px solid var(--aq-accent); outline-offset: -2px; }
+.prov-row.is-off .prov-row-name, .prov-row.is-off .prov-row-sub { opacity: 0.55; }
+.prov-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-sys-gray); }
+.prov-dot.is-ok { background: var(--color-sys-green); }
+.prov-dot.is-bad { background: var(--color-sys-red); }
+.prov-dot.is-wait { background: var(--color-sys-blue); animation: glass-pulse 1.6s ease-in-out infinite; }
+.prov-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.prov-row-name { display: flex; align-items: center; gap: 7px; font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.prov-off { height: 17px; padding: 0 6px; border-radius: 999px; background: var(--aq-control); font-size: var(--text-ui-xs); font-weight: 500; line-height: 17px; color: var(--aq-label-2); }
+.prov-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.prov-row-sub.is-bad { color: var(--color-sys-red-text); }
+.prov-fig { flex: none; min-width: 84px; text-align: right; font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.prov-chev { display: inline-flex; color: var(--aq-label-3); }
+.prov-chev svg { width: 14px; height: 14px; }
+.prov-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.prov-acts.is-end { margin-top: 10px; }
+.prov-foot, .prov-quiet, .prov-empty { margin: 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label-2); }
+.prov-foot a, .prov-link { color: var(--aq-accent); text-decoration: none; }
+.prov-foot a:hover, .prov-link:hover { text-decoration: underline; }
+.prov-empty { padding: 16px; border: 1px dashed var(--aq-hairline); border-radius: 12px; }
+.prov-quiet { padding: 4px 2px; }
+
+/* A provider's page. */
+.prov-back { align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-ui-base); color: var(--aq-accent); cursor: pointer; }
+.prov-back:hover { text-decoration: underline; }
+.prov-head { display: flex; align-items: center; gap: 12px; }
+.prov-tile { --tile: var(--color-sys-gray); width: 40px; height: 40px; border-radius: 10px; font-size: var(--text-ui-xl); font-weight: 700; }
+.prov-tile.is-small { width: 24px; height: 24px; border-radius: 6px; font-size: var(--text-ui-caption); }
+.prov-tile.is-glyph { width: 30px; height: 30px; border-radius: 8px; }
+.prov-tile.is-glyph svg { width: 17px; height: 17px; }
+.prov-head-text { flex: 1; min-width: 0; }
+.prov-name { margin: 0; font-size: calc(var(--text-ui-base) * 1.5); font-weight: 700; letter-spacing: -0.02em; color: var(--aq-label); }
+.prov-meta { display: flex; align-items: center; gap: 6px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.prov-meta.is-bad { color: var(--color-sys-red-text); }
+.prov-head-acts { display: flex; flex: none; align-items: center; gap: 10px; }
+.prov-h { margin: 10px 0 -4px; font-size: var(--text-ui-base); font-weight: 650; color: var(--aq-label); }
+.prov-crow { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 9px 14px; }
+.prov-crow-wrap + .prov-crow-wrap, .prov-crow + .prov-crow, .prov-crow + .prov-crow-wrap, .prov-crow-wrap + .prov-crow { border-top: 1px solid var(--aq-hairline); }
+.prov-crow.is-stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.prov-crow-text { flex: 1; min-width: 0; }
+.prov-crow-label { font-size: var(--text-ui-base); font-weight: 550; color: var(--aq-label); }
+.prov-crow-sub { font-size: var(--text-ui-sm); line-height: 1.4; color: var(--aq-label-2); }
+.prov-crow-ctl { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 62%; }
+.prov-in { height: 28px; font-size: var(--text-ui-sm); }
+.prov-crow-ctl .prov-in { width: 220px; }
+.prov-crow-ctl .prov-prefix { width: 120px; font-family: var(--mono); }
+.prov-crow-ctl .prov-url { width: 300px; font-family: var(--mono); }
+.prov-slash { margin-left: -4px; font-family: var(--mono); color: var(--aq-label-3); }
+.prov-masked {
+  display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 9px; border: 1px solid var(--aq-hairline);
+  border-radius: 7px; font-family: var(--mono); font-size: var(--text-ui-sm); letter-spacing: 0.5px; color: var(--aq-label-2);
+}
+.prov-id { font-family: var(--mono); font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.prov-err { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--color-sys-red-text); }
+.prov-err:empty { display: none; }
+.prov-crow-wrap > .prov-err, .prov-crow-wrap > .prov-note { padding: 0 14px 10px; }
+.prov-note, .prov-hint { margin: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.prov-adv { margin-top: 6px; }
+.prov-adv > summary { padding: 4px 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); cursor: pointer; }
+.prov-adv > .prov-card { margin-top: 8px; }
+.prov-pairs { display: flex; flex-direction: column; gap: 6px; }
+.prov-pair { display: flex; align-items: center; gap: 6px; }
+.prov-pair > .prov-hk { flex: 0 0 38%; font-family: var(--mono); }
+.prov-pair > .prov-in:not(.prov-hk), .prov-pair > .prov-masked { flex: 1; min-width: 0; }
+.prov-pair > .prov-masked { justify-content: space-between; letter-spacing: 1px; }
+.prov-pair-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.prov-x { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--aq-label-2); cursor: pointer; }
+.prov-x:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.prov-x svg { width: 14px; height: 14px; }
+.prov-goes { margin: 0; padding-left: 18px; font-size: var(--text-ui-sm); line-height: 1.6; color: var(--aq-label); }
+/* Narrow: a card row's control goes under its words. */
+@container prov (max-width: 560px) {
+  .prov-crow { flex-wrap: wrap; }
+  .prov-crow-text { flex-basis: 100%; }
+  .prov-crow-ctl { max-width: 100%; justify-content: flex-start; }
+  .prov-head { flex-wrap: wrap; }
+}
+
+/* Add a provider: a column of numbered steps, then the foot. */
+.prov-add { display: flex; flex-direction: column; gap: 14px; min-width: 0; counter-reset: prov-step; }
+.prov-steps { display: flex; flex-direction: column; gap: 14px; }
+.prov-steps:empty { display: none; }
+.prov-step { display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 10px; row-gap: 6px; align-items: start; }
+.prov-step::before {
+  counter-increment: prov-step; content: counter(prov-step); grid-column: 1; grid-row: 1 / span 6; width: 20px; height: 20px;
+  display: grid; place-items: center; border-radius: 50%; background: var(--aq-control-hover); font-size: var(--text-ui-2xs); font-weight: 650; color: var(--aq-label-2);
+}
+.prov-step > * { grid-column: 2; }
+.prov-step > .set-seg { justify-self: start; }
+.prov-step-t { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.prov-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.prov-ptile {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--aq-hairline); border-radius: 10px;
+  background: var(--aq-card); font: inherit; font-size: var(--text-ui-sm); font-weight: 550; color: var(--aq-label); text-align: left; cursor: pointer;
+}
+.prov-ptile:hover { background: var(--aq-control); }
+.prov-ptile.on { border-color: var(--aq-accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--aq-accent) 24%, transparent); }
+.prov-ptile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prov-field { display: flex; flex-direction: column; gap: 4px; }
+.prov-field-k { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.prov-step .prov-in { width: 100%; max-width: 420px; }
+.prov-step .prov-prefix { width: 140px; font-family: var(--mono); }
+.prov-prefix-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.prov-result-host:empty { display: none; }
+.prov-result { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-green) 13%, transparent); }
+.prov-result.is-bad { background: color-mix(in oklab, var(--color-sys-red) 13%, transparent); }
+.prov-result.is-wait, .prov-result.is-idle { flex-direction: row; flex-wrap: wrap; align-items: center; background: var(--aq-control); }
+.prov-result-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: var(--text-ui-sm); font-weight: 600; color: var(--aq-label); }
+.prov-result-head .grow { flex: 1; }
+.prov-count { font-weight: 500; color: var(--aq-label-2); }
+.prov-fams { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; max-height: 260px; overflow-y: auto; }
+.prov-fam { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.prov-fam-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--text-ui-xs); }
+.prov-other > summary { font-size: var(--text-ui-sm); color: var(--aq-label-2); cursor: pointer; }
+.prov-other > .prov-fams { margin-top: 6px; }
+.prov-add-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.prov-add-says { flex: 1 1 240px; min-width: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.prov-add-foot .zc-btn { min-width: 76px; height: 30px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
+
+/* A provider's models, or a coding agent's (lib/model-rows.js): one row per model as the picker shows it. Its name and
+   what it can do stack in one column; window, price, 30 days and its buttons sit in their own. */
+.mrows { container: mrows / inline-size; display: flex; flex-direction: column; gap: 8px; }
+.mrows-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mrows-head .grow { flex: 1; }
+.mrows-count { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mrows-filter { width: 180px; height: 26px; }
+/* One table for the list (the owner's of 11-10: names cut to a letter): each row lays its cells on the list's columns
+   (subgrid), so a figure's column is as wide as its widest figure or head, on every row, and the model's name takes
+   the rest — no column of a fixed width that leaves it none. */
+.mrows-list { display: grid; grid-template-columns: 18px minmax(0, 1fr) repeat(3, auto) auto; column-gap: 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.mrows-list.has-use { grid-template-columns: 18px minmax(0, 1fr) repeat(4, auto) auto; }
+.mrows-other .mrows-list { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.mrows-list > * { grid-column: 1 / -1; }
+.mrow { display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 12px 8px 14px; }
+.mrow + .mrow { border-top: 1px solid var(--aq-hairline); }
+.mrow.is-head { padding-top: 6px; padding-bottom: 6px; font-size: var(--text-ui-xs); font-weight: 600; color: var(--aq-label-3); }
+.mrow.is-member { padding-top: 5px; padding-bottom: 5px; background: color-mix(in oklab, var(--aq-control) 50%, transparent); }
+.mrow.is-member .mrow-model { padding-left: 14px; }
+.mrow.is-off .mrow-model, .mrow.is-off .mrow-fig { opacity: 0.5; }
+.mrow-figs { display: contents; }
+.mrow-tick { width: 15px; height: 15px; margin: 0; accent-color: var(--aq-accent); }
+.mrow-model { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mrow-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+.mrow-nm { overflow: hidden; text-overflow: ellipsis; font-size: var(--text-ui-base); font-weight: 550; color: var(--aq-label); }
+.mrow-id { font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--aq-label); }
+.mrow-fold { padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--aq-label-3); cursor: pointer; }
+.mrow-fold:hover { color: var(--aq-accent); }
+.mrow-quiet { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.mrow-typed { display: inline-flex; align-items: center; gap: 2px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.mrow-x { display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--aq-label-3); cursor: pointer; }
+.mrow-x:hover { background: color-mix(in oklab, var(--color-sys-red) 16%, transparent); color: var(--color-sys-red-text); }
+.mrow-x svg { width: 10px; height: 10px; }
+.mrow-caps { display: flex; flex-wrap: wrap; gap: 4px; }
+.mrow-noprice { font-size: var(--text-ui-xs); color: var(--color-sys-orange-text); }
+.mrow-link { padding: 0; border: 0; background: none; font: inherit; color: var(--aq-accent); cursor: pointer; }
+.mrow-link:hover { text-decoration: underline; }
+.mrow-said { font-size: var(--text-ui-xs); color: var(--aq-label-2); overflow-wrap: anywhere; }
+.mrow-said.is-ok { color: var(--color-sys-green-text); }
+.mrow-said.is-bad { color: var(--color-sys-red-text); }
+.mrow-fig { font-size: var(--text-ui-sm); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--aq-label-2); }
+.mrow.is-head .mrow-fig { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.mrow-fig.is-none { color: var(--aq-label-3); }
+/* No spin buttons: they took the room "no limit" needs (the owner's of 11-10). */
+.mrow-limit-in { width: 76px; text-align: right; padding: 2px 6px; font-variant-numeric: tabular-nums; appearance: textfield; }
+.mrow-limit-in::-webkit-inner-spin-button, .mrow-limit-in::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.mrow-said.is-warn { color: var(--color-sys-orange-text); }
+.mrow-acts { display: flex; justify-content: flex-end; gap: 4px; }
+.mrow-acts .zc-btn { height: 24px; padding: 0 8px; }
+.mrows-why { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+.mrows-why.is-bad { color: var(--color-sys-red-text); }
+.mrows-hint, .mrows-quiet { margin: 0; font-size: var(--text-ui-xs); line-height: 1.45; color: var(--aq-label-3); }
+.mrows-other > summary { font-size: var(--text-ui-sm); color: var(--aq-label-2); cursor: pointer; }
+.mrows-other > .mrows-list { margin-top: 6px; }
+.mrows-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mrows-name-in { width: 300px; height: 28px; font-family: var(--mono); font-size: var(--text-ui-sm); }
+.mrows-said { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.mrows-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mrows-acts .mrows-hint { flex: 1 1 260px; }
+/* Under a wide window's width (a Settings page is narrower): a row's window, price, 30 days and agents at once move
+   under its name, each with its word, and the column heads go — each row a grid of its own again, the name with the
+   whole row's width. */
+@container mrows (max-width: 899px) {
+  .mrows-list, .mrows-list.has-use { display: flex; flex-direction: column; }
+  .mrow { grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: 3px 10px; }
+  .mrow > .mrow-tick { margin-top: 2px; }
+  .mrow.is-head { display: none; }
+  .mrow-figs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; grid-column: 2 / -1; grid-row: 2; }
+  .mrow.is-member .mrow-figs { padding-left: 14px; }
+  .mrow-figs .mrow-fig { text-align: left; }
+  .mrow-figs .mrow-fig:empty { display: none; }
+  .mrow-figs .mrow-fig[data-k]::before { content: attr(data-k) " "; color: var(--aq-label-3); }
+  .mrow-acts { grid-column: 3; grid-row: 1; }
+  .mrows-name-in { width: 100%; }
+}
+@media (max-width: 1100px) {
+  .prov-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* A model's backups on its provider's page (lib/model-backups.js, the owner's settings cleanup of 11-09): a row's
+   backups under its name; the backups sheet's numbered rows, each a provider, the name there and its buttons. */
+.mdl-chain { font-size: var(--text-ui-xs); line-height: 1.4; color: var(--aq-label-3); overflow-wrap: anywhere; }
+.mdl-chain.has { color: var(--aq-label-2); }
+.mdl-sheet { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mdl-brows { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.mdl-brows > .prov-quiet { padding: 12px 14px; }
+.mdl-brow { display: grid; grid-template-columns: 20px minmax(0, 0.8fr) minmax(0, 1.2fr) auto; align-items: center; column-gap: 8px; row-gap: 2px; padding: 8px 10px 8px 12px; }
+.mdl-brow + .mdl-brow { border-top: 1px solid var(--aq-hairline); }
+.mdl-bn {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--aq-control-hover);
+  font-size: var(--text-ui-2xs); font-weight: 650; color: var(--aq-label-2);
+}
+.mdl-bpick, .mdl-bname { width: 100%; height: 28px; font-size: var(--text-ui-sm); }
+.mdl-bname { font-family: var(--mono); }
+.mdl-bacts { display: flex; gap: 2px; }
+.mdl-bacts .zc-btn { width: 26px; height: 26px; padding: 0; }
+.mdl-bnote-row { grid-column: 2 / -1; }
+.mdl-bnote { font-size: var(--text-ui-xs); line-height: 1.4; color: var(--aq-label-3); }
+.mdl-bnote:empty, .mdl-bnote-row:has(.mdl-bnote:empty) { display: none; }
+.mdl-sentence { margin: 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--aq-label); overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .mdl-brow { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .mdl-bname { grid-column: 2 / -1; grid-row: 2; }
+  .mdl-bnote-row { grid-row: 3; }
+}
+
+/* What a model can do (ui/lib/model-caps.js): a chip per part, styled by who said it — set here (blue), the provider's
+   own list (green), the Rules page (dotted), Filament's built-ins (gray), the model's ids themselves (dashed). */
+.mrows .cap-chip, .tune-sheet .cap-chip {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--aq-hairline-strong); border-radius: 999px;
+  font-size: var(--text-ui-xs); line-height: 1; white-space: nowrap; color: var(--aq-label-2); background: transparent; cursor: default;
+}
+.mrows .cap-chip.src-operator, .tune-sheet .cap-chip.src-operator { border-color: color-mix(in oklab, var(--aq-accent) 40%, transparent); background: color-mix(in oklab, var(--aq-accent) 14%, transparent); color: var(--aq-accent); font-weight: 600; }
+.mrows .cap-chip.src-operator.inherited, .tune-sheet .cap-chip.src-operator.inherited { border-style: dashed; font-weight: 500; }
+.mrows .cap-chip.src-endpoint, .tune-sheet .cap-chip.src-endpoint { border-color: transparent; background: color-mix(in oklab, var(--color-sys-green) 15%, transparent); color: var(--color-sys-green-text); }
+.mrows .cap-chip.src-rules, .tune-sheet .cap-chip.src-rules { border-style: dotted; color: var(--aq-label); }
+.mrows .cap-chip.src-builtin, .tune-sheet .cap-chip.src-builtin { background: var(--aq-control); }
+.mrows .cap-chip.src-name, .tune-sheet .cap-chip.src-name { border-style: dashed; }
+.mrows .cap-chip.warn, .tune-sheet .cap-chip.warn { border-color: transparent; background: color-mix(in oklab, var(--color-sys-orange) 16%, transparent); color: var(--color-sys-orange-text); font-weight: 600; }
+.mrows .cap-chip.muted, .tune-sheet .cap-chip.muted { opacity: 0.72; text-decoration: line-through; }
+
+/* The Tune sheet (ui/lib/model-tune.js) in a wide dialog: its sections as grouped cards, its foot under them. */
+.zc-dialog:has(.tune-sheet) { max-width: min(calc(100% - 2rem), 820px); }
+.tune-sheet { display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.tune-sheet .tune-intro, .tune-sheet .tune-help { margin: 0; line-height: 1.5; color: var(--aq-label-2); }
+.tune-sheet .tune-help { font-size: var(--text-ui-xs); }
+.tune-sheet .tune-sec { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.tune-sheet .tune-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.tune-sheet .tune-sec-head h3 { margin: 0; font-size: var(--text-ui-base); font-weight: 650; }
+.tune-sheet .tune-val { flex: 1 1 auto; min-width: 0; color: var(--aq-label); }
+.tune-sheet .tune-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.tune-sheet .tune-row > label:not(.check) { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--aq-label-2); }
+.tune-sheet .tune-row > label.grow { flex: 1 1 100%; flex-direction: column; align-items: stretch; gap: 5px; }
+.tune-sheet .tune-unit, .tune-sheet .tune-src { color: var(--aq-label-2); font-size: var(--text-ui-xs); }
+.tune-sheet input[type=number], .tune-sheet input[type=text], .tune-sheet textarea, .tune-sheet select {
+  height: 26px; padding: 2px 8px; border: 1px solid var(--color-input-border); border-radius: 6px; background: var(--color-input);
+  font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label);
+}
+.tune-sheet input[type=number] { width: 120px; font-variant-numeric: tabular-nums; }
+.tune-sheet input[type=text] { width: 200px; }
+.tune-sheet textarea { height: auto; min-height: 52px; font-family: var(--mono); font-size: var(--text-ui-xs); }
+.tune-sheet input.bad, .tune-sheet textarea.bad { border-color: var(--color-sys-red); box-shadow: 0 0 0 1px var(--color-sys-red); }
+.tune-sheet label.check { display: inline-flex; align-items: center; gap: 6px; color: var(--aq-label); }
+.tune-sheet label.check input { width: 15px; height: 15px; accent-color: var(--aq-accent); }
+.tune-sheet .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 8px; background: var(--aq-control); }
+.tune-sheet .seg button { height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: var(--text-ui-xs); font-weight: 500; color: var(--aq-label-2); cursor: pointer; }
+.tune-sheet .seg button.on, .tune-sheet .seg button.active { background: var(--color-tab-active); color: var(--aq-label); }
+.tune-sheet .seg button:disabled { opacity: 0.4; cursor: default; }
+.tune-sheet .muted, .zc-dialog .tune-sheet .muted.small { font-size: var(--text-ui-xs); font-weight: 400; color: var(--aq-label-2); }
+.tune-sheet .small { font-size: var(--text-ui-xs); }
+.tune-sheet .warn { color: var(--color-sys-orange-text); }
+.tune-sheet .err { color: var(--color-sys-red-text); }
+.tune-sheet .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tune-sheet .grow { flex: 1; }
+.tune-sheet .tune-tags { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+/* The sheet is the dialog's body, which scrolls: the foot stays at its foot, over the body's 4px inset (harness.css). */
+.tune-sheet .tune-foot { position: sticky; bottom: -4px; z-index: 1; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 -4px; padding: 12px 0 4px; border-top: 1px solid var(--aq-hairline);
+  /* solid: the sections scrolling under the foot never show through it */
+  background: var(--aq-panel-solid); }
+.tune-sheet .tune-preview { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--aq-accent) 12%, transparent); }
+.tune-sheet .tune-preview.stale { opacity: 0.6; }
+.tune-sheet .tune-preview-body { line-height: 1.5; } .tune-sheet .tune-offer { white-space: nowrap; }
+.tune-sheet .tune-errors { margin: 2px 0 0; padding-left: 18px; }
+.tune-sheet .tune-actions .zc-btn { min-width: 76px; height: 30px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
+
+/* Settings › Archived chats: a chat's title is the way into it. */
+.arch-open { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.arch-open:hover { text-decoration: underline; }
+.arch-row .settings-row-text { min-width: 0; }
+
+/* A coding agent's models fold (Settings › Coding agents). */
+.cag-mrows { margin-top: 4px; }
+.cag-mrows > summary { padding: 4px 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); cursor: pointer; }
+.cag-mrows[open] > summary { margin-bottom: 6px; }
+.cag-mrows-note { margin: 0 0 6px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.cag-mrows-note:empty { display: none; }
+
+/* The code presentation (§3.2): code blocks and the terminal card read the code font size. */
+.a-md pre.code, .a-md .code-block .code { font-size: var(--code-font-size, var(--ui-font-size)); }
+.term-cmd, .term-out { font-size: var(--code-font-size, var(--ui-font-size)); }
+
+
+/* Settings › Space (11-04): the model and its effort in one line under the row's words; the Spaces that chose their own. */
+.spset-model { width: 100%; margin-top: 8px; }
+.spset-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.spset-space { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.spset-name { font-weight: 600; }
+.spset-what { flex: 1 1 auto; min-width: 0; color: var(--aq-label-2); font-size: var(--text-ui-xs); overflow-wrap: anywhere; }

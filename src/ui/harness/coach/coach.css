@@ -1,0 +1,80 @@
+/* The first-run tips (coach/coach.js, the owner's FTUE of 11-09; Product's mock): a bubble beside one control, its
+   arrow pointing at it, a ring that pulses softly around the control, and the page dimmed behind them — ring and shade
+   letting every click through. */
+.coach {
+  position: fixed;
+  z-index: 60;
+  width: 280px;
+  box-sizing: border-box;
+  padding: 12px 14px 10px;
+  border-radius: 10px;
+  background: var(--aq-panel-solid, #1f1f22);
+  color: var(--aq-label, #f2f2f4);
+  border: 1px solid var(--aq-hairline-strong, rgba(255, 255, 255, 0.15));
+  box-shadow: var(--aq-lift, 0 8px 28px rgba(0, 0, 0, 0.45));
+  font-size: 13px;
+  line-height: 1.45;
+  animation: coach-in 160ms ease-out;
+}
+.coach-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: inherit;
+  border-right: 0;
+  border-bottom: 0;
+}
+.coach[data-side="bottom"] .coach-arrow { top: -6px; left: calc(var(--coach-arrow, 50%) - 5px); transform: rotate(45deg); }
+.coach[data-side="top"] .coach-arrow { bottom: -6px; left: calc(var(--coach-arrow, 50%) - 5px); transform: rotate(225deg); }
+.coach[data-side="right"] .coach-arrow { left: -6px; top: calc(var(--coach-arrow, 50%) - 5px); transform: rotate(-45deg); }
+.coach[data-side="left"] .coach-arrow { right: -6px; top: calc(var(--coach-arrow, 50%) - 5px); transform: rotate(135deg); }
+.coach-title { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }
+.coach-text { margin: 0; color: var(--aq-label-2, #b9b9c0); }
+.coach-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--aq-label-3, #8a8a92); }
+.coach-count::after { content: "·"; margin-left: 8px; }
+.coach-skip { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.coach-skip:hover { color: var(--aq-label-2, #b9b9c0); text-decoration: underline; }
+.coach-next {
+  margin-left: auto;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-sys-blue, #0a84ff);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.coach-next:hover { filter: brightness(1.1); }
+.coach-ring {
+  position: fixed;
+  z-index: 59;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--color-sys-blue, #0a84ff);
+  animation: coach-pulse 1.8s ease-out infinite;
+}
+@keyframes coach-pulse {
+  0% { box-shadow: 0 0 0 2px var(--color-sys-blue, #0a84ff), 0 0 0 2px color-mix(in oklab, var(--color-sys-blue, #0a84ff) 45%, transparent); }
+  100% { box-shadow: 0 0 0 2px var(--color-sys-blue, #0a84ff), 0 0 0 12px transparent; }
+}
+/* The page behind a tip (the owner's of 11-09: "dim the background only keep the bubble tip and the target in focus"):
+   a hole the ring's size, the rest of the window under its shadow, as dark as coach.json's `dim`. Over the page and its
+   sheets (55), under the menus, popovers and dialogs the person opens (60). Handed on by Next, its hole glides to the
+   next control (`is-moving`); in a scroll it keeps to the ring. */
+.coach-dim {
+  position: fixed;
+  z-index: 57;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow: 0 0 0 200vmax rgb(0 0 0 / var(--coach-dim, 0.7));
+  animation: coach-dim-in 200ms ease-out;
+}
+.coach-dim.is-moving { transition: top 220ms ease, left 220ms ease, width 220ms ease, height 220ms ease; }
+@keyframes coach-in { from { opacity: 0; transform: translateY(2px); } }
+@keyframes coach-dim-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .coach, .coach-ring, .coach-dim, .coach-dim.is-moving { animation: none; transition: none; }
+}

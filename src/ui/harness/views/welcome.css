@@ -1,0 +1,188 @@
+/* The welcome tour (views/welcome.js): a sheet in the window's middle — its ten steps on a rail at the left, each
+   with what it set under its name, the step's page beside it, scrolling on its own; a narrow window puts the rail on
+   top as a row of numbers. */
+.zc-sheet-overlay:has(> .wel-sheet) { align-items: center; justify-content: center; }
+/* One height for every step, so the rail and the buttons stay where they are; a long step scrolls inside. */
+.zc-sheet.wel-sheet { width: min(1080px, calc(100vw - 32px)); height: min(720px, calc(100dvh - 40px)); max-height: none; margin: 0; border-radius: 18px; animation: zc-dialog-in 140ms ease-out; }
+.wel-sheet > .zc-sheet-body { display: flex; min-height: 0; padding: 0; overflow: hidden; }
+
+/* The head: Filament's mark, the title and its line, where the tour stands. */
+.wel-head { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 4px 0 2px; }
+.wel-mark { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, rgb(10 132 255), rgb(94 92 230)); color: #fff; }
+.wel-mark svg { width: 18px; height: 18px; }
+.wel-head-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wel-title { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--aq-label); }
+.wel-sub { font-size: 12.5px; color: var(--aq-label-2); }
+.wel-head-at { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; font-size: 12px; font-weight: 600; color: var(--aq-label-2); }
+.wel-progress { position: relative; width: 120px; height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--aq-tint) 12%, transparent); overflow: hidden; }
+.wel-progress-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: rgb(10 132 255); transition: width 220ms ease; }
+
+/* The rail and the page. */
+.wel-body { display: grid; grid-template-columns: 236px minmax(0, 1fr); flex: 1; min-height: 0; width: 100%; }
+.wel-rail { display: flex; flex-direction: column; gap: 14px; padding: 14px 10px 16px 14px; border-right: 1px solid var(--aq-hairline); overflow-y: auto; background: color-mix(in srgb, var(--aq-tint) 2%, transparent); }
+.wel-group { display: flex; flex-direction: column; gap: 2px; }
+.wel-group-label { padding: 0 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--aq-label-3, var(--aq-label-2)); }
+.wel-step {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 10px;
+  background: transparent; font: inherit; text-align: left; color: var(--aq-label-2); cursor: pointer;
+}
+.wel-step:hover { background: color-mix(in srgb, var(--aq-tint) 6%, transparent); color: var(--aq-label); }
+.wel-step.on { background: rgb(10 132 255 / 0.1); color: var(--aq-label); }
+.wel-n { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--aq-tint) 10%, transparent); font-size: 11px; font-weight: 700; }
+.wel-step.on .wel-n { background: rgb(10 132 255); color: #fff; }
+.wel-step.done .wel-n { background: color-mix(in srgb, var(--color-sys-green, #30d158) 22%, transparent); color: var(--color-sys-green, #30d158); }
+.wel-step-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding-top: 2px; }
+.wel-label { font-size: 13px; font-weight: 600; }
+.wel-fact { font-size: 11.5px; color: var(--aq-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wel-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 22px 28px 26px; overflow-y: auto; }
+.wel-pagehead { display: flex; flex-direction: column; gap: 6px; }
+.wel-eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgb(10 132 255); }
+.wel-h { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.015em; color: var(--aq-label); }
+.wel-why { margin: 0; max-width: 680px; font-size: 14px; line-height: 1.55; color: var(--aq-label-2); }
+
+/* A page's parts. */
+.wel-page { display: flex; flex-direction: column; gap: 14px; }
+.wel-part { display: flex; flex-direction: column; gap: 8px; }
+.wel-page h4 { margin: 4px 0 0; font-size: 14px; font-weight: 700; color: var(--aq-label); }
+.wel-lead { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--aq-label-2); }
+.wel-muted { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--aq-label-2); }
+.wel-rows { display: flex; flex-direction: column; gap: 6px; }
+.wel-row { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 6px 12px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); }
+.wel-row[hidden] { display: none; }
+.wel-row-name { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 170px; font-weight: 600; color: var(--aq-label); }
+.wel-row-state { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--aq-label-2); }
+/* A row's longer words on a line of their own, under its switch. */
+.wel-row-state > .wel-hint-line { flex-basis: 100%; }
+.wel-signed-in .wel-row-state { color: var(--color-sys-green, #30d158); }
+.wel-warn .wel-row-state { color: var(--color-sys-orange, #ff9f0a); }
+.wel-hint { font-size: 12.5px; color: var(--aq-label-2); }
+.wel-tick { margin: 0; flex: none; }
+.wel-badge { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; background: color-mix(in srgb, var(--aq-tint) 9%, transparent); font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; color: var(--aq-label-2); white-space: nowrap; }
+.wel-more > summary { padding: 4px 2px; font-size: 13px; font-weight: 600; color: var(--aq-label-2); cursor: pointer; }
+.wel-more > summary:hover { color: var(--aq-label); }
+.wel-more[open] > summary { margin-bottom: 6px; }
+.wel-titled { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wel-form { display: flex; flex-direction: column; gap: 8px; }
+.wel-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wel-select, .wel-input { font: inherit; font-size: 13px; height: 32px; padding: 0 10px; border: 1px solid var(--aq-hairline); border-radius: 9px; background: var(--aq-control); color: var(--aq-label); }
+.wel-input { flex: 1; min-width: 0; }
+.wel-link { font-size: 12.5px; color: rgb(10 132 255); }
+.wel-said { margin: 0; min-height: 18px; font-size: 13px; color: var(--aq-label-2); }
+.wel-said.ok { color: var(--color-sys-green, #30d158); }
+.wel-said.bad { color: var(--color-sys-red, #ff453a); }
+/* What can answer, on Connect a model: green once something does. */
+.wel-status { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--aq-hairline); font-size: 13px; line-height: 1.45; color: var(--aq-label-2); }
+.wel-status.ok { border-color: color-mix(in srgb, var(--color-sys-green, #30d158) 45%, transparent); background: color-mix(in srgb, var(--color-sys-green, #30d158) 8%, transparent); color: var(--aq-label); }
+.wel-status.warn { border-color: color-mix(in srgb, var(--color-sys-orange, #ff9f0a) 45%, transparent); background: color-mix(in srgb, var(--color-sys-orange, #ff9f0a) 8%, transparent); color: var(--aq-label); }
+.wel-cta { display: flex; align-items: center; gap: 14px; padding-top: 2px; }
+.wel-cta .wel-lead { flex: 1; min-width: 0; }
+.wel-status .zc-btn { margin-left: 4px; vertical-align: middle; }
+.wel-cta .zc-btn { height: 36px; padding: 0 18px; font-size: 14px; }
+.wel-tile { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; background: color-mix(in srgb, var(--wel-tone, rgb(10 132 255)) 14%, transparent); color: var(--wel-tone, rgb(10 132 255)); }
+.wel-tile svg { width: 17px; height: 17px; }
+
+/* Welcome: three pillars. */
+.wel-pillars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.wel-pillar { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); }
+.wel-pillar p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--aq-label-2); }
+
+/* Default model: the picker and its effort chip. */
+.wel-model-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+/* The composer's picker, a size up here. */
+.wel-model-pick .sp-model .model-chip { height: 34px; max-width: 24rem; border-radius: 9px; font-size: 13px; }
+.wel-model-pick .sp-model .effort-btn { height: 34px; border-radius: 9px; font-size: 13px; }
+/* Its line under the chips, not run on after "via Anthropic" (Product's review of 11-06). */
+.wel-model-pick .sp-model .sp-model-why { flex-basis: 100%; font-size: 12.5px; }
+.wel-model-pick .sp-model { font-size: 12.5px; }
+
+/* How it asks: the four modes as cards, each in its tone; Full access's in red. */
+.wel-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.wel-mode { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); font: inherit; text-align: left; color: var(--aq-label); cursor: pointer; }
+.wel-mode:hover { border-color: color-mix(in srgb, var(--wel-tone) 60%, transparent); }
+.wel-mode.on { border-color: var(--wel-tone); background: color-mix(in srgb, var(--wel-tone) 8%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wel-tone) 16%, transparent); }
+.wel-mode-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wel-mode-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.wel-mode-desc { font-size: 12.5px; line-height: 1.5; color: var(--aq-label-2); }
+
+/* Your chats: the single chats a run could bring, by agent, in one box. With chats in reach the step fills the sheet
+   and the list takes what the rest leaves, scrolling inside itself: the step is never taller than the sheet. */
+.wel-page.wel-picking, .wel-picking > .wel-choose { flex: 1 1 auto; }
+/* Every line above and under the list is a chat's row less in it: the step's parts stand closer than a page's, and
+   what to do shares its line with how far back the list reaches. */
+.wel-page.wel-picking { gap: 10px; }
+.wel-choose > .wel-titled > .wel-lead { flex: 1 1 auto; min-width: 0; }
+.wel-choose > .wel-titled > .imp-reach { flex: none; }
+.wel-pick { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 104px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); overflow: hidden; }
+/* Its head stays put above the list: Select all, how many are chosen, the filter. */
+.wel-pick-head { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 38px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--aq-hairline); }
+.wel-pick-all { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--aq-label); cursor: pointer; }
+.wel-pick-count { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.wel-input.wel-pick-filter { flex: 0 1 230px; height: 28px; margin-left: auto; }
+.wel-pick-list { flex: 1 1 0px; min-height: 0; padding: 4px 0; overflow-y: auto; overscroll-behavior: contain; }
+.wel-pick .wel-tick { width: 15px; height: 15px; accent-color: rgb(10 132 255); }
+/* An agent's head, a little stronger than its chats' rows; one whose chats cannot be read says why beside its name. */
+.wel-pick-agent { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 3px 12px; font-size: 13px; }
+label.wel-pick-agent { cursor: pointer; }
+.wel-pick-agent .cag-mark { width: 22px; height: 22px; border-radius: 6px; }
+.wel-pick-agent .cag-mark-letter { font-size: 12px; }
+.wel-pick-name { flex: none; font-weight: 700; color: var(--aq-label); }
+.wel-pick-agent .wel-said { min-height: 0; font-size: 12.5px; overflow-wrap: anywhere; }
+.wel-pick-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 12px; font-size: 13px; color: var(--aq-label); cursor: pointer; }
+.wel-pick-row:hover, label.wel-pick-agent:hover { background: color-mix(in srgb, var(--aq-tint) 6%, transparent); }
+.wel-pick-row:has(.wel-tick:disabled), .wel-pick-agent:has(.wel-tick:disabled), .wel-pick-all:has(.wel-tick:disabled) { cursor: default; }
+.wel-pick-words { flex: 1 1 auto; min-width: 5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wel-pick-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--aq-label-2); }
+.wel-pick-none { padding: 8px 12px; }
+/* What the list leaves out, at its end: under a hairline, where one looks for a chat that is not there. */
+.wel-pick-foot { margin: 4px 0 0; padding: 8px 12px 6px; border-top: 1px solid var(--aq-hairline); }
+/* No chat in reach, and an agent whose chats cannot be read: its head alone, as tall as it is. */
+.wel-pick.wel-pick-only { flex: none; min-height: 0; }
+.wel-pick-only > .wel-pick-list { flex: none; }
+/* What is chosen, and the press. */
+.wel-bring-head { font-size: 13px; font-weight: 600; color: var(--aq-label); }
+
+/* Agents and teams: the four, two by two, then the ticks. */
+.wel-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.wel-cards > .wel-card { flex: 0 1 calc((100% - 20px) / 3); min-width: 240px; }
+.wel-cards-2 > .wel-card { flex-basis: calc((100% - 10px) / 2); }
+.wel-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); }
+.wel-card-title { font-weight: 700; color: var(--aq-label); }
+.wel-card p { margin: 0; flex: 1; font-size: 12.5px; line-height: 1.5; color: var(--aq-label-2); }
+
+/* Everything else: the areas as chips, the features as a grid of cards. */
+.wel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wel-chip { height: 28px; padding: 0 12px; border: 1px solid var(--aq-hairline); border-radius: 999px; background: var(--aq-control); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--aq-label-2); cursor: pointer; }
+.wel-chip:hover { color: var(--aq-label); }
+.wel-chip.on { border-color: rgb(10 132 255 / 0.9); background: rgb(10 132 255 / 0.1); color: var(--aq-label); }
+.wel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.wel-feat { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: color-mix(in srgb, var(--aq-tint) 2.5%, transparent); }
+.wel-feat-head { display: flex; align-items: center; gap: 10px; }
+.wel-feat p { margin: 0; flex: 1; font-size: 12.5px; line-height: 1.5; color: var(--aq-label-2); }
+.wel-feat-where { align-self: flex-start; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--aq-tint) 6%, transparent); font-size: 11.5px; font-weight: 600; color: var(--aq-label-2); }
+
+/* An example to try: its words as a prompt, a slash command as code. */
+.wel-example { display: inline-flex; align-items: baseline; gap: 8px; align-self: flex-start; max-width: 100%; padding: 6px 10px; border: 1px solid var(--aq-hairline); border-radius: 9px; background: var(--aq-control); font: inherit; font-size: 12.5px; line-height: 1.45; text-align: left; color: var(--aq-label); cursor: pointer; }
+.wel-example::before { content: "Try"; flex: none; font-size: 11px; font-weight: 700; color: rgb(10 132 255); }
+.wel-example:hover { border-color: rgb(10 132 255 / 0.9); background: rgb(10 132 255 / 0.08); }
+.wel-example code { font-size: 12px; white-space: normal; }
+.wel-examples { display: flex; flex-direction: column; gap: 6px; }
+
+/* Ready: what was set, each with its Change. */
+.wel-summary { display: flex; flex-direction: column; gap: 6px; }
+
+.wel-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+/* Skip for now, put away on the last step: a button's own display would keep it. */
+.wel-foot .zc-btn[hidden] { display: none; }
+.wel-gap { flex: 1; }
+
+/* A narrow window: the rail goes on top as a row of numbers, the cards one to a row. */
+@media (max-width: 760px) {
+  .wel-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .wel-rail { flex-direction: row; gap: 4px; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--aq-hairline); overflow-x: auto; overflow-y: hidden; }
+  .wel-group { flex-direction: row; }
+  .wel-group-label, .wel-step-text, .wel-sub, .wel-progress { display: none; }
+  .wel-step { width: auto; padding: 5px; }
+  .wel-main { padding: 16px 16px 20px; }
+  .wel-pillars, .wel-modes { grid-template-columns: minmax(0, 1fr); }
+  .wel-row-name { flex-basis: 120px; }
+}

@@ -1,0 +1,396 @@
+/* The team's look, wherever it shows (HarnessV3-Views VW-D9, V3): the tiles, the Team view, the dock's decisions, the
+   conversation under a team and the Team widget. A team is purple; a role is a glyph on the team's tile; the states keep
+   the graph's colours, and "asks you" is orange. System blue is only ever the primary action. Tokens only: every colour
+   and size comes from the theme's sheets. */
+
+/* ---- the tiles: the team's purple, a role's glyph on it -------------------------------------------------------- */
+.role-tile, .team-tile {
+  --tile-hue: var(--color-sys-purple);
+  display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 7px; color: #fff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--tile-hue) 78%, #fff) 0%, var(--tile-hue) 58%, color-mix(in oklab, var(--tile-hue) 88%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+}
+.role-tile svg, .team-tile svg { display: block; width: 15px; height: 15px; stroke-width: 2.2; }
+/* A sub-agent that is no team's worker wears the system's gray: purple is a team's. */
+.role-tile.is-sub { --tile-hue: var(--color-sys-gray); }
+.role-tile.is-sm, .team-tile.is-sm { width: 20px; height: 20px; border-radius: 6px; }
+.role-tile.is-sm svg, .team-tile.is-sm svg { width: 12px; height: 12px; }
+.role-tile.is-xs, .team-tile.is-xs { width: 16px; height: 16px; border-radius: 5px; }
+.role-tile.is-xs svg, .team-tile.is-xs svg { width: 10px; height: 10px; stroke-width: 2.4; }
+.team-tile.is-xxs { width: 14px; height: 14px; border-radius: 4px; }
+.team-tile.is-xxs svg { width: 9px; height: 9px; stroke-width: 2.6; }
+
+/* The states: the graph's colours (views.css), and orange while one asks you. */
+.tg-badge.is-asking, .tg-dot.is-asking { --st: var(--color-sys-orange); --st-text: var(--color-sys-orange-text); }
+.tg-badge.is-stopped, .tg-dot.is-stopped { --st: var(--color-sys-gray); --st-text: var(--color-sys-gray-text); }
+
+/* ---- the Team view ---------------------------------------------------------------------------------------------- */
+.vw-team { overflow-y: auto; scrollbar-gutter: stable; }
+.tv {
+  --accent: var(--color-sys-purple);
+  --accent-text: var(--color-sys-purple-text);
+  max-width: 1180px; margin: 0 auto; padding: 18px 24px 28px;
+  display: flex; flex-direction: column; gap: 18px; color: var(--inst-label); font-variant-numeric: tabular-nums;
+}
+.tv .inst-btn { flex: none; }
+.tv .inst-btn.is-primary, .dock-asks .inst-btn.is-primary {
+  background: var(--aq-accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.tv .inst-btn.is-primary:hover, .dock-asks .inst-btn.is-primary:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+.tv .inst-link, .dock-asks .inst-link {
+  display: inline-flex; align-items: center; gap: 1px; padding: 2px 0; border: 0; background: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 550; color: var(--color-sys-purple-text);
+}
+.tv .inst-link-chev { display: inline-flex; }
+.tv .inst-link-chev svg { width: 13px; height: 13px; }
+
+/* The head: who answers, and under a team its Decisions, its workers' model and the way back. */
+.tv-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.tv-tile-slot { display: inline-flex; }
+.tv-tile { width: 40px; height: 40px; border-radius: 11px; }
+.tv-tile svg { width: 22px; height: 22px; }
+.mp-tile.tv-tile { font-size: 18px; font-weight: 750; }
+.tv-head-text { flex: 1 1 260px; min-width: 0; }
+.tv-title { font-size: 18px; font-weight: 680; letter-spacing: -0.02em; }
+.tv-sub { margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--inst-label-2); }
+.tv-problem { margin-top: 4px; font-size: 12.5px; line-height: 1.4; color: var(--color-sys-orange-text); }
+.tv-problem:empty { display: none; }
+/* The plans the team draws on (HarnessV3-ACP AC6-7, AC6-D6): each coding agent its lead or its workers run on, once —
+   its fullest window's gauge, its name and its glance, amber or red as the window warns or is spent. */
+.tv-plans { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.tv-plans:empty { display: none; }
+.tv-plan {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px;
+  background: var(--inst-btn); font-size: 12px; line-height: 20px; color: var(--inst-label-2);
+}
+.tv-plan-gauge { display: inline-flex; }
+.tv-plan-gauge svg { display: block; overflow: visible; }
+.tv-plan-gauge .inst-track { stroke: var(--inst-track); }
+.tv-plan-name { font-weight: 600; color: var(--inst-label); }
+.tv-plan-fig { font-variant-numeric: tabular-nums; }
+.tv-plan.is-warn .tv-plan-fig { color: var(--color-sys-orange-text); }
+.tv-plan.is-error .tv-plan-fig { color: var(--color-sys-red-text); }
+/* How the lead follows its workers, under its card: a short head, what its two controls are for, the two in one row. */
+.tv-follow { display: flex; flex-direction: column; gap: 8px; }
+.tv-follow-h { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--inst-label); }
+.tv-follow-note { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--inst-label-2); }
+.tv-follow-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.tv-ctl { display: flex; flex-direction: column; gap: 4px; }
+.tv-ctl-label { padding-left: 4px; font-size: 11px; font-weight: 600; color: var(--inst-label-3); }
+/* Where the list beside the label comes from while it is not its own: "as Agents on the side". */
+.tv-ctl-note { margin-left: 6px; font-weight: 450; }
+.tv-ctl .inst-seg { min-width: 196px; }
+.tv-ctl .model-chip { height: 30px; border-radius: 8px; background: var(--inst-btn); }
+
+.tv-section { display: flex; flex-direction: column; gap: 10px; }
+.tv-h { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 0 2px; font-size: 13px; font-weight: 650; color: var(--inst-label); }
+.tv-h.is-big { font-size: 16px; letter-spacing: -0.015em; }
+.tv-h-fig { font-size: 12px; font-weight: 500; color: var(--inst-label-3); }
+.tv-empty { margin: 0; padding: 14px; border: 1px dashed var(--aq-hairline-strong); border-radius: 14px; font-size: 12.5px; color: var(--inst-label-2); }
+/* A card is as tall as what it holds: a short one beside a running one stays short. */
+.tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 12px; align-items: start; }
+
+/* A card: who, what, live, the figures, the foot. */
+.ag-card {
+  position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px 14px;
+  border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); box-shadow: var(--aq-lift); overflow: hidden;
+  transition: box-shadow 300ms var(--ease-out), border-color 300ms var(--ease-out);
+}
+.ag-card.is-asking { border-color: color-mix(in oklab, var(--color-sys-orange) 50%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-orange) 13%, transparent), var(--aq-lift); }
+.ag-card:is(.is-review, .is-done, .is-stopped, .is-failed) { gap: 8px; box-shadow: none; }
+/* Brought into sight from an order or the dock: a ring a moment. */
+.ag-card.is-flash { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-purple) 40%, transparent), var(--aq-lift); }
+.ag-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ag-who { flex: 1; min-width: 0; }
+.ag-role { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.ag-id { font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--inst-label-3); }
+.ag-task { margin-top: 1px; font-size: 13.5px; font-weight: 620; letter-spacing: -0.01em; color: var(--inst-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-top .tg-badge { margin-left: 0; flex: none; }
+.ag-live { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ag-tool { align-self: flex-start; max-width: 100%; padding: 3px 8px; border-radius: 7px; background: var(--aq-code-chip); font-family: var(--mono); font-size: 11.5px; color: var(--inst-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-tool b { font-weight: 600; color: var(--inst-label); }
+.ag-words, .ag-report { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--inst-label-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ag-try { font-size: 10.5px; font-weight: 550; color: var(--inst-label-3); }
+.ag-try:empty { display: none; }
+.ag-tries > summary { display: flex; align-items: baseline; gap: 6px; list-style: none; cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.ag-tries > summary::-webkit-details-marker { display: none; }
+.ag-tries-chev { display: inline-flex; align-self: center; color: var(--inst-label-3); transition: transform 200ms var(--ease); }
+.ag-tries-chev svg { width: 12px; height: 12px; }
+.ag-tries[open] .ag-tries-chev { transform: rotate(90deg); }
+.ag-tries-list { display: flex; flex-direction: column; gap: 5px; margin-top: 7px; }
+.ag-try-row { display: flex; align-items: baseline; gap: 7px; min-width: 0; font-size: 11.5px; color: var(--inst-label-2); }
+.ag-try-row .tg-dot { flex: none; align-self: center; width: 7px; height: 7px; }
+.ag-try-how { flex: none; font-variant-numeric: tabular-nums; }
+.ag-try-why { flex: 1 1 auto; min-width: 0; color: var(--inst-label-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-try-row .inst-link { flex: none; margin-left: auto; padding: 0; border: 0; background: none; cursor: pointer; font-size: 11.5px; font-weight: 500; color: var(--accent-text); }
+.ag-foot .tg-acts { margin-left: auto; }
+.ag-call { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-3); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ag-call.is-wait { color: var(--inst-label-2); }
+/* Where its lead reads along: its signs for the lead's next look, and the lead's messages it read (TG2-D22). */
+.ag-along { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-2); overflow-wrap: anywhere; }
+/* Its question to its lead (TG2-D49): the lead's to answer, said in the card's own words, never as a question to you. */
+.ag-lead-ask { margin: 0; font-size: 12px; line-height: 1.4; color: var(--inst-label); overflow-wrap: anywhere; }
+.ag-figs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 11.5px; color: var(--inst-label-2); }
+.ag-fig { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ag-fig-ic { display: inline-flex; color: var(--inst-label-3); }
+.ag-fig-ic svg { width: 12px; height: 12px; }
+.mini-ring { display: inline-flex; }
+.mini-ring svg, .ld-ring-svg svg { display: block; }
+:is(.mini-ring, .ld-ring) .inst-track { stroke: var(--inst-track); }
+.ag-model { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; min-width: 0; font-weight: 550; color: var(--inst-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-compact { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 550; color: var(--color-sys-teal-text); }
+.ag-compact-ic { display: inline-flex; }
+.ag-compact-ic svg { width: 13px; height: 13px; }
+.ag-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 9px; border-top: 1px solid var(--inst-sep); }
+.ag-stop { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; border-radius: 12px; background: var(--inst-btn); color: var(--inst-label-2); font-size: 12px; font-weight: 550; cursor: pointer; }
+.ag-stop-ic { display: inline-flex; }
+.ag-stop svg { width: 9px; height: 9px; fill: currentColor; stroke: none; }
+.ag-stop:hover { background: color-mix(in oklab, var(--color-sys-red) 14%, transparent); color: var(--color-sys-red-text); }
+/* Your words to a working worker, past its lead (HarnessV4_Tasks decision 10): Message beside Stop, and the box it opens. */
+.ag-msg { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border: 0; border-radius: 12px; background: var(--inst-btn); color: var(--inst-label-2); font-size: 12px; font-weight: 550; cursor: pointer; }
+.ag-msg:hover, .ag-msg[aria-expanded="true"] { background: var(--inst-btn-hover); color: var(--inst-label); }
+.ag-msg-ic { display: inline-flex; }
+.ag-msg svg { width: 12px; height: 12px; }
+.ag-tell { display: flex; flex-direction: column; gap: 6px; }
+.ag-tell-in { box-sizing: border-box; width: 100%; min-height: 52px; resize: vertical; padding: 7px 9px; border: 1px solid var(--inst-sep); border-radius: 8px; background: var(--aq-card); color: var(--inst-label); font: inherit; font-size: 12.5px; line-height: 1.4; }
+.ag-tell-in:focus { outline: none; border-color: color-mix(in oklab, var(--accent) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent); }
+.ag-tell-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.ag-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; margin: 0; border-radius: 0; background: transparent; }
+.ag-card .tg-node-bar-fill { background: var(--color-sys-blue); }
+/* A task of the graph still to come (HarnessV3-TaskGraph G3-7): a dashed card that shows it on the graph. */
+button.ag-card { width: 100%; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ag-card.is-task { gap: 6px; border-style: dashed; background: transparent; box-shadow: none; }
+.ag-card.is-task:hover { border-color: var(--aq-hairline-strong); background: var(--aq-card); }
+.ag-card.is-task:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 40%, transparent); }
+.ag-card.is-task .ag-task { display: block; }
+.ag-wait { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--inst-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Its question, on its card. */
+.ag-ask { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 11px; background: color-mix(in oklab, var(--color-sys-orange) 11%, transparent); }
+.ag-ask-q { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--inst-label); }
+/* Its words stay on one line; a long command gives way. */
+.ag-ask-q > span { flex: none; white-space: nowrap; }
+.ag-ask-q code { min-width: 0; padding: 1px 5px; border-radius: 5px; background: var(--aq-code-chip); font-family: var(--mono); font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-ask-ic { display: inline-flex; flex: none; color: var(--color-sys-orange-text); }
+.ag-ask-ic svg { width: 15px; height: 15px; }
+.ag-ask-sub { margin-top: -4px; padding-left: 23px; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-2); overflow-wrap: anywhere; }
+/* A command it asks to run, whole (HarnessV3-Views V6-9): wrapped, and scrolled past a dozen lines. */
+.ag-ask-cmd { margin: 0 0 0 23px; padding: 6px 8px; max-height: 210px; overflow: auto; border-radius: 7px; background: var(--aq-code-chip); color: var(--inst-label); font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A worker's answers, on its card and on its line in the dock: Allow is the one blue button. */
+.ask-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.ag-ask .ask-acts .inst-btn { flex: 1 1 auto; height: 26px; padding: 0 9px; font-size: 12px; }
+.ask-why {
+  flex: 1 1 160px; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--color-input-border); border-radius: 7px;
+  background: var(--color-input); color: var(--inst-label); font: inherit; font-size: 12px;
+}
+.ask-why:focus { outline: none; border-color: var(--color-input-border-focused); }
+
+/* The leader's card: the widest, its window as a ring. */
+.ld-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; padding: 14px 16px;
+  border-color: color-mix(in oklab, var(--color-sys-purple) 30%, var(--aq-hairline));
+  background: linear-gradient(180deg, color-mix(in oklab, var(--color-sys-purple) 7%, var(--aq-card)), var(--aq-card));
+}
+.ld-card.is-solo { border-color: var(--aq-hairline); background: var(--aq-card); }
+.ld-card.is-asking { border-color: color-mix(in oklab, var(--color-sys-orange) 50%, transparent); }
+.tg-badge.is-waiting, .tg-badge.is-ready { --st: var(--color-sys-gray); --st-text: var(--color-sys-gray-text); }
+.ld-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ld-tile-slot { display: inline-flex; }
+.ld-tile { width: 32px; height: 32px; border-radius: 9px; }
+.ld-tile svg { width: 18px; height: 18px; }
+.mp-tile.ld-tile { font-size: 15px; font-weight: 750; }
+.ld-card .ag-role { font-size: 12px; }
+.ld-card .ag-task { font-size: 15px; }
+.ld-words { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--inst-label); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* A reply's inline code in a card, a chip as the conversation draws it. */
+:is(.ld-words, .ag-words, .ag-report, .ag-ask-sub) code { padding: 1px 5px; border-radius: 5px; background: var(--aq-code-chip); box-shadow: inset 0 0 0 0.5px var(--aq-hairline); color: var(--aq-label); font-family: var(--mono); font-size: 0.88em; }
+.ld-orders { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ld-orders-label { margin-right: 2px; font-size: 11.5px; font-weight: 600; color: var(--inst-label-3); }
+.ld-order { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; padding: 0 9px 0 5px; border: 0; border-radius: 13px; background: var(--inst-btn); color: var(--inst-label); font-size: 12px; font-weight: 550; cursor: pointer; }
+.ld-order:hover { background: var(--inst-btn-hover); }
+.ld-order-seat { flex: none; font-size: 11px; font-weight: 600; color: var(--inst-label-2); }
+.ld-order-name { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-order .tg-dot { flex: none; width: 7px; height: 7px; }
+.ld-figs { display: flex; align-items: center; gap: 16px; padding-left: 18px; border-left: 1px solid var(--inst-sep); }
+.ld-ring { position: relative; display: grid; place-items: center; }
+.ld-ring-num { position: absolute; font-size: 12px; font-weight: 650; }
+.ld-kv { display: grid; grid-template-columns: auto auto; gap: 3px 12px; margin: 0; font-size: 12px; }
+.ld-kv dt { color: var(--inst-label-3); }
+.ld-kv dd { margin: 0; font-weight: 600; text-align: right; white-space: nowrap; }
+
+/* Earlier: the older ended cards, folded under their title. */
+.tv-earlier { display: flex; flex-direction: column; }
+.tv-earlier > summary { display: flex; align-items: baseline; gap: 6px; padding: 0 2px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 650; }
+.tv-earlier > summary::-webkit-details-marker { display: none; }
+.tv-earlier-chev { display: inline-flex; align-self: center; color: var(--inst-label-3); transition: transform 200ms var(--ease); }
+.tv-earlier-chev svg { width: 13px; height: 13px; }
+.tv-earlier[open] .tv-earlier-chev { transform: rotate(90deg); }
+.tv-earlier[open] > summary { margin-bottom: 10px; }
+
+/* Hand it to a team, or switch: the teams as cards. */
+.hand { gap: 14px; padding-top: 8px; }
+.hand-head { display: flex; align-items: center; gap: 12px; }
+.hand-tile { width: 34px; height: 34px; border-radius: 9px; }
+.hand-tile svg { width: 19px; height: 19px; }
+.hand-line { margin: 2px 0 0; max-width: 72ch; font-size: 12.5px; line-height: 1.45; color: var(--inst-label-2); }
+.hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.hand-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); color: var(--inst-label); }
+.hand-card.is-on { border-color: color-mix(in oklab, var(--color-sys-purple) 45%, var(--aq-hairline)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-purple) 10%, transparent); }
+.hand-card-top { display: flex; align-items: center; gap: 10px; }
+.hand-card-tile { width: 30px; height: 30px; border-radius: 8px; }
+.hand-card-tile svg { width: 17px; height: 17px; }
+.hand-card-name { font-size: 14px; font-weight: 650; letter-spacing: -0.012em; }
+.hand-card-line { flex: 1; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--inst-label-2); }
+.hand-card-who { margin: 0; font-size: 12px; line-height: 1.4; color: var(--inst-label-3); }
+.hand-card-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; }
+.hand-roles { display: inline-flex; gap: 6px; color: var(--inst-label-3); }
+.hand-role { display: inline-flex; }
+.hand-role svg { width: 13px; height: 13px; }
+.hand-card-foot .inst-btn { margin-left: auto; height: 28px; font-size: 12px; }
+.hand-on { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-sys-purple-text); }
+.hand-on svg { width: 13px; height: 13px; }
+/* New team: the last card is the button itself, its outline dashed — it opens the team editor in Settings › Agents (AG-175). */
+.hand-new { font: inherit; text-align: left; cursor: pointer; border-style: dashed; background: transparent; transition: background-color var(--t-fast) var(--ease); }
+.hand-new:hover { background: var(--aq-control-hover); }
+.hand-new:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+
+/* Teams beside this chat (team_v2_plan §5.2 to §5.4): Run a team beside, its fire card, a card per team. */
+.bes { gap: 12px; padding-top: 8px; }
+.bes-head { display: flex; align-items: center; gap: 12px; }
+.bes-line { margin: 2px 0 0; max-width: 72ch; font-size: 12.5px; line-height: 1.45; color: var(--inst-label-2); }
+.bes-run { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.bes-run svg { width: 13px; height: 13px; }
+.bes-fire { display: flex; flex-direction: column; gap: 10px; max-width: 640px; padding: 14px; border: 1px solid color-mix(in oklab, var(--color-sys-purple) 35%, var(--aq-hairline)); border-radius: 14px; background: var(--aq-card); }
+.bes-fire-title { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 650; letter-spacing: -0.012em; color: var(--inst-label); }
+.bes-tile { width: 28px; height: 28px; border-radius: 8px; }
+.bes-tile svg { width: 16px; height: 16px; }
+.bes-field { display: flex; flex-direction: column; gap: 4px; }
+.bes-label { font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.bes-select, .bes-ask { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--aq-hairline); border-radius: 8px; background: var(--aq-control); color: var(--inst-label); }
+.bes-ask { resize: vertical; min-height: 72px; line-height: 1.45; }
+.bes-note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; line-height: 1.4; color: var(--inst-label-3); }
+.bes-note-ic { display: inline-flex; color: var(--inst-label-3); }
+.bes-note-ic svg { width: 13px; height: 13px; }
+.bes-note.is-ro { color: var(--color-sys-teal-text); }
+.bes-note.is-warn, .bes-note.is-warn .bes-note-ic { color: var(--color-sys-orange-text); }
+.bes-note .inst-link { margin-left: 4px; }
+.bes-fell { display: flex; flex-direction: column; gap: 4px; }
+.bes-fell:empty { display: none; }
+.bes-card-on { margin: 0; font-size: 12px; line-height: 1.4; color: var(--inst-label-3); }
+.bes-note.is-ro .bes-note-ic { color: var(--color-sys-teal-text); }
+.bes-switch-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--inst-label); }
+.bes-switch-label { cursor: default; }
+.bes-why { margin: 0; min-height: 0; font-size: 12px; color: var(--inst-label-3); }
+.bes-why:empty { display: none; }
+.bes-fire-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.bes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.bes-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); color: var(--inst-label); }
+.bes-card.is-asking { border-color: color-mix(in oklab, var(--color-sys-orange) 45%, var(--aq-hairline)); }
+.bes-card-top { display: flex; align-items: center; gap: 10px; }
+.bes-card-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.bes-card-name { font-size: 14px; font-weight: 650; letter-spacing: -0.012em; }
+.bes-card-by { font-size: 11.5px; color: var(--inst-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bes-card-ask { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--inst-label-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.bes-card-state { margin: 0; font-size: 12px; color: var(--inst-label-3); }
+.bes-card-result { padding: 8px 10px; border-radius: 10px; background: var(--aq-code); }
+.bes-result-text { font-size: 12px; line-height: 1.45; color: var(--inst-label-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9.5em; overflow: auto; }
+.bes-card-sent { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--color-sys-green-text); }
+.bes-card-sent .bes-note-ic { color: var(--color-sys-green-text); }
+.bes-card-switches { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.bes-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; }
+.bes-card-foot .inst-btn { height: 28px; font-size: 12px; }
+
+/* Narrow, the leader's figures go under its words. */
+@container team (max-width: 620px) {
+  .ld-card { grid-template-columns: minmax(0, 1fr); }
+  .ld-figs { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--inst-sep); }
+  .tv { padding: 14px 16px 24px; }
+}
+
+/* ---- the dock: what waits for you, over the composer ------------------------------------------------------------ */
+.composer-asks { max-width: 896px; margin: 0 auto; }
+/* Capped, so the composer always shows. The padding keeps its blocks' rings inside the scroller. */
+.dock-asks { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; margin: -4px -4px 6px; padding: 4px; overflow-y: auto; }
+.dock-asks.is-empty { display: none; }
+.dock-asks > * { flex: none; transition: box-shadow 240ms var(--ease); }
+.dock-asks > .ix-block { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-orange) 10%, transparent), var(--aq-lift); }
+/* The turn's pointer brought the developer here: a moment's ring, and the card's for as long as the keys hold it. */
+.dock-asks > .ix-block.is-flash { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-orange) 42%, transparent), var(--aq-lift); }
+/* A worker's question: one line, its answers at the end. */
+.ask-strip {
+  display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 7px 8px 7px 10px;
+  border: 1px solid color-mix(in oklab, var(--color-sys-orange) 45%, var(--aq-hairline)); border-radius: 14px;
+  background: var(--aq-card); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-orange) 11%, transparent), var(--aq-lift);
+  font-size: 13px; color: var(--aq-label);
+}
+.ask-who { flex: none; padding: 0; border: 0; background: none; color: var(--aq-label); font: inherit; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.ask-who:hover { color: var(--color-sys-purple-text); }
+.ask-what { flex: none; color: var(--aq-label-2); white-space: nowrap; }
+/* A question's words are what it asks: they wrap, whole, and its choices go under them where the line is too short. */
+.ask-strip:has(> .ask-what.is-question) { flex-wrap: wrap; }
+.ask-what.is-question { flex: 1 1 240px; min-width: 0; white-space: normal; overflow-wrap: anywhere; color: var(--aq-label); }
+.ask-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 7px; border-radius: 6px; background: var(--aq-code-chip); font-family: var(--mono); font-size: 12px; }
+.ask-strip .ask-acts { flex: 1 0 auto; justify-content: flex-end; margin-left: auto; }
+/* Its answers keep their own width at the line's end, so lines one under another line up. */
+.ask-strip .ask-acts .inst-btn { flex: none; min-width: 84px; height: 28px; }
+/* A question's choices take the line's width and wrap, one longer than the line in its own button. */
+.ask-strip .ask-acts.is-question { flex: 1 1 auto; min-width: 0; }
+.ask-acts.is-question .inst-btn { max-width: 100%; height: auto; min-height: 26px; white-space: normal; overflow-wrap: anywhere; }
+.ask-strip .ask-acts.is-question .inst-btn { min-height: 28px; }
+/* A card's question: its words wrap, whole, beside its glyph. */
+.ag-ask-q:has(> .is-question) { align-items: flex-start; }
+.ag-ask-q > span.is-question { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+@container composer (max-width: 640px) { .ask-what:not(.is-question) { display: none; } }
+/* A review rule's ask (HarnessV4_Space_Plan SG-D13): the line, the rule it asks by, the Reviewer's second look. */
+.ask-strip-look { display: flex; flex-direction: column; gap: 6px; }
+.ask-strip-look > .ix-rule { align-self: flex-end; margin: 0 10px 0 0; }
+
+/* ---- the conversation under a team (VW-D8) -------------------------------------------------------------------- */
+.eng-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0; color: var(--aq-label-2); font-size: 12px; font-weight: 550; }
+.eng-divider::before, .eng-divider::after { content: ""; flex: 1; height: 1px; background: color-mix(in oklab, var(--color-sys-purple) 35%, var(--aq-hairline)); }
+.eng-divider.is-agent::before, .eng-divider.is-agent::after { background: var(--aq-hairline-strong); }
+.eng-divider-pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 12px 0 6px; border-radius: 13px; background: color-mix(in oklab, var(--color-sys-purple) 12%, transparent); color: var(--aq-label); }
+.eng-divider.is-agent .eng-divider-pill { padding-left: 12px; background: var(--aq-control); }
+.eng-divider-time { margin-left: 2px; font-weight: 400; color: var(--aq-label-3); }
+.od-rows { display: flex; flex-direction: column; margin: 10px 0 4px; border: 1px solid var(--aq-hairline); border-radius: 12px; overflow: hidden; background: var(--aq-card); }
+.od-row { display: grid; grid-template-columns: 20px 62px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 5px 10px; border: 0; background: none; color: var(--aq-label); font: inherit; text-align: left; cursor: pointer; }
+.od-row + .od-row { border-top: 1px solid var(--inst-sep); }
+.od-row:hover { background: var(--aq-control); }
+.od-role { font-size: 12px; font-weight: 600; color: var(--aq-label-2); }
+.od-name { min-width: 0; font-size: 13px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.od-row .tg-badge { margin-left: 0; }
+.eng-tag { display: inline-flex; align-items: center; gap: 5px; color: var(--color-sys-purple-text); font-weight: 550; }
+/* Where a decision used to wait, the turn points at the dock. */
+.pp-pointer {
+  display: inline-flex; align-items: center; gap: 6px; margin: 4px 0; padding: 4px 10px 4px 8px; border: 0; border-radius: 13px;
+  background: color-mix(in oklab, var(--color-sys-orange) 12%, transparent); color: var(--aq-label); font: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer;
+}
+.pp-pointer.is-proposal { background: color-mix(in oklab, var(--color-sys-purple) 11%, transparent); }
+.pp-pointer-ic { display: inline-flex; color: var(--color-sys-orange-text); }
+.pp-pointer.is-proposal .pp-pointer-ic { color: var(--color-sys-purple-text); }
+.pp-pointer-ic svg { width: 13px; height: 13px; }
+
+/* ---- the Team widget: its pill in the composer's bar ---------------------------------------------------------- */
+.widget-team, .inst-team { --accent: var(--color-sys-purple); --accent-text: var(--color-sys-purple-text); }
+.team-tile.is-pill { width: 18px; height: 18px; border-radius: 5px; }
+.team-tile.is-pill svg { width: 11px; height: 11px; stroke-width: 2.4; }
+.widget-team.widget-pill { gap: 6px; padding: 0 9px 0 5px; border-radius: 8px; color: var(--inst-label); font-weight: 550; }
+.widget-team .inst-pill-face { position: relative; }
+/* A worker waits for you: an orange dot on the team's tile, as the Team tab's. */
+.widget-team.asks .inst-pill-face::after {
+  content: ""; position: absolute; top: -2px; left: 13px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-sys-orange); box-shadow: 0 0 0 1.5px var(--color-background);
+}
+.inst-team .inst-row .inst-seg { min-width: 168px; }
+.inst-team .inst-actions .inst-btn { flex: 1; }
+/* A sheet's glyph beside its title. */
+.zc-dialog-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+/* Less motion: nothing slides or rings. */
+/* Reduced, its bar stands still as a full faint line, not a stub that reads as progress (the Designer's of 10-28). */
+[data-motion="reduced"] .ag-card .tg-node-bar-fill { width: 100%; opacity: 0.45; animation: none; }
+[data-motion="reduced"] .dock-asks > * { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ag-card .tg-node-bar-fill { animation: none; }
+  .ag-card, .dock-asks > * { transition: none; }
+}

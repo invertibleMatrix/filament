@@ -1,0 +1,1190 @@
+/* A project's Space (proposal_ux §4.14, mock-space; phase 8; HarnessV4_Space_Plan S1, "Space, grown" screen 1): a
+   full-frame page over the conversation, as the Library is — its crumb and acts, the project's head, Where you left
+   off, Needs you here, its lanes as cards in a grid, Overlaps, Tasks beside What happened, then its places folded. A
+   lane's edge says its state: orange where its chat asks you, blue while it works, red where it stopped. Tokens only:
+   every colour and size comes from the theme's sheets. */
+
+/* ---- the frame ------------------------------------------------------------------------------------------------- */
+.space { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; background: var(--color-background); }
+.sp-crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.sp-crumb-ic { display: inline-flex; color: var(--aq-label-2); }
+.sp-crumb-ic svg { width: 14px; height: 14px; }
+.sp-crumb-name { color: var(--aq-label-2); }
+.sp-crumb-sep { color: var(--aq-label-3); }
+.sp-crumb-page { border: 0; padding: 0; background: none; font: inherit; color: var(--aq-label); font-weight: 600; cursor: default; }
+/* An app's or Routines' page (the owner's idea of 10-29): "r › Space › Deploys", its Space the way back to the Board;
+   ⌄ the Space's other pages. */
+.sp-crumb-page.is-link { color: var(--aq-label-2); font-weight: 400; cursor: pointer; }
+.sp-crumb-page.is-link:hover { color: var(--aq-label); text-decoration: underline; text-underline-offset: 3px; }
+.sp-crumb-app { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); font-weight: 600; }
+.sp-crumb-go { flex: none; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; }
+.sp-crumb-go svg { width: 14px; height: 14px; }
+.sp-crumb-sep[hidden], .sp-crumb-app[hidden], .sp-crumb-go[hidden], .sp-head[hidden] { display: none; }
+.sp-top-acts { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.sp-top-acts > button, .sp-new-chat, .sp-new-app { display: inline-flex; align-items: center; gap: 5px; }
+.sp-btn-ic { display: inline-flex; }
+.sp-btn-ic svg { width: 13px; height: 13px; }
+.sp-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 24px 32px; }
+.sp-quiet { font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+
+/* The head: the project, under its name one line — its folder and lanes — and what its agents run on; Add to this
+   Space… and New chat here… at its right. */
+.sp-head { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; }
+
+/* A project with no Space (10-29): the card that makes one; its lanes and Places stay. Its Space's own parts are drawn
+   from an empty one, the first thing added there making it (by need, 11-12) — but while its deleted Space waits for
+   Bring back, when none of them is drawn: a Space made then would stand in its way. The chats that wait for you are
+   Now's, and show either way. */
+.sp-none { display: flex; align-items: center; gap: 14px; padding: 16px 18px; margin-top: 4px; border: 1px dashed var(--aq-hairline-strong); border-radius: var(--r); background: var(--aq-card); }
+.sp-none[hidden] { display: none; }
+.sp-none-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sp-none-title { margin: 0; font-size: var(--text-ui-base); font-weight: 700; color: var(--aq-label); }
+.sp-none-words .sp-quiet { margin: 0; line-height: 1.45; }
+.sp-none-acts { display: inline-flex; gap: 8px; flex: none; }
+.sp-none-acts > button { display: inline-flex; align-items: center; gap: 5px; }
+.sp-none-acts > button[hidden] { display: none; }
+.sp-is-none .sp-left, .sp-is-none .srt, .sp-is-none .swt { display: none !important; }
+.sp-is-deleted .sp-work, .sp-is-deleted .sdb-view, .sp-is-deleted .sp-add, .sp-is-deleted .sp-by-itself { display: none !important; }
+.sp-is-unknown .sp-add, .sp-is-unknown .sp-new-chat, .sp-is-unknown .sp-settings { display: none !important; }
+.sp-is-unknown .sp-line { white-space: normal; }
+
+/* A section's head: its name, how many, and its quiet words or its buttons at the right (the mock's). */
+.sp-sec { margin-top: 18px; }
+.sp-sec[hidden] { display: none; }
+/* A head too narrow for its row moves a whole button to the next line, never a word of one. */
+.sp-sec-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 28px; margin-bottom: 8px; }
+.sp-sec-h > * { white-space: nowrap; }
+.sp-sec-name { margin: 0; font-size: var(--text-ui-base); font-weight: 700; color: var(--aq-label); }
+.sp-sec-count { font-size: var(--text-ui-sm); color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.sp-sec-h .ghost.sm { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Where you left off: Filament's own facts since your last look, a blue edge at its left (the mock's 2). */
+/* At the top of What happened since the reshape of 10-29: where the column is narrow, its buttons go under its words. */
+.sp-left {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; padding: 14px 16px; border: 1px solid var(--aq-hairline);
+  border-left: 3px solid var(--color-sys-blue); border-radius: 12px; background: var(--aq-card);
+}
+.sp-left[hidden] { display: none; }
+.sp-left-ic { display: inline-flex; flex: none; padding-top: 1px; color: var(--aq-label-2); }
+.sp-left-ic svg { width: 18px; height: 18px; }
+.sp-left-words { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sp-left-head b { font-size: var(--text-ui-base); color: var(--aq-label); }
+.sp-left-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.sp-left-lines li { display: flex; gap: 10px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.sp-left-at { flex: none; width: 40px; color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.sp-left-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-left-more, .sp-left-ask, .sp-left-stood { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sp-left-ask { color: var(--color-sys-orange-text); }
+.sp-left-ask b, .sp-left-stood b { font-weight: 600; }
+.sp-left-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: none; max-width: 100%; }
+
+/* Needs you here: Now's own rows for this project's chats; one quiet line when none (the mock's 3). */
+.sp-needs { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.sp-needs[hidden], .sp-needs-none[hidden] { display: none; }
+.sp-needs-none { margin-left: 4px; }
+.sp-need {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 10px 14px; border: 0;
+  border-top: 1px solid var(--aq-hairline); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sp-need:first-child { border-top: 0; }
+.sp-need:hover { background: var(--aq-control); }
+.sp-need:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.sp-need-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-orange); }
+.sp-need.is-error .sp-need-dot { background: var(--color-sys-red); }
+.sp-need-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sp-need-t { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-need-f { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-3); white-space: nowrap; overflow: hidden; }
+.sp-need-go { flex: none; font-size: var(--text-ui-sm); font-weight: 600; color: var(--color-sys-blue-text); }
+/* The rows Filament keeps (S5a): the chats' row shape, its words over two lines at most, its dashboard's chip, why it is
+   here, its buttons at the right (the mock's screen 2); a stopped source's dot red. */
+.sp-need.is-out { align-items: flex-start; cursor: default; }
+.sp-need.is-out:hover { background: none; }
+.sp-need.is-out .sp-need-dot { margin-top: 6px; }
+.sp-need.is-source .sp-need-dot, .sp-need.is-check .sp-need-dot, .sp-need.is-routine .sp-need-dot { background: var(--color-sys-red); }
+.sp-need.is-out .sp-need-t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.sp-need-src.is-gone { cursor: default; color: var(--aq-label-3); }
+.sp-need-why { font-size: var(--text-ui-xs); color: var(--aq-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* What an agent found reproducing a report (S7, the mock's screen 14): its lines — the failing test and how to run it,
+   or what it tried and its questions — over two lines each at most; the dot and its left edge green where it
+   reproduced it (a result to act on, not a failure), orange where it could not (its questions wait for you). */
+.sp-need-line {
+  font-size: var(--text-ui-sm); color: var(--aq-label-2); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sp-need.is-reproduced .sp-need-dot { background: var(--color-sys-green); }
+.sp-need.is-not-reproduced .sp-need-dot { background: var(--color-sys-orange); }
+.sp-need.is-reproduced { box-shadow: inset 3px 0 0 var(--color-sys-green); }
+.sp-need.is-not-reproduced { box-shadow: inset 3px 0 0 var(--color-sys-orange); }
+/* What a watcher that tells only you heard (the plan of 11-11, its w5): news, no failure — the dot blue. */
+.sp-need.is-told .sp-need-dot { background: var(--color-sys-blue); }
+/* A watcher's held guidance: its words whole, as the chat would read them. */
+.sp-need-guide { font-size: var(--text-ui-xs); color: var(--aq-label-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12em; overflow-y: auto; }
+/* A chat's ask for your press (E42 SA-D7): the chats' asks' orange dot; its chat and reason under its title. */
+.sp-need.is-ask .sp-need-dot { background: var(--color-sys-orange); }
+.sp-need-acts { flex: none; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 6px; max-width: 50%; }
+.sp-need-later { display: inline-flex; align-items: center; gap: 2px; }
+.sp-need-chev { display: inline-flex; }
+.sp-need-chev svg { width: 12px; height: 12px; }
+/* Under the rows: Done today and later, each list behind its Show, each row's Bring back. */
+.sp-needs-foot { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.sp-needs-foot[hidden] { display: none; }
+.sp-needs-parts { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 4px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.sp-needs-part { white-space: nowrap; }
+.sp-needs-part .sp-needs-show { padding: 0; color: var(--color-sys-blue-text); }
+.sp-needs-past { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+.sp-past { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 12px; border-top: 1px solid var(--aq-hairline); font-size: var(--text-ui-sm); }
+.sp-past:first-child { border-top: 0; }
+.sp-past-t { flex: 1; min-width: 0; color: var(--aq-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-past-when { flex: none; font-size: var(--text-ui-xs); white-space: nowrap; }
+/* A row an agent marked done (E42 SA-D5): its title, and under it one quiet line — the chat, which opens it, and what it did. */
+.sp-past-tl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sp-past-tl .sp-past-t { flex: none; }
+.sp-past-line { font-size: var(--text-ui-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-past-by { font-size: inherit; }
+.sp-past-back { flex: none; }
+
+/* Overlaps: a file two lanes both change, as git says (the mock's 5). */
+.sp-overlap {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--color-sys-orange) 40%, var(--aq-hairline));
+  background: color-mix(in oklab, var(--color-sys-orange) 12%, var(--aq-card)); font-size: var(--text-ui-sm); color: var(--aq-label);
+}
+.sp-overlap[hidden] { display: none; }
+.sp-overlap-ic { display: inline-flex; color: var(--color-sys-orange-text); }
+.sp-overlap-ic svg { width: 15px; height: 15px; }
+.sp-overlap-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-compare { flex: none; }
+.zc-sheet.sp-compare-sheet { width: min(620px, calc(100vw - 20px)); }
+.sp-sheet-title { flex: 1; min-width: 0; font-size: var(--text-ui-base); color: var(--aq-label); }
+/* A Space's tile, quiet as the mock draws it: its hue's tint, its glyph in the hue — blue for a Space, orange for Home. */
+.sp-tile.team-tile { --tile-hue: var(--color-sys-blue); width: 40px; height: 40px; border-radius: 10px; background: color-mix(in oklab, var(--tile-hue) 18%, transparent); color: var(--tile-hue); box-shadow: none; }
+.sp-tile svg { width: 22px; height: 22px; }
+.sp-head-words { flex: 1; min-width: 0; }
+.sp-title { margin: 0; font-size: var(--text-ui-xl); font-weight: 700; letter-spacing: -0.02em; color: var(--aq-label); }
+/* The Space of yours that shows this project, beside its name: a chip, not part of the title's words. */
+.sp-title .sp-in-chip { margin-left: 10px; vertical-align: 3px; font-size: var(--text-ui-xs); font-weight: 600; letter-spacing: 0; }
+/* One line that never wraps, cut where the head is too narrow for it: its tip says it whole. */
+.sp-line { margin: 2px 0 0; font-size: var(--text-ui-base); color: var(--aq-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-new-chat, .sp-new-app { flex: none; }
+/* New app… is the head's own on a Space of your own alone; a button is a flex box, which beats hidden. */
+.sp-new-app[hidden] { display: none; }
+
+/* ---- who works here beside what runs by itself ------------------------------------------------------------------- */
+/* A pair after Needs you here: the lanes — Who works here where the folder draws none — at the left, taking the room
+   there is; Runs by itself at the right, two fifths of the pair, 340px at the least and 440px at the most: at 340px a
+   watcher's line ("a question of any chat waiting 10 min for you") is cut, and a wide page has the room. Narrower than
+   860px — the left bar changes it, so by the pair's own width —, the second goes under the first. With nothing at its
+   left, what runs by itself takes the row. */
+.sp-pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 24px; container: sp-pair / inline-size; }
+.sp-pair-main { flex: 1 1 0; min-width: 0; }
+.sp-by-itself { flex: 0 1 clamp(340px, 40%, 440px); min-width: 0; }
+.sp-by-itself[hidden] { display: none; }
+.sp-pair.is-single .sp-by-itself { flex: 1 1 100%; }
+@container sp-pair (max-width: 860px) { .sp-pair-main, .sp-by-itself { flex: 1 1 100%; } }
+
+/* Runs by itself: one card of rows — a routine, a watcher, an app. A row's face is a button, the whole of it: its
+   kind's glyph, its title and one quiet line, each one line and cut, and at the right a dot and a word for how it
+   stands. Switch on… and Keep… stand beside the face, buttons of their own. */
+.sbi-list { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.sbi-list:empty { display: none; }
+.sbi-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 10px; border-top: 1px solid var(--aq-hairline); }
+.sbi-row:first-child { border-top: 0; }
+.sbi-row:hover { background: var(--aq-control); }
+.sbi-face { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; padding: 9px 0 9px 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sbi-face:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.sbi-ic { display: inline-flex; flex: none; color: var(--aq-label-3); }
+.sbi-ic svg { width: 15px; height: 15px; }
+.sbi-words { display: flex; flex-direction: column; gap: 1px; flex: 1 1 0; min-width: 0; }
+.sbi-title { font-size: var(--text-ui-base); color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbi-line { font-size: var(--text-ui-sm); color: var(--aq-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbi-stands { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: var(--text-ui-xs); color: var(--aq-label-2); white-space: nowrap; }
+.sbi-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-gray); }
+.sbi-row.is-bad .sbi-dot { background: var(--color-sys-red); }
+.sbi-row.is-bad .sbi-word { color: var(--color-sys-red-text); }
+.sbi-row.is-proposed .sbi-dot, .sbi-row.is-draft .sbi-dot { background: none; box-shadow: inset 0 0 0 1.5px var(--color-sys-orange); }
+.sbi-row.is-on .sbi-dot, .sbi-row.is-live .sbi-dot { background: var(--color-sys-green); }
+.sbi-row.is-works .sbi-dot { background: var(--color-sys-blue); }
+.sbi-row.is-asks .sbi-dot { background: var(--color-sys-orange); }
+.sbi-row.is-paused .sbi-title, .sbi-row.is-paused .sbi-word { color: var(--aq-label-3); }
+.sbi-go { flex: none; }
+.sbi-more { display: block; margin: 6px 2px 0; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label-3); cursor: pointer; }
+.sbi-more:hover { color: var(--aq-label); text-decoration: underline; text-underline-offset: 2px; }
+.sbi-more[hidden], .sbi-none[hidden] { display: none; }
+.sbi-none { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 14px; border: 1px dashed var(--aq-hairline-strong); border-radius: 10px; }
+.sbi-make { flex: none; }
+
+/* ---- the lanes ------------------------------------------------------------------------------------------------- */
+/* Wide lanes side by side where the column has the room for two, else one under the other; New lane… is a button of
+   their section's head. */
+.sp-lanes { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; }
+.sp-lane {
+  position: relative; display: flex; flex-direction: column; flex: 1 1 380px; min-width: 0; border: 1px solid var(--aq-hairline);
+  border-radius: 12px; background: var(--aq-card);
+}
+.sp-lane:hover { border-color: var(--aq-hairline-strong); }
+.sp-lane.is-needs { border-color: color-mix(in oklab, var(--color-sys-orange) 60%, var(--aq-hairline)); }
+.sp-lane.is-works { border-color: color-mix(in oklab, var(--color-sys-blue) 45%, var(--aq-hairline)); }
+.sp-lane.is-error { border-color: color-mix(in oklab, var(--color-sys-red) 55%, var(--aq-hairline)); }
+.sp-lane-face {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; padding: 11px 14px; border: 0;
+  border-radius: inherit; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sp-lane-face[disabled] { cursor: default; }
+.sp-lane-face:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.sp-lane-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sp-branch {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 30%; padding: 1px 7px; border-radius: 6px;
+  background: color-mix(in oklab, var(--color-sys-purple) 18%, transparent); color: var(--color-sys-purple-text);
+  font-size: var(--text-ui-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-branch.is-main { background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); }
+.sp-branch-ic { display: inline-flex; }
+.sp-branch-ic svg { width: 12px; height: 12px; }
+/* The chat's name keeps its room (up to near half the line); what it does now takes the rest and is the one cut. */
+.sp-lane-name {
+  flex: none; max-width: 45%; font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-lane-who { flex: none; font-size: var(--text-ui-xs); color: var(--aq-label-3); white-space: nowrap; }
+.sp-lane-state {
+  display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 1 1 0; min-width: 0;
+  font-size: var(--text-ui-xs); color: var(--aq-label-3);
+}
+.sp-state-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-lane-state.is-works { color: var(--color-sys-blue-text); }
+.sp-lane-state.is-needs { color: var(--color-sys-orange-text); }
+.sp-lane-state.is-error { color: var(--color-sys-red-text); }
+.sp-spin { display: inline-flex; }
+.sp-spin svg { width: 12px; height: 12px; animation: spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .sp-spin svg { animation: none; } }
+.sp-lane-facts { font-size: var(--text-ui-sm); color: var(--aq-label); }
+.sp-lane-line {
+  font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sp-lane-line.is-none { color: var(--aq-label-3); }
+/* A kept dashboard's lines on a lane (S4c): its words, a dot red or green as its row says, its dashboard's chip; a red
+   one's Fix it…; what an earlier read said, greyed, where the last failed. */
+.sp-fed-lines { display: flex; flex-direction: column; gap: 4px; padding: 0 14px 10px; }
+.sp-fed { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sp-fed-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-gray); }
+.sp-fed.is-bad .sp-fed-dot { background: var(--color-sys-red); }
+.sp-fed.is-good .sp-fed-dot { background: var(--color-sys-green); }
+.sp-fed.is-bad .sp-fed-w { color: var(--aq-label); }
+.sp-fed.is-stale { opacity: 0.6; }
+.sp-fed-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-fed-src, .sb-src {
+  display: inline-flex; align-items: center; gap: 3px; flex: none; max-width: 40%; padding: 1px 6px; border: 0; border-radius: 6px;
+  background: var(--aq-control); color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-fed-src { cursor: pointer; }
+.sp-fed-src:hover { background: var(--aq-control-hover); color: var(--aq-label); }
+.sp-fed-src-ic, .sb-src-ic { display: inline-flex; flex: none; color: var(--color-sys-indigo-text); }
+.sp-fed-src-ic svg, .sb-src-ic svg { width: 11px; height: 11px; }
+.sp-fed-fix { flex: none; padding: 0; border: 0; background: none; color: var(--color-sys-blue-text); font: inherit; font-weight: 600; cursor: pointer; }
+.sp-fed-fix:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sp-fed-more, .sp-fed-count { font-size: var(--text-ui-xs); }
+.sp-lane-more { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 0 14px 10px; }
+.sp-lane-other {
+  padding: 0; border: 0; background: none; color: var(--color-sys-blue-text); font: inherit; font-size: var(--text-ui-sm);
+  cursor: pointer; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-lane-other:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sp-reading { margin: 0; }
+
+/* The lanes' head: how many and which need you or work, New lane…, and Hide, which folds their cards to that line —
+   Show opens them, its chevron turned (the reshape of 10-29). */
+.sp-lanes-sec > .sp-sec-h { margin-bottom: 0; }
+.sp-lanes-sec.is-open > .sp-sec-h { margin-bottom: 8px; }
+.sp-lanes-body[hidden] { display: none; }
+.sp-new-lane { display: inline-flex; align-items: center; gap: 5px; }
+.sp-lanes-chev { display: inline-flex; color: var(--aq-label-3); transition: transform 0.15s; }
+.sp-lanes-chev svg { width: 14px; height: 14px; }
+.sp-lanes-sec.is-open .sp-lanes-chev { transform: rotate(180deg); }
+
+/* ---- the places (V5: a project's, with Remove and Put back), in a sheet from ⋯ since the reshape of 10-29 -------- */
+.zc-sheet.sp-places-sheet { width: min(640px, calc(100vw - 20px)); }
+.sp-places-sheet .sp-places { padding: 4px 18px 18px; }
+.sp-places-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-panel-h { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 8px; }
+.sp-again { margin-left: auto; }
+.pl-none { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.pl-block { border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+.pl-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; border-top: 1px solid var(--aq-hairline); }
+.pl-row:first-child { border-top: 0; }
+.pl-ic { display: inline-flex; flex: none; color: var(--aq-label-3); }
+.pl-ic svg { width: 13px; height: 13px; }
+.pl-t { flex: 1; min-width: 0; }
+.pl-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pl-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; color: var(--aq-label); }
+.pl-br { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.pl-l2 {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--text-ui-sm); color: var(--aq-label-3); font-variant-numeric: tabular-nums;
+}
+.pl-end { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
+.pl-open, .pl-more { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border-radius: 6px; }
+.pl-open svg, .pl-more svg { width: 14px; height: 14px; }
+.pl-busy { font-size: var(--text-ui-sm); color: var(--aq-label-3); white-space: nowrap; }
+.pl-row.is-removed .pl-name { color: var(--aq-label-2); }
+.pl-row .pl-end .zc-btn { flex: none; }
+/* What there is to tidy, over the list (the owner's of 11-10): the merged worktrees' Tidy up, then Filament's own
+   footprint in one quiet line with its Clean up… (the footprint plan). */
+.pl-tidy { display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 8px; padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--color-sys-blue) 28%, var(--aq-hairline)); border-radius: 10px; background: color-mix(in oklab, var(--color-sys-blue) 7%, transparent); }
+.pl-tidy > .pl-ic { color: var(--color-sys-blue-text); }
+.pl-tidy > .pl-ic svg { width: 15px; height: 15px; }
+.pl-tidy-h { font-weight: 600; color: var(--aq-label); }
+.pl-tidy .pl-l2 { white-space: normal; color: var(--aq-label-2); }
+.pl-foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 2px 10px; font-size: var(--text-ui-sm); color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+/* Remove merged…'s sheet: a row a worktree, its tick, its name and what it is. */
+.pl-merged { display: flex; flex-direction: column; gap: 10px; }
+.chg-sheet.pl-merged label.pl-merged-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; padding: 8px 2px; border-top: 1px solid var(--aq-hairline); cursor: pointer; }
+.pl-merged .pl-merged-row:first-child { border-top: 0; }
+.chg-sheet.pl-merged label.pl-merged-row > input { margin: 2px 0 0; align-self: start; }
+.pl-merged .pl-merged-row .pl-t { display: flex; flex-direction: column; gap: 1px; }
+.pl-merged .pl-merged-row .pl-l2 { white-space: normal; }
+.pl-merged-says { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.pl-foot[hidden] { display: none; }
+.pl-foot-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-foot-end { margin-left: auto; display: flex; flex: none; }
+/* Its Clean up sheet (footprint.js), read at a glance: what it takes in a line, then what goes and why; what stays
+   folded; the rows to tick in a well a kind, folded where long, a row a line in columns — whose, refs, newest. */
+.pl-clean { display: flex; flex-direction: column; gap: 10px; }
+.chg-sheet.pl-clean p { margin: 0; }
+.pl-clean :is(.pl-clean-sum, .pl-clean-h, .pl-clean-gname) { font-weight: 550; color: var(--aq-label); }
+.pl-clean-lines { display: flex; flex-direction: column; gap: 2px; margin: 0; padding-left: 18px; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+.pl-clean-fold > summary { width: fit-content; cursor: pointer; font-size: var(--text-ui-sm); color: var(--aq-label-2); font-variant-numeric: tabular-nums; }
+.pl-clean-fold > summary:hover { color: var(--aq-label); }
+.pl-clean-kept > .pl-clean-lines { margin-top: 6px; }
+.pl-clean-ticks { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--aq-hairline); }
+.chg-sheet.pl-clean :is(.pl-clean-warn, .pl-clean-note) { font-size: var(--text-ui-sm); line-height: 1.45; }
+.chg-sheet.pl-clean .pl-clean-note { color: var(--aq-label-3); }
+.pl-clean-all, .pl-clean-gtick { display: flex; align-items: center; gap: 8px; width: fit-content; cursor: pointer; }
+.pl-clean-all { color: var(--aq-label); }
+.pl-clean :is(.pl-clean-all, .pl-clean-gtick, .pl-clean-row) input { flex: none; margin: 0; accent-color: var(--aq-accent); }
+.pl-clean-group { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 10px; background: var(--inst-well); }
+.pl-clean .pl-clean-gname { line-height: 1.4; }
+.pl-clean-gtick + .pl-clean-fold > summary { margin-left: 21px; }
+.pl-clean-list {
+  display: grid; grid-template-columns: auto auto auto auto minmax(0, 1fr); column-gap: 16px; max-height: 240px; overflow-y: auto;
+  overscroll-behavior: contain; margin: 4px -4px 0; padding: 0 4px; font-variant-numeric: tabular-nums;
+}
+.pl-clean-list > * { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: 24px; padding: 0 6px; border-radius: 6px; }
+.pl-clean-cols { min-height: 20px; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.pl-clean-row { cursor: pointer; }
+.pl-clean-row:hover { background: var(--aq-control-hover); }
+.pl-clean-id { font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--aq-label); }
+.pl-clean-n, .pl-clean-day { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.pl-clean-n, .pl-clean-cols > :nth-child(3) { text-align: right; }
+
+/* ---- the left bar's Space row under its project: a chat row's shape, its glyph the Space's ------------------------ */
+.space-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 3px 8px 3px 10px;
+  border-radius: 7px; font-size: var(--text-ui-base); cursor: pointer;
+}
+.space-row:hover { background: var(--aq-control); }
+.space-row.current { background: var(--aq-control-press); }
+.space-row.current .sess-title { font-weight: 550; }
+.space-row:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.space-row .row-lead { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+.space-row .space-row-ic { display: inline-flex; color: var(--color-sys-purple-text); }
+.space-row .space-row-ic svg { width: 14px; height: 14px; }
+.space-row .space-row-facts { margin-left: auto; font-size: var(--text-ui-xs); color: var(--aq-label-3); white-space: nowrap; }
+/* A Space of your own's row, by time (A6): its ⋯ as its group's, shown on hover. */
+.space-row .own-space-ic { color: var(--color-sys-blue-text); }
+.space-row .row-act { flex: none; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; opacity: 0; }
+.space-row .row-act svg { width: 14px; height: 14px; }
+.space-row:hover .row-act, .space-row .row-act:focus-visible { opacity: 1; }
+/* Under it, what the Space shows besides its Board (the owner's idea of 10-29): Routines, then each app and dashboard,
+   a step in — a draft italic, a paused one quiet, a failure a red dot after its name. */
+.space-app-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 2px 8px 2px 30px;
+  border-radius: 7px; font-size: var(--text-ui-base); color: var(--aq-label-2); cursor: pointer;
+}
+.space-app-row:hover { background: var(--aq-control); color: var(--aq-label); }
+.space-app-row.current { background: var(--aq-control-press); color: var(--aq-label); }
+.space-app-row.current .sess-title { font-weight: 550; }
+.space-app-row:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.space-app-row .row-lead { width: 16px; height: 16px; flex: none; display: grid; place-items: center; }
+.space-app-row .space-app-ic { display: inline-flex; color: var(--aq-label-3); }
+.space-app-row .space-app-ic svg { width: 13px; height: 13px; }
+.space-app-row.is-draft .sess-title { font-style: italic; }
+.space-app-row.is-paused .sess-title { color: var(--aq-label-3); }
+.space-app-row .sdb-dot { flex: none; margin-left: 6px; }
+
+/* ---- a lane's task and newest line, the sync points between lanes (v1, v2) ----------------------------------------- */
+/* Tell them and Continue in the blue the harness gives what sends or goes on (its composer's send, an ask's answer). */
+button.sm.primary.sy-run, button.sm.primary.sp-left-go { background: var(--aq-accent); color: var(--color-on-accent); font-weight: 600; }
+.sp-has b { font-weight: 600; color: var(--aq-label); }
+.sp-lane-facts { color: var(--aq-label-2); }
+.sp-lane-line.is-news { display: flex; align-items: baseline; gap: 6px; -webkit-line-clamp: unset; color: var(--aq-label-3); }
+.sp-pen { display: inline-flex; flex: none; color: var(--aq-label-3); }
+.sp-pen svg { width: 12px; height: 12px; }
+.sp-syncpt { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; width: 34px; padding-top: 4px; }
+/* Too narrow for two lanes side by side, the lanes stack and a point between them would hang beside one: the logbook
+   says when the sync ran. Two lanes and the point between them need about 818px. */
+.sp-lanes { container: sp-lanes / inline-size; }
+@container sp-lanes (max-width: 817px) { .sp-syncpt { display: none; } }
+.sp-dia {
+  width: 10px; height: 10px; transform: rotate(45deg); border: 2px solid var(--color-sys-teal); border-radius: 2px;
+  background: color-mix(in oklab, var(--color-sys-teal) 20%, transparent);
+}
+.sp-syncpt-at { font-size: var(--text-ui-2xs); color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.sp-syncpt-ln { flex: 1; width: 1px; min-height: 24px; background: var(--aq-hairline-strong); }
+
+/* ---- the work: Tasks the page's width, What happened under them -------------------------------------------------- */
+/* Beside What happened the board had ~150px columns, a title 13 letters a line (the owner's of 10-27, the Designer's). */
+.sp-work { display: flex; flex-direction: column; margin-top: 6px; }
+.sp-work[hidden] { display: none; }
+.sp-tasks { display: flex; flex-direction: column; gap: 10px; min-width: 0; container: sp-tasks / inline-size; }
+.sp-tasks > .sp-sec-h { margin-bottom: 0; }
+.sp-board-note { margin: 0; }
+.sb-sp { flex: 1; }
+
+/* The board: four columns of cards, every one as tall as the board; one line while there is nothing to show. Four in a
+   row down to 720px of the section — a laptop's page beside the left bar is one row, a column about 170px at its
+   narrowest —, two by two under that, one under 499: by the board's own width, which the left bar changes. */
+.sb-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.sb-board.is-empty { display: block; }
+.sb-none { margin: 0; padding: 10px 14px; border: 1px dashed var(--aq-hairline-strong); border-radius: 10px; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+@container sp-tasks (max-width: 719px) { .sb-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container sp-tasks (max-width: 499px) { .sb-board { grid-template-columns: minmax(0, 1fr); } }
+/* Each column a tinted lane, its cards raised in it: no edge of its own around theirs. */
+.sb-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border-radius: 12px; background: color-mix(in oklab, var(--aq-control) 45%, transparent); }
+.sb-head { display: flex; align-items: center; gap: 6px; min-height: 22px; padding: 0 2px 2px; font-size: var(--text-ui-sm); font-weight: 650; color: var(--aq-label-2); }
+.sb-count { font-weight: 500; color: var(--aq-label-3); }
+.sb-mark { display: inline-flex; flex: none; }
+.sb-mark.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-gray); }
+.sb-mark.dot.is-orange { background: var(--color-sys-orange); }
+.sb-mark.dot.is-green { background: var(--color-sys-green); }
+.sb-mark.sp-spin { color: var(--color-sys-blue-text); }
+.sb-mark.sp-spin svg { width: 11px; height: 11px; }
+/* Doing's mark is a still glyph, as a status icon is: it never says something runs (the owner's of 10-27). */
+.sb-mark.sp-spin.is-still svg { animation: none; }
+.sb-add { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; }
+.sb-add svg { width: 14px; height: 14px; }
+.sb-card {
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--aq-hairline);
+  border-radius: 10px; background: var(--aq-card);
+}
+.sb-card:hover { border-color: var(--aq-hairline-strong); }
+/* Each card's ⋯ at its corner (the owner's of 11-02): quiet until the card is pointed at or it has the focus; the
+   title of a card that has one (`has-dots`) keeps clear of it. */
+.sb-dots { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; display: grid; place-items: center; color: var(--aq-label-3); opacity: 0.6; }
+.sb-dots svg { width: 15px; height: 15px; }
+.sb-card:hover .sb-dots, .sb-dots:focus-visible { opacity: 1; color: var(--aq-label); }
+.sb-card.has-dots .sb-t { padding-right: 20px; }
+/* What waits for you: the orange edge Needs you's rows wear, not an orange block. */
+.sb-card.is-ask { box-shadow: inset 3px 0 0 var(--color-sys-orange); }
+.sb-face { display: flex; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sb-face:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 3px; border-radius: 4px; }
+.sb-t {
+  font-size: var(--text-ui-base); font-weight: 500; line-height: 1.35; color: var(--aq-label); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sb-card.is-done .sb-t { font-weight: 400; color: var(--aq-label-2); }
+/* A card a kept dashboard put on the board (S4c): the service's, so a quieter edge; greyed where its last read failed. */
+/* Its dashes at the strong hairline: at the card's own they did not read (seen live, S4c). */
+.sb-card.is-fed { border-style: dashed; border-color: var(--aq-hairline-strong); }
+.sb-card.is-fed:hover { border-color: color-mix(in oklab, var(--aq-label-3) 70%, transparent); }
+.sb-card.is-fed.is-stale { opacity: 0.6; }
+.sb-d {
+  font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2);
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sb-f { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.sb-f .sp-branch { max-width: 50%; }
+.sb-tag { flex: none; padding: 1px 7px; border-radius: 6px; background: var(--aq-control); color: var(--aq-label-2); }
+.sb-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-age { flex: none; font-variant-numeric: tabular-nums; }
+.sb-go { flex: none; padding: 0; border: 0; background: none; color: var(--color-sys-blue-text); font: inherit; font-weight: 600; cursor: pointer; }
+.sb-go:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sb-more { align-self: flex-start; padding: 2px 4px; border: 0; background: none; color: var(--aq-label-3); font: inherit; font-size: var(--text-ui-xs); cursor: pointer; }
+.sb-more:hover { color: var(--aq-label); }
+/* A card open to change. */
+.sb-editor { gap: 6px; border-color: color-mix(in oklab, var(--aq-accent) 50%, var(--aq-hairline)); }
+.sb-in { width: 100%; font: inherit; font-size: var(--text-ui-sm); }
+.sb-line-in { resize: vertical; min-height: 44px; }
+.sb-ed-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sb-col-in { width: auto; flex: 1; min-width: 110px; }
+.sb-park { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sb-start, .sb-open, .sb-attach, .sb-repro { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+.sb-said { font-size: var(--text-ui-xs); color: var(--color-sys-red-text); }
+.sb-remove.is-sure { color: var(--color-sys-red-text); }
+/* A task's files (the owner's of 11-02): its first pictures on its card, the paperclip's count in its foot; opened in
+   place, a row each, to open or remove. Files carried over a card mark it. */
+.sb-pics { display: flex; gap: 4px; margin-top: 2px; }
+.sb-pic { width: 56px; height: 42px; object-fit: cover; border-radius: 5px; border: 1px solid var(--aq-hairline); background: var(--aq-control); }
+.sb-clip { flex: none; display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.sb-clip-ic { display: inline-flex; }
+.sb-clip-ic svg { width: 12px; height: 12px; }
+.sb-card.is-drop { border-color: var(--aq-accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--aq-accent) 30%, transparent); }
+/* A card dragged: faint where it was; the column under it ringed, and a line in the gap where it would go. */
+.sb-card.is-dragged { opacity: 0.45; }
+.sb-col.is-over { outline: 1px dashed color-mix(in oklab, var(--aq-accent) 55%, transparent); outline-offset: -1px; }
+.sb-card.is-before::before, .sb-card.is-after::after {
+  content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--aq-accent); pointer-events: none;
+}
+.sb-card.is-before::before { top: -6px; }
+.sb-card.is-after::after { bottom: -6px; }
+.sb-files { display: flex; flex-direction: column; gap: 2px; }
+.sb-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 4px; border-radius: 6px; font-size: var(--text-ui-sm); }
+.sb-file:hover { background: var(--aq-control); }
+.sb-file-pic { flex: none; width: 28px; height: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--aq-hairline); }
+.sb-file-ic { flex: none; width: 28px; height: 28px; display: grid; place-items: center; color: var(--aq-label-3); }
+.sb-file-ic svg { width: 15px; height: 15px; }
+.sb-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); text-decoration: none; }
+a.sb-file-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sb-file.is-picked .sb-file-name { color: var(--aq-label-2); }
+.sb-file-size { flex: none; font-size: var(--text-ui-xs); color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+.sb-file-x { flex: none; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; }
+.sb-file-x svg { width: 12px; height: 12px; }
+
+/* What each lane changes, and the merge order: Compare…'s sheet. */
+.so-panel { padding: 14px 18px 18px; }
+.so-head, .so-merge-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 10px; }
+.so-ic { display: inline-flex; color: var(--color-sys-indigo-text); }
+.so-ic svg { width: 15px; height: 15px; }
+/* One row per shared file, then one per lane: the names, then whose they are. */
+.so-list { display: flex; flex-direction: column; align-items: stretch; }
+.so-own { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 0; border-top: 1px solid var(--aq-hairline); }
+.so-own:first-child { border-top: 0; }
+.so-own .so-paths { flex: 1; min-width: 0; }
+.so-own .sp-branch { flex: none; }
+.so-paths { font-family: var(--mono); font-size: var(--text-ui-sm); color: var(--aq-label); overflow-wrap: anywhere; }
+.so-both {
+  flex: none; padding: 1px 7px; border-radius: 6px; font-size: var(--text-ui-xs);
+  background: color-mix(in oklab, var(--color-sys-orange) 18%, transparent); color: var(--color-sys-orange-text);
+}
+.so-merge { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--aq-hairline); }
+.so-merge[hidden] { display: none; }
+.so-order { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.so-step > * + * { margin-left: 8px; }
+.so-step.is-meets .sp-quiet { color: var(--color-sys-orange-text); }
+
+/* The Tell the chats card: what it does, then each lane's chat and when it hears it, the person's words and Tell them. */
+.sy-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid color-mix(in oklab, var(--color-sys-teal) 45%, var(--aq-hairline));
+  border-radius: 12px; background: color-mix(in oklab, var(--color-sys-teal) 6%, var(--aq-card));
+}
+.sy-card[hidden] { display: none; }
+/* Under the board, in its column: the words over the chats (S1). */
+.sy-words { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.sy-title { display: flex; align-items: center; gap: 8px; }
+.sy-title b { font-size: var(--text-ui-base); color: var(--aq-label); }
+.sy-tile {
+  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px;
+  background: color-mix(in oklab, var(--color-sys-teal) 22%, transparent); color: var(--color-sys-teal-text);
+}
+.sy-tile svg { width: 13px; height: 13px; }
+.sy-line { font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+.sy-side { display: flex; flex-direction: column; gap: 8px; flex: none; width: 100%; }
+.sy-inset { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-control); overflow: hidden; }
+.sy-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border-top: 1px solid var(--aq-hairline); font-size: var(--text-ui-sm); cursor: pointer; }
+.sy-row:first-child { border-top: 0; }
+.sy-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aq-label); }
+.sy-when { height: 26px; width: auto; padding: 0 6px; font-size: var(--text-ui-xs); }
+.sy-out { flex: none; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.sy-row.is-sent .sy-out, .sy-row.is-steered .sy-out { color: var(--color-sys-green-text); }
+.sy-row.is-refused .sy-out { flex: 0 1 auto; color: var(--color-sys-red-text); text-align: right; }
+.sy-more { padding: 6px 10px; border: 0; border-top: 1px solid var(--aq-hairline); background: none; color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-xs); text-align: left; cursor: pointer; }
+.sy-none { margin: 0; padding: 8px 10px; }
+.sy-acts { display: flex; align-items: center; gap: 8px; }
+.sy-also { flex: 1; min-width: 0; }
+.sy-said { font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+/* A chat's ask to tell the chats (E42 SA-D7): its words quoted as its chat's, never in Also tell them…; × leaves them out. */
+.sy-quote { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px 6px 10px; border-left: 2px solid var(--color-sys-orange); border-radius: 4px; background: var(--aq-control); font-size: var(--text-ui-sm); color: var(--aq-label); }
+.sy-quote-words { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sy-quote-x { flex: none; }
+.sy-asked { flex: none; font-size: var(--text-ui-xs); }
+
+/* What happened: the newest line first — when, the words, where it came from at the right (the mock's 7). */
+.sl-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 18px; }
+/* Beside the board, a scrollbar's width less, its buttons move to the next line together, never a word of one. */
+.sl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-height: 28px; }
+.sl-head > * { white-space: nowrap; }
+.sl-acts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.sl-head .ghost.sm { display: inline-flex; align-items: center; gap: 5px; }
+.sl-today { font-variant-numeric: tabular-nums; }
+.sl-only[hidden] { display: none; }
+.sl-menu { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; }
+.sl-menu svg { width: 15px; height: 15px; }
+/* The list scrolls with the page, in no scroller of its own: it holds the newest twelve until Show all N. Clipped to
+   its round corners, for a tinted line at its top or foot. */
+.sl-list { border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.sl-entry {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 9px 12px;
+  border-top: 1px solid var(--aq-hairline);
+}
+.sl-entry:first-child { border-top: 0; }
+.sl-entry.is-told { background: color-mix(in oklab, var(--color-sys-teal) 7%, transparent); }
+.sl-when { font-size: var(--text-ui-xs); color: var(--aq-label-3); font-variant-numeric: tabular-nums; }
+/* A line's words: two lines, Filament's own one — by who wrote it, its entry's class —, and whole once pressed open.
+   The words are a button (logbook.js). */
+.sl-text {
+  min-width: 0; max-width: 120ch; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer;
+}
+.sl-entry.is-filament .sl-text { -webkit-line-clamp: 1; }
+.sl-entry.is-open .sl-text { -webkit-line-clamp: unset; }
+/* Show all N, and Show the newest 12: the list's last row, quiet. */
+.sl-more { display: block; width: 100%; padding: 9px 12px; border: 0; border-top: 1px solid var(--aq-hairline); background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--aq-label-2); text-align: left; cursor: pointer; }
+.sl-more:hover { color: var(--aq-label); background: var(--aq-control); }
+.sl-more:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.sl-who { padding: 0; border: 0; background: none; color: var(--aq-label); font: inherit; font-weight: 600; }
+/* A chat's name is a button, which centres a name that wraps: one line, cut, its words after it (seen live, 10-27). */
+button.sl-who {
+  display: inline-block; max-width: min(36ch, 60%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: bottom; text-align: start; cursor: pointer;
+}
+button.sl-who:hover { text-decoration: underline; text-underline-offset: 2px; }
+.sl-tag { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: var(--text-ui-xs); color: var(--aq-label-3); white-space: nowrap; }
+.sl-tag .sp-branch { max-width: 140px; }
+.sl-empty, .sl-older { margin: 0; padding: 12px; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
+.sl-write { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-card); }
+.sl-write[hidden] { display: none; }
+.sl-pen { display: inline-flex; padding-top: 7px; color: var(--aq-label-3); }
+.sl-pen svg { width: 13px; height: 13px; }
+.sl-field { flex: 1; min-width: 0; resize: none; font: inherit; font-size: var(--text-ui-sm); }
+.sl-said { font-size: var(--text-ui-xs); color: var(--color-sys-red-text); }
+
+/* ---- its dashboards (S2, "Space, grown" screens 6 to 9) --------------------------------------------------------- */
+/* A Space's pages are rows of the left bar since 10-29; the tab strip is Your Space's (Today · Routines). */
+.sp-add { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+.sp-overview[hidden], .sdb-view[hidden], .sdb-strip[hidden], .sdb-faults[hidden] { display: none; }
+/* Tabs underlined, the one open in the accent (the mock's screens 1 and 2). */
+.sdb-strip { display: flex; align-items: center; gap: 2px; margin: 2px 0 14px; border-bottom: 1px solid var(--aq-hairline); overflow-x: auto; }
+.sdb-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0;
+  border-radius: 0; background: none; color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-base); cursor: pointer; white-space: nowrap;
+}
+.sdb-tab:hover { color: var(--aq-label); }
+.sdb-tab.is-on { color: var(--aq-label); font-weight: 600; box-shadow: inset 0 -2px 0 var(--aq-accent); }
+.sdb-tab.is-draft { font-style: italic; text-decoration: underline dashed var(--aq-hairline-strong); text-underline-offset: 4px; }
+.sdb-tab.is-paused { color: var(--aq-label-3); }
+.sdb-tab:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.sdb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-red); }
+
+/* A dashboard's tab: its bar, each failure, its page, its foot. */
+/* Its page alone since the owner's idea of 10-29, no strip above it: room under the top bar. */
+.sdb-view { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.sdb-bar { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 6px 4px 12px; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-card); font-size: var(--text-ui-sm); color: var(--aq-label); }
+.sdb-bar.is-draft { border-style: dashed; border-color: var(--aq-hairline-strong); }
+.sdb-bar-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--aq-label-3); }
+.sdb-bar.is-live .sdb-bar-dot { background: var(--color-sys-green); }
+.sdb-bar.is-fault .sdb-bar-dot { background: var(--color-sys-red); }
+.sdb-bar.is-paused .sdb-bar-dot { background: var(--color-sys-orange); }
+.sdb-bar-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sdb-bar button { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+button.sm.primary.sdb-keep-go, .sdb-bar .sdb-keep { background: var(--aq-accent); color: var(--color-on-accent); font-weight: 600; }
+.sdb-faults { display: flex; flex-direction: column; gap: 8px; }
+.sdb-fault {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--color-sys-red) 45%, var(--aq-hairline)); border-left: 3px solid var(--color-sys-red);
+  background: color-mix(in oklab, var(--color-sys-red) 7%, var(--aq-card));
+}
+.sdb-fault-head { font-size: var(--text-ui-base); color: var(--aq-label); }
+.sdb-fault-said { margin: 0; font-family: var(--mono); font-size: var(--text-ui-sm); color: var(--aq-label); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sdb-fault-kept { margin: 0; }
+.sdb-fault-acts { display: flex; gap: 6px; margin-top: 4px; }
+/* Its page on the Space's own ground, its tiles the only cards (the mock's screen 8). */
+.sdb-stage { display: flex; min-height: 480px; height: calc(100vh - 280px); overflow: hidden; }
+.sdb-stage > .artifact-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sdb-stage .artifact-frame { flex: 1; width: 100%; border: 0; }
+.sdb-unframed { flex: 1; }
+.sdb-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sdb-may { padding: 0; border: 0; background: none; color: var(--color-sys-blue-text); font: inherit; font-size: var(--text-ui-sm); cursor: pointer; }
+.sdb-may:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* The Keep sheet: every line Filament's, the exact command in mono, a new line marked. */
+.zc-sheet.sdb-keep-sheet { width: min(560px, calc(100vw - 20px)); }
+/* The Connectors sheet (S4b): Library › Plugins & Connectors' connectors at the project's layer, each row with what here uses it. */
+.zc-sheet.spc-sheet { width: min(640px, calc(100vw - 20px)); }
+.spc-body { display: flex; flex-direction: column; gap: 8px; padding: 4px 18px 18px; }
+.spc-lead { margin: 0 0 4px; font-size: var(--text-ui-sm); color: var(--aq-label-2); line-height: 1.45; }
+.spc-h { margin: 12px 0 2px; font-size: var(--text-ui-sm); font-weight: 700; color: var(--aq-label); }
+.spc-programs { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); line-height: 1.45; overflow-wrap: anywhere; }
+/* What a kept dashboard calls through a connector no row is named now: in red, under the rows. */
+.spc-missing { margin: 8px 0 0; font-size: var(--text-ui-sm); color: var(--color-sys-red-text); line-height: 1.45; overflow-wrap: anywhere; }
+.spc-missing[hidden] { display: none; }
+.spc-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.sdb-keep-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 18px 18px; }
+.sdb-keep-lead { margin: 0 0 6px; font-size: var(--text-ui-sm); color: var(--aq-label-2); line-height: 1.45; }
+.sdb-keep-h { margin: 12px 0 2px; font-size: var(--text-ui-sm); font-weight: 700; color: var(--aq-label); }
+.sdb-keep-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.sdb-keep-line { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--aq-hairline); font-size: var(--text-ui-sm); color: var(--aq-label); overflow-wrap: anywhere; }
+.sdb-keep-line:first-child { border-top: 0; }
+.sdb-cmd { font-family: var(--mono); font-size: var(--text-ui-sm); padding: 1px 5px; border-radius: 5px; background: var(--aq-control); }
+.sdb-folder { color: var(--aq-label-2); }
+.sdb-new { display: inline-block; padding: 0 6px; border-radius: 6px; background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); font-size: var(--text-ui-xs); font-weight: 600; }
+.sdb-keep-note { margin: 2px 0 0; }
+/* A sends button's switch in What it may do (10-29): whether agents press it without asking you. */
+.sdb-allow { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--text-2, inherit); cursor: pointer; }
+.sdb-allow-box { margin: 0; }
+/* An app's Secrets… sheet (10-29): a row per secret, its state, where its value is typed. */
+.sdb-secrets { display: flex; flex-direction: column; gap: 12px; }
+.sdb-secret { display: flex; flex-direction: column; gap: 4px; }
+.sdb-secret-head { display: flex; align-items: center; gap: 8px; }
+.sdb-secret-state { font-size: 12px; color: var(--text-3, inherit); }
+.sdb-secret-state.is-set { color: var(--ok, #3fb950); }
+.sdb-secret-row { display: flex; align-items: center; gap: 6px; }
+.sdb-secret-in { flex: 1; min-width: 0; }
+.sdb-secret-err { font-size: 12px; color: var(--danger, #f85149); }
+/* An app's hook in What it may do (phase 4): its address, whole, with Copy and New address beside it. */
+.sdb-hook { margin-top: 4px; }
+.sdb-hook-row { display: flex; align-items: center; gap: 6px; }
+.sdb-hook-addr { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: all; }
+/* A connector's tool on the Keep sheet (S4a): its server's word on it; red with its word where it will not run. */
+.sdb-tool-check:empty { display: none; }
+.sdb-tool-check.is-bad { color: var(--color-sys-red-text); }
+.sdb-keep-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+/* Its buttons keep their words on one line: the note beside them takes what is left, and wraps. */
+.sdb-keep-foot > button { flex: none; white-space: nowrap; }
+/* A button's sheet (S3, screen 10): Filament's, outside the page; its command as it will run. */
+.zc-dialog.sas-sheet { width: min(620px, calc(100vw - 24px)); }
+.sas-body { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.sas-rest { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.45; overflow-wrap: anywhere; }
+/* The Reviewer's second look under the sentence (S3b): offered — who reads, where, on which model — until the person
+   asks for it (the owner's word of 10-31), then its lines as they come. */
+.sas-look:empty, .sas-look[hidden] { display: none; }
+.sas-look-offer { display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border: 1px dashed color-mix(in oklab, var(--color-sys-purple) 45%, var(--aq-hairline)); border-radius: 10px; }
+.sas-look-offer.is-off { border-color: var(--aq-hairline); }
+.sas-look-who { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.45; overflow-wrap: anywhere; }
+.sas-look-offer.is-off .sas-look-who { color: var(--aq-label-2); }
+.sas-look-ask { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sas-look-ask .sp-model { flex: 1 1 260px; }
+/* The model an agent starts on, the person's choice (space/model-row.js): the picker, its provider, why this one or why
+   it cannot run — a button's second look and check, a routine's runs. */
+.sp-model { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.sp-model .model-chip { height: 26px; max-width: 15rem; border-radius: 6px; font-size: 12px; }
+.sp-model-l { color: var(--aq-label); font-size: var(--text-ui-sm); }
+.sp-model-at[hidden] { display: none; }
+.sp-model-why { min-width: 0; overflow-wrap: anywhere; }
+/* The effort beside the model (11-04): as small as the chip, only where the model takes one. */
+/* The effort's chip beside the model: the agents' own, or the message box's. */
+.sp-model .ec[hidden] { display: none; }
+.sp-model .effort-btn { height: 26px; }
+.sas-check-model { padding-left: 24px; }
+.sas-check-model[hidden] { display: none; }
+.sas-busy { margin: 0; padding: 7px 10px; border-radius: 8px; background: color-mix(in oklab, var(--color-sys-orange) 14%, transparent); font-size: var(--text-ui-sm); color: var(--aq-label); }
+.sas-busy-stop { margin-left: 4px; vertical-align: baseline; }
+.sas-field { display: flex; flex-direction: column; gap: 4px; }
+.sas-label { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sas-needed { color: var(--aq-label-3); }
+.sas-input { width: 100%; box-sizing: border-box; }
+.sas-cmd { padding: 9px 11px; border-radius: 8px; background: var(--aq-control); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.sas-where { color: var(--aq-label-2); }
+.sas-said { margin: 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--color-sys-red) 14%, transparent); font-size: var(--text-ui-sm); color: var(--aq-label); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sas-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--aq-hairline); }
+/* The foot's buttons draw themselves (a button's own display): one the sheet hides goes (seen live, S5d). */
+.sas-foot .zc-btn[hidden] { display: none; }
+/* An agent checks it (S5d): the box above the foot, "Done: …" once it ran, the check's lines under it. */
+.sas-check { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-ui-sm); cursor: default; }
+.sas-check[hidden] { display: none; }
+.sas-check-box { flex: none; margin: 2px 0 0; }
+.sas-check-words { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sas-check-t { color: var(--aq-label); }
+.sas-check-why { font-size: var(--text-ui-xs); color: var(--aq-label-2); overflow-wrap: anywhere; }
+.sas-check.is-off .sas-check-t { color: var(--aq-label-3); }
+.sas-done { margin: 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--color-sys-green) 14%, transparent); font-size: var(--text-ui-sm); color: var(--aq-label); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sas-checking:empty { display: none; }
+.sas-note { font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+
+/* ---- Your Space (S5b, "Space, grown" screen 2): what needs you from every project, At a glance, Working ----------- */
+/* The left bar's row under Search, once a Space is grown (A7): a place to go, not a field — how many need you in orange
+   at its right; marked while you are there. The rail's Now popover has the same row on top (A6). */
+.sess-search-row.ys-row { background: none; color: var(--aq-label); }
+.sess-search-row.ys-row[hidden] { display: none; }
+.sess-search-row.ys-row:hover { background: var(--aq-control-hover); }
+.sess-search-row.ys-row.current { background: var(--aq-control-press); }
+.sess-search-row.ys-row .ys-row-ic, .ys-row .ys-row-label { color: var(--aq-label); }
+.sess-search-row.ys-row.current .ys-row-label { font-weight: 600; }
+.ys-row-count { flex: none; margin-left: auto; font-size: var(--text-ui-xs); color: var(--aq-label-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ys-row.has-needs .ys-row-count { color: var(--color-sys-orange-text); font-weight: 600; }
+.ys-pop-row {
+  display: flex; align-items: center; gap: 8px; margin: 0 4px 4px; padding: 6px 8px; border: 0; border-radius: 8px;
+  background: var(--aq-control); color: var(--aq-label); font: inherit; font-size: var(--text-ui-sm); text-align: left; cursor: pointer;
+}
+.ys-pop-row:hover { background: var(--aq-control-hover); }
+.ys-pop-row .ys-row-ic { display: inline-flex; flex: none; }
+.ys-pop-row .ys-row-ic svg { width: 15px; height: 15px; }
+.ys-pop-row .ys-row-label { flex: 1; min-width: 0; font-weight: 600; }
+
+/* The page: its head's tile in orange — what needs you —, Needs you at the left, At a glance and Working at the right;
+   one column where the frame is narrow. */
+.ys-tile.team-tile { --tile-hue: var(--color-sys-orange); }
+.ys-cols { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(260px, 1fr); gap: 0 24px; align-items: start; }
+@media (max-width: 1100px) { .ys-cols { grid-template-columns: minmax(0, 1fr); } }
+.ys-cols > .sp-sec:first-child { margin-top: 0; }
+.ys-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ys-side > .sp-sec { margin-top: 0; }
+@media (max-width: 1100px) { .ys-side { margin-top: 18px; } }
+
+/* The filters: counts, a press filters in place (A5); All filled while on. */
+.ys-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.ys-filters[hidden] { display: none; }
+.ys-filter {
+  height: 22px; padding: 0 8px; border: 1px solid var(--aq-hairline); border-radius: 6px; background: none;
+  color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-xs); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.ys-filter:hover { background: var(--aq-control-hover); }
+.ys-filter.is-on { border-color: transparent; background: var(--aq-accent); color: var(--color-on-accent); }
+.ys-filter:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: 1px; }
+
+/* A chat's row, as Now has it: orange where it asks, red where it stopped, blue at work, grey once finished. */
+.ys-chat.is-asks .sp-need-dot { background: var(--color-sys-orange); }
+.ys-chat.is-error .sp-need-dot { background: var(--color-sys-red); }
+.ys-chat.is-works .sp-need-dot { background: var(--color-sys-blue); }
+.ys-chat.is-done .sp-need-dot { background: var(--aq-label-3); }
+.ys-chat.is-works .sp-need-t, .ys-chat.is-done .sp-need-t { font-weight: 600; }
+.ys-proj { cursor: pointer; border: 0; font-family: inherit; }
+span.ys-proj { cursor: inherit; }
+.ys-done-list { margin-top: 2px; }
+
+/* At a glance: one card, a part per dashboard switched there — its title and project, its status tiles' lines in their
+   tone, as its tab says them; a press opens its tab. */
+.ys-cards { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.ys-cards:empty { display: none; }
+.ys-card { display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; border-top: 1px solid var(--aq-hairline); cursor: pointer; }
+.ys-card:first-child { border-top: 0; }
+.ys-card:hover { background: var(--aq-control); }
+.ys-card:focus-visible { outline: 2px solid color-mix(in oklab, var(--aq-accent) 70%, transparent); outline-offset: -2px; }
+.ys-card-h { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 1px; }
+.ys-card-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); color: var(--aq-label-3); }
+.ys-g-line { margin: 0; min-width: 0; font-size: var(--text-ui-base); color: var(--aq-label); overflow-wrap: anywhere; }
+.ys-g-line.sp-quiet { font-size: var(--text-ui-sm); }
+.ys-g-line.is-stale { opacity: 0.7; }
+.ys-g-title { color: var(--aq-label-2); }
+.ys-g-value { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--aq-label); }
+.ys-g-value.is-bad, .ys-g-under.is-bad { color: var(--color-sys-red-text); }
+.ys-g-value.is-good, .ys-g-under.is-good { color: var(--color-sys-green-text); }
+.ys-g-under { color: var(--aq-label-2); }
+.ys-g-faint { font-size: var(--text-ui-xs); }
+
+/* ---- From its projects (HarnessV4_SpacesPlugins_Plan A7): a Space of your own shows projects — each its chip, what
+   needs you there, Open its Space and ⋯; under it its rows, as its own Space draws them, and its tiles' card. ---------- */
+.sp-shows { display: flex; flex-direction: column; gap: 16px; }
+.sp-show { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sp-show-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sp-show-count { font-size: var(--text-ui-sm); }
+.sp-show-tiles[hidden] { display: none; }
+
+/* ---- Drafts (S5c, "Space, grown" screen 13): a row of Needs you, and its sheet, where alone Send sends ------------- */
+/* The row: a blue pencil in the dot's place — it asks for your Send, as a chat's question asks for your answer. */
+.sp-need-dot.sp-need-pen { width: 14px; height: 14px; border-radius: 0; background: none; color: var(--color-sys-blue-text); }
+.sp-need.is-out .sp-need-dot.sp-need-pen { margin-top: 2px; }
+.sp-need-pen svg { display: block; width: 14px; height: 14px; }
+.sp-draft-word { color: var(--aq-label-2); font-weight: 500; }
+.sp-past-sent { flex: none; font-size: var(--text-ui-xs); }
+/* The sheet: From and In as a label beside its value; the words it answers quoted; your words to change; Made from,
+   each link opening; the call behind its summary; whether its tool sends, red where it does not. */
+.zc-dialog.sds-sheet { width: min(640px, calc(100vw - 24px)); }
+.sds-body { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.sds-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: var(--text-ui-sm); }
+.sds-label { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sds-value { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; color: var(--aq-label); overflow-wrap: anywhere; }
+.sds-account { width: auto; min-width: 120px; }
+.sds-account[hidden] { display: none; }
+.sds-quote {
+  display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 8px 12px;
+  border-left: 3px solid color-mix(in oklab, var(--aq-accent) 45%, transparent); border-radius: 0 8px 8px 0;
+  background: var(--aq-control); font-size: var(--text-ui-sm); color: var(--aq-label); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.sds-quote-who { font-size: var(--text-ui-xs); font-weight: 600; color: var(--aq-label-2); }
+.sds-yours { display: flex; flex-direction: column; gap: 4px; }
+.sds-words { width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical; font: inherit; font-size: var(--text-ui-base); line-height: 1.45; }
+.sds-from-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding-left: 16px; }
+.sds-from-list a { color: var(--color-sys-blue-text); overflow-wrap: anywhere; }
+.sds-call summary { cursor: pointer; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
+.sds-call-args {
+  max-height: 180px; margin: 6px 0 0; padding: 9px 11px; overflow: auto; border-radius: 8px; background: var(--aq-control);
+  font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.sds-tool { margin: 0; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.sds-tool.is-off { color: var(--color-sys-red-text); }
+.sds-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--aq-hairline); }
+.sds-stop[hidden] { display: none; }
+
+/* Routines (S6, screen 11): its head — what runs by itself, Pause all, Routine… —, then three parts by when they run,
+   each a card of rows as Needs you's: a dot whose colour says how it stands, its words, its buttons at the right. */
+.srt { display: flex; flex-direction: column; }
+.srt[hidden], .srt-sec[hidden], .srt-foot[hidden], .srt-none[hidden], .srt-pause[hidden], .srt-make[hidden] { display: none; }
+.srt > .srt-sec:first-of-type { margin-top: 14px; }
+.srt-head {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 6px 4px 12px; border: 1px solid var(--aq-hairline);
+  border-radius: 10px; background: var(--aq-card); font-size: var(--text-ui-sm); color: var(--aq-label);
+}
+.srt-head-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-green); }
+.srt-head.is-paused .srt-head-dot { background: var(--color-sys-orange); }
+.srt-head-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srt-pause, .srt-make { display: inline-flex; align-items: center; gap: 5px; }
+.srt-list { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; }
+.srt-list:empty { display: none; }
+.srt-none { margin: 0 4px; }
+.srt-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 10px 14px; border-top: 1px solid var(--aq-hairline); }
+.srt-row:first-child { border-top: 0; }
+.srt-ic { position: relative; flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 1px; color: var(--aq-label-2); }
+.srt-ic-g { display: grid; place-items: center; }
+.srt-ic-g svg { width: 16px; height: 16px; }
+.srt-dot { position: absolute; right: 1px; bottom: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-sys-green); box-shadow: 0 0 0 2px var(--aq-card); }
+.srt-row.is-proposed .srt-dot { background: var(--aq-card); box-shadow: inset 0 0 0 1.5px var(--color-sys-blue), 0 0 0 2px var(--aq-card); }
+.srt-row.is-paused .srt-dot { background: var(--aq-label-3); }
+.srt-row.is-works .srt-dot { background: var(--color-sys-blue); }
+.srt-row.is-asks .srt-dot { background: var(--color-sys-orange); }
+.srt-row.is-bad .srt-dot { background: var(--color-sys-red); }
+.srt-row.is-watch .srt-dot { background: var(--color-sys-indigo); }
+.srt-row.is-watch.is-paused .srt-dot { background: var(--aq-label-3); }
+.srt-row.is-press .srt-dot { background: var(--aq-label-3); }
+.srt-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.srt-t { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-size: var(--text-ui-base); color: var(--aq-label); }
+.srt-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srt-badge {
+  flex: none; padding: 0 6px; border-radius: 6px; background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent);
+  color: var(--color-sys-blue-text); font-size: var(--text-ui-xs); font-weight: 600;
+}
+.srt-row.is-paused .srt-badge { background: var(--aq-control); color: var(--aq-label-2); }
+.srt-f { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-2); }
+.srt-task { font-size: var(--text-ui-sm); color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srt-last { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-3); overflow-wrap: anywhere; }
+.srt-last.is-bad { color: var(--color-sys-red-text); }
+.srt-last.is-works { color: var(--color-sys-blue-text); }
+.srt-last.is-asks { color: var(--color-sys-orange-text); }
+.srt-last.is-done { color: var(--color-sys-green-text); }
+.srt-next { font-size: var(--text-ui-xs); color: var(--aq-label-2); white-space: nowrap; margin-right: 4px; }
+.srt-skip { font-size: var(--text-ui-xs); }
+.srt-acts { flex: none; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 6px; max-width: 45%; }
+.srt-foot { margin: 14px 4px 0; }
+/* Watchers (the plan of 11-11, its w8): the Routines head's line, then a card of rows. A row: its eye — teal where it
+   listens, faint where it is proposed or paused, red where its last run failed —, its title and badge, a small grid of
+   label and words (what it watches, whom it wakes, what it may guide), one quiet line for how it stands with the one
+   word of its state in colour, and at its right its switch or Switch on…, and ⋯. In a narrow pane each label stands
+   over its words. */
+.swt { display: flex; flex-direction: column; }
+.swt[hidden], .swt-none[hidden], .swt-make[hidden] { display: none; }
+/* Each a page alone under the Space's top bar, as an app's is (`.sdb-view`): the room an app's page has above its
+   band. Home's stand under its tabs, which bring their own. */
+.srt, .swt { margin-top: 16px; }
+.your-space .srt, .your-space .swt { margin-top: 0; }
+.swt-make { display: inline-flex; align-items: center; gap: 5px; }
+.swt-list { display: flex; flex-direction: column; margin-top: 14px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); overflow: hidden; container-type: inline-size; }
+.swt-list:empty { display: none; }
+.swt-none { margin: 14px 4px 0; }
+.swt-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px 14px; border-top: 1px solid var(--aq-hairline); }
+.swt-row:first-child { border-top: 0; }
+.swt-eye { flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 1px; color: var(--aq-label-3); }
+.swt-eye svg { width: 16px; height: 16px; }
+.swt-row.is-on .swt-eye, .swt-row.is-works .swt-eye, .swt-row.is-asks .swt-eye { color: var(--color-sys-teal-text); }
+.swt-row.is-bad .swt-eye { color: var(--color-sys-red-text); }
+.swt-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.swt-t { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; font-size: var(--text-ui-base); color: var(--aq-label); }
+.swt-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swt-row.is-proposed .swt-title, .swt-row.is-paused .swt-title { color: var(--aq-label-2); }
+.swt-badge { flex: none; padding: 0 6px; border-radius: 6px; background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); font-size: var(--text-ui-xs); font-weight: 600; }
+.swt-row.is-paused .swt-badge { background: var(--aq-control); color: var(--aq-label-2); }
+.swt-task { font-size: var(--text-ui-sm); color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swt-grid { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 0; }
+.swt-line { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: baseline; column-gap: 8px; }
+.swt-k { font-size: calc(var(--ui-font-size) - 3px); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--aq-label-3); }
+.swt-v { margin: 0; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label-2); overflow-wrap: anywhere; }
+.swt-chat { padding: 0; border: 0; background: none; font: inherit; color: var(--color-sys-blue-text); text-align: left; cursor: pointer; }
+.swt-chat:hover { text-decoration: underline; }
+.swt-stands { min-width: 0; font-size: var(--text-ui-xs); color: var(--aq-label-3); overflow-wrap: anywhere; }
+.swt-stands > .sp-spin { margin-right: 4px; vertical-align: -2px; }
+.swt-state.is-done { color: var(--color-sys-green-text); }
+.swt-state.is-bad { color: var(--color-sys-red-text); }
+.swt-state.is-works { color: var(--color-sys-blue-text); }
+.swt-state.is-asks { color: var(--color-sys-orange-text); }
+.swt-acts { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+@container (max-width: 480px) {
+  .swt-line { grid-template-columns: 1fr; row-gap: 0; }
+}
+/* A routine's sheet, and What do you look after…: the Keep sheet's parts, its words whole. */
+.zc-sheet.srt-sheet, .zc-sheet.srt-look-sheet { width: min(560px, calc(100vw - 20px)); }
+.srt-sheet-v { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; font-size: var(--text-ui-sm); color: var(--aq-label); overflow-wrap: anywhere; }
+.srt-tools { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+/* What a watcher's program runs, on its sheet: its command on one line; the files a Switch on approves, each a row that
+   opens its text under it; the secrets it is handed, one with no value kept in the amber, as are the sentences that
+   say the program will not start for want of one, or runs what you did not approve; and whom it runs as, under the
+   shield in the Space's amber: what is yours to weigh. */
+.srs-runs { flex-direction: column; align-items: flex-start; }
+.srs-cmd { max-width: 100%; box-sizing: border-box; white-space: nowrap; overflow-x: auto; }
+.srs-files[hidden], .srs-fold[hidden] { display: none; }
+.srs-file-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.srs-file-open { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.srs-file-open:hover .srs-path { background: var(--aq-control-hover); }
+.srs-chev { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--aq-label-3); }
+.srs-chev svg { width: 14px; height: 14px; }
+.srs-file-open[aria-expanded="true"] .srs-chev { transform: rotate(90deg); }
+.srs-file-meta { flex: none; display: inline-flex; align-items: baseline; gap: 8px; margin-left: auto; white-space: nowrap; }
+.srs-changed { font-size: var(--text-ui-xs); color: var(--color-sys-orange-text); }
+.srs-fold { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 0 18px; min-width: 0; }
+.srs-fold p { margin: 0; }
+.srs-text { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--aq-control); font-family: var(--mono); font-size: var(--text-ui-xs); line-height: 1.45; max-height: 280px; overflow: auto; white-space: pre; tab-size: 2; }
+.srs-secret.is-unkept, .sdb-keep-note.srs-unkept, .sdb-keep-note.srs-differs { color: var(--color-sys-orange-text); }
+.srs-as { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.45; }
+.srs-as-ic { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-top: 2px; color: var(--color-sys-orange-text); }
+.srs-as-ic svg { width: 16px; height: 16px; }
+/* A watcher's address, on its sheet: each value one line in its field, scrolled inside it, its Copy beside it. */
+.srw { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; }
+.srw-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.srw-fields p { margin: 0; line-height: 1.45; }
+.srw-field { flex: 1; min-width: 0; padding: 4px 8px; white-space: nowrap; overflow-x: auto; user-select: all; }
+.srw-copy { flex: none; }
+.srw-label { margin-top: 4px; }
+.srw-renew-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.srw-renew-row[hidden] { display: none; }
+/* Where does this chat run? (A4): the work in a line, then a row a place — this Space first —, each its glyph, its name
+   and its folder. */
+.pkp-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pkp-what { margin: 0; font-size: var(--text-ui-sm); color: var(--aq-label); overflow-wrap: anywhere; }
+.pkp-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; border: 1px solid var(--aq-hairline); border-radius: 10px; }
+.pkp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border: 0; border-top: 1px solid var(--aq-hairline);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.pkp-row:first-child { border-top: 0; }
+.pkp-row:hover, .pkp-row:focus-visible { background: var(--aq-control); outline: none; }
+.pkp-ic { flex: none; display: grid; place-items: center; width: 18px; height: 18px; color: var(--color-sys-blue-text); }
+.pkp-ic svg { width: 16px; height: 16px; }
+.pkp-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pkp-name { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.pkp-folder { font-size: var(--text-ui-xs); color: var(--aq-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkp-note { margin: 0; font-size: var(--text-ui-xs); }
+
+/* New Space (HarnessV4_SpacesPlugins_Plan A6): three fields and one button, the Keep sheet's look. */
+.zc-sheet.nsp-sheet { width: min(520px, calc(100vw - 20px)); }
+.nsp-name { width: 100%; box-sizing: border-box; }
+.nsp-folder-v { align-items: center; }
+.nsp-folder { flex: 1 1 260px; min-width: 0; }
+/* New Space's folded line (the Designer's redesign of 10-29): where its files go and what it may read, Change… opening them. */
+.nsp-summary { align-items: center; margin-top: 10px; }
+.nsp-summary-words { flex: 1 1 300px; min-width: 0; line-height: 1.45; }
+.nsp-summary[hidden], .nsp-more[hidden] { display: none; }
+.nsp-reaches { display: flex; flex-direction: column; gap: 6px; }
+.nsp-reach { display: flex; align-items: flex-start; gap: 10px; padding: 9px 11px; border: 1px solid var(--aq-hairline); border-radius: 10px; cursor: pointer; }
+.nsp-reach.on { border-color: var(--color-sys-blue); background: color-mix(in oklab, var(--color-sys-blue) 7%, transparent); }
+.nsp-reach input { margin: 3px 0 0; accent-color: var(--color-sys-blue); }
+.nsp-reach-words { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.4; }
+.nsp-these-box { display: flex; flex-direction: column; gap: 4px; margin-left: 28px; }
+.nsp-these-box[hidden] { display: none; }
+.nsp-these { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: var(--text-ui-sm); resize: vertical; }
+.nsp-these-foot { display: flex; justify-content: flex-end; }
+.nsp-limits { margin: 6px 0 0; padding: 7px 10px; border-radius: 8px; background: color-mix(in oklab, var(--color-sys-orange) 14%, transparent); font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.45; }
+.nsp-limits[hidden] { display: none; }
+/* The left bar's Spaces (A6): each a group like a project's, its glyph the Space's. */
+.lb-sec.spaces-head .lb-act-btn { margin-left: auto; }
+.own-space-ic { display: inline-flex; color: var(--color-sys-blue-text); }
+.srt-sheet-task {
+  margin: 0; padding: 8px 12px; border-left: 3px solid color-mix(in oklab, var(--aq-accent) 45%, transparent); border-radius: 0 8px 8px 0;
+  background: var(--aq-control); white-space: pre-wrap; line-height: 1.45; width: 100%; box-sizing: border-box;
+}
+.srt-made { padding: 0; color: var(--color-sys-blue-text); }
+.srt-look-list { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+/* Nothing connected yet (the Designer's walk of 10-29): one line over the kinds, with Connectors…. */
+.srt-look-none { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.srt-look-none[hidden] { display: none; }
+.srt-look-none-words { margin: 0; flex: 1; }
+.srt-look-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--aq-hairline); cursor: pointer; }
+.srt-look-row:first-child { border-top: 0; }
+.srt-look-row:hover { background: var(--aq-control); }
+.srt-look-box { flex: none; margin-top: 3px; }
+.srt-look-words { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.srt-look-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Your Space's Today | Routines. */
+.ys-strip[hidden] { display: none; }
+.ys-cols[hidden] { display: none; }
+/* ＋ New app (the Space Apps plan of 10-29): one box, then the starters, two a row; the one picked in the accent. */
+.snew-body { display: flex; flex-direction: column; gap: 8px; padding: 4px 18px 18px; }
+.snew-box { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; padding: 8px 10px; font: inherit; font-size: var(--text-ui-base); color: var(--aq-label); background: var(--aq-control); border: 1px solid var(--aq-hairline); border-radius: 8px; }
+.snew-starters { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.snew-starter { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; text-align: left; font: inherit; color: var(--aq-label); background: var(--aq-card); border: 1px solid var(--aq-hairline); border-radius: 8px; cursor: pointer; }
+.snew-starter:hover { background: var(--aq-control-hover); }
+.snew-starter.is-on { border-color: var(--aq-accent); box-shadow: inset 0 0 0 1px var(--aq-accent); }
+.snew-starter-t { font-size: var(--text-ui-sm); }
+.snew-starter-s { font-size: var(--text-ui-sm); line-height: 1.35; }
+.snew-note { margin: 4px 0 0; font-size: var(--text-ui-sm); line-height: 1.45; }
+/* Pull from… (the Space Apps plan of 10-29): a pulled card's key, each pull's chip in the Tasks head (orange where its
+   read failed), the sheet's rows — a label, then its field —, the column map, the move's Always for this board. */
+.sb-key { flex: none; padding: 1px 6px; border-radius: 6px; background: var(--aq-control); color: var(--aq-label); font-size: var(--text-ui-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sp-pull-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.sp-pull-chip { font-size: var(--text-ui-xs); }
+.sp-pull-chip.is-bad { color: var(--color-sys-orange-text); }
+.spl-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 18px 18px; }
+.spl-services { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.spl-row { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label); }
+.spl-row-top { align-items: flex-start; }
+.spl-k { flex: none; width: 64px; color: var(--aq-label-2); }
+.spl-row .zc-input { flex: 1; min-width: 0; }
+.spl-args, .spl-back-args { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-ui-xs); resize: vertical; }
+.spl-tool-says, .spl-read-says, .spl-noconn { margin: 0 0 0 72px; font-size: var(--text-ui-xs); }
+.spl-noconn { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.spl-noconn[hidden] { display: none; }
+.spl-paths, .spl-columns { display: flex; flex-direction: column; gap: 4px; }
+.spl-path-row, .spl-col-row { display: flex; align-items: center; gap: 8px; font-size: var(--text-ui-sm); }
+.spl-path-k { flex: none; width: 64px; color: var(--aq-label-2); }
+.spl-col-k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spl-col-to { flex: none; color: var(--aq-label-3, var(--aq-label-2)); }
+.spl-path, .spl-col { flex: none; width: 200px; }
+.spl-always-row { gap: 6px; }
+.spl-said { margin: 6px 0 0; min-height: 1em; font-size: var(--text-ui-sm); color: var(--color-sys-red-text); }
+.spl-remove.is-sure { color: var(--color-sys-red-text); }
+.sp-move-always-row { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--text-ui-sm); }
+/* A Space's first screen (the Designer's redesign of 10-29): Start here, three cards, each a first step. Nothing of a
+   Space is drawn until it is read. */
+.space.sp-is-reading .sp-overview { display: none; }
+.space.sp-is-reading .sp-line, .space.sp-is-reading .sp-tile { visibility: hidden; }
+.sp-start { padding: 18px 20px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.sp-start-h { margin: 0; font-size: 17px; font-weight: 700; color: var(--aq-label); }
+.sp-start-lead { margin: 4px 0 14px; font-size: var(--text-ui-sm); line-height: 1.45; max-width: 72ch; }
+.sp-start-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.sp-start-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid var(--aq-hairline); border-radius: 10px; }
+.sp-start-ic { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 8px;
+  color: var(--color-sys-blue-text); background: color-mix(in oklab, var(--color-sys-blue) 14%, transparent); }
+.sp-start-ic svg { width: 16px; height: 16px; }
+.sp-start-t { font-size: var(--text-ui-base); color: var(--aq-label); }
+.sp-start-line { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; flex: 1; }
+.sp-start-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.sp-start .sp-start-acts > button.ghost { border: 1px solid var(--aq-hairline); }
+.sp-start-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: var(--text-ui-sm); }
+/* Who works here (the Designer's redesign of 10-29): a Space with no lanes, its chats as rows, Needs you's look. */
+.sp-who-sec[hidden], .sp-who-more[hidden], .sp-who-none[hidden] { display: none; }
+.sp-who { display: flex; flex-direction: column; border: 1px solid var(--aq-hairline); border-radius: 10px; overflow: hidden; }
+.sp-who:empty { display: none; }
+.sp-who-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-top: 1px solid var(--aq-hairline); background: none; text-align: left; color: inherit; cursor: pointer; }
+.sp-who-row:first-child { border-top: 0; }
+.sp-who-row:hover { background: var(--aq-control); }
+.sp-who-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sp-who-name { font-size: var(--text-ui-base); color: var(--aq-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-who-state { font-size: var(--text-ui-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-who-none, .sp-who-more { margin: 6px 0 0; font-size: var(--text-ui-sm); }
+.sp-who-row .sp-need-dot { background: var(--aq-tertiary-label, var(--aq-hairline)); }
+.sp-who-row.is-needs .sp-need-dot { background: var(--color-sys-orange); }
+.sp-who-row.is-works .sp-need-dot { background: var(--color-sys-blue); }
+.sp-who-row.is-error .sp-need-dot { background: var(--color-sys-red); }
+
+/* What a Space's agents run on (11-04): a quiet chip under the head's line, a press away from its Space settings. One
+   line, cut where the head is too narrow for it. */
+.sp-runs-on {
+  display: inline-block; max-width: 100%; margin: 5px 0 0; padding: 1px 8px; border: 0; border-radius: 999px; background: var(--aq-control);
+  font: inherit; font-size: var(--text-ui-xs); color: var(--aq-label-2); cursor: pointer; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top;
+}
+.sp-runs-on:hover { color: var(--aq-label); background: var(--aq-control-hover); }
+.sp-runs-on[hidden] { display: none; }
+.sp-runs-on.is-none { color: var(--aq-label-3, var(--aq-label-2)); }
+.sp-runs-on.is-bad { color: var(--color-sys-orange-text); }
+
+/* A Space's settings sheet and an app's ask's sheet (11-04). */
+.sps-asks-v { flex-direction: column; align-items: stretch; }
+.sps-asks { max-width: 26rem; }
+.sps-asks-why { margin: 2px 0 0; }
+.sak-words { max-height: 14rem; overflow: auto; overflow-wrap: anywhere; }
+.sak-check { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 6px; font-size: var(--text-ui-sm); color: var(--aq-label); cursor: pointer; }
+.sak-check[hidden] { display: none; }
+.sak-said { margin: 8px 0 0; font-size: var(--text-ui-sm); color: var(--color-sys-red-text); }
+.sak-said[hidden] { display: none; }
+
+/* Where does this chat run?: this Space, the default its focus already stands on (11-04). */
+.pkp-row.is-here { background: color-mix(in oklab, var(--aq-accent) 7%, transparent); }
+.pkp-default { margin-left: auto; align-self: center; flex: none; padding: 1px 7px; border-radius: 999px; font-size: var(--text-ui-xs); color: var(--aq-label-2); border: 1px solid var(--aq-hairline); }

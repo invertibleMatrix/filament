@@ -1,0 +1,8 @@
+{
+  "title": "Pipeline",
+  "says": "Your project's scripts, each run by a button, with its log",
+  "words": "A pipeline for this project: its test, check and build scripts, each run by a button, with its log as it runs and how its last run ended.",
+  "for": "project",
+  "kind": "app",
+  "order": 1
+}

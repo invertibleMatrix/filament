@@ -1,0 +1,548 @@
+# Filament's builds on GitHub Actions (the owner's of 10-29: "both local builds and via github action"; macOS and Linux
+# the owner's of 11-07): the same steps a local build takes — the memory engine's bundle, then `npm run dist:<system>`
+# — each on a clean machine of its own system, in parallel. The typecheck and the tests run on the owner's machine before
+# a commit lands, never here (the owner's of 11-10: a run's tests once went on for 17 hours, and held the release). No
+# build keeps electron-builder's blockmaps: the installed apps download an update whole (desktop/lib/updates.js), so a
+# release carries none (the owner's of 11-10). Run it by hand (Actions › Build › Run workflow, one system or all): each
+# build is kept as the run's artifact for a day. Or push a tag v<version>: the tag must name package.json's version, the
+# run drafts a release in the public repository electron-builder.yml publishes to, each build puts its files straight
+# into that draft, and it stays a draft until someone publishes it there. A tag's builds keep no artifact: one release's
+# (about 2.9 GB) outgrew the account's 2 GB of artifact storage, and a release's files count toward none (the owner's of
+# 11-16). docs/releasing.md says what the secrets are and how to set them. Beside the desktop builds,
+# Filament for servers: `npm run dist:server`'s tarballs, their latest-server.yml and the install.sh that installs them
+# (the remote-agents plan's sv-ci), in the same release — x64's, and arm64's with latest-server-arm64.yml (sv-arm), on
+# the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off.
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      systems:
+        description: Which systems to build
+        type: choice
+        options: [all, windows, mac, linux, server]
+        default: all
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  # Where releases are drafted: electron-builder.yml's publish, which the installed apps look for updates in
+  # (test/build-workflow.test.js keeps the two the same).
+  RELEASES_REPO: invertibleMatrix/filament-releases
+
+# One build of a ref at a time; a second waits rather than cutting the first.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Before any build's npm ci: a wrong tag stops the run before it spends minutes.
+      - name: The tag names this version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v${{ steps.version.outputs.version }}" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME is not v${{ steps.version.outputs.version }}, the version package.json says."
+            exit 1
+          fi
+
+      # The draft each build puts its files into, made before any build starts, so no two race to make it. The releases
+      # have a repository of their own: the run's own token reaches only the code's, so a token for the releases'
+      # repository (RELEASES_TOKEN, docs/releasing.md) drafts it there. Run again ("Re-run all jobs"), it finds
+      # the draft there and leaves it: each build's files replace what got up the first time. A release already published
+      # stops the run: a build's files would replace a published release's under the installed apps.
+      - name: The draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::No RELEASES_TOKEN secret: a token that can write $RELEASES_REPO's releases (docs/releasing.md)."
+            exit 1
+          fi
+          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --json isDraft --jq .isDraft 2> /dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::$GITHUB_REF_NAME is published in $RELEASES_REPO already: release a new version (docs/releasing.md)."
+              exit 1
+            fi
+            echo "The draft $GITHUB_REF_NAME is there: this run's files replace what got up before."
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --draft --title "Filament $VERSION" --notes "Filament $VERSION: its files are going up."
+          fi
+
+  windows:
+    name: Windows installer
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'windows' }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+
+      # The memory engine's bundle downloads about 500 MB; it is kept between runs until the engine's pins change.
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/win32-x64
+          key: memory-engine-win32-x64-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the installer
+        run: npm run dist:win
+        env:
+          # Unsigned, as a local build is.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # A tag's run: into the draft the version job made, each file replacing one of its name an earlier attempt put
+      # there. latest.yml is the SHA-512 the installed apps check an update's file by (desktop/lib/updates.js): a
+      # release without it offers no update.
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+            "dist/windows/$VERSION/Filament-$VERSION-setup-x64.exe" \
+            "dist/windows/$VERSION/latest.yml"
+
+      # A build by hand: the run's artifact, for a day.
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-windows-x64
+          path: |
+            dist/windows/${{ needs.version.outputs.version }}/Filament-${{ needs.version.outputs.version }}-setup-x64.exe
+            dist/windows/${{ needs.version.outputs.version }}/latest.yml
+          if-no-files-found: error
+          retention-days: 1
+          # "Re-run all jobs" builds again under the same name: the new build replaces the first attempt's.
+          overwrite: true
+
+  mac:
+    name: macOS app (Apple Silicon)
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'mac' }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # A release's Mac app is signed and notarized, or there is none: unsigned, macOS refuses to open it on another Mac.
+      # All five secrets or none: some of them would sign an app that then fails notarization.
+      - name: Signing, where the secrets are set
+        id: signing
+        shell: bash
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing="" set=0
+          for name in MAC_CERT_P12 MAC_CERT_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -n "${!name}" ]; then set=$((set + 1)); else missing="$missing $name"; fi
+          done
+          if [ "$set" -eq 5 ]; then
+            echo "with=signed" >> "$GITHUB_OUTPUT"
+          elif [ "$set" -gt 0 ]; then
+            echo "::error::Some of the Mac signing secrets are set, not all: set$missing too (docs/releasing.md)."
+            exit 1
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::A release's Mac app must be signed and notarized: set MAC_CERT_P12, MAC_CERT_PASSWORD, APPLE_API_KEY_P8, APPLE_API_KEY_ID and APPLE_API_ISSUER (docs/releasing.md)."
+            exit 1
+          else
+            echo "::warning::No signing secrets: this Mac app is unsigned, and opens on no other Mac (docs/releasing.md)."
+            echo "with=unsigned" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Before the certificate is anywhere on the machine: a package's install script never sees it.
+      - name: Install
+        run: npm ci
+
+      # The Developer ID certificate in a keychain of the run's own, which the engine's bundle and electron-builder both
+      # sign with; Apple's Developer ID intermediate beside it, so codesign can build the chain. Gone after the run.
+      - name: The certificate in a keychain of the run's own
+        if: steps.signing.outputs.with == 'signed'
+        shell: bash
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/filament-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN" || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          # A certificate of another kind (Developer ID Installer, Apple Development) or an expired one signs nothing:
+          # said here, before the build spends its minutes.
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -q '"Developer ID Application: '; then
+            security find-identity -v -p codesigning "$KEYCHAIN"
+            echo "::error::MAC_CERT_P12 holds no valid Developer ID Application certificate with its key (docs/releasing.md, section 4)."
+            exit 1
+          fi
+          # The App Store Connect API key notarization signs in with, as a file electron-builder reads.
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # Kept apart signed and unsigned: a bundle built unsigned can't go into a notarized app.
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/darwin-arm64
+          key: memory-engine-darwin-arm64-${{ steps.signing.outputs.with }}-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the app, signed and notarized where it can be
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ steps.signing.outputs.with == 'signed' && 'true' || 'false' }}
+          # With APPLE_API_KEY, the key's file the step before set: electron-builder notarizes with the three.
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.dmg" \
+            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.zip" \
+            "dist/mac/$VERSION/latest-mac.yml"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-mac-arm64
+          path: |
+            dist/mac/${{ needs.version.outputs.version }}/Filament-${{ needs.version.outputs.version }}-mac-arm64.dmg
+            dist/mac/${{ needs.version.outputs.version }}/Filament-${{ needs.version.outputs.version }}-mac-arm64.zip
+            dist/mac/${{ needs.version.outputs.version }}/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+      - name: The keychain and the key gone
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/filament-signing.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+  linux:
+    name: Linux AppImage and deb
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'linux' }}
+    # The oldest Ubuntu GitHub runs: the app runs on systems as old as the one it was built on.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # node-pty has no prebuilt Linux binary: npm ci builds it, with the runner's compilers.
+      - name: Install
+        run: npm ci
+
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/linux-x64
+          key: memory-engine-linux-x64-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the AppImage and the deb
+        run: npm run dist:linux
+
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+            "dist/linux/$VERSION/Filament-$VERSION-linux-x86_64.AppImage" \
+            "dist/linux/$VERSION/Filament-$VERSION-linux-amd64.deb" \
+            "dist/linux/$VERSION/latest-linux.yml"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-linux-x64
+          path: |
+            dist/linux/${{ needs.version.outputs.version }}/Filament-${{ needs.version.outputs.version }}-linux-x86_64.AppImage
+            dist/linux/${{ needs.version.outputs.version }}/Filament-${{ needs.version.outputs.version }}-linux-amd64.deb
+            dist/linux/${{ needs.version.outputs.version }}/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  server:
+    name: Server tarballs (Linux x64)
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'server' }}
+    # As the linux job's: node-pty in the tarball loads on the glibc it was built against and newer, and 22.04's (2.35)
+    # is the oldest a hosted runner has.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # node-pty has no prebuilt Linux binary: npm ci builds it, with the runner's compilers.
+      - name: Install
+        run: npm ci
+
+      # The linux job's bundle, under its key: a bundle either job built is the other's.
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/linux-x64
+          key: memory-engine-linux-x64-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the tarballs
+        run: npm run dist:server
+
+      # The installer goes up with the tarballs, which `curl … /releases/latest/download/install.sh | sh` fetches from
+      # the release. In their folder: upload-artifact keeps the folders below the one its files share, and with
+      # scripts/install.sh listed as it is a build by hand's artifact would hold dist/ and scripts/ folders.
+      - name: install.sh beside them
+        run: cp scripts/install.sh "dist/server/${{ needs.version.outputs.version }}/install.sh"
+
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+            "dist/server/$VERSION/filament-server-$VERSION-linux-x64.tar.gz" \
+            "dist/server/$VERSION/filament-server-$VERSION-linux-x64-no-engine.tar.gz" \
+            "dist/server/$VERSION/latest-server.yml" \
+            "dist/server/$VERSION/install.sh"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-server-linux-x64
+          path: |
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-linux-x64.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-linux-x64-no-engine.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/latest-server.yml
+            dist/server/${{ needs.version.outputs.version }}/install.sh
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  server-arm64:
+    name: Server tarballs (Linux arm64)
+    needs: version
+    # SERVER_ARM64 off skips it: a repository with no arm64 runner would otherwise wait on one, and the release with it.
+    if: ${{ vars.SERVER_ARM64 != 'off' && (github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'server') }}
+    # The memory engine's bundle and node-pty are built on the machine they are for: an arm64 runner, GitHub's own
+    # Ubuntu 22.04 one, or the one ARM64_RUNNER names (a private repository may have no use of GitHub's).
+    runs-on: ${{ vars.ARM64_RUNNER || 'ubuntu-22.04-arm' }}
+    timeout-minutes: 90
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      # The server job's glibc, 2.35: built on a newer one, its node-pty would load on fewer servers than x64's. A
+      # runner ARM64_RUNNER names may be on another, said here before npm ci spends minutes.
+      - name: The runner's glibc is Ubuntu 22.04's
+        shell: bash
+        run: |
+          glibc=$(getconf GNU_LIBC_VERSION)
+          if [ "$glibc" != "glibc 2.35" ]; then
+            echo "::error::This runner has $glibc, and the server tarballs are built on glibc 2.35 (Ubuntu 22.04): set ARM64_RUNNER to an Ubuntu 22.04 arm64 runner (docs/releasing.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # node-pty has no prebuilt Linux binary: npm ci builds it, with the runner's compilers.
+      - name: Install
+        run: npm ci
+
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/linux-arm64
+          key: memory-engine-linux-arm64-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the tarballs
+        run: npm run dist:server
+
+      # install.sh goes up with x64's: the release carries one.
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
+            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64.tar.gz" \
+            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64-no-engine.tar.gz" \
+            "dist/server/$VERSION/latest-server-arm64.yml"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-server-linux-arm64
+          path: |
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-linux-arm64.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-linux-arm64-no-engine.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/latest-server-arm64.yml
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  release:
+    name: Draft release
+    # Where the arm64 job was skipped (SERVER_ARM64 off) the release goes without its files: GitHub skips a job whose
+    # need was skipped unless its `if` says otherwise. Any job failed or cancelled, the draft keeps what got up, without
+    # its notes, until "Re-run failed jobs" puts in the rest; nothing sees a draft.
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    needs: [version, windows, mac, linux, server, server-arm64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Every system's installers and update files in the draft, or the run fails and says which is missing: a release
+      # without a system's latest*.yml offers that system no update. The servers' install.sh reads latest-server.yml, and
+      # installs nothing from a release without it. arm64's servers' files are asked for where their job ran. A file
+      # counts once it is whole: an upload cut off leaves an asset GitHub has not marked uploaded.
+      - name: Every system's files are here
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          ARM64: ${{ needs.server-arm64.result }}
+        run: |
+          arm64=""
+          if [ "$ARM64" = success ]; then
+            arm64="filament-server-$VERSION-linux-arm64.tar.gz filament-server-$VERSION-linux-arm64-no-engine.tar.gz latest-server-arm64.yml"
+          else
+            echo "::notice::The arm64 server build was $ARM64 (SERVER_ARM64 is off?): this release carries x64's servers' files alone."
+          fi
+          there=$(gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --json assets \
+            --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')
+          missing=0
+          for f in "Filament-$VERSION-setup-x64.exe" latest.yml \
+                   "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
+                   "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
+                   "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh $arm64; do
+            grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in the draft."; missing=1; }
+          done
+          echo "$there"
+          exit $missing
+
+      # The notes, once: written over the version job's placeholder, never over notes someone wrote in the draft
+      # before "Re-run failed jobs".
+      - name: The release's notes
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          ARM64: ${{ needs.server-arm64.result }}
+        run: |
+          body=$(gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --json body --jq .body)
+          if [ "$body" != "Filament $VERSION: its files are going up." ]; then
+            echo "The draft has notes already: left as they are."
+            exit 0
+          fi
+          servers="x64"
+          if [ "$ARM64" = success ]; then servers="x64 and arm64"; fi
+          cat > notes.md <<EOF
+          Filament $VERSION.
+
+          - **Windows** (x64): \`Filament-$VERSION-setup-x64.exe\`
+          - **macOS** (Apple Silicon): \`Filament-$VERSION-mac-arm64.dmg\` — open it and drag Filament to Applications
+          - **Linux** (x64): \`Filament-$VERSION-linux-x86_64.AppImage\` (any distribution: \`chmod +x\` it and run it), or \`Filament-$VERSION-linux-amd64.deb\` for Debian and Ubuntu (\`sudo apt install ./Filament-$VERSION-linux-amd64.deb\`)
+          - **Linux servers** ($servers, no desktop app): \`curl -fsSL https://github.com/$RELEASES_REPO/releases/latest/download/install.sh | sh\`, or \`filament-server-$VERSION-linux-x64.tar.gz\` by hand
+
+          The installed app finds this release itself once it is published.
+          EOF
+          gh release edit "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --notes-file notes.md

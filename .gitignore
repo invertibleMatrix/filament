@@ -1,0 +1,54 @@
+node_modules/
+data/
+*.log
+*.stackdump
+.DS_Store
+Thumbs.db
+
+# IDE project files
+.idea/
+
+# Python's cache, written beside the memory sidecar each time it runs.
+__pycache__/
+
+# Agent-session artifacts and scratch scripts: never source.
+*.tmp.mjs
+*.tmp.js
+
+# Runtime state that must never be committed: keys, transcripts, memory, screenshots.
+# Filament's real data lives outside the repo (a Filament folder under your user profile), but
+# FILAMENT_DATA_DIR and the tray's screenshot mode can write into the worktree.
+config.json
+secret.key
+*.jsonl
+*.sqlite
+*.db
+*.png
+# but Filament's own logo and the pages' icon, the app's tray and window icons, and its macOS app icon
+!/assets/filament-logo.png
+!/src/ui/filament-icon.png
+!/tray/filament-*.png
+!/build/icon-mac.png
+.env
+.env.*
+# Anchored to the worktree root: src/services/memory/ is source, not data.
+/memory/
+/memory-engine/
+/mnemosyne*/
+/hermes-home/
+# The memory engine's bundle (scripts/build-memory-bundle.mjs): built per machine, hundreds of MB, never committed.
+/vendor/memory-engine/
+# The desktop app's build (`npm run dist:win`): the unpacked app and its installer, made per machine; and the build's
+# facts it packs, which it removes after (one left by a build cut short is no source).
+/dist/
+/desktop/build-info.json
+
+# Golden-corpus scratch files written on a mismatch (compare, then delete or regenerate with UPDATE_GOLDEN=1)
+test/fixtures/golden/expected/*.actual.json
+test/fixtures/golden/expected/*.run1.json
+test/fixtures/golden/expected/*.run2.json
+
+# Kept on the machine that made them, out of the published source: the release dashboard of this checkout's Space,
+# and the evals' run reports.
+/.filament/apps/pipeline/
+/evals/*/results/

@@ -1,0 +1,92 @@
+{
+  "about": "The golden recall cases (test/memory-recall-golden.test.js), each asked of the corpus in corpus.json: `ask` is what the person types (a session's first message, its next one, a search's query, a sub-agent's task), in `project` (shop unless named). `want`: the claims that answer it, each a key or a list of keys any one of which does; `not`: claims that must never be served for it (retired, another project's value for the same thing); `once`: claims that say one thing in other words, of which at most one may be served. `category` groups the cases: direct (the ask shares the claim's words), trust (a claim an assistant noted or the learner inferred), standing (a rule, preference or convention where it applies), procedure, decision, thread, corrected, forgotten, cross-project, global, multilingual, paraphrase (the ask shares no word that matters with the claim) and repeat.",
+  "cases": [
+    { "id": "vite-port", "category": "direct", "ask": "what port does the Vite dev server for the storefront run on?", "want": ["f-web-port"] },
+    { "id": "storybook", "category": "direct", "ask": "how do I start Storybook, and on which port?", "want": ["f-storybook"] },
+    { "id": "db-local", "category": "direct", "ask": "where is the local PostgreSQL connection string?", "want": ["f-db"] },
+    { "id": "db-staging", "category": "direct", "ask": "when is the staging database refreshed from production?", "want": ["f-db-staging"] },
+    { "id": "prisma-schema", "category": "direct", "ask": "where is the Prisma schema file?", "want": ["f-orm"] },
+    { "id": "worker", "category": "direct", "ask": "how do I start the BullMQ background job workers?", "want": ["f-queue"] },
+    { "id": "invoice-pdf", "category": "direct", "ask": "the invoice PDF rendering is broken; where is that code?", "want": ["f-pdf"] },
+    { "id": "stripe-webhook", "category": "direct", "ask": "where is the Stripe webhook handler?", "want": ["f-payments"] },
+    { "id": "test-card", "category": "direct", "ask": "which Stripe test card makes a successful charge?", "want": ["f-stripe-test"] },
+    { "id": "sales-tax", "category": "direct", "ask": "how is sales tax calculated at checkout?", "want": ["f-tax"] },
+    { "id": "reindex", "category": "direct", "ask": "how often is the Meilisearch product search reindexed?", "want": ["f-search"] },
+    { "id": "images-bucket", "category": "direct", "ask": "which S3 bucket holds the product images?", "want": ["f-images"] },
+    { "id": "auth0-callback", "category": "direct", "ask": "what is the Auth0 callback route for customer login?", "want": ["f-auth"] },
+    { "id": "ci-workflow", "category": "direct", "ask": "which GitHub Actions workflow file runs CI?", "want": ["f-ci"] },
+    { "id": "e2e", "category": "direct", "ask": "how do I run the Playwright end-to-end tests?", "want": ["f-e2e"] },
+    { "id": "flags", "category": "direct", "ask": "where do the LaunchDarkly feature flags come from in the code?", "want": ["f-flags"] },
+    { "id": "sentry", "category": "direct", "ask": "where are runtime errors reported, and which DSN variable does it read?", "want": ["f-sentry"] },
+    { "id": "shipping", "category": "direct", "ask": "where do shipping rates come from, and when do orders ship free?", "want": ["f-shipping"] },
+    { "id": "inventory", "category": "direct", "ask": "how often is inventory synced from the warehouse ERP?", "want": ["f-inventory"] },
+    { "id": "reviews", "category": "direct", "ask": "where is the moderation queue for product reviews?", "want": ["f-reviews"] },
+    { "id": "mobile", "category": "direct", "ask": "which framework is the mobile app built with?", "want": ["f-mobile"] },
+    { "id": "backups", "category": "direct", "ask": "how long are production database backups kept?", "want": ["f-backups"] },
+    { "id": "ratelimit", "category": "direct", "ask": "what is the public API rate limit per IP address?", "want": ["f-ratelimit"] },
+    { "id": "openapi", "category": "direct", "ask": "where is the OpenAPI description of the REST API?", "want": ["f-openapi"] },
+
+    { "id": "analytics", "category": "trust", "ask": "where are the PostHog product analytics events sent from?", "want": ["f-analytics"] },
+    { "id": "server-logs", "category": "trust", "ask": "where are the production server logs shipped?", "want": ["f-logs"] },
+    { "id": "zendesk", "category": "trust", "ask": "where are customer support tickets handled?", "want": ["f-zendesk"] },
+    { "id": "sitemap", "category": "trust", "ask": "where is the sitemap generated at build time?", "want": ["f-sitemap"] },
+
+    { "id": "force-push", "category": "standing", "ask": "my branch is behind; can I just force-push it to main?", "want": ["r-force"] },
+    { "id": "edit-migration", "category": "standing", "ask": "can I edit the merged orders migration instead of adding a new one?", "want": ["r-migrations"] },
+    { "id": "commit-env", "category": "standing", "ask": "should I commit the .env file with the API keys so CI can read them?", "want": ["r-secrets"] },
+    { "id": "branch-name", "category": "standing", "ask": "what should I name the branch for ticket SHOP-512?", "want": ["c-branch"] },
+    { "id": "api-errors", "category": "standing", "ask": "what shape should API errors be returned in?", "want": ["c-errors"] },
+    { "id": "tailwind", "category": "standing", "ask": "can I add a new CSS file for the cart styles?", "want": ["c-css"] },
+
+    { "id": "release", "category": "procedure", "ask": "let's cut a release of the shop today", "want": ["h-release"] },
+    { "id": "hotfix", "category": "procedure", "ask": "we need to ship a hotfix for the checkout crash", "want": ["h-hotfix"] },
+    { "id": "add-migration", "category": "procedure", "ask": "add a database migration for a new column on orders", "want": ["h-migration"] },
+    { "id": "rotate-stripe", "category": "procedure", "ask": "the Stripe API key leaked; rotate it", "want": ["h-rotate-stripe"] },
+
+    { "id": "why-meili", "category": "decision", "ask": "why did we pick Meilisearch over Elasticsearch?", "want": ["d-meili"] },
+    { "id": "why-render", "category": "decision", "ask": "why do we host on Render and not AWS ECS?", "want": ["d-render"] },
+    { "id": "why-redis", "category": "decision", "ask": "why Redis and not Memcached for sessions?", "want": ["d-redis"] },
+    { "id": "ssr", "category": "decision", "ask": "should we add server-side rendering to the storefront?", "want": ["d-spa"] },
+
+    { "id": "checkout-progress", "category": "thread", "ask": "how far along is moving checkout to the Stripe Payment Element?", "want": ["t-checkout"] },
+    { "id": "sku-typos", "category": "thread", "ask": "short SKU queries get bad search matches; is the Meilisearch typo tolerance tuned?", "want": ["t-typos"] },
+
+    { "id": "corrected-port", "category": "corrected", "ask": "which port does the API server listen on in development?", "want": ["f-api-port"], "not": ["f-api-port-old"] },
+    { "id": "corrected-pm", "category": "corrected", "ask": "which package manager does the project use?", "want": ["f-pm"], "not": ["f-pm-old"] },
+    { "id": "corrected-deploy", "category": "corrected", "ask": "how do production deploys go out?", "want": ["f-deploy"], "not": ["f-deploy-old"] },
+    { "id": "corrected-email", "category": "corrected", "ask": "which service sends the order confirmation emails?", "want": ["f-email"], "not": ["f-email-old"] },
+
+    { "id": "admin-panel", "category": "forgotten", "ask": "where does the admin panel live, and do staff share a login?", "want": ["f-admin-auth"], "not": ["f-admin-wrong"] },
+    { "id": "reset-template", "category": "forgotten", "ask": "is the password-reset email template for the Postmark move still to do?", "want": ["f-email"], "not": ["t-reset-done"] },
+
+    { "id": "cross-port", "category": "cross-project", "ask": "the API server in development: which port does it listen on?", "want": ["f-api-port"], "not": ["b-port"] },
+    { "id": "cross-deploy", "category": "cross-project", "ask": "do production deploys go out on every push to main?", "want": ["f-deploy"], "not": ["b-deploy"] },
+    { "id": "cross-blog-pm", "category": "cross-project", "project": "blog", "ask": "which package manager does the project use?", "want": ["b-pm"], "not": ["f-pm", "f-pm-old"] },
+
+    { "id": "coauthor", "category": "global", "ask": "write the commit message for this change, with a Co-Authored-By trailer", "want": ["g-coauthor"] },
+    { "id": "default-shell", "category": "global", "ask": "which shell is the default in my editor on Windows?", "want": ["g-editor"] },
+
+    { "id": "ml-ja-ja", "category": "multilingual", "ask": "本番へのリリースは何曜日？", "want": ["f-ja-deploy-day"] },
+    { "id": "ml-zh-zh", "category": "multilingual", "ask": "客服工单要在多长时间内回复？", "want": ["f-zh-support-sla"] },
+    { "id": "ml-es-es", "category": "multilingual", "ask": "¿Cuándo se envían las facturas a contabilidad?", "want": ["f-es-invoices"] },
+    { "id": "ml-de-de", "category": "multilingual", "ask": "Bis wann verschickt das Lager Bestellungen noch am selben Tag?", "want": ["f-de-warehouse"] },
+    { "id": "ml-de-en", "category": "multilingual", "ask": "Welcher Zahlungsanbieter wickelt unsere Zahlungen ab?", "want": ["f-payments"] },
+    { "id": "ml-ja-en", "category": "multilingual", "ask": "商品画像はどこに保存されていますか？", "want": ["f-images"] },
+    { "id": "ml-en-es", "category": "multilingual", "ask": "when are invoices sent to accounting?", "want": ["f-es-invoices"] },
+    { "id": "ml-en-ja", "category": "multilingual", "ask": "on which weekday do production releases go out?", "want": ["f-ja-deploy-day"] },
+
+    { "id": "pa-socket", "category": "paraphrase", "ask": "which TCP socket does the backend bind to on my machine?", "want": ["f-api-port"] },
+    { "id": "pa-card-company", "category": "paraphrase", "ask": "which company handles our customers' credit card transactions?", "want": ["f-payments"] },
+    { "id": "pa-bills", "category": "paraphrase", "ask": "how do we turn bills into printable documents?", "want": ["f-pdf"] },
+    { "id": "pa-logged-in", "category": "paraphrase", "ask": "what keeps track of who is logged in between requests?", "want": [["f-redis", "d-redis"]] },
+    { "id": "pa-pictures", "category": "paraphrase", "ask": "where are the pictures of the items kept?", "want": ["f-images"] },
+    { "id": "pa-languages", "category": "paraphrase", "ask": "which languages can shoppers read the site in?", "want": ["f-i18n"] },
+    { "id": "pa-weekend-copy", "category": "paraphrase", "ask": "is the pre-release environment's data copied from live at the weekend?", "want": ["f-db-staging"] },
+    { "id": "pa-erase", "category": "paraphrase", "ask": "how quickly do we wipe a shopper's personal information when asked?", "want": ["f-gdpr"] },
+
+    { "id": "repeat-cart", "category": "repeat", "ask": "how long is a guest's cart kept, and where?", "want": [["f-cart", "f-cart-dup"]], "once": [["f-cart", "f-cart-dup"]] },
+    { "id": "repeat-node", "category": "repeat", "ask": "which Node version does the project run on?", "want": [["f-node", "f-node-dup"]], "once": [["f-node", "f-node-dup"]] },
+    { "id": "repeat-money", "category": "repeat", "ask": "should the order total be stored as a float in the database?", "want": [["c-money", "c-money-dup"]], "once": [["c-money", "c-money-dup"]] },
+    { "id": "repeat-unit", "category": "repeat", "ask": "how do I run the Vitest unit tests?", "want": [["f-unit", "f-unit-dup"]], "once": [["f-unit", "f-unit-dup"]] }
+  ]
+}

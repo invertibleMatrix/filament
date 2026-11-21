@@ -1,0 +1,109 @@
+[
+  {
+    "request": {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "headers": {},
+      "body": {
+        "model": "emb-1",
+        "input": [
+          "hello",
+          "world"
+        ]
+      }
+    },
+    "back": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "x-filament-request-id": "<rec:1>"
+      },
+      "body": {
+        "object": "list",
+        "data": [
+          {
+            "object": "embedding",
+            "index": 0,
+            "embedding": [
+              0.1,
+              0.2,
+              0.3
+            ]
+          },
+          {
+            "object": "embedding",
+            "index": 1,
+            "embedding": [
+              0.1,
+              0.2,
+              0.3
+            ]
+          }
+        ],
+        "model": "emb-1",
+        "usage": {
+          "prompt_tokens": 4,
+          "total_tokens": 4
+        }
+      }
+    },
+    "upstream": {
+      "o": [
+        {
+          "method": "POST",
+          "path": "/v1/embeddings",
+          "headers": {
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate",
+            "accept-language": "*",
+            "authorization": "Bearer secret-o",
+            "content-type": "application/json",
+            "sec-fetch-mode": "cors",
+            "user-agent": "node"
+          },
+          "body": {
+            "model": "emb-1",
+            "input": [
+              "hello",
+              "world"
+            ]
+          }
+        }
+      ]
+    },
+    "records": [
+      {
+        "billing": "metered",
+        "changes": [
+          "embeddings emb-1 -> oa/emb-1",
+          "2 input(s)"
+        ],
+        "clientIp": "127.0.0.1",
+        "cost": 0,
+        "format": "embeddings",
+        "httpStatus": 200,
+        "id": "<rec:1>",
+        "listCost": 0,
+        "model": "emb-1",
+        "route": "emb-*",
+        "source": "client",
+        "status": "ok",
+        "stream": false,
+        "tokens": {
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "input": 4,
+          "output": 0,
+          "thinking": 0
+        },
+        "totalMs": "<n>",
+        "tps": "<n>",
+        "ts": "<t>",
+        "ttftMs": "<n>",
+        "ua": "node",
+        "upstream": "oa",
+        "upstreamModel": "emb-1"
+      }
+    ]
+  }
+]

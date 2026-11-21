@@ -1,0 +1,82 @@
+/* The shared settings editor's styles (HarnessV3 Step 2 D13): one sheet both apps link. Each app's theme
+   provides the values — the harness names them --color-*, the dashboard --surface/--line/--text-* — and the
+   fallback chain picks whichever exists, so the editor looks native in both. */
+:root {
+  --ed-border: var(--color-border, var(--line));
+  --ed-surface: var(--color-surface, var(--surface));
+  --ed-bg: var(--color-background, var(--bg));
+  --ed-text: var(--color-foreground, var(--text));
+  --ed-text-2: var(--color-foreground-subtle, var(--text-2));
+  --ed-text-3: var(--color-foreground-subtlest, var(--text-3));
+  --ed-ok: var(--color-success, var(--ok));
+  --ed-warn: var(--color-warning, var(--warn));
+  --ed-err: var(--color-destructive, var(--err));
+  --ed-accent: var(--color-icon-blue, var(--accent));
+  --ed-tag: var(--color-tag, var(--text-3));
+  --ed-fs-xs: var(--text-ui-xs, 11px);
+  --ed-fs-sm: var(--text-ui-sm, 12px);
+  --ed-fs-base: var(--text-ui-base, 13px);
+}
+
+.s-block { padding: 12px 14px; border-bottom: 1px solid var(--ed-border); }
+.s-block h4 { margin: 0 0 8px; font-size: var(--ed-fs-xs); text-transform: uppercase; letter-spacing: .07em; color: var(--ed-text-3); }
+.s-block .small { font-size: var(--ed-fs-sm); }
+.settings-ed .check { display: inline-flex; align-items: center; gap: 5px; }
+
+.zc-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 2px 8px; border-radius: 9999px;
+  font-size: var(--ed-fs-xs); font-weight: 500;
+  overflow: hidden; white-space: nowrap;
+}
+.zc-badge.row-badge { font-size: var(--ed-fs-sm); height: 18px; padding: 1px 7px; }
+
+.insp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.insp-head h4 { margin: 0; }
+.insp-blurb { margin: 0 0 8px; }
+.insp-section.is-notbuilt { opacity: 0.8; }
+.insp-notbuilt ul { margin: 4px 0 0; padding-left: 16px; font-size: var(--ed-fs-sm); color: var(--ed-text-2); }
+.insp-notbuilt li { margin: 2px 0; }
+.insp-notbuilt code { color: var(--ed-text); }
+.knobs { display: flex; flex-direction: column; gap: 4px; }
+/* A knob is two lines: the control row, then the schema's own one-line explanation — visible, not a tooltip. */
+.knob { display: flex; flex-direction: column; gap: 1px; padding: 5px 0; border-bottom: 1px dashed color-mix(in srgb, var(--ed-border) 55%, transparent); }
+.knob:last-child { border-bottom: 0; }
+.knob-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 26px; font-size: var(--ed-fs-sm); }
+.knob-doc { margin: 0; font-size: var(--ed-fs-xs); color: var(--ed-text-3); max-width: 68ch; line-height: 1.45; }
+/* A description's code (a value, a command), as the page sets code: mono, a shade apart from the words. */
+.knob-doc code { font-family: var(--mono); font-size: 0.95em; padding: 0 3px; border-radius: 3px; background: color-mix(in srgb, currentColor 9%, transparent); }
+.knob.is-inert { color: var(--ed-text-2); }
+.knob-label { min-width: 150px; color: var(--ed-text-2); font-size: var(--ed-fs-sm); }
+/* The label is the knob in words (LD-D10); its short key sits beside it in mono. */
+.knob-key { margin-left: 6px; color: var(--ed-text-3); font-family: var(--mono); font-size: var(--ed-fs-xs); white-space: nowrap; }
+.knob-phase { margin-left: 6px; padding: 0 5px; border-radius: 999px; border: 1px solid var(--ed-border); font-size: var(--ed-fs-xs); color: var(--ed-text-3); }
+.knob-inert { display: inline-flex; align-items: center; }
+.knob select, .knob-input {
+  font-size: var(--ed-fs-sm); padding: 3px 6px; border: 1px solid var(--ed-border); border-radius: 6px;
+  background: var(--ed-surface); color: inherit; max-width: 220px;
+}
+.knob-input[type="number"] { width: 84px; }
+.knob-json-wrap { display: flex; align-items: flex-start; gap: 6px; flex: 1; min-width: 200px; }
+.knob-json { flex: 1; min-width: 160px; font-family: var(--mono); font-size: var(--ed-fs-xs); padding: 4px 6px; border: 1px solid var(--ed-border); border-radius: 6px; background: var(--ed-surface); color: inherit; resize: vertical; }
+.knob-reset { padding: 0 6px; }
+/* The rules, read-only (HarnessV3-AtHome AH-D7): each as the server describes it, then where they are forgotten. */
+.knob-rules { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1; min-width: 200px; }
+.knob-rule { font-family: var(--mono); font-size: var(--ed-fs-xs); color: var(--ed-text); }
+.knob-rules-none { color: var(--ed-text-3); }
+.knob-rules-note, .knob-note { font-size: var(--ed-fs-xs); color: var(--ed-text-3); }
+.tool-switches { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.tool-switches > .knob-note { flex-basis: 100%; }
+.tool-switch { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: var(--ed-fs-xs); }
+.tool-switch.is-inert { color: var(--ed-text-2); }
+.tool-switch.is-inert .knob-phase { margin-left: 2px; }
+.row-badge { font-size: var(--ed-fs-xs); }
+.zc-badge.src-session { background: color-mix(in srgb, var(--ed-accent) 18%, transparent); color: var(--ed-accent); }
+.zc-badge.src-project { background: color-mix(in srgb, var(--ed-ok) 18%, transparent); color: var(--ed-ok); }
+.zc-badge.src-global { background: var(--ed-tag); color: var(--ed-text-2); }
+.zc-badge.src-default { background: transparent; border: 1px dashed var(--ed-border); color: var(--ed-text-3); }
+.zc-badge.src-reach { background: color-mix(in srgb, var(--ed-warn) 16%, transparent); color: var(--ed-warn); }
+.insp-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--ed-fs-sm); }
+.insp-history li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.insp-history-when { font-family: var(--mono); font-size: var(--ed-fs-xs); color: var(--ed-text-3); flex: none; }
+.insp-history-what { color: var(--ed-text-2); word-break: break-word; }

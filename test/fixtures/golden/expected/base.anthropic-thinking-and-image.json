@@ -1,0 +1,432 @@
+[
+  {
+    "request": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": {},
+      "body": {
+        "model": "big-1",
+        "max_tokens": 2048,
+        "system": "You are a coding assistant.\nWorking directory: C:\\demo\\goldenproj",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "what is in this image?"
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "iVBORw0KGgo="
+                }
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "a small png",
+                "signature": "sig"
+              },
+              {
+                "type": "text",
+                "text": "A tiny image."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "and now?"
+          }
+        ],
+        "thinking": {
+          "type": "enabled",
+          "budget_tokens": 1024
+        }
+      }
+    },
+    "back": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "x-filament-request-id": "<rec:1>",
+        "x-filament-upstream": "u"
+      },
+      "body": {
+        "id": "msg_fake",
+        "type": "message",
+        "role": "assistant",
+        "model": "big-1",
+        "content": [
+          {
+            "type": "text",
+            "text": "MODEL ANSWER"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 5,
+          "cache_read_input_tokens": 3,
+          "cache_creation_input_tokens": 2
+        }
+      }
+    },
+    "upstream": {
+      "a": [
+        {
+          "method": "POST",
+          "path": "/v1/messages",
+          "headers": {
+            "accept": "text/event-stream, application/json",
+            "accept-encoding": "gzip, deflate",
+            "accept-language": "*",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "sec-fetch-mode": "cors",
+            "user-agent": "filament/0.1",
+            "x-api-key": "secret-a",
+            "x-filament-request-id": "<rec:1>"
+          },
+          "body": {
+            "model": "big-1",
+            "max_tokens": 2048,
+            "system": "You are a coding assistant.\nWorking directory: C:\\demo\\goldenproj",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "what is in this image?"
+                  },
+                  {
+                    "type": "image",
+                    "source": {
+                      "type": "base64",
+                      "media_type": "image/png",
+                      "data": "iVBORw0KGgo="
+                    },
+                    "cache_control": {
+                      "type": "ephemeral"
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "thinking",
+                    "thinking": "a small png",
+                    "signature": "sig"
+                  },
+                  {
+                    "type": "text",
+                    "text": "A tiny image."
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "and now?",
+                    "cache_control": {
+                      "type": "ephemeral"
+                    }
+                  }
+                ]
+              }
+            ],
+            "thinking": {
+              "type": "enabled",
+              "budget_tokens": 1024
+            }
+          }
+        }
+      ]
+    },
+    "records": [
+      {
+        "attempt": 1,
+        "billing": "metered",
+        "changes": [
+          "cache_control added on last user message + the user message before the newest reply (5m)"
+        ],
+        "clientIp": "127.0.0.1",
+        "context": {
+          "estimate": 1597,
+          "source": null,
+          "upstream": "u",
+          "usable": null,
+          "verdict": "unknown",
+          "window": null
+        },
+        "cost": 0.0002,
+        "format": "anthropic",
+        "httpStatus": 200,
+        "id": "<rec:1>",
+        "inboundBody": "{\"model\":\"big-1\",\"max_tokens\":2048,\"system\":\"You are a coding assistant.\\nWorking directory: C:\\\\demo\\\\goldenproj\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"what is in this image?\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"iVBORw0KGgo=\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"a small png\",\"signature\":\"sig\"},{\"type\":\"text\",\"text\":\"A tiny image.\"}]},{\"role\":\"user\",\"content\":\"and now?\"}],\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024}}",
+        "listCost": 0.0002,
+        "memory": {
+          "briefing": 0,
+          "chain": "<chain:1>",
+          "client": "node",
+          "composition": {
+            "briefing": 0,
+            "goal": 0
+          },
+          "ids": [],
+          "injected": 0,
+          "position": "mid",
+          "project": "<chain:2>",
+          "signals": [],
+          "tokens": 0,
+          "tools": false,
+          "turn": 1,
+          "turnId": 4
+        },
+        "memoryTrace": {
+          "marks": {
+            "firstByte": "<n>",
+            "handed": "<n>"
+          },
+          "steps": [
+            {
+              "at": "<n>",
+              "depth": 0,
+              "ms": "<n>",
+              "name": "situate",
+              "note": "who is talking, from where, which session",
+              "phase": "before"
+            },
+            {
+              "at": "<n>",
+              "client": "node",
+              "depth": 1,
+              "name": "situated",
+              "newest": "a person speaking",
+              "phase": "before",
+              "position": "mid",
+              "project": "goldenproj",
+              "session": "fingerprint of folder + first message",
+              "systemChars": 65,
+              "userMessages": 2
+            },
+            {
+              "at": "<n>",
+              "briefingItems": 0,
+              "depth": 0,
+              "ms": "<n>",
+              "name": "prepare",
+              "note": "everything memory does to the request before the upstream is called",
+              "phase": "before",
+              "tokensAdded": 0,
+              "turnItems": 0
+            },
+            {
+              "at": "<n>",
+              "briefingStored": false,
+              "depth": 1,
+              "ms": "<n>",
+              "name": "session lookup",
+              "new": true,
+              "phase": "before",
+              "session": "<chain:1>",
+              "turnsSoFar": 0
+            },
+            {
+              "at": "<n>",
+              "codeTokens": 0,
+              "depth": 1,
+              "keywords": 0,
+              "name": "signals read",
+              "phase": "before",
+              "position": "mid",
+              "query": "",
+              "signals": "none"
+            },
+            {
+              "at": "<n>",
+              "depth": 1,
+              "ms": "<n>",
+              "name": "turn archived",
+              "new": true,
+              "note": "the user's message is stored byte-exact (encrypted archive)",
+              "phase": "before",
+              "turn": 1
+            },
+            {
+              "at": "<n>",
+              "blocks": 0,
+              "depth": 1,
+              "name": "earlier blocks re-attached",
+              "note": "byte-identical, so the provider's prompt cache survives",
+              "phase": "before",
+              "stored": 0
+            },
+            {
+              "at": "<n>",
+              "depth": 1,
+              "name": "autopilot stops here",
+              "phase": "before",
+              "why": "memory is off in Memory settings — the turn is recorded, nothing is recalled"
+            },
+            {
+              "at": "<n>",
+              "depth": 0,
+              "name": "handed to the upstream",
+              "note": "memory's work before the call ends here; what follows happens while the reply is produced",
+              "phase": "upstream",
+              "upstream": "u"
+            },
+            {
+              "at": "<n>",
+              "depth": 0,
+              "ms": "<n>",
+              "name": "after the reply",
+              "note": "bookkeeping once the client has its answer; not on the critical path",
+              "phase": "after"
+            },
+            {
+              "at": "<n>",
+              "depth": 1,
+              "ms": "<n>",
+              "name": "reply archived",
+              "note": "the final answer joins the turn in the archive",
+              "outputChars": 12,
+              "phase": "after"
+            },
+            {
+              "at": "<n>",
+              "depth": 1,
+              "name": "nothing to judge",
+              "note": "no memory was added to this request",
+              "phase": "after"
+            }
+          ],
+          "summary": {
+            "afterMs": "<n>",
+            "blockingMs": "<n>",
+            "engineAsync": 0,
+            "engineCalls": 0,
+            "engineErrors": 0,
+            "engineMs": "<n>",
+            "firstByteAt": "<n>",
+            "laterMs": 0,
+            "modelCalls": 0,
+            "steps": 12,
+            "toolCalls": 0,
+            "toolMs": "<n>",
+            "toolRounds": 0
+          }
+        },
+        "model": "big-1",
+        "route": "big-*",
+        "shapedBody": "{\"model\":\"big-1\",\"max_tokens\":2048,\"system\":\"You are a coding assistant.\\nWorking directory: C:\\\\demo\\\\goldenproj\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"what is in this image?\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"iVBORw0KGgo=\"},\"cache_control\":{\"type\":\"ephemeral\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"a small png\",\"signature\":\"sig\"},{\"type\":\"text\",\"text\":\"A tiny image.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"and now?\",\"cache_control\":{\"type\":\"ephemeral\"}}]}],\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024}}",
+        "shapedHeaders": {
+          "accept": "text/event-stream, application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "user-agent": "filament/0.1",
+          "x-api-key": "[redacted]",
+          "x-filament-request-id": "<rec:1>"
+        },
+        "source": "client",
+        "status": "ok",
+        "stopReason": "end_turn",
+        "stream": false,
+        "thinkingChars": 0,
+        "tokens": {
+          "cacheRead": 3,
+          "cacheSeen": true,
+          "cacheWrite": 2,
+          "input": 10,
+          "output": 5,
+          "thinking": 0
+        },
+        "totalMs": "<n>",
+        "tps": "<n>",
+        "translation": {
+          "received": {
+            "bytes": 518,
+            "cacheMarkers": 0,
+            "effort": null,
+            "max_tokens": 2048,
+            "messages": 3,
+            "model": "big-1",
+            "roles": {
+              "assistant": 1,
+              "user": 2
+            },
+            "sampling": [],
+            "stream": false,
+            "systemChars": 65,
+            "thinking": {
+              "budget_tokens": 1024,
+              "type": "enabled"
+            },
+            "tools": 0
+          },
+          "sent": {
+            "bytes": 617,
+            "cacheMarkers": 2,
+            "effort": null,
+            "max_tokens": 2048,
+            "messages": 3,
+            "model": "big-1",
+            "roles": {
+              "assistant": 1,
+              "user": 2
+            },
+            "sampling": [],
+            "stream": false,
+            "systemChars": 65,
+            "thinking": {
+              "budget_tokens": 1024,
+              "type": "enabled"
+            },
+            "tools": 0
+          }
+        },
+        "ts": "<t>",
+        "ttftBuffered": true,
+        "ttftMs": "<n>",
+        "ua": "node",
+        "upstream": "u",
+        "upstreamModel": "big-1",
+        "url": "<fake:a>/v1/messages",
+        "view": {
+          "composition": {
+            "assistantText": 13,
+            "images": 1,
+            "messages": 3,
+            "subagentCalls": 0,
+            "subagents": 0,
+            "system": 70,
+            "thinking": 62,
+            "toolCalls": 0,
+            "toolResult": 0,
+            "toolUse": 0,
+            "tools": 2,
+            "userText": 30
+          },
+          "historyChars": 340,
+          "historyTokens": 85,
+          "rawTurns": 2,
+          "sentTokens": 85,
+          "totalTurns": 2
+        }
+      }
+    ]
+  }
+]

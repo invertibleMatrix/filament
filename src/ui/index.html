@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Filament console</title>
+  <link rel="stylesheet" href="/ui/style.css" />
+  <link rel="stylesheet" href="/ui/lib/settings/settings.css" />
+  <link rel="icon" type="image/png" href="/ui/filament-icon.png" />
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="8"/><path d="M9 16h5m4 0h5M14 10l4 12" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></span>
+        <span class="brand-text"><b>Filament</b><small>console · <span id="version"></span></small></span>
+        <button type="button" class="nav-toggle ghost icon" id="nav-toggle" title="Collapse sidebar" aria-label="Collapse sidebar"><svg viewBox="0 0 20 20"><path d="M12 4 6 10l6 6"/></svg></button>
+      </div>
+      <a class="harness-link" id="open-harness" href="/ui/harness.html" target="filament-harness" title="Filament's own coding agent: run a task on any model you connected"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v9h-13z"/><path d="M7.5 16.5h5"/><path d="M6.5 7.5 9 9.5l-2.5 2M10.5 11.5h3"/></svg><span class="label">Open the harness</span><svg class="ext" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 4h8v8M16 4 7 13"/></svg></a>
+      <nav id="tabs">
+        <button data-nav="overview" data-tab="overview"><svg viewBox="0 0 20 20"><path d="M3 16V8.5L10 4l7 4.5V16H3z"/><path d="M8 16v-5h4v5"/></svg><span class="label">Home</span></button>
+        <button data-nav="requests" data-tab="requests"><svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h9"/></svg><span class="label">Traffic</span></button>
+        <button data-nav="usage" data-tab="usage"><svg viewBox="0 0 20 20"><path d="M3 15V9h3v6H3zM8.5 15V5h3v10h-3zM14 15v-7h3v7h-3z"/></svg><span class="label">Usage</span></button>
+        <button data-nav="memory" data-tab="memory"><svg viewBox="0 0 20 20"><path d="M10 3a4 4 0 0 0-4 4v1a3 3 0 0 0-1 5.5V16h10v-2.5A3 3 0 0 0 14 8V7a4 4 0 0 0-4-4z"/><path d="M8 11.5h4M10 3v13"/></svg><span class="label">Memory</span></button>
+        <button data-nav="destinations" data-tab="upstreams"><svg viewBox="0 0 20 20"><path d="M3 5h5l4 10h5M3 15h5l4-10h5"/></svg><span class="label">Destinations</span></button>
+        <button data-nav="lab" data-tab="playground"><svg viewBox="0 0 20 20"><path d="M4 4h12v9H4zM8 16h4M10 13v3"/><path d="M7 8l2 1.5L7 11M11 11h2"/></svg><span class="label">Lab</span></button>
+        <button data-nav="settings" data-tab="settings"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.5 4.5l2 2M13.5 13.5l2 2M4.5 15.5l2-2M13.5 6.5l2-2"/></svg><span class="label">Settings</span></button>
+      </nav>
+      <div class="side-utils">
+        <button type="button" id="btn-assistant" data-tab="assistant" title="Configure by chatting"><svg viewBox="0 0 20 20"><path d="M4 4h12v9H8l-4 3z"/><path d="M7 8h6M7 10.5h4"/></svg><span class="label">Assistant</span></button>
+        <button type="button" id="btn-help" title="Docs, concepts, Start here"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6.5v.5"/></svg><span class="label">Help</span></button>
+        <button type="button" id="btn-palette" title="Jump anywhere (Ctrl+K)"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 17 17"/></svg><span class="label">Search</span><span class="kbd">Ctrl+K</span></button>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="dot" id="status-dot"></span><span id="status-text">connecting…</span></div>
+        <button type="button" class="appear-toggle" id="appear-btn" title="Theme, accent, density">Appearance</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="bar">
+        <div class="page-head">
+          <h1 id="page-title"></h1>
+          <p id="page-sub" class="muted"></p>
+          <div id="page-tabs" class="page-tabs hidden"></div>
+        </div>
+        <div class="actions" id="config-actions">
+          <span id="dirty" class="pill warn hidden">Unsaved changes</span>
+          <button id="discard" class="hidden" title="Throw away the unsaved edits and show the saved configuration again">Discard</button>
+          <button id="save" class="primary" disabled>Save changes</button>
+        </div>
+      </header>
+      <div id="stale-bar" class="dirty-bar hidden" role="status"></div>
+      <main id="view"></main>
+    </div>
+  </div>
+  <div id="help-pop" class="pop hidden" role="menu">
+    <button data-tab="docs">Docs</button>
+    <button data-tab="concepts">Concepts</button>
+    <button data-tab="guide">Start here</button>
+  </div>
+  <div id="appear-pop" class="pop hidden">
+    <div class="pop-label">Theme</div>
+    <div class="seg appear-seg" id="theme">
+      <button data-theme="auto">Auto</button>
+      <button data-theme="light">Paper</button>
+      <button data-theme="dark">Slate</button>
+      <button data-theme="midnight">Midnight</button>
+      <button data-theme="contrast">Contrast</button>
+    </div>
+    <div class="pop-label">Accent</div>
+    <div class="accent-dots" id="accent">
+      <button data-accent="indigo" title="Indigo"></button>
+      <button data-accent="teal" title="Teal"></button>
+      <button data-accent="amber" title="Amber"></button>
+      <button data-accent="mono" title="Mono"></button>
+    </div>
+    <div class="pop-label">Density</div>
+    <div class="seg appear-seg" id="density">
+      <button data-density="comfortable">Comfortable</button>
+      <button data-density="compact">Compact</button>
+    </div>
+  </div>
+  <div id="palette" class="palette hidden" role="dialog" aria-label="Command palette">
+    <div class="palette-inner">
+      <input id="palette-q" type="search" placeholder="Jump to a page, copy the key, explain a model…" autocomplete="off" />
+      <div id="palette-list"></div>
+      <div class="palette-hint">↑↓ to move · Enter to run · Esc to close</div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="drawer" class="drawer hidden"><div class="drawer-inner" role="dialog" aria-modal="true" aria-labelledby="drawer-title"><button class="close" id="drawer-close" aria-label="Close">×</button><div id="drawer-body"></div></div></div>
+  <script type="module" src="/ui/app.js"></script>
+</body>
+</html>

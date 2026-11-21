@@ -1,0 +1,10 @@
+{
+  "name": "tally",
+  "version": "0.4.0",
+  "description": "A small household ledger: entries in cents, totals by category.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

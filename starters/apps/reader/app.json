@@ -1,0 +1,13 @@
+{
+  "title": "Reader",
+  "description": "The feeds you follow, in one list, what you read marked",
+  "icon": "book",
+  "sources": {
+    "posts": { "command": ["node", "{{folder}}/reads/feeds.mjs", "{{folder}}/feeds.json"], "rows": "posts", "key": "id", "order": "-date", "every": "30m" }
+  },
+  "howto": "Its feeds are the addresses in feeds.json beside it; a post read is kept in the read collection, by its id.",
+  "state": {
+    "posts": "Each feed's newest posts, newest first: id, feed, title, link, date (ISO), and a line of its text.",
+    "read": "A collection of filament.db: the posts marked read, each by the post's id."
+  }
+}

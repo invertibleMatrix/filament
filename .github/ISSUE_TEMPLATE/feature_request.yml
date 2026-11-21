@@ -1,0 +1,16 @@
+name: Idea
+description: Something Filament could do, or do better.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work
+      description: Optional. What you would see or press.

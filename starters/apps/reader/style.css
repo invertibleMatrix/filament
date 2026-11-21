@@ -1,0 +1,14 @@
+/* The Reader's look: Filament's colors and type by their names, so it draws in light and dark. */
+body { margin: 0; font: 13px/1.5 var(--font); color: var(--text); }
+main { padding: 16px; display: grid; gap: 12px; max-width: 760px; }
+h1 { font-size: 15px; margin: 0; flex: 1; }
+.quiet { color: var(--text-muted); font-size: 12px; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+ul.posts { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+ul.posts li { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+ul.posts li.is-read a { color: var(--text-muted); }
+ul.posts a { color: var(--text); font-weight: 600; text-decoration: none; }
+ul.posts a:hover { color: var(--accent); }
+.text { margin: 2px 0 0; color: var(--text-muted); }
+button { font: inherit; font-size: 12px; padding: 2px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); cursor: pointer; }
+button.mark { justify-self: start; }

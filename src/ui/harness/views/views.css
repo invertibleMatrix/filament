@@ -1,0 +1,722 @@
+/* The session's views (HarnessV3-Views VW-D1): the tabs at the centre of the conversation's header, and the views they
+   bring into the conversation's frame — Chat is the transcript itself; the Plan view (plan.js) and the Team view
+   (team.js, its look in team.css) take the transcript's place, the dock staying under them. Tokens only: every colour
+   and size comes from the theme's sheets. */
+
+/* ---- the tabs: a toolbar's segmented control, a glyph and a word each, a badge for what changes out of sight ---- */
+.c-bar { container: conv-bar / inline-size; }
+.view-tabs-slot { flex: none; display: flex; }
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--inst-seg-bg); }
+.view-tab {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
+  border: 0; border-radius: 7px; background: none; cursor: pointer;
+  font: inherit; font-size: var(--text-ui-caption); font-weight: 500; color: var(--inst-label-2); white-space: nowrap;
+  transition: background-color 200ms var(--ease), box-shadow 200ms var(--ease), color 200ms var(--ease);
+}
+.view-tab:hover { color: var(--inst-label); }
+.view-tab.is-on { color: var(--inst-label); background: var(--inst-seg-on); box-shadow: var(--inst-seg-shadow); }
+.view-tab:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.view-tab-ic { display: inline-flex; }
+.view-tab-ic svg { width: 14px; height: 14px; }
+.view-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-ui-xs); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--inst-label-2); }
+.view-badge:empty { display: none; }
+/* The Chat tab's dot: blue while the agent works, breathing; orange, still, while it waits for an answer. */
+.view-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-sys-blue); animation: view-dot-breathe 1.6s ease-in-out infinite; }
+.view-badge.is-asks .view-dot { background: var(--color-sys-orange); animation: none; }
+@keyframes view-dot-breathe { 50% { opacity: 0.35; } }
+/* A pane popped out on top (UX10): its tab after the views', its × beside its word putting it back. Their box lays
+   them out with the others. */
+.view-tabs-top { display: contents; }
+.view-tab.is-top { padding-right: 6px; }
+.view-tab-x { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: var(--inst-label-3); }
+.view-tab-x svg { width: 11px; height: 11px; }
+.view-tab-x:hover { background: var(--inst-btn-hover); color: var(--inst-label); }
+/* Narrow, the words go — the tabs not shown first, then all (proposal_ux §3.3): the glyph, the badge and the tooltip
+   name each view. The room is the chat's side of the header (harness.css, `hdr-left`): the crumb's and the tabs', or
+   the tabs' alone while the crumb stands in the sidebar (`.crumb-away`), the crumb's 220 px theirs then. `:where` keeps
+   each rule as weighty as the tab's own, so a tab popped out on top keeps its padding. */
+@container hdr-left (max-width: 600px) {
+  :where(.c-bar:not(.crumb-away)) .view-tab:not(.is-on) .view-tab-label { display: none; }
+  :where(.c-bar:not(.crumb-away)) .view-tab:not(.is-on) { padding: 0 10px; }
+}
+@container hdr-left (max-width: 440px) {
+  :where(.c-bar:not(.crumb-away)) .view-tab-label { display: none; }
+  :where(.c-bar:not(.crumb-away)) .view-tab { padding: 0 10px; }
+}
+@container hdr-left (max-width: 380px) {
+  :where(.c-bar.crumb-away) .view-tab:not(.is-on) .view-tab-label { display: none; }
+  :where(.c-bar.crumb-away) .view-tab:not(.is-on) { padding: 0 10px; }
+}
+@container hdr-left (max-width: 220px) {
+  :where(.c-bar.crumb-away) .view-tab-label { display: none; }
+  :where(.c-bar.crumb-away) .view-tab { padding: 0 10px; }
+}
+
+/* ---- the views: one shows at a time in the frame, over the dock ---- */
+.vw { display: none; }
+.conv-frame.view-plan > .vw-plan { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; container: plan / inline-size; }
+.conv-frame.view-team > .vw-team { display: block; flex: 1 1 auto; min-height: 0; container: team / inline-size; }
+.conv-frame:is(.view-plan, .view-team, .view-side, .view-pane) > :is(.status-panel, .transcript, .empty-chat, .turn-nav, .to-bottom, .quote-btn, .find-bar) { display: none; }
+/* A pane popped out on top (UX10): its tile the frame's whole width over the dock, as the right bar draws it. */
+.conv-frame.view-pane > .vw-pane { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; padding: 8px 12px 0; }
+.vw-pane > .tile-top { flex: 1 1 auto; }
+/* Under a pane on top the message box and its strip give their room to the pane (the owner's word of 10-24): what
+   waits for you stays over where the box was — a question, a site's permission asked while you watch the
+   page — and whatever writes into the box brings Chat first (app.js, the composer's `toBox`). */
+.conv-frame.view-pane > .dock { margin-bottom: 12px; }
+.conv-frame.view-pane > .dock :is(.composer-shell, .composer-strip) { display: none; }
+/* The floating side pane overlays the frame: a view yields to it as the conversation does, so nothing reads under it,
+   and the graph's detail goes beside the canvas only when the room beside the pane has the width. */
+.app-shell.pane-float-open .vw-plan, .app-shell.pane-float-open .vw-team, .app-shell.pane-float-open .vw-pane { padding-right: calc(var(--pane-w, 0px) + 16px); transition: padding-right 280ms var(--ease-out); }
+[data-motion="off"] .app-shell.pane-float-open .vw-plan, [data-motion="off"] .app-shell.pane-float-open .vw-team, [data-motion="off"] .app-shell.pane-float-open .vw-pane { transition: none; }
+
+/* ---- the Plan view: one page (E41 P4) — the graph, or the checklist, under no bar ---- */
+.plan-view { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Where the right-click hunt's popup stands (UX9): laid over the box it opened on, never seen or pressed. */
+.tg-hunt-anchor { position: absolute; top: 0; left: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; }
+.pv-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+.pv-inner { padding: 16px 20px 24px; }
+/* Beside the chat, in the right bar: closer to its edges, as the tile's own body is. */
+.plan-view.is-pane .pv-inner { padding: 12px 12px 16px; }
+/* The graph's page is one workspace the window's height (the owner's of 11-10: "the left canvas of the graph size is
+   not great"): Still open, the head and its callouts over it, then the canvas and the card filling what they leave, all
+   the page's width — never less than a canvas worth the name: past that the page scrolls, as when Still open is opened.
+   The checklist, the empty page and the rail beside the chat scroll whole (plan.js `paintNow` sets the class). */
+.pv-inner.is-workspace { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; }
+.plan-view .pv-inner.is-workspace > * { flex: none; margin-inline: 0; }
+/* The graph's view grows; the line back to the checklist over an older graph (`.pv-back`, a `.tg-view` too) does not. */
+.pv-inner.is-workspace > .tg-view:not(.pv-back) { flex: 1 1 auto; min-width: 0; }
+.pv-inner.is-workspace > .tg-view > .tg-body { flex: 1 0 auto; }
+.pv-inner.is-workspace > .tg-view > .tg-body.is-beside { flex: 1 1 0; min-height: 440px; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+.pv-inner.is-workspace .tg-graph { min-height: 0; }
+/* The card under the canvas (a narrow page): the canvas a height of its own, the card under it, the page scrolling. */
+.pv-inner.is-workspace .tg-body.is-under > .tg-graph { height: clamp(320px, 55vh, 560px); }
+.pv-inner.is-workspace .tg-body.is-under > .tg-graph:only-child { flex: 1 1 auto; height: auto; min-height: 440px; }
+.pv-inner.is-workspace .tg-canvas-box { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.pv-inner.is-workspace .tg-canvas-view { flex: 1 1 0; min-height: 0; }
+/* The checklist reads in a column (D19): its head, the items in one grouped card, when a graph would show instead. */
+.pv-inner > .pv-column { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.pv-list { padding: 4px 0; border: 1px solid var(--inst-border); border-radius: 12px; background: var(--inst-card); }
+.pv-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px; font-size: var(--text-ui-base); color: var(--inst-label); overflow-wrap: anywhere; }
+.pv-item + .pv-item { border-top: 1px solid var(--inst-sep); }
+.pv-item > .tg-mark { margin-top: 2px; }
+.pv-item-text { flex: 1; min-width: 0; }
+.pv-item.is-pending, .pv-item.is-blocked { color: var(--inst-label-2); }
+.pv-item.is-doing { font-weight: 600; }
+.pv-item-w { flex: none; margin-left: auto; font-size: var(--text-ui-xs); font-weight: 500; white-space: nowrap; color: var(--color-sys-blue-text); }
+.pv-item-w.is-blocked { color: var(--color-sys-red-text); }
+.pv-item-w.is-still { color: var(--inst-label-2); }
+.pv-quiet { margin: 0; font-size: var(--text-ui-sm); line-height: 1.5; color: var(--inst-label-3); }
+/* The other plan of the session, a press away: the older graph under the checklist, the checklist over the older graph. */
+.pv-other .inst-link { display: inline-flex; vertical-align: baseline; }
+.pv-inner > .pv-back { padding: 0 0 6px; }
+/* The session's goal under the graph, as wide as it. */
+.pv-inner > .plan-goal { margin: 18px 0 0; }
+/* What is still open in the chat (plan.js `openEl`): first on the page, folded to one line, as wide as the page's own
+   column. */
+.pv-inner > .pv-open { margin: 0 auto 14px; border: 1px solid var(--inst-border); border-radius: 12px; background: var(--inst-card); }
+.pv-inner > .pv-open.is-checklist { max-width: 640px; }
+.pv-inner > .pv-open.is-empty { max-width: 460px; }
+.pv-open-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 14px; cursor: pointer; list-style: none; font-size: var(--text-ui-base); color: var(--inst-label); }
+.pv-open-head::-webkit-details-marker { display: none; }
+.pv-open-head::before { content: "›"; flex: none; width: 10px; color: var(--inst-label-3); transition: transform 120ms var(--ease-out); }
+.pv-open[open] > .pv-open-head::before { transform: rotate(90deg); }
+.pv-open-head:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: -2px; border-radius: 12px; }
+.pv-open-title { font-weight: 600; margin-right: 2px; white-space: nowrap; }
+/* The head's counts (the owner's of 11-10): what waits in orange, what runs in blue, what was left behind and what the agent dismissed in gray. */
+.pv-open-chip { padding: 1px 8px; border-radius: 999px; font-size: var(--text-ui-xs); font-weight: 550; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pv-open-chip.is-wait { color: var(--color-sys-orange-text); background: color-mix(in oklab, var(--color-sys-orange) 16%, transparent); }
+.pv-open-chip.is-run { color: var(--color-sys-blue-text); background: color-mix(in oklab, var(--color-sys-blue) 15%, transparent); }
+.pv-open-chip.is-left, .pv-open-chip.is-gone { color: var(--inst-label-2); background: var(--inst-btn); }
+.pv-open-none { font-size: var(--text-ui-sm); color: var(--inst-label-3); }
+.pv-open-grow { flex: 1; }
+.pv-open-info { display: inline-grid; place-items: center; width: 18px; height: 18px; color: var(--inst-label-3); cursor: help; }
+.pv-open-info:hover, .pv-open-info:focus-visible { color: var(--inst-label); }
+.pv-open-info svg { width: 14px; height: 14px; }
+.pv-open-body { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 12px; }
+.pv-open-empty, .pv-open-due { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label-2); }
+.pv-open-due { color: var(--color-sys-blue-text); }
+/* A group: its name and count, then its rows, each a dot for how it stands, a title, a line under it and one button. */
+.pv-open-group { display: flex; flex-direction: column; gap: 4px; }
+.pv-open-gh { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-ui-xs); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--inst-label-3); }
+.pv-open-gn { font-variant-numeric: tabular-nums; font-weight: 500; }
+.pv-open-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid var(--inst-sep); border-radius: 10px; overflow: hidden; }
+.pv-open-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; }
+.pv-open-row + .pv-open-row { border-top: 1px solid var(--inst-sep); }
+.pv-open-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--inst-label-3); }
+.pv-open-row.is-run .pv-open-dot { background: var(--color-sys-blue); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 22%, transparent); }
+.pv-open-row.is-wait .pv-open-dot { background: var(--color-sys-orange); }
+.pv-open-row.is-ask .pv-open-dot { background: var(--color-sys-purple, var(--color-sys-orange)); }
+.pv-open-row.is-fail .pv-open-dot { background: var(--color-sys-red); }
+.pv-open-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pv-open-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-sm); font-weight: 550; color: var(--inst-label); }
+.pv-open-d { font-size: var(--text-ui-xs); line-height: 1.45; color: var(--inst-label-2); overflow-wrap: anywhere; }
+.pv-open-row.is-fail .pv-open-d { color: var(--color-sys-red-text); }
+.pv-open-act { height: 24px; padding: 0 10px; border: 1px solid var(--inst-border); border-radius: 7px; background: var(--inst-btn); font: inherit; font-size: var(--text-ui-xs); font-weight: 550; white-space: nowrap; color: var(--inst-label); cursor: pointer; }
+.pv-open-act:hover { background: color-mix(in oklab, var(--inst-btn) 70%, var(--inst-label) 8%); }
+.pv-open-act:disabled { cursor: default; color: var(--inst-label-3); }
+.pv-open-act.is-quiet { border-color: transparent; background: none; color: var(--color-sys-blue-text); }
+.pv-open-acts { display: grid; gap: 2px; justify-items: end; }
+/* What was left behind, in one line whose button opens the project's Folders and worktrees (11-10). */
+.pv-open-left { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: color-mix(in oklab, var(--inst-btn) 55%, transparent); }
+.pv-open-left-ic { display: grid; place-items: center; color: var(--inst-label-3); }
+.pv-open-left-ic svg { width: 16px; height: 16px; }
+/* What the agent dismissed: folded under the rest, dimmed, each with Undo. */
+.pv-open-gone > summary { width: fit-content; font-size: var(--text-ui-xs); color: var(--inst-label-3); cursor: pointer; }
+.pv-open-gone > summary:hover { color: var(--inst-label-2); }
+.pv-open-gone[open] > summary { margin-bottom: 6px; }
+.pv-open-row.is-dismissed .pv-open-dot { background: var(--inst-label-3); box-shadow: none; }
+.pv-open-row.is-dismissed .pv-open-t { font-weight: 500; color: var(--inst-label-2); }
+.pv-open-row.is-dismissed .pv-open-d { color: var(--inst-label-3); }
+/* No plan yet: a glyph, a title and a line. */
+.pv-empty { max-width: 460px; margin: 0 auto; padding: max(48px, 10vh) 0 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.pv-empty-ic { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 6px; border-radius: 14px; color: var(--inst-label-2); background: var(--inst-card); box-shadow: inset 0 0 0 1px var(--inst-sep); }
+.pv-empty-ic svg { width: 26px; height: 26px; stroke-width: 1.6; }
+.pv-empty-title { margin: 0; font-size: var(--text-ui-xl); font-weight: 650; letter-spacing: -0.01em; color: var(--inst-label); }
+.pv-empty-sub { margin: 0; font-size: var(--text-ui-base); line-height: 1.5; color: var(--inst-label-2); }
+.pv-empty > .plan-goal { align-self: stretch; margin-top: 12px; text-align: left; }
+/* The head's tools (D11): Copy plan an icon button, Beside the chat a labelled push button. */
+.tg-ib { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 7px; background: none; color: var(--inst-label-2); cursor: pointer; }
+.tg-ib:hover { background: var(--inst-btn); color: var(--inst-label); }
+.tg-ib:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.tg-ib svg { width: 15px; height: 15px; }
+.tg-act-ic { display: inline-flex; margin-right: 6px; }
+.tg-act-ic svg { width: 14px; height: 14px; }
+.tg-tile.is-gray { background: var(--inst-btn-hover); color: var(--inst-label); }
+
+.plan-goal { display: flex; flex-direction: column; gap: 6px; }
+.plan-goal-title { margin: 8px 0 0; font-size: var(--text-ui-sm); font-weight: 600; color: var(--inst-label-2); }
+.plan-goal-card { display: flex; flex-direction: column; gap: 6px; }
+.plan-goal-status { align-self: flex-start; padding: 1px 8px; border: 1px solid var(--color-border); border-radius: 999px; font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); text-transform: capitalize; }
+.plan-goal-slice { margin: 0; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); white-space: pre-wrap; }
+
+/* ---- the task graph (HarnessV3-TaskGraph TG-D5; the redesign of 10-23; one page, E41 P4): the Plan view ---- */
+/* One colour per state, set once as --st: a task's mark, its box's edge and line where it calls for you, its word, a
+   chip's mark and the detail's badge. Colour only where you are needed or work goes on. */
+/* The Team view's dots (team.js) take the same colours. */
+.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot { --st: var(--inst-label-2); --st-text: var(--inst-label-2); }
+.tg-mark.is-waiting, .tg-mark.is-dropped { --st: var(--inst-label-3); --st-text: var(--inst-label-3); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-done { --st: var(--color-sys-green); --st-text: var(--color-sys-green-text); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-running { --st: var(--color-sys-blue); --st-text: var(--color-sys-blue-text); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-merging { --st: var(--color-sys-teal); --st-text: var(--color-sys-teal-text); }
+/* A task Filament checks after its done (HarnessV3-TaskGraph-v2 V2-1): Filament's own work on it, as a merge is. */
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-checking { --st: var(--color-sys-cyan); --st-text: var(--color-sys-cyan-text); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-failed { --st: var(--color-sys-red); --st-text: var(--color-sys-red-text); }
+/* A team's (HarnessV3-TaskGraph G3-7): a review in the team's purple, a worker that asks you in the orange its card in
+   the Team view wears. */
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-review { --st: var(--color-sys-purple); --st-text: var(--color-sys-purple-text); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-asking { --st: var(--color-sys-orange); --st-text: var(--color-sys-orange-text); }
+/* The developer's side run (10-28): starting as work going on, its change waiting for their Apply in the orange of a call. */
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-starting { --st: var(--color-sys-blue); --st-text: var(--color-sys-blue-text); }
+:is(.tg-node, .tg-mark, .tg-badge, .tg-pill, .tg-dot).is-yours { --st: var(--color-sys-orange); --st-text: var(--color-sys-orange-text); }
+.tg-sbs-asked { font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+/* Done on a check that passed only on its second run, or with none Filament ran (V2-1): the tick says so. */
+.tg-mark.is-done.is-flaky { --st: var(--color-sys-orange); --st-text: var(--color-sys-orange-text); }
+.tg-mark.is-done.is-unchecked { --st: var(--inst-label-3); --st-text: var(--inst-label-3); }
+.tg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+.tg-dot.is-ready { opacity: 0.8; }
+.tg-dot.is-waiting { opacity: 0.5; }
+.tg-dot.is-dropped { background: none; box-shadow: inset 0 0 0 1.5px var(--st); }
+.tg-view { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); display: flex; flex-direction: column; gap: 12px; padding: 4px 0 8px; color: var(--inst-label); }
+
+/* The head: the tile, the title with its figures, the goal under it, Run log at its end. */
+/* Where its words would have less than 200 px — a phone's width (the Website chat's letter of 11-10: the goal ran down
+   the tab a letter a line) — its tools go under them, wrapping too, never past the edge. */
+.tg-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 10px; padding: 2px 2px 0; }
+.tg-tile { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--color-sys-blue); color: var(--color-on-accent); }
+.tg-tile svg { width: 16px; height: 16px; }
+.tg-ht { flex: 1 1 200px; min-width: 0; }
+.tg-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.tg-title-name { font-size: var(--text-ui-base); font-weight: 650; color: var(--inst-label); }
+.tg-figs { font-size: var(--text-ui-xs); font-weight: 500; color: var(--inst-label-3); font-variant-numeric: tabular-nums; }
+.tg-fig-call { color: var(--color-sys-orange-text); }
+.tg-goal { margin-top: 2px; font-size: var(--text-ui-sm); color: var(--inst-label-2); overflow-wrap: anywhere; }
+.tg-head > .inst-link { flex: none; margin-top: 2px; }
+.tg-callout { padding: 8px 12px; border: 1px solid var(--inst-border); border-radius: 10px; background: var(--inst-card); font-size: var(--text-ui-sm); color: var(--inst-label-2); overflow-wrap: anywhere; }
+.tg-callout strong { font-weight: 600; color: var(--inst-label); }
+.tg-plan-wait { display: flex; align-items: center; gap: 12px; }
+.tg-plan-wait > span { flex: 1; min-width: 0; }
+.tg-plan-wait > .tg-act, .tg-plan-wait > .tg-plan-later { flex: none; }
+.tg-plan-later { color: var(--inst-label-3); }
+/* A closed graph's outcome: a sentence under the head, no box. */
+.tg-closed { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label); overflow-wrap: anywhere; }
+.tg-closed strong { font-weight: 600; }
+.tg-closed .tg-mark { margin-top: 2px; }
+
+/* The marks: 15 px shapes in the state's colour; the arc turns while work goes on. */
+.tg-mark { flex: none; display: inline-flex; width: 15px; height: 15px; color: var(--st-text); }
+.tg-mark svg { width: 100%; height: 100%; overflow: visible; }
+.tg-m-fill { fill: color-mix(in oklab, currentColor 22%, transparent); }
+.tg-m-line { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tg-m-dot { fill: currentColor; }
+.tg-m-ring { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.tg-m-track { fill: none; stroke: color-mix(in oklab, currentColor 25%, transparent); stroke-width: 2.2; }
+.tg-m-arc { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.tg-mark:is(.is-running, .is-checking, .is-review, .is-merging, .is-starting) svg { animation: tg-turn 1s linear infinite; }
+@keyframes tg-turn { to { transform: rotate(360deg); } }
+
+/* The graph on the Plan tab (HarnessV4_TaskGraphPlus_Design D1–D5, E41 P4; the Product agent's redesign of 11-05, the
+   owner's yes): one canvas on a faint grid of dots, its boxes and lines where the layout put them (lib/graph-boxes.js),
+   drawn at the zoom (`--tg-h` and `--tg-strip` the layout's two-line box and hunt strip at the page's type); the zoom
+   bar in a band over it; it scrolls itself both ways, a drawing smaller than it centred, a drag on it pans it, the
+   wheel zooms it (views/canvas-pan.js; the owner's of 11-10: a workspace the window's height). A line means "needs" and
+   nothing else: no dash, no dot, no key — fainter out of finished work, lit while the pointer rests on its task, the
+   chosen task's blue. */
+.tg-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* With room (D15): the card beside the canvas, its inspector (task-graph.js `CARD_W`). */
+.tg-body.is-beside { display: grid; grid-template-columns: minmax(0, 1fr) 380px; column-gap: 22px; align-items: start; }
+/* In the workspace the inspector is as tall as the canvas and scrolls itself (the owner's of 11-10: "the right panel
+   which shows details is messed up" — taller than the window, it scrolled the canvas away): its head held at its top,
+   Hunt for bugs at its foot. Under the canvas, beside the chat and in the peek the card flows with the page. */
+/* At its ends the wheel goes on to the page (the review of 67038d835: on a short window the page, scrolled by the
+   workspace's least height, was wheeled only over its head and gaps — the canvas's wheel zooms it). */
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; container: inspector / size; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > * { flex: none; }
+/* Its title row alone held at its top (the review of 67038d835: the whole head held — what the task needs and what
+   needs it, its name over many lines — took the inspector): the head's rows are the card's own, the title's name two
+   lines at most, whole in its tooltip. The held rows are the card's own colour, made solid: the card's is see-through
+   in the dark look, and painted again it drew a lighter band with the words scrolled under it showing through. */
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head { display: contents; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head > * { margin: 0; padding: 0 14px 0 37px; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head > .tg-card-title { position: sticky; top: 0; z-index: 2; padding: 12px 14px 3px; background: linear-gradient(var(--inst-card), var(--inst-card)), var(--color-background); }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head > .tg-card-title > .tg-card-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head > .tg-card-rel { padding-top: 7px; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head > :last-child { padding-bottom: 11px; border-bottom: 1px solid var(--inst-sep); }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-head:last-child > :last-child { border-bottom: 0; }
+.pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-foot { margin-top: auto; }
+/* The foot held in sight only where the card leaves the parts room beside it (the review of d5aa58d31: the hunt's
+   words and its Hunters held on a short window left the parts a sliver), and never past 40% of it, its Reviewers
+   scrolling within (the review of 67038d835: it measured the window, and grew with each Reviewer); shorter, it ends
+   the card's scroll. */
+@container inspector (min-height: 600px) {
+  .pv-inner.is-workspace .tg-body.is-beside > .tg-card > .tg-card-foot { position: sticky; bottom: 0; z-index: 2; background: linear-gradient(var(--inst-card), var(--inst-card)), var(--color-background); max-height: 40cqh; overflow-y: auto; }
+}
+.tg-graph { display: flex; flex-direction: column; min-width: 0; }
+.tg-canvas-box {
+  position: relative; min-width: 0; border: 1px solid var(--inst-border); border-radius: 12px; overflow: hidden;
+  background-color: color-mix(in oklab, var(--inst-bg) 70%, transparent);
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--inst-label) 12%, transparent) 1px, transparent 1.3px); background-size: 18px 18px;
+}
+/* A grid of one, so the drawing's auto margins centre it both ways where it is smaller, and give way where it is not. */
+.tg-canvas-view { display: grid; overflow: auto; overscroll-behavior-x: contain; cursor: grab; }
+.pv-scroll.is-panning, .pv-scroll.is-panning * { cursor: grabbing; user-select: none; }
+/* The zoom bar keeps a band of the ground to itself, over the scroller: it covers no task, whatever the zoom or pan. */
+.tg-canvas-bar { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 10px; box-sizing: border-box; min-height: 32px; padding: 5px 8px 0; }
+.tg-canvas-size { position: relative; margin: auto; }
+.tg-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.tg-canvas > :is(.tg-node, .tg-fold, .tg-hunt-box, .tg-step-box) { position: absolute; z-index: 1; box-sizing: border-box; }
+:is(.tg-zoom, .tg-arrange) { flex: none; display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--inst-border); border-radius: 8px; background: var(--inst-card); font-size: var(--text-ui-xs); }
+:is(.tg-zoom, .tg-arrange) button { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 0; border-radius: 6px; background: none; font: inherit; color: var(--inst-label-2); cursor: pointer; }
+:is(.tg-zoom, .tg-arrange) button:hover:not(:disabled) { background: var(--inst-track); color: var(--inst-label); }
+.tg-zoom button:disabled { opacity: 0.4; cursor: default; }
+:is(.tg-zoom, .tg-arrange) button:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+:is(.tg-zoom-b, .tg-arrange-dir) svg { width: 13px; height: 13px; }
+.tg-zoom-fit[aria-pressed="true"] { color: var(--accent-text); font-weight: 600; }
+.tg-zoom-v { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; color: var(--inst-label-2); }
+/* The layout's buttons (the owner's of 11-14): Rearrange, then the way it is drawn, the one it is drawn now pressed. */
+.tg-arrange .tg-arrange-dir { padding: 0 5px; }
+.tg-arrange-dir[aria-pressed="true"] { background: var(--inst-track); color: var(--accent-text); }
+.tg-arrange-sep { flex: none; width: 1px; height: 14px; margin: 0 2px; background: var(--inst-border); }
+.tg-arrange-said { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-arrange-said:empty { display: none; }
+.tg-edges { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; }
+.tg-edges svg { display: block; overflow: visible; }
+.tg-edges path { fill: none; stroke: var(--inst-label); stroke-width: 1.4; stroke-opacity: 0.42; stroke-linecap: round; }
+.tg-edges path.done { stroke-opacity: 0.16; }
+.tg-edges path.hov { stroke: var(--color-sys-blue); stroke-opacity: 0.6; stroke-width: 1.6; }
+.tg-edges path.on { stroke: var(--color-sys-blue); stroke-opacity: 1; stroke-width: 2; }
+[data-motion="full"] .tg-edges path { transition: stroke-opacity 150ms var(--ease-out); }
+/* A task: its mark, its id, its name and one fact — one line on the rail, two on the canvas; the rest is its tooltip's
+   and its card's. */
+.tg-node {
+  position: relative; box-sizing: border-box; min-width: 0; width: 100%; height: var(--tg-h, 36px); padding: 0 10px 0 9px;
+  display: flex; align-items: center; gap: 7px; overflow: hidden;
+  border: 1px solid var(--inst-border); border-radius: 10px; background: var(--inst-card);
+  color: var(--inst-label); font: inherit; text-align: left; cursor: pointer;
+  transition: opacity 300ms var(--ease-out), border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+.tg-node:hover { background: var(--inst-card-hover); }
+.tg-node:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 2px; }
+.tg-node-id { flex: none; font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-node-name { flex: 1; min-width: 0; font-size: var(--text-ui-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-node-fact { flex: 0 1 auto; min-width: 0; max-width: 55%; font-size: var(--text-ui-xs); color: var(--inst-label-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* On the canvas a task reads on two lines (the owner's of 11-10: its name was cut at a few words): its mark, its name
+   the whole first line; its id, its fact and a shared file's pill under it. Beside the chat the rail keeps one line. */
+.tg-canvas .tg-node { display: grid; grid-template-columns: 15px auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: center; align-items: center; gap: 2px 7px; }
+.tg-canvas .tg-node > .tg-mark { grid-row: 1 / 3; grid-column: 1; }
+.tg-canvas .tg-node > .tg-node-name { grid-row: 1; grid-column: 2 / -1; }
+.tg-canvas .tg-node > .tg-node-id { grid-row: 2; grid-column: 2; }
+.tg-canvas .tg-node > .tg-node-fact { grid-row: 2; grid-column: 3; max-width: none; }
+.tg-canvas .tg-node > .tg-node-share { grid-row: 2; grid-column: 4; max-width: 120px; }
+/* Where it calls for you or work goes on: its edge and its fact in its colour. */
+.tg-node:is(.is-running, .is-asking, .is-failed, .is-yours) { border-color: color-mix(in oklab, var(--st) 50%, var(--inst-border)); }
+.tg-node:is(.is-running, .is-checking, .is-review, .is-merging, .is-starting) .tg-node-fact { color: var(--st-text); }
+/* Finished work recedes (D7): no fill, a fainter edge, its name quiet. Between turns nothing works on a task: its fact
+   says so in grey. */
+.tg-node.is-done { background: none; border-color: var(--inst-sep); }
+.tg-node.is-done .tg-node-name { color: var(--inst-label-2); font-weight: 550; }
+.tg-node.is-still { border-color: var(--inst-border); }
+.tg-node.is-still .tg-node-fact { color: var(--inst-label-2); }
+.tg-mark.is-still svg { animation: none; }
+.tg-node:is(.is-waiting, .is-ready) { opacity: 0.72; }
+.tg-node.is-dropped { opacity: 0.45; }
+.tg-node.is-dropped .tg-node-name { text-decoration: line-through; }
+.tg-node.is-new { animation: tg-pop 450ms var(--ease-spring); }
+.tg-node.is-on { border-color: transparent; box-shadow: 0 0 0 2px var(--color-sys-blue); opacity: 1; }
+/* Work going on: a thin bar along its foot. */
+.tg-node > .tg-node-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; margin: 0; border-radius: 0; }
+/* A hunted task's box (the owner's yes of 11-05): its line, then a strip for each Reviewer sent from it, the fixes its
+   finding became under it on a tree's lines — or one strip once nothing in it is open. Its edge a shadow, so that its
+   lines' heights are the layout's to the pixel. */
+.tg-hunt-box { display: flex; flex-direction: column; min-width: 0; border-radius: 12px; background: var(--inst-card); box-shadow: 0 0 0 1px var(--inst-border); overflow: hidden; }
+.tg-hunt-box .tg-node { flex: none; border: 0; border-radius: 0; background: transparent; }
+.tg-hunt-box .tg-node.is-on { box-shadow: inset 0 0 0 2px var(--color-sys-blue); border-radius: 10px; }
+.tg-hunt-box .tg-node > .tg-node-bar { display: none; }
+.tg-hunt-strip {
+  flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 7px; width: 100%; height: var(--tg-strip, 30px); padding: 0 10px 0 9px;
+  border: 0; border-top: 1px dashed var(--inst-border); background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--inst-label-2); text-align: left;
+}
+button.tg-hunt-strip { cursor: pointer; }
+button.tg-hunt-strip:hover { background: var(--inst-track); }
+.tg-hunt-strip:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: -2px; }
+.tg-hunt-bug { flex: none; display: inline-flex; color: var(--color-sys-yellow-text); }
+.tg-hunt-bug svg { width: 14px; height: 14px; }
+.tg-hunt-strip.is-running .tg-hunt-bug { color: var(--color-sys-blue-text); }
+.tg-hunt-strip-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-hunt-strip .inst-link { flex: none; font-size: var(--text-ui-xs); }
+.tg-hunt-mini { flex: none; display: inline-flex; gap: 2px; }
+.tg-hunt-mini .tg-mark { width: 12px; height: 12px; }
+.tg-hunt-fold { flex: none; display: inline-flex; padding: 2px; border: 0; border-radius: 5px; background: none; color: var(--inst-label-3); cursor: pointer; }
+.tg-hunt-fold:hover { background: var(--inst-track); color: var(--inst-label); }
+.tg-hunt-chev { flex: none; display: inline-flex; color: var(--inst-label-3); }
+.tg-hunt-chev svg { width: 14px; height: 14px; }
+.tg-hunt-chev.is-up svg { transform: rotate(180deg); }
+.tg-hunt-fixes { display: flex; flex-direction: column; }
+.tg-hunt-fixes > .tg-node { padding-left: 31px; }
+.tg-hunt-fixes > .tg-node::before { content: ""; position: absolute; left: 16px; top: 0; bottom: 0; border-left: 1.5px solid var(--inst-border); }
+.tg-hunt-fixes > .tg-node:last-of-type::before { bottom: 50%; }
+.tg-hunt-fixes > .tg-node::after { content: ""; position: absolute; left: 16px; top: 50%; width: 11px; border-top: 1.5px solid var(--inst-border); }
+/* A plan's step (the owner's plan mode of 11-06): its line, a strip that says how many of its sub-tasks are done and
+   folds them, then their lines on a tree's lines, a hunted one's box with its hunts. Its edge a shadow, as a hunt box's,
+   so that its lines' heights are the layout's to the pixel. */
+.tg-step-box { display: flex; flex-direction: column; min-width: 0; border-radius: 12px; background: var(--inst-card); box-shadow: 0 0 0 1px var(--inst-border); overflow: hidden; }
+.tg-step-box .tg-node { flex: none; border: 0; border-radius: 0; background: transparent; }
+.tg-step-box .tg-node.is-on { box-shadow: inset 0 0 0 2px var(--color-sys-blue); border-radius: 10px; }
+.tg-step-box > .tg-node .tg-node-name { font-weight: 650; }
+.tg-step-box .tg-hunt-box { flex: none; border-radius: 0; box-shadow: none; background: none; }
+.tg-step-strip {
+  flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 7px; width: 100%; height: var(--tg-strip, 30px); padding: 0 10px 0 9px;
+  border: 0; border-top: 1px solid var(--inst-sep); background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--inst-label-2); text-align: left;
+}
+button.tg-step-strip { cursor: pointer; }
+button.tg-step-strip:hover { background: var(--inst-track); }
+.tg-step-strip:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: -2px; }
+.tg-step-strip-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.tg-step-kids { display: flex; flex-direction: column; }
+.tg-step-kids > :is(.tg-node, .tg-hunt-box) { position: relative; }
+.tg-step-kids > .tg-node, .tg-step-kids > .tg-hunt-box > .tg-node:first-child { padding-left: 31px; }
+.tg-step-kids > :is(.tg-node, .tg-hunt-box)::before { content: ""; position: absolute; left: 16px; top: 0; bottom: 0; border-left: 1.5px solid var(--inst-border); }
+.tg-step-kids > :is(.tg-node, .tg-hunt-box):last-child::before { bottom: auto; height: calc(var(--tg-h, 36px) / 2); }
+.tg-step-kids > :is(.tg-node, .tg-hunt-box)::after { content: ""; position: absolute; left: 16px; top: calc(var(--tg-h, 36px) / 2); width: 11px; border-top: 1.5px solid var(--inst-border); }
+/* Beside the chat and in the peek: the steps down a rail, a dot a step on its line, green where done, blue at work. */
+.tg-rail { margin: 0; padding: 0; list-style: none; }
+.tg-st { position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; padding-bottom: 14px; }
+.tg-st::before { content: ""; position: absolute; left: 8.25px; top: 22px; bottom: 0; width: 1.5px; background: var(--inst-border); }
+.tg-st.is-done::before { background: color-mix(in oklab, var(--color-sys-green) 55%, transparent); }
+.tg-st:last-child::before { display: none; }
+.tg-st-dot { position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; border: 1.5px solid var(--inst-border); background: var(--inst-bg); }
+.tg-st-dot.is-done { background: var(--color-sys-green); border-color: var(--color-sys-green); }
+.tg-st-dot.is-done svg { width: 12px; height: 12px; fill: none; stroke: var(--color-on-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.tg-st-dot.is-now { border-color: var(--color-sys-blue); box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-sys-blue) 16%, transparent); }
+.tg-st-dot.is-now::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color-sys-blue); }
+/* A step where nothing runs (the owner's of 11-09): one that calls for you drawn as one at work, in the colour of the
+   head's calls — red where a task of it failed, orange otherwise; one whose only work is the agent's own between turns
+   a still blue ring, as its box's arc held still; one whose work waits — a slot, a review to start — the waiting
+   mark's grey ring, stronger than a step still to come. */
+.tg-st-dot.is-calls { --call: var(--color-sys-orange); border-color: var(--call); box-shadow: 0 0 0 4px color-mix(in oklab, var(--call) 16%, transparent); }
+.tg-st-dot.is-calls.is-failed { --call: var(--color-sys-red); }
+.tg-st-dot.is-calls::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--call); }
+.tg-st-dot.is-between { border-color: var(--color-sys-blue); }
+.tg-st-dot.is-waiting { border-color: var(--inst-label-3); }
+.tg-st-b { min-width: 0; }
+.tg-st-h { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; min-height: 22px; margin-bottom: 6px; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-st-h b { font-weight: 600; color: var(--inst-label); }
+.tg-st-now { font-weight: 600; color: var(--color-sys-blue-text); }
+.tg-blk { border: 1px solid var(--inst-border); border-radius: 12px; background: var(--inst-card); overflow: hidden; }
+.tg-blk .tg-node { height: auto; min-height: var(--tg-h, 36px); border: 0; border-radius: 0; background: transparent; }
+.tg-blk > :is(.tg-node, .tg-hunt-box, .tg-step-box):not(:first-child) { border-top: 1px solid var(--inst-border); }
+.tg-blk :is(.tg-hunt-box, .tg-step-box) { border-radius: 0; box-shadow: none; background: none; }
+.tg-blk .tg-node.is-on { background: color-mix(in oklab, var(--color-sys-blue) 9%, transparent); box-shadow: inset 3px 0 0 var(--color-sys-blue); border-radius: 0; }
+.tg-blk .tg-node.is-rel .tg-node-id { font-weight: 600; color: var(--color-sys-blue-text); }
+.tg-blk .tg-node > .tg-node-bar { display: none; }
+.tg-icard { padding: 0 8px 8px; background: color-mix(in oklab, var(--color-sys-blue) 9%, transparent); box-shadow: inset 3px 0 0 var(--color-sys-blue); }
+.tg-st .tg-fold { width: 100%; height: 34px; }
+/* A task just done (plan.js `celebrate`, the owner's of 11-04): a green ring round its line — or round the row or strip
+   it folded into — that holds a moment and fades, its tick drawn in. In phase however often the view draws again: the
+   delay is how long ago it was done (`--jd`). */
+:is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done 2400ms var(--ease-out) var(--jd, 0ms); }
+.tg-node.is-new.is-just-done { animation: tg-pop 450ms var(--ease-spring), tg-just-done 2400ms var(--ease-out) var(--jd, 0ms); }
+.is-just-done .tg-mark.is-done svg { animation: tg-tick-in 520ms var(--ease-spring) var(--jd, 0ms) both; }
+@keyframes tg-just-done {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-sys-green) 60%, transparent); }
+  14% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-sys-green) 50%, transparent); }
+  72% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-sys-green) 34%, transparent); }
+  100% { box-shadow: 0 0 0 7px transparent; }
+}
+@keyframes tg-tick-in { from { transform: scale(0.3); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } to { transform: scale(1); opacity: 1; } }
+/* In the rail — beside the chat and in the peek — a task's line sits in a box that clips what lies outside it (a step's,
+   a hunt's): there the ring is drawn inside the line, over a green wash, so the task done is seen whole. */
+:is(.tg-blk, .tg-step-box, .tg-hunt-box) :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done-in 2400ms var(--ease-out) var(--jd, 0ms); }
+:is(.tg-blk, .tg-step-box, .tg-hunt-box) .tg-node.is-new.is-just-done { animation: tg-pop 450ms var(--ease-spring), tg-just-done-in 2400ms var(--ease-out) var(--jd, 0ms); }
+@keyframes tg-just-done-in {
+  0% { box-shadow: inset 0 0 0 0 color-mix(in oklab, var(--color-sys-green) 60%, transparent); background-color: transparent; }
+  14% { box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--color-sys-green) 55%, transparent); background-color: color-mix(in oklab, var(--color-sys-green) 12%, transparent); }
+  72% { box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--color-sys-green) 40%, transparent); background-color: color-mix(in oklab, var(--color-sys-green) 9%, transparent); }
+  100% { box-shadow: inset 0 0 0 3px transparent; background-color: transparent; }
+}
+/* The finished steps folded at the graph's top (D16): one dashed row, the lines into the open work coming down out of
+   it; a press shows them. */
+.tg-fold { display: flex; align-items: center; gap: 9px; box-sizing: border-box; padding: 0 12px 0 10px; border: 1px dashed var(--inst-border); border-radius: 10px; background: var(--inst-bg); font: inherit; color: var(--inst-label-2); font-size: var(--text-ui-sm); text-align: left; }
+button.tg-fold { cursor: pointer; }
+button.tg-fold:hover { background: var(--inst-track); }
+.tg-fold:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 2px; }
+.tg-fold-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-fold-go { flex: none; font-weight: 550; color: var(--accent-text); }
+.tg-fold-stack { display: inline-flex; }
+.tg-fold-stack .tg-mark { margin-right: -5px; border-radius: 50%; background: var(--inst-bg); box-shadow: 0 0 0 1.5px var(--inst-bg); }
+.tg-fold-open { margin: 0 0 10px; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+/* Drawn left to right, the folded steps are a column at the left as tall as the drawing, its words wrapped down its middle. */
+.tg-canvas.is-across > .tg-fold { flex-direction: column; justify-content: center; gap: 6px; padding: 12px; text-align: center; }
+.tg-canvas.is-across > .tg-fold .tg-fold-t { flex: none; white-space: normal; text-wrap: balance; }
+/* In the canvas's band: at its start, the zoom bar at its end. */
+.tg-canvas-bar > .tg-fold-open { flex: 0 1 auto; min-width: 0; margin: 0 auto 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The head's tools at its end; a straight line's fact under the goal, grey (D18); failed in the figures red (D11). */
+.tg-head-acts { flex: 0 1 auto; flex-wrap: wrap; display: flex; align-items: center; gap: 8px; min-width: 0; margin: 1px 0 0 auto; }
+.tg-fig-call.is-failed { color: var(--color-sys-red-text); }
+.tg-fact { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; font-size: var(--text-ui-sm); line-height: 1.4; color: var(--inst-label-2); overflow-wrap: anywhere; }
+.tg-fact-ic { flex: none; display: inline-flex; margin-top: 2px; color: var(--inst-label-3); }
+.tg-fact-ic svg { width: 13px; height: 13px; }
+/* The ready tasks that can run in parallel (D10): an offer in words, a gray push button. */
+.tg-sbs { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border: 1px solid var(--inst-border); border-radius: 11px; background: var(--inst-card); }
+.tg-sbs-ic { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--inst-track); color: var(--inst-label-2); }
+.tg-sbs-ic svg { width: 13px; height: 13px; }
+.tg-sbs-t { flex: 1; min-width: 0; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+.tg-sbs-t b { color: var(--inst-label); font-weight: 600; }
+.tg-sbs-t .tg-chip { height: 19px; vertical-align: 1px; }
+.tg-sbs.is-narrow { flex-wrap: wrap; }
+.tg-sbs.is-narrow .tg-sbs-t { flex-basis: calc(100% - 40px); }
+.tg-sbs.is-narrow .tg-act { margin-left: 32px; }
+.tg-pill { flex: none; padding: 1px 8px; border-radius: 999px; font-size: var(--text-ui-xs); font-weight: 600; white-space: nowrap; color: var(--st-text); background: color-mix(in oklab, var(--st) 16%, transparent); }
+.tg-out { margin: 4px 0 0; padding: 6px 8px; border-radius: 6px; background: var(--inst-track); font-family: var(--mono); font-size: var(--text-ui-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+/* What a Hunter found (11-02): its card's line, the bug before its words, in the gold no state wears. What is kept
+   behind a task (E33): its card under the steps, a row a note or a file, opening beneath it. */
+.tg-found-t { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; margin: 0; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+.tg-found-ic { flex: none; display: inline-flex; color: var(--color-sys-yellow-text); }
+.tg-found-ic svg { width: 13px; height: 13px; }
+.tg-kept-card { grid-column: 1 / -1; }
+.tg-kept-count { margin-left: auto; font-weight: 400; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-kept { display: flex; flex-direction: column; gap: 2px; }
+.tg-kept-row { display: flex; flex-direction: column; min-width: 0; }
+.tg-kept-open { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; width: 100%; padding: 5px 6px; border: 0; border-radius: 6px; background: none; text-align: left; font: inherit; color: inherit; text-decoration: none; cursor: pointer; }
+.tg-kept-open:hover { background: var(--inst-track); }
+.tg-kept-open:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.tg-kept-name { min-width: 0; font-size: var(--text-ui-sm); font-weight: 500; color: var(--inst-label); overflow-wrap: anywhere; }
+.tg-kept-meta { font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-kept-first { flex-basis: 100%; min-width: 0; font-size: var(--text-ui-xs); color: var(--inst-label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A note's reader (views/note-reader.js, 11-06): a wide sheet over the page, its outline down its side, the document
+   at a reading width beside it. */
+.zc-sheet.tg-reader { width: min(1080px, calc(100vw - 20px)); }
+.tg-rd-head { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.tg-rd-title { font-size: var(--text-ui-base); font-weight: 650; color: var(--color-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-rd-sub { font-size: var(--text-ui-xs); color: var(--inst-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-rd-body { padding: 4px 4px 24px; }
+.tg-rd { display: block; }
+.tg-rd.has-outline { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+.tg-rd-outline { position: sticky; top: 0; display: flex; flex-direction: column; gap: 1px; max-height: calc(100dvh - 140px); overflow: auto; padding-right: 8px; border-right: 1px solid var(--inst-sep); }
+.tg-rd-go { display: block; width: 100%; padding: 4px 8px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--inst-label-2); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.tg-rd-go:hover { background: var(--inst-track); color: var(--inst-label); }
+.tg-rd-go:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: -2px; }
+.tg-rd-go.is-h1 { font-weight: 650; color: var(--inst-label); }
+.tg-rd-go.is-h3 { padding-left: 20px; }
+.tg-rd-more { margin: 6px 8px 0; font-size: var(--text-ui-xs); color: var(--inst-label-3); }
+.tg-rd-doc.skl-md { max-width: 76ch; font-size: var(--text-ui-base); line-height: 1.6; }
+.tg-rd-doc.skl-md :is(h1, h2, h3) { scroll-margin-top: 12px; margin: 22px 0 8px; }
+.tg-rd-doc.skl-md h1 { font-size: var(--text-ui-xl); }
+.tg-rd-doc.skl-md h2 { font-size: var(--text-ui-lg); }
+.tg-rd-doc.skl-md > :first-child { margin-top: 0; }
+.tg-rd-doc.skl-md table { border-collapse: collapse; margin: 10px 0; }
+.tg-rd-doc.skl-md :is(th, td) { padding: 5px 12px 5px 0; border-bottom: 1px solid var(--inst-sep); text-align: left; vertical-align: top; }
+.tg-rd-pre { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--inst-track); font-family: var(--mono); font-size: var(--text-ui-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tg-kept-img { display: block; max-width: min(100%, 420px); max-height: 280px; margin: 2px 6px 6px; border: 1px solid var(--inst-border); border-radius: 6px; object-fit: contain; background: var(--inst-track); }
+.tg-kept-wait { margin: 0; font-size: var(--text-ui-sm); color: var(--inst-label-3); }
+.tg-kept-graph { align-self: flex-start; margin-top: 4px; padding: 1px 6px; border: 1px solid var(--inst-border); border-radius: 999px; background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--inst-label-2); cursor: pointer; }
+.tg-kept-graph:hover, .tg-kept-graph.is-open { background: var(--inst-track); color: var(--inst-label); }
+.tg-kept-graph:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.tg-badge { margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: var(--text-ui-xs); font-weight: 600; white-space: nowrap; color: var(--st-text); background: color-mix(in oklab, var(--st) 16%, transparent); }
+.tg-node-bar { display: block; flex: none; height: 3px; margin: 3px 0 0 22px; border-radius: 2px; overflow: hidden; background: var(--inst-track); }
+.tg-node-bar-fill { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--st); animation: tg-slide 1.6s ease-in-out infinite; }
+@keyframes tg-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@keyframes tg-pop { from { transform: scale(0.96); } to { transform: scale(1); } }
+/* The detail's needs and what needs it: a chip each, with its task's mark. */
+.tg-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tg-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px 0 5px; border-radius: 999px; background: var(--inst-track); font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--inst-label); }
+.tg-chip .tg-mark { width: 11px; height: 11px; }
+/* The chosen task's one card (D9): its head on a hairline, then its parts, each only where it says something, apart by
+   their room and not by lines (the owner's of 11-10: "the right panel which shows details is messed up" — a hairline a
+   part read as a stack of boxes), one label for each; a done task's Hunt for bugs at its foot, on its own hairline. */
+.tg-card { min-width: 0; border: 1px solid var(--inst-border); border-radius: 12px; background: var(--inst-card); overflow: hidden; }
+.tg-card-head { padding: 12px 14px 11px; border-bottom: 1px solid var(--inst-sep); }
+.tg-card-head:last-child { border-bottom: 0; }
+.tg-card-title { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: var(--text-ui-base); font-weight: 650; line-height: 1.35; color: var(--inst-label); }
+.tg-card-title > .tg-mark { margin-top: 1px; }
+.tg-card-name { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--inst-label); }
+.tg-card-id { margin-right: 5px; font-family: var(--mono); font-size: var(--text-ui-sm); font-weight: 500; color: var(--inst-label-2); }
+.tg-card-sub { margin-top: 3px; padding-left: 23px; font-size: var(--text-ui-xs); color: var(--inst-label-3); overflow-wrap: anywhere; }
+.tg-card-by { display: inline-flex; vertical-align: -2px; margin-right: 5px; }
+.tg-card-by:not(.role-tile) svg { width: 12px; height: 12px; }
+.tg-kept-card > .tg-card-title { align-items: center; padding: 11px 14px 10px; font-size: var(--text-ui-sm); }
+.tg-sec { display: block; padding: 9px 14px 10px; border-top: 1px solid var(--inst-sep); }
+.tg-card-head ~ .tg-sec { border-top: 0; padding: 5px 14px 9px; }
+.tg-card-head + .tg-sec { padding-top: 12px; }
+.tg-card-head ~ .tg-sec:last-child { padding-bottom: 14px; }
+.tg-card-head ~ .tg-sec.is-ask { padding-top: 10px; padding-bottom: 11px; }
+.tg-sec-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: var(--text-ui-xs); font-weight: 600; color: var(--inst-label-2); }
+.tg-sec-name { min-width: 0; }
+.tg-sec-n { margin-left: auto; font-weight: 500; color: var(--inst-label-3); font-variant-numeric: tabular-nums; }
+.tg-sec-h .inst-link { margin-left: auto; }
+.tg-kv { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: baseline; gap: 5px 10px; margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; }
+.tg-kv dt { font-size: var(--text-ui-xs); font-weight: 600; color: var(--inst-label-2); }
+.tg-kv dd { margin: 0; color: var(--inst-label); overflow-wrap: anywhere; }
+.tg-kv dd.is-mono { font-family: var(--mono); font-size: var(--text-ui-xs); }
+/* A check its worker's report named (TG2-D63): the commands as the row's, the words after them quieter. */
+.tg-kv dd:has(> span > .tg-cmd) { color: var(--inst-label-2); }
+.tg-cmd { font-family: var(--mono); font-size: var(--text-ui-xs); color: var(--inst-label); }
+.tg-card-text { margin: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tg-card-quiet { margin: 0; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+/* Its done-when (D9): the evidence given at its done, and its check, each a quote under it, its bar on the left. */
+.tg-well { margin-top: 9px; padding: 1px 0 1px 11px; box-shadow: inset 2px 0 0 var(--inst-label-3); font-size: var(--text-ui-sm); line-height: 1.45; color: var(--inst-label); overflow-wrap: anywhere; }
+.tg-well-who { display: block; margin-bottom: 2px; font-size: var(--text-ui-xs); font-weight: 600; color: var(--inst-label-3); }
+.tg-checked { margin-top: 7px; font-size: var(--text-ui-sm); color: var(--inst-label); overflow-wrap: anywhere; }
+.tg-checked-k { color: var(--inst-label-3); }
+.tg-files { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: var(--text-ui-xs); }
+.tg-files li { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-files-more { font-family: var(--font-ui, inherit); color: var(--inst-label-3); }
+.tg-sec .tg-fact { margin-top: 7px; }
+/* A paused task's newest checkpoint, whole, first. */
+.tg-cp-open { padding: 9px 10px 9px 12px; border-radius: 9px; background: var(--inst-track); box-shadow: inset 2.5px 0 0 var(--inst-label-2); }
+.tg-cp-h { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; font-size: var(--text-ui-sm); font-weight: 650; color: var(--inst-label); }
+/* What it needs and what needs it, on one line. */
+.tg-nb { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 4px; font-size: var(--text-ui-sm); }
+.tg-nb-k { margin-right: 2px; color: var(--inst-label-3); }
+.tg-nb :is(.tg-chips, .tg-chip-more) + .tg-nb-k { margin-left: 12px; }
+.tg-chip-more { padding: 0 2px; border: 0; background: none; font: inherit; color: var(--color-sys-blue-text); cursor: pointer; }
+.tg-chip-more:hover { text-decoration: underline; }
+/* In its head, under who and when (the owner's of 11-10: where it stands in the graph is the head's to say). */
+.tg-card-rel { margin-top: 7px; padding-left: 23px; font-size: var(--text-ui-xs); }
+/* What it asks you: the part in orange, its one blue button. */
+.tg-sec.is-ask { background: color-mix(in oklab, var(--color-sys-orange) 8%, transparent); }
+.tg-sec.is-ask .tg-sec-h { color: var(--color-sys-orange-text); }
+.tg-sec.is-ask .tg-acts { margin-top: 9px; }
+/* The parts folded into one line (D14): More, its names; open, Less. */
+.tg-more { display: flex; align-items: center; gap: 6px; box-sizing: border-box; width: 100%; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--inst-label-2); text-align: left; cursor: pointer; }
+.tg-more:hover { background: var(--inst-track); }
+.tg-more b { font-weight: 550; color: var(--inst-label); }
+.tg-more-ic { display: inline-flex; color: var(--inst-label-3); transition: transform 160ms var(--ease); }
+.tg-more-ic svg { width: 12px; height: 12px; }
+.tg-more.is-open .tg-more-ic { transform: rotate(90deg); }
+/* What the developer does to a task themselves: a failed one sent back, or started fresh, a done one hunted. Push
+   buttons (the owner's look of 10-24: a tinted pill read as a tag): the primary the system blue with white words, lit
+   at its top edge, as the dock's are; the rest a gray button. */
+.tg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tg-act {
+  display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 12px; border: 0; border-radius: 7px;
+  background: var(--inst-btn); color: var(--inst-label); font-size: var(--text-ui-sm); font-weight: 550; white-space: nowrap; cursor: pointer;
+  box-shadow: var(--inst-seg-shadow); transition: background-color var(--t-fast) var(--ease), transform 140ms var(--ease-spring);
+}
+.tg-act:hover { background: var(--inst-btn-hover); }
+.tg-act:active:not(:disabled) { transform: scale(0.98); }
+.tg-act:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.tg-act.is-primary { background: var(--aq-accent); color: var(--color-on-accent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-on-accent) 18%, transparent), var(--inst-seg-shadow); }
+.tg-act.is-primary:hover { background: color-mix(in oklab, var(--aq-accent) 88%, var(--color-on-accent)); }
+/* A failure, a stop or why it was dropped, then its report's rows: a part's own (they were drawn by `.tg-card > …`
+   rules that matched nothing — the parts are sections). */
+.tg-sec > :is(.ix-error, .tg-card-text, .tg-card-stopped) + .tg-kv { margin-top: 10px; }
+.tg-card-stopped { display: flex; flex-direction: column; gap: 8px; }
+/* A done task's Hunt for bugs (UX9): its name as every part's, then the model chip and Hunt bugs on one row, its words
+   and the Hunters started under it. */
+.tg-hunt-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tg-hunt .tg-card-quiet { margin-top: 8px; font-size: var(--text-ui-xs); }
+/* Hunt bugs stands as tall as the model chip beside it, at the row's end. */
+.tg-hunt-acts .tg-act { height: 32px; margin-left: auto; padding: 0 16px; border-radius: 8px; }
+.tg-act:disabled { opacity: 0.55; cursor: default; }
+.tg-hunt-line { margin: 8px 0 0; font-size: var(--text-ui-sm); color: var(--inst-label-2); }
+/* A Hunter fired from it still runs: said over the button, which reads Hunt again. */
+.tg-hunt-busy { margin: 0 0 8px; font-size: var(--text-ui-xs); color: var(--color-sys-blue-text); }
+/* The right-click popup on a done task's box: its title and name, then the card's chip, button, words and Hunters. */
+.tg-hunt-pop { display: flex; flex-direction: column; min-width: 0; padding: 2px; }
+.tg-hunt-pop-h { display: flex; align-items: center; gap: 6px; font-size: var(--text-ui-sm); font-weight: 600; color: var(--inst-label); }
+.tg-hunt-pop-ic { display: inline-flex; color: var(--inst-label-2); }
+.tg-hunt-pop-ic svg { width: 14px; height: 14px; }
+.tg-hunt-pop-name { margin: 2px 0 10px; font-size: var(--text-ui-xs); color: var(--inst-label-2); overflow-wrap: anywhere; }
+.tg-hunt-pop .tg-card-quiet { margin-top: 8px; font-size: var(--text-ui-xs); }
+/* Its links — Open a worker, a reviewer, the run log — the kit's text links in the view's blue; outside a widget's
+   .inst the kit's link draws no style of its own. */
+.tg-view .inst-link { display: inline-flex; align-items: center; gap: 1px; padding: 2px 0; border: 0; background: none; cursor: pointer; font-size: var(--text-ui-sm); font-weight: 550; color: var(--accent-text); }
+.tg-card-title .inst-link { margin-left: auto; }
+.tg-steps, .tg-list { margin: 0; padding-left: 18px; }
+.tg-list { padding-left: 0; list-style: none; }
+.tg-steps li + li, .tg-list li + li { margin-top: 2px; }
+/* A task's steps, the agent's checklist while it ran (11-11): each with its mark, a done one quiet, the one it is on in
+   full ink, one still to come between. */
+.tg-steps.is-ticked { padding-left: 0; list-style: none; }
+.tg-steps.is-ticked li { display: flex; align-items: baseline; gap: 7px; color: var(--inst-label-2); }
+.tg-steps.is-ticked li .tg-mark { flex: none; width: 11px; height: 11px; transform: translateY(1px); }
+.tg-steps.is-ticked li.is-doing { color: var(--inst-label); font-weight: 550; }
+.tg-steps.is-ticked li.is-done { color: var(--inst-label-3); }
+.tg-steps.is-ticked li .tg-sec-n { margin-left: auto; }
+/* A task's box names the files it shares with other writers and how its merge stands (11-09): a pill that gives way. */
+.tg-node-share { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+
+/* The plan's peek (plan-peek.js): a card at the conversation's right edge, where the right bar opens, drawn as the
+   floating pane is; it slides in, holds a moment and slides out, the Plan's page in it as beside the chat. */
+.plan-peek {
+  position: absolute; top: 8px; right: 8px; z-index: 23; box-sizing: border-box; width: min(360px, calc(100% - 24px)); max-height: min(64%, 540px);
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--inst-border); border-radius: 16px; background: var(--inst-bg);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: inset 0 1px 0 var(--inst-edge), var(--inst-shadow);
+  transform: translateX(calc(100% + 22px)); visibility: hidden;
+  transition: transform 280ms var(--ease-out), visibility 0s 280ms;
+}
+.plan-peek.is-open { transform: none; visibility: visible; transition: transform 280ms var(--ease-out); }
+/* The floating right bar open on another tab: the peek beside it, never under it. */
+.app-shell.pane-float-open .plan-peek { right: calc(var(--pane-w, 0px) + 16px); width: min(360px, calc(100% - var(--pane-w, 0px) - 32px)); }
+.pk-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 8px 9px 12px; border-bottom: 1px solid var(--inst-sep); }
+.pk-ic { flex: none; display: inline-flex; color: var(--color-sys-green-text); }
+.pk-ic svg { width: 18px; height: 18px; }
+.pk-ht { flex: 1; min-width: 0; }
+.pk-title { font-size: var(--text-ui-sm); font-weight: 650; color: var(--inst-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-sub { font-size: var(--text-ui-xs); color: var(--inst-label-3); font-variant-numeric: tabular-nums; }
+.pk-keep { flex: none; height: 26px; padding: 0 10px; }
+.pk-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+[data-motion="reduced"] .plan-peek { transform: translateX(20px); opacity: 0; transition: transform 140ms var(--ease-out), opacity 140ms var(--ease-out), visibility 0s 140ms; }
+[data-motion="reduced"] .plan-peek.is-open { transform: none; opacity: 1; transition: transform 140ms var(--ease-out), opacity 140ms var(--ease-out); }
+
+/* Less motion: nothing breathes, slides, turns or pops; a task just done keeps its ring's fade, its tick drawn at once. */
+[data-motion="reduced"] :is(.view-dot, .tg-node-bar-fill, .tg-node.is-new, .tg-mark svg) { animation: none; }
+[data-motion="off"] :is(.tg-node-bar-fill, .tg-node.is-new, .tg-mark svg) { animation: none; }
+[data-motion="reduced"] .is-just-done .tg-mark.is-done svg { animation: none; }
+/* The ring's fade stays, the pop of a task that changed this draw gone: after the rule above that stills `.is-new`. */
+[data-motion="reduced"] :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done 2400ms var(--ease-out) var(--jd, 0ms); }
+[data-motion="reduced"] :is(.tg-blk, .tg-step-box, .tg-hunt-box) :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done-in 2400ms var(--ease-out) var(--jd, 0ms); }
+/* Off: the ring still, while the task is marked. */
+[data-motion="off"] :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-green) 45%, transparent); }
+[data-motion="off"] :is(.tg-blk, .tg-step-box, .tg-hunt-box) :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--color-sys-green) 45%, transparent); background-color: color-mix(in oklab, var(--color-sys-green) 9%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .view-dot, .tg-node-bar-fill, .tg-node.is-new, .tg-mark svg, .is-just-done .tg-mark.is-done svg { animation: none; }
+  :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done 2400ms var(--ease-out) var(--jd, 0ms); }
+  :is(.tg-blk, .tg-step-box, .tg-hunt-box) :is(.tg-node, .tg-fold, .tg-hunt-strip, .tg-step-strip).is-just-done { animation: tg-just-done-in 2400ms var(--ease-out) var(--jd, 0ms); }
+  .tg-node, .tg-edges path { transition: none; }
+  .plan-peek { transform: none; opacity: 0; transition: opacity 140ms var(--ease-out), visibility 0s 140ms; }
+  .plan-peek.is-open { opacity: 1; transition: opacity 140ms var(--ease-out); }
+}

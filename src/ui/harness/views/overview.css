@@ -1,0 +1,312 @@
+/* Overview (proposal_ux §4.6, §5; views/overview.js): the chat's page of widgets — its head, three bands, and each band a
+   grid of fixed-size tiles: 4 columns from 1100 px of the page's width, 2 from 640 px, 1 below; rows 152 px; S one cell,
+   M two across, L two by two. A tile's size comes from its slot, never from what it says (§5.3): what does not fit is
+   clipped, a line stops at two. Each thing has its colour (§5.4), on its tile's glyph and its meters. The whole tile is
+   one press — a button laid under its words —, and the links and Stop on it stand above that button. Tokens only. */
+
+.conv-frame.view-overview > .vw-overview { display: flex; flex: 1 1 auto; min-height: 0; container: ov / inline-size; }
+.conv-frame.view-overview > .dock { display: none; }
+.conv-frame.view-overview > :is(.status-panel, .transcript, .empty-chat, .turn-nav, .to-bottom, .quote-btn, .find-bar) { display: none; }
+
+/* The page's two small sizes, from the reading font: a body line and a quiet one. */
+.ov { --ov-body: calc(var(--text-ui-sm) + 0.5px); --ov-small: calc(var(--text-ui-xs) + 1.5px); flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; color: var(--inst-label); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+.ov button { font: inherit; color: inherit; }
+.ov-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+.ov-inner { max-width: 1320px; margin: 0 auto; padding: 18px 26px 32px; display: flex; flex-direction: column; gap: 10px; }
+.ov :is(button, a):focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+
+/* ---- the head: the title and its line; the engine's badge, Reset while editing, Edit widgets ---- */
+.ov-head { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 14px; }
+.ov-head-text { flex: 1 1 360px; min-width: 0; }
+.ov-title { margin: 0; font-size: calc(var(--text-ui-xl) + 4px); font-weight: 700; letter-spacing: -0.01em; }
+.ov-sub { margin: 4px 0 0; font-size: var(--text-ui-sm); line-height: 1.4; color: var(--inst-label-2); }
+.ov-head-tools { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ov-engine { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--inst-border); font-size: var(--ov-body); font-weight: 600; white-space: nowrap; }
+.ov-engine-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-sys-blue); }
+.ov-engine.is-coder .ov-engine-dot { background: var(--color-sys-orange); }
+.ov-engine-line { font-weight: 400; color: var(--inst-label-3); }
+.ov-engine-line:empty { display: none; }
+.ov-head-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid var(--inst-border); border-radius: 8px; background: var(--inst-btn); cursor: pointer; font-size: var(--ov-body); font-weight: 600; }
+.ov-head-btn:hover { background: var(--inst-btn-hover); }
+.ov-head-btn.is-on { background: var(--aq-accent); border-color: transparent; color: white; }
+.ov-head-btn.is-quiet { border-color: transparent; background: none; color: var(--inst-label-2); }
+.ov-head-ic { display: inline-flex; }
+.ov-head-ic svg { width: 14px; height: 14px; }
+
+/* ---- the bands ---- */
+.ov-bands { display: flex; flex-direction: column; gap: 14px; }
+.ov-band { display: flex; flex-direction: column; gap: 10px; }
+.ov-band-head { margin: 8px 0 0; display: flex; align-items: baseline; gap: 10px; font-size: var(--text-ui-caption); font-weight: 700; }
+.ov-band-sub { font-size: var(--ov-body); font-weight: 400; color: var(--inst-label-3); }
+.ov-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 152px; grid-auto-flow: row dense; gap: 12px; }
+.ov-S { grid-column: span 1; }
+.ov-M { grid-column: span 2; }
+.ov-L { grid-column: span 2; grid-row: span 2; }
+@container ov (max-width: 1099px) { .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container ov (max-width: 639px) {
+  .ov-grid { grid-template-columns: minmax(0, 1fr); }
+  .ov-M, .ov-L { grid-column: span 1; }
+  .ov-inner { padding: 14px 14px 24px; }
+}
+
+/* ---- a tile ---- */
+.ov-tile {
+  --accent: var(--color-sys-gray);
+  --accent-text: var(--color-sys-gray-text);
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; overflow: hidden;
+  padding: 12px 14px 9px; border: 1px solid var(--inst-border); border-radius: 16px; background: var(--inst-card);
+  transition: background-color 160ms var(--ease, ease), border-color 160ms var(--ease, ease);
+}
+.ov-tile:has(> .ov-tile-open:hover) { background: var(--inst-card-hover); }
+.ov-tile:has(> .ov-tile-open:focus-visible) { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 70%, transparent); outline-offset: 1px; }
+.ov-tile.is-open { border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+.ov-tile.is-warn { border-color: color-mix(in oklab, var(--color-sys-orange) 55%, transparent); }
+.ov-tile.is-error { border-color: color-mix(in oklab, var(--color-sys-red) 55%, transparent); }
+.ov .ov-tile-open { position: absolute; inset: 0; z-index: 0; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
+.ov .ov-tile-open:focus-visible { outline: none; }
+/* The words lie on the press; what acts on its own press stands above it. */
+.ov-tile-head, .ov-tile-face { position: relative; z-index: 1; pointer-events: none; }
+.ov-tile-head :is(button, a), .ov-tile-face :is(button, a, input) { pointer-events: auto; }
+.ov-tile-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.ov-tile-ic {
+  display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; color: white;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 78%, white) 0%, var(--accent) 58%, color-mix(in oklab, var(--accent) 88%, black) 100%);
+}
+.ov-tile-ic svg { width: 14px; height: 14px; stroke-width: 2.1; }
+.ov-tile-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ov-tile-title { font-size: var(--text-ui-caption); font-weight: 600; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tile-sub { font-size: var(--ov-small); color: var(--inst-label-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tile-sub:empty { display: none; }
+.ov-tile-trail { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 22px; font-size: var(--ov-small); }
+.ov-tile-face { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.ov-tile-face p { margin: 0; }
+
+/* Each thing's colour (§5.4). */
+.ov-w-context, .ov-w-turn, .ov-w-tokens { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); }
+.ov-w-cache { --accent: var(--color-sys-green); --accent-text: var(--color-sys-green-text); }
+.ov-w-spend { --accent: var(--color-sys-orange); --accent-text: var(--color-sys-orange-text); }
+.ov-w-memory { --accent: var(--color-sys-pink); --accent-text: var(--color-sys-pink-text); }
+.ov-w-compactions, .ov-w-kept { --accent: var(--color-sys-teal); --accent-text: var(--color-sys-teal-text); }
+.ov-w-models { --accent: var(--color-sys-indigo); --accent-text: var(--color-sys-indigo-text); }
+.ov-w-agents { --accent: var(--color-sys-purple); --accent-text: var(--color-sys-purple-text); }
+.ov-w-speed { --accent: var(--color-sys-mint); --accent-text: var(--color-sys-mint-text); }
+.ov-w-account { --accent: var(--color-sys-cyan); --accent-text: var(--color-sys-cyan-text); }
+.ov-w-watch, .ov-w-rules { --accent: var(--color-sys-yellow); --accent-text: var(--color-sys-yellow-text); }
+.ov-w-files, .ov-w-who { --accent: var(--color-sys-orange); --accent-text: var(--color-sys-orange-text); }
+.ov-w-may { --accent: var(--color-sys-red); --accent-text: var(--color-sys-red-text); }
+.ov-w-goal { --accent: var(--color-sys-green); --accent-text: var(--color-sys-green-text); }
+.ov-w-fork { --accent: var(--color-sys-blue); --accent-text: var(--color-sys-blue-text); }
+
+/* ---- the face's parts ---- */
+.ov-tile .inst-hero { gap: 2px; }
+.ov-tile .inst-hero-num { font-size: 28px; line-height: 1.05; }
+.ov-tile .inst-hero-line { gap: 8px; }
+.ov-tile .inst-hero-unit { font-size: var(--ov-body); white-space: nowrap; }
+.ov-tile .inst-hero-cap { font-size: var(--ov-body); line-height: 1.35; }
+/* A one-cell tile is narrow: its sentence speaks small, so the hero, two lines and a link fit. */
+.ov-S .ov-line { font-size: var(--ov-small); line-height: 1.35; }
+.ov .inst-link { display: inline-flex; align-items: center; gap: 1px; padding: 2px 0; border: 0; background: none; cursor: pointer; font-size: var(--ov-body); font-weight: 500; color: var(--color-sys-blue-text); white-space: nowrap; }
+.ov .inst-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.ov .inst-note { font-size: var(--ov-body); }
+.ov-quiet { font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-line { margin: 0; font-size: var(--ov-body); line-height: 1.4; color: var(--inst-label-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ov-line.is-warn { color: var(--color-sys-orange-text); }
+.ov-line.is-error { color: var(--color-sys-red-text); }
+.ov-greyed { margin: 0; font-size: var(--ov-small); line-height: 1.4; color: var(--inst-label-3); }
+.ov-lines { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--ov-small); color: var(--inst-label-2); }
+.ov-lines b { font-size: var(--ov-body); font-weight: 600; color: var(--inst-label); }
+.ov-lines b.is-good { color: var(--color-sys-green-text); }
+.ov-acts { margin-top: auto; display: flex; align-items: center; gap: 12px; }
+.ov .ov-acts .inst-link { padding: 0; }
+.ov-acts.is-split { justify-content: space-between; }
+.ov .ov-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--inst-border); border-radius: 7px; background: var(--inst-btn); cursor: pointer; font-size: var(--ov-small); font-weight: 600; }
+.ov .ov-btn:hover { background: var(--inst-btn-hover); }
+.ov-btn svg { width: 13px; height: 13px; }
+.ov .ov-tile-act { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 6px; border: 0; border-radius: 6px; background: none; cursor: pointer; font-size: var(--ov-small); color: var(--inst-label-2); }
+.ov .ov-tile-act:hover:not(:disabled) { background: var(--inst-btn); color: var(--inst-label); }
+.ov-tile-act svg { width: 13px; height: 13px; }
+.ov-more { font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-tile .inst-legend { flex-direction: row; flex-wrap: wrap; gap: 2px 12px; }
+.ov-tile .inst-legend-row { display: inline-flex; align-items: center; gap: 5px; min-height: 0; font-size: var(--ov-small); }
+.ov-tile .inst-legend-label { color: var(--inst-label-2); }
+.ov-tile .inst-legend-val { color: var(--inst-label-2); font-weight: 400; }
+.ov-tile .inst-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+.ov-legend-line { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: var(--ov-small); color: var(--inst-label-2); }
+.ov-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.ov-meter { position: relative; height: 6px; border-radius: 3px; background: var(--inst-track); overflow: hidden; }
+.ov-meter-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.ov-meter-fill.is-good { background: var(--color-sys-green); }
+.ov-meter-fill.is-cyan { background: var(--color-sys-cyan); }
+.ov-meter-fill.is-warn { background: var(--color-sys-orange); }
+.ov-meter-fill.is-error { background: var(--color-sys-red); }
+
+/* Context: the share, the bar on the window's scale with your line, its scale under it. */
+.ov-ctx-fig { display: flex; align-items: baseline; gap: 10px; }
+.ov-ctx-pct { font-size: 32px; font-weight: 650; letter-spacing: -0.03em; line-height: 1; }
+.ov-ctx-pct.is-warn { color: var(--color-sys-orange-text); }
+.ov-ctx-pct.is-error { color: var(--color-sys-red-text); }
+.ov-ctx-scale { display: flex; justify-content: space-between; font-size: var(--ov-small); color: var(--inst-label-3); }
+
+/* This turn: its states, and the call running now with Stop. */
+.ov-states { display: flex; flex-wrap: wrap; gap: 4px; }
+.ov-state { padding: 2px 8px; border-radius: 6px; background: var(--inst-btn); font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-state.is-on { background: color-mix(in oklab, var(--color-sys-blue) 20%, transparent); color: var(--color-sys-blue-text); font-weight: 600; }
+.ov-doing { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px; border-radius: 8px; background: var(--inst-well); font-family: var(--mono); font-size: var(--ov-small); }
+.ov-doing.is-warn { color: var(--color-sys-orange-text); font-family: inherit; }
+.ov-doing-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov .ov-stop { flex: none; height: 22px; padding: 0 9px; border: 0; border-radius: 6px; background: color-mix(in oklab, var(--color-sys-red) 22%, transparent); color: var(--color-sys-red-text); cursor: pointer; font-size: var(--ov-small); font-weight: 600; font-family: var(--font, inherit); }
+.ov .ov-stop:hover { background: color-mix(in oklab, var(--color-sys-red) 32%, transparent); }
+
+/* Agents for this chat: the counts, the newest one, the seats. */
+.ov-counts { display: flex; align-items: baseline; gap: 16px; font-size: var(--text-ui-base); color: var(--inst-label-2); }
+.ov-count b { font-size: 24px; font-weight: 650; color: var(--inst-label); margin-right: 3px; }
+.ov-agent { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--ov-body); }
+.ov-agent-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-sys-gray); }
+.ov-agent.tone-running .ov-agent-dot { background: var(--color-sys-blue); }
+.ov-agent.tone-ok .ov-agent-dot { background: var(--color-sys-green); }
+.ov-agent.tone-warn .ov-agent-dot { background: var(--color-sys-orange); }
+.ov-agent.tone-error .ov-agent-dot { background: var(--color-sys-red); }
+.ov-agent-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-agent-state { flex: none; font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-seats { margin-top: auto; display: flex; flex-direction: column; gap: 5px; }
+.ov-seats-line { display: flex; justify-content: space-between; gap: 8px; font-size: var(--ov-small); color: var(--inst-label-2); }
+.ov-seats-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-seats-count { flex: none; font-weight: 600; color: var(--inst-label); }
+.ov-seats-count.is-full { color: var(--color-sys-orange-text); }
+.ov-seats .ov-meter-fill { background: var(--color-sys-purple); }
+
+/* Activity's counts, Files changed's lines, Cache's ring, the models' rows. */
+.ov-stats { display: flex; align-items: flex-start; gap: 18px; min-width: 0; }
+.ov-stats-note { align-self: flex-end; margin-left: auto; white-space: nowrap; }
+.ov-stat { display: flex; flex-direction: column; }
+.ov-stat b { font-size: 24px; font-weight: 650; line-height: 1.1; }
+.ov-stat span { font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-stat.is-warn b { color: var(--color-sys-orange-text); }
+.ov-diff { display: flex; align-items: baseline; gap: 8px; }
+.ov-diff-add, .ov-diff-del { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.05; }
+.ov-diff-add { color: var(--color-sys-green-text); }
+.ov-diff-del { color: var(--color-sys-red-text); }
+.ov-cache { display: flex; align-items: center; gap: 12px; }
+.ov-ring { position: relative; flex: none; width: 64px; height: 64px; }
+.ov-ring-svg, .ov-ring-svg svg { display: block; width: 64px; height: 64px; }
+.ov-ring-num { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--text-ui-base); font-weight: 700; }
+.ov-rows { display: flex; flex-direction: column; gap: 4px; }
+.ov-row { display: flex; align-items: center; gap: 8px; font-size: var(--ov-body); }
+.ov-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-row-value { flex: none; font-size: var(--ov-small); color: var(--inst-label-2); }
+.ov-row.is-warn .ov-row-value { color: var(--color-sys-orange-text); }
+
+/* Goal and progress; Memory's rows; Account's windows. */
+.ov-goal { margin: 0; font-size: var(--text-ui-base); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ov-progress { display: flex; align-items: center; gap: 10px; }
+.ov-progress .ov-meter { flex: 1; height: 8px; border-radius: 4px; }
+.ov-progress-n { flex: none; font-size: var(--ov-body); font-weight: 600; }
+.ov-next { margin: 0; }
+.ov-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.ov-list-item { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--ov-body); line-height: 1.3; }
+.ov-list-item .inst-dot { border-radius: 50%; }
+.ov-list-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-window { display: flex; flex-direction: column; gap: 5px; }
+.ov-window-line { display: flex; justify-content: space-between; gap: 8px; font-size: var(--ov-body); color: var(--inst-label-2); }
+.ov-window-fig { color: var(--inst-label-3); white-space: nowrap; }
+.ov-window-fig b { font-weight: 600; color: var(--inst-label); }
+.ov-window-fig b.is-warn { color: var(--color-sys-orange-text); }
+.ov-window-fig b.is-error { color: var(--color-sys-red-text); }
+
+/* How it is set up: where a setting comes from, the engine's name, the permission and the tools' chips, a label and its value. */
+.ov-trail { display: inline-flex; align-items: center; gap: 8px; }
+.ov-from { padding: 1px 7px; border-radius: 6px; background: var(--inst-btn); font-size: var(--ov-small); font-weight: 600; color: var(--inst-label-3); white-space: nowrap; }
+.ov-from.is-here { background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); }
+.ov-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ov-who-name { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.ov-perm { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ov-perm.is-dim { opacity: 0.45; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ov-chips.is-dim { opacity: 0.45; }
+.ov-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--inst-btn); font-size: var(--ov-small); color: var(--inst-label-2); white-space: nowrap; }
+.ov-chip.is-error { background: color-mix(in oklab, var(--color-sys-red) 20%, transparent); color: var(--color-sys-red-text); font-weight: 600; }
+.ov-chip.is-off { opacity: 0.5; text-decoration: line-through; }
+/* A family's chip switches it in place (the design pass of 10-24, UX4). */
+.ov-chip.is-button { border: 0; font: inherit; font-size: var(--ov-small); cursor: pointer; }
+.ov-chip.is-button:hover { background: var(--inst-btn-hover); color: var(--inst-label); }
+.ov-chips .ov-set-from { margin-left: auto; }
+
+/* A setup row that changes in place: its name, ↺ where this chat chose it, its chip or switch, where it comes from. */
+.ov-set { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; font-size: var(--ov-body); line-height: 1.3; }
+/* Two cells high, the rows read as a small table, a hairline between. */
+.ov-L .ov-set { min-height: 32px; }
+.ov-L .ov-set + .ov-set { border-top: 1px solid var(--inst-sep); }
+.ov-set-k { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--inst-label-2); }
+.ov-set.is-chat .ov-set-k::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--color-sys-blue); vertical-align: middle; }
+.ov-set.is-dim { opacity: 0.45; }
+.ov-set-pick {
+  display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0; max-width: 62%; height: 22px; padding: 0 5px 0 8px;
+  border: 0; border-radius: 6px; background: var(--inst-btn); font: inherit; font-weight: 600; color: var(--inst-label); cursor: pointer;
+}
+.ov-set-pick:hover { background: var(--inst-btn-hover); }
+.ov-set-pick.is-error { background: color-mix(in oklab, var(--color-sys-red) 20%, transparent); color: var(--color-sys-red-text); }
+.ov-set-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-set-chev { display: inline-flex; flex: none; color: var(--inst-label-3); }
+.ov-set-chev svg { width: 11px; height: 11px; }
+.ov-set-words { flex: 0 1 auto; min-width: 0; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; text-align: right; }
+.ov-set-switch { flex: none; }
+.ov-set-back { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--color-sys-blue-text); cursor: pointer; }
+.ov-set-back:hover { background: var(--inst-btn); }
+.ov-set-back svg { width: 12px; height: 12px; }
+.ov-set-from { flex: none; padding: 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600; white-space: nowrap; background: var(--inst-btn); color: var(--inst-label-3); }
+.ov-set-from.is-session { background: color-mix(in oklab, var(--color-sys-blue) 16%, transparent); color: var(--color-sys-blue-text); }
+.ov-set-from.is-project { background: color-mix(in oklab, var(--color-sys-purple) 16%, transparent); color: var(--color-sys-purple-text); }
+.ov-S .ov-set-from { padding: 1px 5px; font-size: 10px; }
+/* An empty tile while the widgets are edited: dimmed, saying it waits. */
+.ov-empty-note { display: none; }
+.ov-tile.is-empty .ov-empty-note { display: block; position: absolute; z-index: 2; left: 14px; bottom: 10px; font-size: var(--ov-small); color: var(--inst-label-3); }
+.ov-tile.is-empty .ov-tile-face, .ov-tile.is-empty .ov-tile-head { opacity: 0.4; }
+.ov-kv { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; font-size: var(--ov-body); line-height: 1.3; }
+.ov-kv-k { flex: none; color: var(--inst-label-2); }
+.ov-kv-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 600; }
+.ov-kv.is-dim { opacity: 0.45; }
+
+/* ---- + Add a widget ---- */
+.ov .ov-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 1.5px dashed var(--inst-border); background: none; cursor: pointer; color: var(--inst-label-3); font-size: var(--text-ui-base); }
+.ov .ov-add:hover { color: var(--inst-label); border-color: var(--inst-label-3); }
+.ov-add-ic svg { width: 18px; height: 18px; }
+
+/* ---- Edit widgets: the bar on each tile, the drag, the drop's mark ---- */
+.ov.is-editing .ov-tile:not(.ov-add) { cursor: grab; }
+.ov-tile.is-editing .ov-tile-open { pointer-events: none; }
+.ov-tile.is-editing .ov-tile-face { opacity: 0.55; }
+/* The edit bar takes the head's two ends: the grip the glyph's place, the size and × the trail's. */
+.ov-tile.is-editing :is(.ov-tile-ic, .ov-tile-trail) { visibility: hidden; }
+.ov-tile.is-editing .ov-tile-face :is(button, a) { pointer-events: none; }
+.ov-edit { position: absolute; z-index: 2; inset: 11px 12px auto 12px; display: flex; align-items: center; gap: 4px; }
+.ov .ov-edit :is(.ov-edit-grip, .ov-edit-size, .ov-edit-x) { display: grid; place-items: center; height: 24px; min-width: 24px; padding: 0 6px; border: 1px solid var(--inst-border); border-radius: 7px; background: var(--inst-bg, var(--inst-card)); cursor: pointer; font-size: var(--ov-small); font-weight: 700; }
+.ov .ov-edit :is(.ov-edit-grip, .ov-edit-size, .ov-edit-x):hover:not(:disabled) { background: var(--inst-btn-hover); }
+.ov .ov-edit-grip { cursor: grab; }
+.ov .ov-edit-size:disabled { cursor: default; opacity: 0.6; }
+.ov-edit svg { width: 13px; height: 13px; }
+.ov-edit .grow { flex: 1; }
+.ov-tile.is-dragging { opacity: 0.4; }
+.ov-tile.is-drop-before { box-shadow: inset 3px 0 0 var(--color-sys-blue); }
+.ov-tile.is-drop-after { box-shadow: inset -3px 0 0 var(--color-sys-blue); }
+
+[data-motion="off"] .ov-tile { transition: none; }
+
+/* ---- the setup sheets (setup-sheet.js): a How it is set up widget's back, the settings it owns ---- */
+.zc-sheet.setup-sheet { width: min(620px, calc(100vw - 20px)); }
+.setup-sheet-head { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.setup-sheet-ic { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 8px; background: var(--color-sys-blue); color: white; }
+.setup-sheet-ic svg { width: 16px; height: 16px; }
+.setup-sheet-ic.setup-who { background: var(--color-sys-orange); }
+.setup-sheet-ic.setup-may { background: var(--color-sys-red); }
+.setup-sheet-ic.setup-memory { background: var(--color-sys-pink); }
+.setup-sheet-ic.setup-rules { background: var(--color-sys-yellow); }
+.setup-sheet-ic.setup-history { background: var(--color-sys-gray); }
+.setup-sheet-titles { flex: 1; min-width: 0; }
+.setup-sheet-title { margin: 0; font-size: var(--text-ui-lg); font-weight: 650; line-height: 1.2; }
+.setup-sheet-line { margin: 2px 0 0; font-size: var(--text-ui-sm); line-height: 1.4; color: var(--color-foreground-subtle); }
+.setup-sheet-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 20px; }
+.setup-sheet-box { display: flex; flex-direction: column; gap: 12px; }
+.setup-sheet-wait { margin: 0; color: var(--color-foreground-subtle); }
+.setup-sheet-err { margin: 0; color: var(--color-sys-red-text); }
+.setup-sheet-elsewhere { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
+.setup-sheet .inst-link { padding: 0; border: 0; background: none; cursor: pointer; color: var(--color-sys-blue-text); font: inherit; font-size: var(--text-ui-sm); font-weight: 500; }

@@ -1,0 +1,360 @@
+/* A flow beside the chat (HarnessV4_Flow_Plan F5; the F0 mock, HarnessV4_Flow_Plan-mock.html; HarnessV4_OneAgent_Plan
+   OA3): its card over the message box and on the Agents tab, its gate's card and your review's, its row's pane, its
+   line in the header and a box's sheet. Flow wears cyan — the one colour no other feature wears — orange while it waits for you, gray once it
+   stopped. Steps run top to bottom, a step's boxes side by side. Built on the harness's tokens (aqua.css,
+   instruments.css), in both themes. */
+
+.fl-card {
+  --fl: var(--color-sys-cyan);
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px 14px;
+  border: 1px solid var(--aq-hairline); border-radius: 14px; background: var(--aq-card); color: var(--inst-label);
+  font-variant-numeric: tabular-nums;
+}
+.fl-card.needs-you { border-color: color-mix(in oklab, var(--color-sys-orange) 40%, var(--aq-hairline)); }
+.fl-card .inst-btn { flex: none; height: 28px; font-size: 12px; }
+.fl-card .inst-btn.is-primary, .fl-pane .inst-btn.is-primary, .fl-sheet .inst-btn.is-primary {
+  background: var(--aq-accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.fl-card .inst-btn.is-primary:hover, .fl-pane .inst-btn.is-primary:hover, .fl-sheet .inst-btn.is-primary:hover { background: color-mix(in oklab, var(--aq-accent) 88%, #fff); }
+.fl-card .inst-btn.is-primary:disabled, .fl-pane .inst-btn.is-primary:disabled { opacity: 0.45; }
+.inst-btn.is-quiet { background: none; box-shadow: none; color: var(--color-sys-blue-text); padding: 0 6px; }
+.inst-btn.is-quiet:hover { background: var(--aq-control); }
+.inst-btn.is-quiet.is-red { color: var(--color-sys-red-text); }
+
+/* ---- the head ---------------------------------------------------------------------------------------------------- */
+.fl-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fl-tile {
+  --fl: var(--color-sys-cyan);
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px; color: #fff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--fl) 70%, #fff) 0%, var(--fl) 55%, color-mix(in oklab, var(--fl) 80%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.fl-tile.is-warn { --fl: var(--color-sys-orange); }
+.fl-tile.is-gray { --fl: var(--color-sys-gray); }
+.fl-tile .inst-ic { display: inline-flex; }
+.fl-tile svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.fl-ht { flex: 1; min-width: 0; }
+.fl-ht .tv-h { padding: 0; }
+.fl-name { font-size: 14px; font-weight: 650; letter-spacing: -0.012em; }
+.fl-fig { margin-left: 6px; font-size: 11.5px; font-weight: 500; color: var(--inst-label-3); }
+.fl-fig.is-warn { color: var(--color-sys-orange-text); }
+.fl-goal { font-size: 12px; color: var(--inst-label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-q { color: var(--inst-label-3); font-size: 11.5px; }
+
+/* ---- the steps --------------------------------------------------------------------------------------------------- */
+.fl-steps { display: flex; flex-direction: column; }
+.fl-step { display: flex; gap: 10px; min-width: 0; }
+.fl-rail { position: relative; width: 22px; flex: none; display: flex; justify-content: center; }
+.fl-rail::after { content: ""; position: absolute; top: 32px; bottom: -2px; width: 1.5px; background: var(--aq-hairline-strong); }
+/* With Add a step under them the last step is no last child: its rail runs on to the button. */
+.fl-step:last-child .fl-rail::after { display: none; }
+.fl-step.is-done .fl-rail::after { background: color-mix(in oklab, var(--color-sys-green) 55%, transparent); }
+.fl-num {
+  position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 9px; border-radius: 50%;
+  background: var(--aq-control-hover); color: var(--inst-label-2); font-size: 11px; font-weight: 650;
+}
+.fl-step.is-done .fl-num { background: color-mix(in oklab, var(--color-sys-green) 22%, transparent); color: var(--color-sys-green-text); }
+.fl-step.is-now .fl-num:not(.is-gate) { background: color-mix(in oklab, var(--color-sys-cyan) 24%, transparent); color: var(--color-sys-cyan-text); }
+.fl-num.is-gate { background: color-mix(in oklab, var(--color-sys-orange) 18%, transparent); color: var(--color-sys-orange-text); }
+.fl-num .inst-ic { display: inline-flex; }
+.fl-num svg { width: 12px; height: 12px; }
+.fl-boxes { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; }
+.fl-box {
+  flex: 1 1 180px; min-width: 0; max-width: 300px; display: flex; flex-direction: column; gap: 5px; padding: 8px 10px;
+  border: 1px solid var(--aq-hairline); border-radius: 11px; background: var(--color-panel); color: inherit; text-align: left;
+  font: inherit; cursor: pointer; transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.fl-box:hover { border-color: var(--aq-hairline-strong); }
+.fl-box:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 45%, transparent); }
+.fl-box.is-sel { border-color: transparent; box-shadow: 0 0 0 2px var(--color-sys-blue); }
+.fl-box.is-asks { border-color: color-mix(in oklab, var(--color-sys-orange) 50%, var(--aq-hairline)); }
+.fl-box.st-waits, .fl-box.st-skipped, .fl-box.st-cut, .fl-box.st-stopped { opacity: 0.8; }
+.fl-box.is-edit { border-style: dashed; }
+.fl-card.is-draft .fl-box.is-edit { border-style: solid; }
+.fl-box-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fl-box-who { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.fl-box-who b { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-box-top .tg-badge { margin-left: auto; flex: none; }
+/* A done box's quiet tick (lib/marks.js), where its word was. */
+.fl-box-top > .tg-mark { margin-left: auto; }
+.fl-box-edit { display: inline-flex; margin-left: auto; color: var(--inst-label-3); }
+.fl-box-edit svg { width: 12px; height: 12px; }
+.fl-box-line { font-size: 11.5px; color: var(--inst-label-2); line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* What a box needs, under its line; one not before it in orange (OA3 case 5). */
+.fl-box-needs { font-size: 11px; line-height: 1.35; color: var(--inst-label-3); }
+.fl-box-needs.is-broken { display: inline-flex; align-items: center; gap: 4px; color: var(--color-sys-orange-text); }
+.fl-box.is-broken { border-color: color-mix(in oklab, var(--color-sys-orange) 50%, var(--aq-hairline)); }
+/* A draft's box: the box opens its sheet; under it, Move up, Move down and Remove. */
+.fl-box.is-draft { gap: 0; padding: 0; cursor: default; }
+.fl-box-open {
+  display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 8px 10px 2px; border: 0; border-radius: 11px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.fl-box-open:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 45%, transparent); }
+.fl-box-acts { display: flex; justify-content: flex-end; gap: 2px; padding: 0 6px 5px; }
+.fl-box-act { display: grid; place-items: center; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--inst-label-3); cursor: pointer; }
+.fl-box-act:hover:not(:disabled) { background: var(--aq-control); color: var(--inst-label); }
+.fl-box-act:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-sys-blue) 45%, transparent); }
+.fl-box-act:disabled { opacity: 0.35; cursor: default; }
+.fl-box-act .inst-ic { display: inline-flex; }
+.fl-box-act svg { width: 12px; height: 12px; }
+/* A step's why, over its boxes. */
+.fl-why { flex: 1 1 100%; margin: 11px 0 -2px; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-3); }
+.fl-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.fl-tag {
+  display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 5px; border-radius: 5px;
+  background: var(--aq-control); color: var(--inst-label-3); font-size: 10.5px; font-weight: 600; white-space: nowrap;
+}
+.fl-tag-ic { display: inline-flex; }
+.fl-tag-ic svg { width: 10px; height: 10px; }
+.fl-tag.is-write { color: var(--inst-label-2); }
+.fl-tag.is-gate { color: var(--color-sys-orange-text); background: color-mix(in oklab, var(--color-sys-orange) 14%, transparent); }
+.fl-add {
+  display: inline-flex; align-items: center; gap: 5px; align-self: center; height: 26px; padding: 0 10px; border: 1px dashed var(--aq-hairline-strong);
+  border-radius: 999px; background: none; color: var(--inst-label-2); font: inherit; font-size: 12px; cursor: pointer;
+}
+.fl-add:hover { background: var(--aq-control); color: var(--inst-label); }
+.fl-add .inst-ic { display: inline-flex; }
+.fl-add svg { width: 12px; height: 12px; }
+.fl-add.is-step { align-self: flex-start; margin-left: 32px; }
+
+/* ---- what it waits for ------------------------------------------------------------------------------------------- */
+.fl-callout { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; background: var(--aq-control); font-size: 12px; color: var(--inst-label-2); }
+.fl-callout b { color: var(--inst-label); font-weight: 600; }
+.fl-callout-ic { display: inline-flex; color: var(--color-sys-gray-text); }
+.fl-callout-ic svg { width: 16px; height: 16px; }
+.fl-callout-t { flex: 1; min-width: 0; line-height: 1.45; }
+.fl-gate { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid color-mix(in oklab, var(--color-sys-orange) 45%, var(--aq-hairline)); border-radius: 12px; background: color-mix(in oklab, var(--color-sys-orange) 5%, transparent); }
+.fl-gate.is-hold { border-color: color-mix(in oklab, var(--color-sys-red) 35%, var(--aq-hairline)); background: color-mix(in oklab, var(--color-sys-red) 4%, transparent); }
+.fl-gate-top { display: flex; align-items: center; gap: 10px; }
+.fl-gate-ht { flex: 1; min-width: 0; }
+.fl-gate-top b { font-size: 13.5px; font-weight: 650; }
+.fl-gate-top .tg-badge { margin-left: auto; flex: none; }
+.fl-gate-why { margin: 0; font-size: 13px; line-height: 1.5; }
+.fl-read summary { cursor: pointer; font-size: 12px; color: var(--color-sys-blue-text); }
+.fl-read[open] summary { margin-bottom: 6px; }
+.fl-ans {
+  padding: 8px 10px; border-radius: 10px; background: var(--aq-code); font-size: 12.5px; line-height: 1.5; color: var(--inst-label-2);
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto;
+}
+.fl-ans.is-short { max-height: 140px; }
+.fl-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fl-field-l { font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.fl-input {
+  width: 100%; box-sizing: border-box; padding: 6px 9px; border: 0; border-radius: 7px; background: var(--color-input);
+  box-shadow: inset 0 0 0 0.5px var(--aq-hairline-strong); color: var(--inst-label); font: inherit; font-size: 12.5px;
+}
+.fl-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--color-sys-blue), 0 0 0 3px color-mix(in oklab, var(--color-sys-blue) 25%, transparent); }
+textarea.fl-input { resize: vertical; line-height: 1.45; }
+.fl-fields { display: flex; flex-direction: column; gap: 8px; }
+.fl-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Start ▾ (OA4): one pull-down button — Start, and its arrow for the other ways — as Aqua draws one. */
+.fl-split { display: inline-flex; align-items: stretch; }
+.fl-split > .inst-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.fl-split > .fl-split-more { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding-left: 6px; padding-right: 6px; }
+.fl-split > .fl-split-more .inst-ic svg { width: 12px; height: 12px; }
+/* In place (OA4): how it stands with your agent, and what it did. */
+.fl-place { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-cyan) 7%, transparent); font-size: 12px; color: var(--inst-label-2); }
+.fl-place-l { display: flex; align-items: center; gap: 6px; color: var(--inst-label); }
+.fl-act { padding-left: 19px; line-height: 1.4; }
+/* Where a flow works (OA5): its own worktree in green; your folder, outside git, in orange. */
+.fl-works { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: color-mix(in oklab, var(--color-sys-green) 8%, transparent); font-size: 12px; color: var(--inst-label); }
+.fl-works.is-folder { background: color-mix(in oklab, var(--color-sys-orange) 9%, transparent); }
+/* A draft's word on your uncommitted files, its switch under it (OA5). */
+.fl-bring { display: flex; flex-direction: column; gap: 6px; }
+.fl-bring-sw { display: flex; align-items: center; gap: 8px; padding-left: 19px; }
+.fl-act b { font-weight: 600; color: var(--inst-label); }
+.fl-act-why { color: var(--inst-label-2); }
+.fl-foot.is-quiet { margin-top: -2px; }
+.fl-sw-l { font-size: 12px; color: var(--inst-label-2); }
+.fl-sum { font-size: 12px; color: var(--inst-label); }
+.fl-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 12px; line-height: 1.45; color: var(--inst-label-2); }
+.fl-note.is-warn, .fl-note.is-warn .fl-note-ic { color: var(--color-sys-orange-text); }
+.fl-note-ic { display: inline-flex; flex: none; margin-top: 1px; color: var(--inst-label-3); }
+.fl-note-ic svg { width: 13px; height: 13px; }
+.fl-end { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+.fl-end.is-ok, .fl-end.is-ok .fl-note-ic { color: var(--color-sys-green-text); }
+.fl-end.is-wait { color: var(--inst-label-2); }
+.fl-end.is-warn, .fl-end.is-warn .fl-note-ic { color: var(--color-sys-orange-text); }
+
+/* ---- a box, picked ----------------------------------------------------------------------------------------------- */
+.fl-detail { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--aq-hairline); border-radius: 12px; background: var(--aq-card); }
+.fl-detail.is-asks { border-color: color-mix(in oklab, var(--color-sys-orange) 45%, var(--aq-hairline)); }
+.fl-d-top { display: flex; align-items: center; gap: 10px; }
+.fl-d-who { flex: 1; min-width: 0; }
+.fl-d-who b { font-size: 13.5px; font-weight: 650; }
+.fl-d-top .tg-badge { margin-left: auto; flex: none; }
+.fl-d-sect { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--inst-label-2); }
+.fl-d-words { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--inst-label); white-space: pre-wrap; }
+.fl-handed { display: flex; flex-wrap: wrap; gap: 6px; }
+.fl-hchip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--aq-control); font-size: 12px; color: var(--inst-label-2); }
+.fl-hchip .inst-ic { display: inline-flex; }
+.fl-hchip .inst-ic svg { width: 12px; height: 12px; }
+.fl-hchip.is-skipped { opacity: 0.6; text-decoration: line-through; }
+.fl-hchip .pf.s16, .fl-d-top .pf.s16 { width: 16px; height: 16px; border-radius: 5px; box-shadow: none; }
+.pf.s16 .pf-ic svg { width: 9px; height: 9px; stroke-width: 2.6; }
+.pf.s16 .pf-crown { display: none; }
+.fl-made { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--inst-label-2); }
+.fl-made code { font-size: 11px; color: var(--inst-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-past { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; }
+
+/* ---- over the message box ---------------------------------------------------------------------------------------- */
+.fl-dock { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; margin: -4px -4px 6px; padding: 4px; overflow-y: auto; }
+.fl-dock.is-empty { display: none; }
+/* A draft is often drawn from a chat's first message: over the box it stands where the empty chat's greeting is drawn,
+   so the greeting goes while a flow shows there. */
+.frame > .empty-chat:not(.has-board):has(~ .dock .fl-dock:not(.is-empty)) { display: none; }
+.fl-dock > * { flex: none; }
+.fl-card.in-dock { box-shadow: var(--aq-lift); background: color-mix(in oklab, var(--color-panel) 92%, transparent); backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6); }
+
+/* ---- the line in the header ------------------------------------------------------------------------------------- */
+.fl-status {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; min-width: 0; max-width: 340px; padding: 0 9px; border: 0; border-radius: 999px;
+  background: color-mix(in oklab, var(--color-sys-cyan) 16%, transparent); color: var(--inst-label); font: inherit; font-size: 12px; cursor: pointer;
+}
+.fl-status:hover { background: color-mix(in oklab, var(--color-sys-cyan) 24%, transparent); }
+.fl-status.is-warn { background: color-mix(in oklab, var(--color-sys-orange) 18%, transparent); }
+.fl-status.is-gray { background: var(--aq-control-hover); }
+.fl-status-ic { display: inline-flex; flex: none; color: var(--color-sys-cyan-text); }
+.fl-status.is-warn .fl-status-ic { color: var(--color-sys-orange-text); }
+.fl-status.is-gray .fl-status-ic { color: var(--color-sys-gray-text); }
+.fl-status-ic svg { width: 12px; height: 12px; }
+.fl-status-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- the Agents tab's Flows row and pane ----------------------------------------------------------------------- */
+.fl-pane { display: flex; flex-direction: column; gap: 12px; }
+.fl-froms { display: flex; flex-direction: column; gap: 6px; }
+.fl-from { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--aq-hairline); border-radius: 11px; background: var(--aq-card); cursor: pointer; }
+.fl-from:hover { border-color: var(--aq-hairline-strong); }
+.fl-from.is-on { border-color: transparent; box-shadow: 0 0 0 2px var(--color-sys-blue); }
+.fl-from-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--aq-hairline-strong); }
+.fl-from.is-on .fl-from-dot { box-shadow: inset 0 0 0 4px var(--color-sys-blue); }
+.fl-from-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 12.5px; }
+.fl-from-t .fl-q { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sd-av.t-cyan { color: var(--color-sys-cyan-text); }
+
+/* ---- a box's sheet ------------------------------------------------------------------------------------------------ */
+.fl-sheet { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 6px; }
+.fl-sheet-head { display: flex; align-items: center; gap: 11px; }
+.fl-sheet-t { font-size: 14px; font-weight: 650; }
+.fl-srow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fl-srow.is-col { flex-direction: column; align-items: stretch; gap: 4px; }
+.fl-sl { width: 110px; flex: none; font-size: 12px; color: var(--inst-label-2); }
+.fl-srow.is-col .fl-sl { width: auto; }
+.fl-shint { margin: -4px 0 0 120px; font-size: 11.5px; line-height: 1.4; color: var(--inst-label-3); }
+.fl-shint.is-inline { margin: 0; }
+.fl-shint.is-wide { margin: 0; font-size: 12px; }
+.fl-srow.is-col .fl-shint { margin: 0; }
+/* What a box needs: the boxes before it, each ticked or not. */
+.fl-needs-list { display: flex; flex-direction: column; gap: 2px; }
+.fl-need { display: flex; align-items: center; gap: 7px; min-height: 24px; font-size: 12.5px; cursor: pointer; }
+.fl-need-tick { margin: 0; accent-color: var(--color-sys-blue); }
+.fl-need-n { color: var(--inst-label); }
+.fl-need.is-broken .fl-need-n, .fl-need.is-broken .fl-q { color: var(--color-sys-orange-text); }
+.fl-need .pf.s16 { width: 16px; height: 16px; border-radius: 5px; box-shadow: none; }
+.fl-popup {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 8px 0 10px; border: 0; border-radius: 6px;
+  background: var(--aq-control-hover); color: var(--inst-label); font: inherit; font-size: 12px; cursor: pointer;
+}
+.fl-popup > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-popup-ic { display: inline-flex; color: var(--inst-label-3); }
+.fl-popup-ic svg { width: 12px; height: 12px; }
+/* Runs on: the composer's model picker (the owner's of 10-28), its chip the Brief's size; a default dimmed. */
+.fl-srow .model-chip { height: 26px; max-width: 15rem; border-radius: 6px; font-size: 12px; }
+.fl-srow .model-chip.is-default .model-name { color: var(--inst-label-2); }
+.fl-sheet-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.fl-sheet .inst-btn { height: 28px; font-size: 12px; }
+
+/* ---- the side-run sheet (the Plan's Run them in parallel…; the owner's of 10-29: six tasks ran it off the window):
+   it fits the window, the title always in sight — every task's choices on top, the tasks' list scrolling, the foot
+   kept — a row a task, in the sheet's own size, never the dialog's. */
+.zc-dialog.sr-dialog { max-height: calc(100dvh - 48px); gap: 12px; }
+html.app-frame .zc-dialog.sr-dialog { max-height: calc(100dvh - var(--bar-h) - 48px); }
+.sr-sheet { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; font-size: 12.5px; line-height: 1.45; }
+.sr-lede { flex: none; margin: -6px 0 0; font-size: 12px; color: var(--inst-label-3); }
+.sr-all { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--inst-card); box-shadow: inset 0 0 0 1px var(--inst-sep); }
+.sr-all-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+.sr-all-row > .fl-srow .fl-sl, .sr-all > .fl-srow .fl-sl { width: 72px; }
+.sr-list { flex: 1 1 auto; min-height: 72px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; display: flex; flex-direction: column; }
+.sr-row { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 7px 0; border-bottom: 1px solid var(--inst-sep); }
+.sr-row:last-child { border-bottom: 0; }
+.sr-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sr-row-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.sr-tick { flex: none; margin: 0; accent-color: var(--color-sys-blue); }
+.sr-id { flex: none; font: 600 12px var(--mono); color: var(--inst-label); }
+.sr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--inst-label-2); }
+.sr-sub { margin: 0 0 0 21px; font-size: 11.5px; color: var(--inst-label-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-row.is-off :is(.sr-id, .sr-name, .sr-sub) { opacity: .5; }
+.sr-link { flex: none; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--color-sys-blue-text); cursor: pointer; }
+.sr-own { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px 21px; padding: 8px 10px; border-radius: 8px; background: var(--inst-card); }
+.sr-own .fl-sl { width: 72px; }
+.sr-brief { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.sr-brief-ed { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sr-field { display: flex; flex-direction: column; gap: 2px; }
+.sr-field .fl-sl { width: auto; }
+.sr-brief-t.is-thin, .sr-sub.is-thin { color: var(--color-sys-orange-text); }
+.sr-fixed, .sr-when { color: var(--inst-label-2); }
+.sr-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--inst-sep); }
+.sr-room { margin: 0; color: var(--inst-label-2); }
+.sr-room.is-warn { color: var(--color-sys-orange-text); }
+.sr-foot .inst-btn { height: 28px; font-size: 12px; }
+
+/* ---- motion (the Designer's of 10-28, on the owner's "when we run flow it feels so static"): motion means a machine
+   works, stillness and orange that it is your turn. A box at work says what it does now over a sliding bar, the one
+   thing on the card that loops; views/flow-moves.js plays what changed once on the card drawn after it, each wait in
+   --fl-d (negative once under way, so a card drawn again goes on) and takes the moment's classes off once it played.
+   Off stops every animation (harness.css); Reduced fades what arrives, and nothing loops or travels. ---- */
+.fl-box:not(.is-draft) { position: relative; overflow: hidden; }
+.fl-box .tg-node-bar-fill { background: var(--color-sys-blue); }
+:is([data-motion="reduced"], [data-motion="off"]) .fl-box .tg-node-bar-fill { width: 100%; opacity: 0.45; animation: none; }
+.fl-live-w { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.fl-live { font-variant-numeric: tabular-nums; }
+.fl-tool { max-width: 100%; padding: 2px 7px; font-size: 11px; }
+
+.fl-close { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; transform-origin: left;
+  background: var(--color-sys-green); animation: fl-close 420ms var(--aq-ease) var(--fl-d, 0ms) both; }
+.fl-close.is-failed { background: var(--color-sys-red); animation: fl-drop 300ms var(--ease-out) var(--fl-d, 0ms) both; }
+.fl-close.is-quiet { background: var(--inst-label-3); animation: fl-drop 200ms var(--ease-out) var(--fl-d, 0ms) both; }
+@keyframes fl-close { 0% { transform: scaleX(0.4); } 60% { transform: none; opacity: 1; } 100% { transform: none; opacity: 0; } }
+@keyframes fl-drop { from { opacity: 0.8; } to { opacity: 0; } }
+.fl-box.is-ended-now .tg-mark { animation: fl-tick 260ms var(--ease-spring) 120ms both; }
+.fl-box.is-ended-now .tg-badge { animation: inst-fade 160ms var(--ease-out) 120ms both; }
+@keyframes fl-tick { from { opacity: 0; transform: scale(0.6); } }
+
+.fl-step.is-passing .fl-rail::before { content: ""; position: absolute; top: 32px; bottom: -2px; width: 1.5px; background: var(--aq-hairline-strong); }
+.fl-step.is-passing .fl-rail::after { transform-origin: top; animation: fl-rail 360ms var(--aq-ease) var(--fl-rd, 120ms) both; }
+@keyframes fl-rail { from { transform: scaleY(0); } }
+.fl-step.is-arrived .fl-num { animation: fl-bump 320ms var(--ease-out) var(--fl-d, 0ms) both; }
+@keyframes fl-bump { 50% { transform: scale(1.12); } }
+.fl-box.is-waking { animation: fl-wake 280ms var(--aq-ease) calc(var(--fl-d, 0ms) + var(--i, 0) * 60ms) both; }
+.fl-box.is-waking .tg-node-bar { animation: inst-fade 200ms var(--ease-out) calc(var(--fl-d, 0ms) + var(--i, 0) * 60ms + 120ms) both; }
+@keyframes fl-wake { from { opacity: 0.8; transform: translateY(4px); } }
+
+.fl-box.is-asked-now { animation: fl-bloom 700ms var(--ease-out) var(--fl-d, 0ms) both; }
+@keyframes fl-bloom { from { outline: 2px solid color-mix(in oklab, var(--color-sys-orange) 55%, transparent); outline-offset: 0; }
+  to { outline: 2px solid transparent; outline-offset: 4px; } }
+.fl-card :is(.fl-gate, .fl-callout, .fl-end).is-new-now { --inst-rise: 6px; animation: inst-in 240ms var(--ease-spring) var(--fl-d, 0ms) both; }
+.fl-dock > .fl-card { transition: box-shadow 240ms var(--ease); }
+.fl-dock > .fl-card.is-new-now { --inst-rise: 8px; transform-origin: bottom center; animation: inst-in 240ms var(--ease-spring) both; }
+.fl-dock > .fl-card.is-flash { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-sys-orange) 42%, transparent), var(--aq-lift); }
+
+.fl-fig-n { position: relative; display: inline-block; }
+.fl-fig-now { display: inline-block; }
+.fl-fig-now.is-rolled { animation: fl-roll-in 220ms var(--aq-ease) var(--fl-d, 0ms) both; }
+.fl-fig-was { position: absolute; left: 0; top: 0; animation: fl-roll-out 220ms var(--aq-ease) var(--fl-d, 0ms) both; }
+@keyframes fl-roll-in { from { opacity: 0; transform: translateY(calc(var(--fl-dir, 1) * 6px)); } }
+@keyframes fl-roll-out { to { opacity: 0; transform: translateY(calc(var(--fl-dir, 1) * -6px)); } }
+.fl-fig.is-said { animation: inst-fade 160ms var(--ease-out) var(--fl-d, 0ms) both; }
+.fl-status { position: relative; overflow: hidden; transition: background-color 220ms var(--aq-ease); }
+.fl-status.is-new-now { --inst-rise: 4px; animation: inst-in 240ms var(--aq-ease) both; }
+.fl-status.is-running::after { content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--color-sys-cyan) 26%, transparent) 50%, transparent);
+  animation: card-sweep 2.4s ease-in-out infinite; }
+.fl-status-w.is-said { display: inline-block; animation: fl-said 180ms var(--aq-ease) both; }
+@keyframes fl-said { from { opacity: 0; transform: translateY(3px); } }
+
+[data-motion="reduced"] :is(.fl-box.is-waking, .fl-box.is-asked-now, .fl-step.is-arrived .fl-num) { animation: none; }
+[data-motion="reduced"] .fl-step.is-passing .fl-rail::after { animation: none; }
+[data-motion="reduced"] .fl-status.is-running::after { display: none; }
+[data-motion="reduced"] :is(.fl-box.is-ended-now :is(.tg-mark, .tg-badge), .fl-box.is-waking :is(.tg-badge, .tg-node-bar),
+  .is-new-now, .fl-fig-now.is-rolled, .fl-fig.is-said, .fl-status-w.is-said) { animation: inst-fade 120ms var(--ease-out) both; }

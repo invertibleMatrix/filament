@@ -1,0 +1,18 @@
+{
+  "title": "Team pulse",
+  "description": "This week's commits, and the weekly reports an agent wrote",
+  "icon": "team",
+  "sources": {
+    "week": {
+      "command": ["git", "log", "--first-parent", "--since=1.week", "--date=short", "--pretty=format:%h%x09%an%x09%ad%x09%s"],
+      "fields": ["sha", "who", "date", "subject"],
+      "key": "sha",
+      "every": "30m"
+    }
+  },
+  "howto": "Write this week's pulse fills the Start with an ask for an agent: it reads the week's commits and keeps a report in the reports collection, which the page shows newest first.",
+  "state": {
+    "week": "The commits on the checked-out branch's first-parent line this week, newest first: sha, who, date, subject (a merge's or a squash's subject names its pull request, #12).",
+    "reports": "A collection of filament.db: each week's pulse an agent wrote, { week, at, markdown }, the newest week last kept."
+  }
+}

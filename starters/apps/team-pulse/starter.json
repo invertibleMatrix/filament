@@ -1,0 +1,8 @@
+{
+  "title": "Team pulse",
+  "says": "This week's commits, and a weekly report an agent writes and keeps",
+  "words": "A team pulse for this project: what went into the main branch this week, and one press that asks an agent to write the week's report with its pull request links, each report kept and dated.",
+  "for": "project",
+  "kind": "app",
+  "order": 2
+}

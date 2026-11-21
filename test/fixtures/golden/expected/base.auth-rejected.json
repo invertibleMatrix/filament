@@ -1,0 +1,38 @@
+[
+  {
+    "request": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": {
+        "x-api-key": "wrong",
+        "authorization": "Bearer wrong"
+      },
+      "body": {
+        "model": "big-1",
+        "max_tokens": 64,
+        "system": "You are a coding assistant.\nWorking directory: C:\\demo\\goldenproj",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      }
+    },
+    "back": {
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "authentication_error",
+          "message": "invalid or missing API key (Filament inbound key)"
+        }
+      }
+    },
+    "upstream": {},
+    "records": []
+  }
+]

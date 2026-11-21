@@ -1,0 +1,35 @@
+[
+  {
+    "request": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": {},
+      "body": {
+        "model": "nobody-1",
+        "max_tokens": 64,
+        "system": "You are a coding assistant.\nWorking directory: C:\\demo\\goldenproj",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      }
+    },
+    "back": {
+      "status": 404,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "not_found_error",
+          "message": "no route matches model \"nobody-1\". Add one on the Routes page."
+        }
+      }
+    },
+    "upstream": {},
+    "records": []
+  }
+]

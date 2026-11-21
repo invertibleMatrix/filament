@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" class="theme-zai-dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- The theme's class before the first paint, by theme.js's rule: the one chosen, else the system's (the owner's of
+       11-09), so a light system's page never opens dark until app.js runs. -->
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("filament.harness.theme"); } catch (e) {}
+      var dark = t === "dark" || (t !== "light" && !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches));
+      document.documentElement.classList.toggle("theme-zai-dark", dark);
+      document.documentElement.classList.toggle("theme-zai-light", !dark);
+    })();
+  </script>
+  <title>Filament harness</title>
+  <link rel="icon" type="image/png" href="/ui/filament-icon.png" />
+  <link rel="stylesheet" href="/ui/harness/zc.css" />
+  <link rel="stylesheet" href="/ui/harness.css" />
+  <link rel="stylesheet" href="/ui/harness/instruments.css" />
+  <link rel="stylesheet" href="/ui/lib/settings/settings.css" />
+  <link rel="stylesheet" href="/ui/harness/settings/settings.css" />
+  <link rel="stylesheet" href="/ui/harness/panes/panes.css" />
+  <link rel="stylesheet" href="/ui/harness/views/views.css" />
+  <link rel="stylesheet" href="/ui/harness/views/team.css" />
+  <link rel="stylesheet" href="/ui/harness/views/teams.css" />
+  <link rel="stylesheet" href="/ui/harness/views/side.css" />
+  <link rel="stylesheet" href="/ui/harness/views/flow.css" />
+  <link rel="stylesheet" href="/ui/harness/views/overview.css" />
+  <link rel="stylesheet" href="/ui/harness/views/welcome.css" />
+  <link rel="stylesheet" href="/ui/harness/coach/coach.css" />
+  <link rel="stylesheet" href="/ui/harness/library/library.css" />
+  <link rel="stylesheet" href="/ui/harness/space/space.css" />
+  <link rel="stylesheet" href="/ui/harness/aqua.css" />
+  <link rel="stylesheet" href="/ui/harness/vendor/katex/katex.min.css" />
+  <!-- KaTeX is a classic script (a window global) so md-stream's synchronous renderer can call it without a
+       loading state; absent or failed, math spans stay as escaped text. -->
+  <script defer src="/ui/harness/vendor/katex/katex.min.js"></script>
+  <link rel="stylesheet" href="/ui/harness/vendor/xterm/xterm.css" />
+  <!-- xterm ships UMD builds (no ESM): classic scripts, read as globals by lib/xterm.js -->
+  <script defer src="/ui/harness/vendor/xterm/xterm.js"></script>
+  <script defer src="/ui/harness/vendor/xterm/addon-fit.js"></script>
+</head>
+<body class="harness">
+  <div id="app"></div>
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/ui/harness/app.js"></script>
+</body>
+</html>

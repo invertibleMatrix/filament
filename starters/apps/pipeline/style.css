@@ -1,0 +1,19 @@
+/* The Pipeline's look: Filament's colors and type by their names, so it draws in light and dark. */
+body { margin: 0; font: 13px/1.45 var(--font); color: var(--text); }
+main { padding: 16px; display: grid; gap: 12px; }
+h1 { font-size: 15px; margin: 0; }
+.quiet { color: var(--text-muted); }
+.rows { display: grid; gap: 6px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); }
+.row.is-on { border-color: var(--accent); }
+.name { font-weight: 600; min-width: 8em; }
+.cmd { font-family: var(--mono); font-size: 12px; color: var(--text-muted); flex: 1 1 14em; overflow-wrap: anywhere; }
+.state { font-size: 12px; }
+.state.done { color: var(--green); }
+.state.failed { color: var(--red); }
+.state.running { color: var(--blue); }
+.state.stopped { color: var(--text-muted); }
+button { font: inherit; padding: 4px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); cursor: pointer; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+.log { margin: 0; padding: 10px; max-height: 50vh; overflow: auto; font: 12px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }

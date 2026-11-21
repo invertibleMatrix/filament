@@ -1,0 +1,110 @@
+[
+  {
+    "request": {
+      "method": "POST",
+      "path": "/v1/messages/count_tokens",
+      "headers": {},
+      "body": {
+        "model": "big-1",
+        "system": "You are a coding assistant.\nWorking directory: C:\\demo\\goldenproj",
+        "messages": [
+          {
+            "role": "user",
+            "content": "topic turn 0: please fix file0.js"
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Looking at file0.js."
+              },
+              {
+                "type": "tool_use",
+                "id": "r0",
+                "name": "Read",
+                "input": {
+                  "file_path": "src/file0.js"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "r0",
+                "content": "line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 line of file0 "
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Fixed file0.js: the off-by-one on line 12 (topic). Tests pass."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "topic turn 1: please fix file1.js"
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Looking at file1.js."
+              },
+              {
+                "type": "tool_use",
+                "id": "r1",
+                "name": "Read",
+                "input": {
+                  "file_path": "src/file1.js"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "r1",
+                "content": "line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 line of file1 "
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Fixed file1.js: the off-by-one on line 12 (topic). Tests pass."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "topic: now what is left?"
+          }
+        ]
+      }
+    },
+    "back": {
+      "status": 200,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "body": {
+        "input_tokens": 601
+      }
+    },
+    "upstream": {},
+    "records": []
+  }
+]
