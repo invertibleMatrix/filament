@@ -5,9 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { addedLines, hitsIn, termsFrom, termsPath, withBlock } from "../scripts/privacy-check.mjs";
+import { spawnSync, execFileSync } from "node:child_process";
+import { addedLines, blockedPushes, hitsIn, termsFrom, termsPath, withBlock } from "../scripts/privacy-check.mjs";
 
 test("the terms: one per line, blank lines and comments left out", () => {
   assert.deepEqual(termsFrom("# who\nAcme Corp\n\n  box-7  \r\n#x\n"), ["Acme Corp", "box-7"]);
@@ -53,6 +54,46 @@ test("hits: any case, each term on each line, nothing where none is held", () =>
   const lines = [{ file: "a.js", line: 2, text: "Made at ACME CORP on Box-7" }, { file: "b.js", line: 9, text: "clean" }];
   assert.deepEqual(hitsIn(lines, ["acme corp", "box-7"]), [{ file: "a.js", line: 2, term: "acme corp" }, { file: "a.js", line: 2, term: "box-7" }]);
   assert.deepEqual(hitsIn(lines, []), []);
+});
+
+test("a push: a ref whose commits descend from a blocked root stops, one on another history and a deletion pass", () => {
+  const roots = { a1: ["old0"], b2: ["new0"], c3: ["new0", "OLD0"] };
+  const rootsOf = (/** @type {string} */ sha) => roots[/** @type {keyof typeof roots} */ (sha)] || [];
+  const stdin = [
+    "refs/heads/main b2 refs/heads/main 0000000000000000000000000000000000000000",
+    "refs/heads/old a1 refs/heads/old 0000000000000000000000000000000000000000",
+    "refs/heads/merged c3 refs/heads/merged 0000000000000000000000000000000000000000",
+    "(delete) 0000000000000000000000000000000000000000 refs/heads/gone e4",
+    "",
+  ].join("\n");
+  assert.deepEqual(blockedPushes(stdin, rootsOf, ["old0\n", ""]), [{ ref: "refs/heads/old", root: "old0" }, { ref: "refs/heads/merged", root: "OLD0" }]);
+  assert.deepEqual(blockedPushes(stdin, rootsOf, []), [], "no blocked root set: nothing stops");
+});
+
+test("--push reads the clone's blocked roots and its history, and exits 1 only for a ref from the private history", () => {
+  const dir = mkdtempSync(join(tmpdir(), "privacy-push-"));
+  const script = resolve("scripts/privacy-check.mjs");
+  const git = (/** @type {string[]} */ args) => execFileSync("git", ["-C", dir, "-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+  try {
+    git(["init", "-q", "-b", "old"]);
+    git(["commit", "-q", "--allow-empty", "--no-verify", "-m", "old root"]);
+    git(["commit", "-q", "--allow-empty", "--no-verify", "-m", "old work"]);
+    const oldRoot = git(["rev-list", "--max-parents=0", "old"]);
+    const oldTip = git(["rev-parse", "old"]);
+    git(["checkout", "-q", "--orphan", "public"]);
+    git(["commit", "-q", "--allow-empty", "--no-verify", "-m", "public root"]);
+    const publicTip = git(["rev-parse", "public"]);
+    const push = (/** @type {string} */ sha) =>
+      spawnSync(process.execPath, [script, "--push"], { cwd: dir, input: `refs/heads/x ${sha} refs/heads/x ${"0".repeat(40)}\n`, encoding: "utf8" });
+    assert.equal(push(oldTip).status, 0, "no blocked root configured: the push goes");
+    git(["config", "--add", "privacy.blockedRoot", oldRoot]);
+    const stopped = push(oldTip);
+    assert.equal(stopped.status, 1);
+    assert.match(stopped.stderr, new RegExp(`refs/heads/x descends from ${oldRoot.slice(0, 12)}`));
+    assert.equal(push(publicTip).status, 0, "a commit on the public history goes");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("install keeps a hook's own lines and replaces only its block", () => {

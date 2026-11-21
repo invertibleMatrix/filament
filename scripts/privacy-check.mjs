@@ -6,10 +6,15 @@
 //
 //   node scripts/privacy-check.mjs --staged          the lines a commit adds, and the paths it adds (pre-commit)
 //   node scripts/privacy-check.mjs --message <file>  a commit's message (commit-msg)
-//   node scripts/privacy-check.mjs --install         puts both into this clone's hooks, beside what is there
+//   node scripts/privacy-check.mjs --push            what a push sends, as git's pre-push hook reads it on stdin
+//   node scripts/privacy-check.mjs --install         puts all three into this clone's hooks, beside what is there
 //
 // A hit names the file, the line and the word, and the commit stops: say it another way, or (for a false hit)
 // commit with --no-verify.
+//
+// A history can be private too: a clone whose old commits were never published names their root commits in its own
+// config (`git config --add privacy.blockedRoot <sha>`, kept in .git/config, never published), and a push of any commit
+// that descends from one stops, whichever remote it goes to.
 import { readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -71,6 +76,28 @@ export function hitsIn(lines, terms) {
   return out;
 }
 
+const NONE = /^0+$/;
+
+/**
+ * The refs of a push whose commits descend from a blocked root: from the lines git's pre-push hook reads
+ * (`<local ref> <local sha> <remote ref> <remote sha>`), a deletion sending nothing.
+ * @param {string} stdin @param {(sha: string) => string[]} rootsOf a commit's root commits @param {string[]} blocked
+ * @returns {{ ref: string, root: string }[]}
+ */
+export function blockedPushes(stdin, rootsOf, blocked) {
+  const roots = new Set(blocked.map((s) => s.trim().toLowerCase()).filter(Boolean));
+  /** @type {{ ref: string, root: string }[]} */
+  const out = [];
+  if (!roots.size) return out;
+  for (const line of String(stdin || "").split(/\r?\n/)) {
+    const [localRef, localSha] = line.trim().split(/\s+/);
+    if (!localRef || !localSha || NONE.test(localSha)) continue;
+    const root = rootsOf(localSha).find((r) => roots.has(r.toLowerCase()));
+    if (root) out.push({ ref: localRef, root });
+  }
+  return out;
+}
+
 /** The hook blocks `--install` adds, between markers so a second install replaces its own. */
 const BLOCK = (/** @type {string} */ args) => `# BEGIN Filament privacy check
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
@@ -89,13 +116,25 @@ export function withBlock(file, args) {
 function main(argv) {
   if (argv[0] === "--install") {
     const hooks = resolve(execFileSync("git", ["rev-parse", "--git-common-dir"], { encoding: "utf8" }).trim(), "hooks");
-    for (const [name, args] of [["pre-commit", "--staged"], ["commit-msg", '--message "$1"']]) {
+    for (const [name, args] of [["pre-commit", "--staged"], ["commit-msg", '--message "$1"'], ["pre-push", "--push"]]) {
       const file = join(hooks, name);
       writeFileSync(file, withBlock(file, args));
       try { chmodSync(file, 0o755); } catch {}
       console.log(`privacy check: ${file}`);
     }
     return 0;
+  }
+  if (argv[0] === "--push") {
+    const git = (/** @type {string[]} */ args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    /** @type {string[]} */
+    let blocked = [];
+    try { blocked = git(["config", "--get-all", "privacy.blockedRoot"]).split(/\r?\n/); } catch {} // none set: git exits 1
+    const stopped = blockedPushes(readFileSync(0, "utf8"), (sha) => git(["rev-list", "--max-parents=0", sha]).split(/\r?\n/).filter(Boolean), blocked);
+    if (!stopped.length) return 0;
+    console.error("This push would publish history kept private (git config privacy.blockedRoot):");
+    for (const s of stopped) console.error(`  ${s.ref} descends from ${s.root.slice(0, 12)}`);
+    console.error("Push a branch made on the public history instead: cherry-pick its commits onto origin's main.");
+    return 1;
   }
   const path = termsPath();
   if (!existsSync(path)) return 0;
@@ -106,7 +145,7 @@ function main(argv) {
   if (argv[0] === "--staged") lines = addedLines(execFileSync("git", ["diff", "--cached", "-U0", "--no-color", "--no-ext-diff"], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }));
   else if (argv[0] === "--message" && argv[1]) lines = readFileSync(argv[1], "utf8").split(/\r?\n/).filter((l) => !l.startsWith("#")).map((text, i) => ({ file: "the commit message", line: i + 1, text }));
   else {
-    console.error("usage: privacy-check.mjs --staged | --message <file> | --install");
+    console.error("usage: privacy-check.mjs --staged | --message <file> | --push | --install");
     return 2;
   }
   const hits = hitsIn(lines, terms);
