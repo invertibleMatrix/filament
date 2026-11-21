@@ -3455,7 +3455,7 @@
               "messages": 1,
               "subagentCalls": 0,
               "subagents": 0,
-              "system": 20086,
+              "system": 20457,
               "thinking": 0,
               "toolCalls": 0,
               "toolResult": 0,
@@ -3655,7 +3655,7 @@
             "messages": 1,
             "subagentCalls": 0,
             "subagents": 0,
-            "system": 20086,
+            "system": 20457,
             "thinking": 0,
             "toolCalls": 0,
             "toolResult": 0,
@@ -3674,7 +3674,7 @@
           "rawTurns": 0,
           "results": "keep",
           "sentTokens": 12,
-          "settingsHash": "fcec44007b3a7cf5",
+          "settingsHash": "7ffd6c804da77ada",
           "shapedTokens": 0,
           "shapes": [],
           "stubs": 0,
@@ -3754,7 +3754,7 @@
               "position": "first",
               "project": "sessionproj",
               "session": "the archive chain <chain:1> named by the request",
-              "systemChars": 19976,
+              "systemChars": 20345,
               "userMessages": 1
             },
             {
@@ -3878,7 +3878,7 @@
         "tps": "<n>",
         "translation": {
           "received": {
-            "bytes": 84495,
+            "bytes": 85268,
             "cacheMarkers": 0,
             "effort": null,
             "max_tokens": 128000,
@@ -3889,12 +3889,12 @@
             },
             "sampling": [],
             "stream": true,
-            "systemChars": 19976,
+            "systemChars": 20345,
             "thinking": null,
             "tools": 30
           },
           "sent": {
-            "bytes": 85627,
+            "bytes": 86400,
             "cacheMarkers": 2,
             "effort": null,
             "max_tokens": 128000,
@@ -3905,7 +3905,7 @@
             },
             "sampling": [],
             "stream": true,
-            "systemChars": 19976,
+            "systemChars": 20345,
             "thinking": null,
             "tools": 30
           }
@@ -3923,7 +3923,7 @@
             "messages": 1,
             "subagentCalls": 0,
             "subagents": 0,
-            "system": 20086,
+            "system": 20457,
             "thinking": 0,
             "toolCalls": 0,
             "toolResult": 0,
@@ -3979,7 +3979,7 @@
               "messages": 3,
               "subagentCalls": 0,
               "subagents": 0,
-              "system": 20086,
+              "system": 20457,
               "thinking": 0,
               "toolCalls": 0,
               "toolResult": 0,
@@ -4179,7 +4179,7 @@
             "messages": 3,
             "subagentCalls": 0,
             "subagents": 0,
-            "system": 20086,
+            "system": 20457,
             "thinking": 0,
             "toolCalls": 0,
             "toolResult": 0,
@@ -4198,7 +4198,7 @@
           "rawTurns": 1,
           "results": "keep",
           "sentTokens": 31,
-          "settingsHash": "fcec44007b3a7cf5",
+          "settingsHash": "7ffd6c804da77ada",
           "shapedTokens": 19,
           "shapes": [
             {
@@ -4284,7 +4284,7 @@
               "position": "mid",
               "project": "sessionproj",
               "session": "the archive chain <chain:1> named by the request",
-              "systemChars": 19976,
+              "systemChars": 20345,
               "userMessages": 2
             },
             {
@@ -4408,7 +4408,7 @@
         "tps": "<n>",
         "translation": {
           "received": {
-            "bytes": 84657,
+            "bytes": 85430,
             "cacheMarkers": 0,
             "effort": null,
             "max_tokens": 128000,
@@ -4420,12 +4420,12 @@
             },
             "sampling": [],
             "stream": true,
-            "systemChars": 19976,
+            "systemChars": 20345,
             "thinking": null,
             "tools": 30
           },
           "sent": {
-            "bytes": 85826,
+            "bytes": 86599,
             "cacheMarkers": 3,
             "effort": null,
             "max_tokens": 128000,
@@ -4437,7 +4437,7 @@
             },
             "sampling": [],
             "stream": true,
-            "systemChars": 19976,
+            "systemChars": 20345,
             "thinking": null,
             "tools": 30
           }
@@ -4455,7 +4455,7 @@
             "messages": 3,
             "subagentCalls": 0,
             "subagents": 0,
-            "system": 20086,
+            "system": 20457,
             "thinking": 0,
             "toolCalls": 0,
             "toolResult": 0,

@@ -7,7 +7,8 @@
 // The normaliser itself is tested: each profile runs twice on fresh processes and ports and must capture the same.
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, fakeUpstream, parseSse, FIXTURES } from "./helpers/app.js";
 import { profiles, cases } from "./fixtures/golden/cases.js";
@@ -15,6 +16,21 @@ import { profiles, cases } from "./fixtures/golden/cases.js";
 const EXPECTED_DIR = join(FIXTURES, "golden", "expected");
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
 mkdirSync(EXPECTED_DIR, { recursive: true });
+
+// The capture masks the data folder's path, but some of what it keeps are counts of text that holds it (a system
+// prompt's characters, a request's bytes, the settings' hash): a data folder at a path of the same length wherever the
+// suite runs keeps those the same whatever the temp folder's random name and the machine's temp folder are. Two
+// things still move them: a temp folder longer than that, used as it is, and on Windows one nested deeper than the
+// usual (a request escapes each backslash, so its bytes grow by one a level).
+const DATA_PATH_LENGTH = 120;
+function dataFolder() {
+  const base = mkdtempSync(join(tmpdir(), "filament-golden-"));
+  const pad = DATA_PATH_LENGTH - base.length - 1;
+  if (pad < 1) return { base, dir: base };
+  const dir = join(base, "d".repeat(pad));
+  mkdirSync(dir);
+  return { base, dir };
+}
 
 // ---- one profile = one Filament + its fakes ---------------------------------------------------------------------------
 async function bootProfile(name) {
@@ -25,9 +41,11 @@ async function bootProfile(name) {
     fakes[id] = await fakeUpstream(mk());
     urls[id] = fakes[id].url;
   }
+  const folder = dataFolder();
   const app = await startApp({
     memory: p.memory,
     summarizer: p.summarizer || "",
+    dataDir: folder.dir,
     configure: (cfg, ctx) => p.configure(cfg, urls, ctx),
   });
   return {
@@ -39,6 +57,7 @@ async function bootProfile(name) {
     async stop() {
       await app.stop();
       for (const f of Object.values(fakes)) await f.close();
+      rmSync(folder.base, { recursive: true, force: true });
     },
   };
 }

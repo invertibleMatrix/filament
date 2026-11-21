@@ -45,7 +45,7 @@
         "stop_sequence": null,
         "usage": {
           "input_tokens": 28,
-          "output_tokens": 27,
+          "output_tokens": 44,
           "cache_read_input_tokens": 0,
           "cache_creation_input_tokens": 0
         }
@@ -240,7 +240,7 @@
               "ms": "<n>",
               "name": "reply archived",
               "note": "the final answer joins the turn in the archive",
-              "outputChars": 91,
+              "outputChars": 158,
               "phase": "after"
             },
             {
@@ -282,13 +282,13 @@
         "status": "ok",
         "stopReason": "end_turn",
         "stream": false,
-        "textChars": 91,
+        "textChars": 158,
         "thinkingChars": 17,
         "tokens": {
           "cacheRead": 0,
           "cacheWrite": 0,
           "input": 28,
-          "output": 27,
+          "output": 44,
           "thinking": 4
         },
         "totalMs": "<n>",
@@ -473,7 +473,7 @@
             },
             "usage": {
               "input_tokens": 40,
-              "output_tokens": 27,
+              "output_tokens": 44,
               "cache_read_input_tokens": 0,
               "cache_creation_input_tokens": 0
             }
@@ -676,7 +676,7 @@
               "ms": "<n>",
               "name": "reply archived",
               "note": "the final answer joins the turn in the archive",
-              "outputChars": 89,
+              "outputChars": 156,
               "phase": "after"
             },
             {
@@ -718,13 +718,13 @@
         "status": "ok",
         "stopReason": "end_turn",
         "stream": true,
-        "textChars": 89,
+        "textChars": 156,
         "thinkingChars": 17,
         "tokens": {
           "cacheRead": 0,
           "cacheWrite": 0,
           "input": 40,
-          "output": 27,
+          "output": 44,
           "thinking": 4
         },
         "totalMs": "<n>",
@@ -810,8 +810,8 @@
         ],
         "usage": {
           "prompt_tokens": 32,
-          "completion_tokens": 27,
-          "total_tokens": 59,
+          "completion_tokens": 44,
+          "total_tokens": 76,
           "prompt_tokens_details": {
             "cached_tokens": 0
           }
@@ -1008,7 +1008,7 @@
               "ms": "<n>",
               "name": "reply archived",
               "note": "the final answer joins the turn in the archive",
-              "outputChars": 89,
+              "outputChars": 156,
               "phase": "after"
             },
             {
@@ -1053,13 +1053,13 @@
         "status": "ok",
         "stopReason": "end_turn",
         "stream": false,
-        "textChars": 89,
+        "textChars": 156,
         "thinkingChars": 17,
         "tokens": {
           "cacheRead": 0,
           "cacheWrite": 0,
           "input": 32,
-          "output": 27,
+          "output": 44,
           "thinking": 4
         },
         "totalMs": "<n>",
