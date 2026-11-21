@@ -932,7 +932,7 @@ describe("the repo's front door (HarnessV3-Launch LD-D12)", () => {
     assert.deepEqual([...pillars].sort((a, b) => a - b), pillars, "the harness, memory, the local API");
     const features = [
       "## Several agents on one project, without collisions",
-      "## Claude Code and Codex, inside Filament",
+      "## Claude Code, Codex, Cursor, Antigravity, Devin and Any ACP Agent inside Filament with any number of accounts signed in at the same time.",
       "## A memory that steers every agent",
       "## Every change in view, and a way back",
       "## About 99% read from the provider's cache",
