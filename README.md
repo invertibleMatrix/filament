@@ -324,6 +324,12 @@ The code is plain ES modules with JSDoc types, no build step. `src/` is layered 
 root; `desktop/` is the Electron app, `tray/` its icon and the app window's launcher, and `test/` the suite. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and its
 module maps say what every file is, and a test holds the maps and the layer rules to the tree.
 
+## Supporting Filament
+
+Filament is free, and stays free. If it helps your work, you can leave a tip on
+[Ko-fi](https://ko-fi.com/invertiblematrix). A star, a bug report or a pull request ([CONTRIBUTING.md](CONTRIBUTING.md))
+helps just as much. [filamentdev.com/sponsor](https://filamentdev.com/sponsor) lists every way.
+
 ## License
 
 Filament is open source under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)): you may use it, change
