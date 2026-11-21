@@ -40,7 +40,7 @@ finishes, once its check passes, and the work that needs it starts then.
 >
 > — invertibleMatrix, who makes Filament (from my own use, not a published benchmark)
 
-## Claude Code and Codex, inside Filament
+## Claude Code, Codex, Cursor, Antigravity, Devin and Any ACP Agent inside Filament with any number of accounts signed in at the same time.
 
 The coding agents you already use run inside Filament on your own plans, beside any other model. Each one gets the
 project's memory as its brief, works in its own worktree, and shows its work live in the Agents tab.
