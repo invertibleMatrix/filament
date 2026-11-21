@@ -224,6 +224,7 @@ GET /api/spaces
 GET /api/spaces/machine-feed
 GET /api/spaces/own
 GET /api/spaces/settings
+GET /api/star
 GET /api/start
 GET /api/state
 GET /api/subagents/model-problem
@@ -475,6 +476,7 @@ POST /api/space/*/tasks
 POST /api/space/*/tasks/*/files
 POST /api/spaces/own
 POST /api/spaces/pause
+POST /api/star/seen
 POST /api/subagents/seats
 POST /api/teams
 POST /api/telemetry/notice-seen

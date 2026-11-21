@@ -42,6 +42,7 @@ import { backWords, lanePlaces } from "./lib/space-view.js";
 import { gitMovedFor } from "./lib/git-moved.js";
 import { updateNotice } from "./lib/update-notice.js";
 import { telemetryNotice } from "./lib/telemetry-notice.js";
+import { starNotice } from "./lib/star-notice.js";
 import { comboOf } from "./shortcuts.js";
 
 const ORG_KEY = "harness.organize";
@@ -581,6 +582,8 @@ export function createSidebar(host, cb, rail = null) {
     updateNotice().el,
     // Anonymous usage stats, said once (lib/telemetry-notice.js): nothing is sent until it has been.
     telemetryNotice({ api, viewOnly: () => !!cb.viewOnly?.(), onToast: cb.onToast }).el,
+    // A star on GitHub, asked once after a few hours of use (lib/star-notice.js).
+    starNotice({ api, viewOnly: () => !!cb.viewOnly?.() }).el,
     library,
     fly,
   );

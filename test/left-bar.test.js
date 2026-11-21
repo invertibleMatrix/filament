@@ -586,9 +586,9 @@ describe("Now: one chat, one place in the left bar", () => {
   test("the bar: one scroll region, Now over the projects in it, a chat drawn once, a pinned one under Pinned alone, each move a flight that waits for the pointer (pinned in the source)", () => {
     const bar = src("sidebar.js");
     assert.match(bar, /const scrollRegion = h\("div", \{ class: "sess-scroll" \}, nowTop, list, nowBottom\);/, "Now rides in the one scroll region, over the projects or under them");
-    // The desktop app's update notice, then the usage-stats notice, stand between the scroll region and the Library
-    // (test/update-notice.test.js, test/telemetry.test.js).
-    assert.match(bar, /yourRow\),\n\s+scrollRegion,\n(?:\s+\/\/[^\n]*\n)?\s+updateNotice\(\)\.el,\n(?:\s+\/\/[^\n]*\n)?\s+telemetryNotice\(\{[^\n]*\}\)\.el,\n\s+library,\n\s+fly,\n\s+\);/, "no slot of Now's beside it");
+    // The desktop app's update notice, the usage-stats notice, then the ask for a star stand between the scroll region
+    // and the Library (test/update-notice.test.js, test/telemetry.test.js, test/star.test.js).
+    assert.match(bar, /yourRow\),\n\s+scrollRegion,\n(?:\s+\/\/[^\n]*\n)?\s+updateNotice\(\)\.el,\n(?:\s+\/\/[^\n]*\n)?\s+telemetryNotice\(\{[^\n]*\}\)\.el,\n(?:\s+\/\/[^\n]*\n)?\s+starNotice\(\{[^\n]*\}\)\.el,\n\s+library,\n\s+fly,\n\s+\);/, "no slot of Now's beside it");
     assert.match(src("../harness.css"), /\.now-slot \{ flex: none; \}/);
     assert.doesNotMatch(src("../harness.css"), /\.now-slot \{[^}]*(max-height|overflow)/, "no scroll of its own");
     assert.match(src("../harness.css"), /\.now-slot\.is-foot \{ padding: 4px 0 12px;/, "under the projects, the room the list leaves at the region's foot, under its fade");

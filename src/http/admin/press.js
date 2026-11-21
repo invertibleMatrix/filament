@@ -683,6 +683,9 @@ export const PRESS_TABLE = [
   // telemetry.js
   ["GET /telemetry", READS],
   ["POST /telemetry/notice-seen", SETTING],
+  // star.js
+  ["GET /star", READS],
+  ["POST /star/seen", SETTING],
 ];
 
 /** The table by its rows, `METHOD /pattern` as the router names them. @type {Map<string, PressClass>} */

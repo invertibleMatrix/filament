@@ -81,7 +81,7 @@ test("the notice: hidden until the app offers one, its buttons ask the app, its 
 
 test("the notice stands above the Library, the bridge carries it from the app's own page alone, and the tray says the same", () => {
   const side = readFileSync(new URL("../src/ui/harness/sidebar.js", import.meta.url), "utf8");
-  assert.match(side, /scrollRegion,\n\s+\/\/ The desktop app's update[^\n]*\n\s+updateNotice\(\)\.el,\n(?:\s+\/\/[^\n]*\n\s+telemetryNotice\([^\n]*\)\.el,\n)?\s+library,/);
+  assert.match(side, /scrollRegion,\n\s+\/\/ The desktop app's update[^\n]*\n\s+updateNotice\(\)\.el,\n(?:\s+\/\/[^\n]*\n\s+telemetryNotice\([^\n]*\)\.el,\n)?(?:\s+\/\/[^\n]*\n\s+starNotice\([^\n]*\)\.el,\n)?\s+library,/);
   const preload = readFileSync(new URL("../desktop/harness-preload.cjs", import.meta.url), "utf8");
   assert.match(preload, /update: \(\) => ipcRenderer\.invoke\("filament:update"\),/);
   assert.match(preload, /updateAct: \(what\) => ipcRenderer\.invoke\("filament:update-act", what === "restart" \? "restart" : "get"\),/);

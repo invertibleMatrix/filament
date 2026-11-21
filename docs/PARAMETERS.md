@@ -524,6 +524,14 @@ The first-run tips: small bubbles beside a control each, shown once (src/ui/harn
 |---|---|---|---|---|
 | `ui.coach.seen` | array | `[]` | The tips seen, by their ids. | A tip seen — Got it, Next, a click on its control, Esc, or Skip tips for all of them — never shows again. Empty: each shows the first time its moment comes. The tips' own file can show them all again after each restart (`replayOnRestart`). |
 
+### ui.star
+
+The ask for a star on GitHub, at the sidebar's foot (src/http/admin/star.js).
+
+| parameter | type | default | what it does | effect |
+|---|---|---|---|---|
+| `ui.star.asked` | boolean | `false` | A star was asked for. | Off: once Filament has been used in five different hours — an hour of a day with a model call in it, as Usage counts them —, the sidebar asks once for a star on GitHub, never while the usage-stats notice still waits, nor on a view-only device. Star on GitHub, which opens the repository in your browser, or Not now turns this on, and it never asks again. |
+
 ## Telemetry
 
 Anonymous usage statistics (Settings › Data and privacy): what Filament sends, and whether it may.

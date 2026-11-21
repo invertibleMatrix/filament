@@ -40,6 +40,7 @@ import { execRoutes } from "./exec.js";
 import { transferRoutes } from "./transfers.js";
 import { coachRoutes } from "./coach.js";
 import { telemetryRoutes } from "./telemetry.js";
+import { starRoutes } from "./star.js";
 import { pressClass } from "./press.js";
 
 /** How long an answer a device's revoke finds not begun yet may still take before it is cut (`createAdminHandler`). */
@@ -84,6 +85,7 @@ export function createAdminHandler(a) {
     ...transferRoutes(a),
     ...coachRoutes(a),
     ...telemetryRoutes(a),
+    ...starRoutes(a),
     ...remoteRoutes(a),
   ]);
   return async function handleAdmin(req, res, url) {

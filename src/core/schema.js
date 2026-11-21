@@ -1887,6 +1887,14 @@ export const CONFIG_SCHEMA = group("Filament configuration.", {
         itemType: "string",
       }),
     }),
+    star: group("The ask for a star on GitHub, at the sidebar's foot (src/http/admin/star.js).", {
+      asked: p(
+        "boolean",
+        false,
+        "A star was asked for.",
+        "Off: once Filament has been used in five different hours — an hour of a day with a model call in it, as Usage counts them —, the sidebar asks once for a star on GitHub, never while the usage-stats notice still waits, nor on a view-only device. Star on GitHub, which opens the repository in your browser, or Not now turns this on, and it never asks again.",
+      ),
+    }),
   }),
   telemetry: group("Anonymous usage statistics (Settings › Data and privacy): what Filament sends, and whether it may.", {
     // No fixed default: the build's (services/telemetry.js `officialBuild`), so a person's on is kept as their off is.
