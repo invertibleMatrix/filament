@@ -31,7 +31,7 @@ When your laptop's app goes mid-turn, the pages it held open again in that Chrom
 ## 2. Install
 
 ```sh
-curl -fsSL https://github.com/invertibleMatrix/filament-releases/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
 ```
 
 It reads the newest release's `latest-server.yml`, downloads the tarball it names (about 370 MB), checks its SHA-512
@@ -53,7 +53,7 @@ A pipe takes no flags, so options go in the environment, on the `sh` side of the
 | `FILAMENT_RELEASES_URL=…` | Where the releases are, for a mirror |
 
 ```sh
-curl -fsSL https://github.com/invertibleMatrix/filament-releases/releases/latest/download/install.sh | FILAMENT_NO_ENGINE=1 sh
+curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | FILAMENT_NO_ENGINE=1 sh
 ```
 
 Where things go:
@@ -251,7 +251,7 @@ Running the installer again updates too, and `FILAMENT_VERSION` rolls back to a 
 nothing, so restart after it:
 
 ```sh
-curl -fsSL https://github.com/invertibleMatrix/filament-releases/releases/latest/download/install.sh | FILAMENT_VERSION=1.2.3 sh
+curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | FILAMENT_VERSION=1.2.3 sh
 filament restart
 ```
 

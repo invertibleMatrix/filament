@@ -8,7 +8,7 @@
 // -no-engine one, made beside it, the same without the bundle, for a server whose memory has no engine; `--no-engine`
 // makes that one alone, where there is no bundle to pack. Of the checkout's own files only what git tracks goes in,
 // where it is git's. build-info.json at a tarball's top says it is a server's build, the glibc it was built on, and
-// names the repository its updates are published to (electron-builder.yml's publish: filament-releases);
+// names the repository its updates are published to (electron-builder.yml's publish: invertibleMatrix/filament);
 // latest-server.yml beside them gives each one's SHA-512 as the desktop app's latest*.yml give theirs
 // (desktop/lib/updates.js's shaIn reads it), the whole one first.
 //

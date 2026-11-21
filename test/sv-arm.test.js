@@ -39,7 +39,7 @@ function checkoutAt(root) {
     "bin/filament.js": "console.log('filament');",
     "src/server.js": "export {};",
     "sidecar/mnemosyne_sidecar.py": "print('sidecar')",
-    "electron-builder.yml": "appId: com.filamentdev.desktop\npublish:\n  provider: github\n  owner: invertibleMatrix\n  repo: filament-releases\n",
+    "electron-builder.yml": "appId: com.filamentdev.desktop\npublish:\n  provider: github\n  owner: invertibleMatrix\n  repo: filament\n",
     "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": { name: "filament" }, "node_modules/node-pty": {} } }),
     "node_modules/node-pty/package.json": JSON.stringify({ name: "node-pty", main: "./lib/index.js" }),
     "node_modules/node-pty/lib/index.js": "module.exports = {};",
@@ -101,14 +101,14 @@ describe("dist:server on linux-arm64", () => {
       assert.deepEqual(SERVER_TARGETS, ["linux-x64", ARM]);
       assert.deepEqual(readdirSync(out).sort(), [feed, small, whole].sort());
       assert.deepEqual(checked, [ARM], "arm64's bundle checked whole before anything is packed");
-      const releases = { owner: "invertibleMatrix", repo: "filament-releases" };
+      const releases = { owner: "invertibleMatrix", repo: "filament" };
       assert.deepEqual(smoked, [
         { file: join(out, whole), version: "1.2.3", engine: true, releases, target: ARM },
         { file: join(out, small), version: "1.2.3", engine: false, releases, target: ARM },
       ]);
       const listed = [whole, small].map((name) => ({ name, sha512: sha512Of(readFileSync(join(out, name))), size: statSync(join(out, name)).size }));
       assert.equal(readFileSync(join(out, feed), "utf8"), feedOf({ version: "1.2.3", files: listed, at: FACTS().builtAt }));
-      assert.equal(said.at(-2), `Its update file: ${join(out, feed)} — a release of invertibleMatrix/filament-releases offers them to servers with the tarballs beside it.`);
+      assert.equal(said.at(-2), `Its update file: ${join(out, feed)} — a release of invertibleMatrix/filament offers them to servers with the tarballs beside it.`);
       // inside: arm64's bundle and node-pty's arm64 binary, none of x64's; the marker says arm64, and names its update file
       const into = join(at, "unpacked");
       mkdirSync(into);
@@ -330,7 +330,7 @@ describe("install.sh on arm64", { skip: !SH && "no POSIX sh on this machine (on 
     mkdirSync(at, { recursive: true });
     for (const target of targets) {
       const name = tarballName(version, true, target);
-      const marker = { kind: "server", version, target, file: name, feed: feedName(target), engine: true, node: "v24.11.0", glibc: "2.35", releases: { provider: "github", owner: "invertibleMatrix", repo: "filament-releases" } };
+      const marker = { kind: "server", version, target, file: name, feed: feedName(target), engine: true, node: "v24.11.0", glibc: "2.35", releases: { provider: "github", owner: "invertibleMatrix", repo: "filament" } };
       const entries = [
         { name: "bin/filament", mode: 0o755, body: Buffer.from(LAUNCHER) },
         { name: "bin/filament.js", mode: 0o755, body: Buffer.from("console.log('filament');\n") },
@@ -418,7 +418,7 @@ describe("install.sh on arm64", { skip: !SH && "no POSIX sh on this machine (on 
       for (const [os, arch] of [["Linux", "riscv64"], ["Linux", "armv7l"], ["Darwin", "arm64"], ["FreeBSD", "amd64"]]) {
         const r = await sh({ ...h.env, UNAME_S: os, UNAME_M: arch });
         assert.equal(r.code, 1, `${os} ${arch}: ${r.out}`);
-        assert.equal(r.err, `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is ${os} on ${arch}: nothing was installed. On a Mac or Windows, install the desktop app from https://github.com/invertibleMatrix/filament-releases/releases/latest.\n`);
+        assert.equal(r.err, `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is ${os} on ${arch}: nothing was installed. On a Mac or Windows, install the desktop app from https://github.com/invertibleMatrix/filament/releases/latest.\n`);
       }
       // Raspberry Pi OS's 32-bit release on a Pi's 64-bit kernel: uname says aarch64, and its programs are 32-bit
       for (const arch of ["aarch64", "x86_64"]) {

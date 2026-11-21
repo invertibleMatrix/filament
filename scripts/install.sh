@@ -1,6 +1,6 @@
 #!/bin/sh
 # Filament for servers, in one command — no root, everything the user's (a release's asset beside the tarball):
-#   curl -fsSL https://github.com/invertibleMatrix/filament-releases/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
 # It reads the newest release's latest-server.yml (latest-server-arm64.yml on arm64), downloads the tarball it names for
 # this machine (scripts/dist-server.mjs makes both, on each machine), checks the download's SHA-512 against it, and
 # unpacks it to ~/.local/share/filament/<version> ($XDG_DATA_HOME/filament
@@ -9,11 +9,11 @@
 # version changes nothing. A pipe takes no flags, so it reads its options from the environment:
 #   FILAMENT_VERSION=1.2.3   that release, not the newest — one installed already is pointed at again, not downloaded
 #   FILAMENT_NO_ENGINE=1     the small tarball without the memory engine, where the release publishes one
-#   FILAMENT_RELEASES_URL=…  where the releases are, for a mirror (GitHub's of filament-releases otherwise)
+#   FILAMENT_RELEASES_URL=…  where the releases are, for a mirror (GitHub's of invertibleMatrix/filament otherwise)
 # POSIX sh (dash, busybox ash): everything is in functions run by the last line, so a download cut short runs nothing.
 set -eu
 
-RELEASES=https://github.com/invertibleMatrix/filament-releases/releases
+RELEASES=https://github.com/invertibleMatrix/filament/releases
 MARKER=build-info.json
 
 work=""

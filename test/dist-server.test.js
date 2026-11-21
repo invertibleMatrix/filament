@@ -174,7 +174,7 @@ test("latest-server.yml gives each tarball's SHA-512 where the updater's shaIn r
   assert.equal(shaIn(one, "filament-server-1.2.3-linux-x64-no-engine.tar.gz"), "XyZ=");
   assert.equal(shaIn(one, "filament-server-1.2.3-linux-x64.tar.gz"), null);
   assert.match(one, /^path: filament-server-1\.2\.3-linux-x64-no-engine\.tar\.gz$/m);
-  assert.deepEqual(releasesOf(readFileSync(join(ROOT, "electron-builder.yml"), "utf8")), { owner: "invertibleMatrix", repo: "filament-releases" });
+  assert.deepEqual(releasesOf(readFileSync(join(ROOT, "electron-builder.yml"), "utf8")), { owner: "invertibleMatrix", repo: "filament" });
   assert.equal(releasesOf("appId: x\npublish:\n  provider: generic\n  url: https://example.com\n"), null, "a repository on GitHub alone");
   assert.equal(releasesOf("appId: x\n"), null);
   assert.equal(tarballName("1.2.3"), "filament-server-1.2.3-linux-x64.tar.gz");
@@ -219,7 +219,7 @@ function checkoutAt(root, version = "1.2.3") {
     "starters/apps/hello/app.json": "{}",
     "sidecar/mnemosyne_sidecar.py": "print('sidecar')",
     "sidecar/notes.txt": "not the sidecar",
-    "electron-builder.yml": "appId: com.filamentdev.desktop\npublish:\n  provider: github\n  owner: invertibleMatrix\n  repo: filament-releases\nfiles:\n  - src/**\n",
+    "electron-builder.yml": "appId: com.filamentdev.desktop\npublish:\n  provider: github\n  owner: invertibleMatrix\n  repo: filament\nfiles:\n  - src/**\n",
     "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": { name: "filament" }, "node_modules/node-pty": { dependencies: { "node-addon-api": "^7.1.0" } }, "node_modules/node-addon-api": {}, "node_modules/node-pty/node_modules/inner": {}, "node_modules/electron": { dev: true }, "node_modules/fsevents": { optional: true, os: ["darwin"] } } }),
     "node_modules/node-pty/package.json": JSON.stringify({ name: "node-pty", main: "./lib/index.js" }),
     "node_modules/node-pty/lib/index.js": "module.exports = {};",
@@ -312,14 +312,14 @@ test("dist:server: dist/server/<version>/ holds the tarball — Node, bin, src, 
       }),
     );
     assert.ok(statSync(small).size < statSync(file).size, `${statSync(small).size} < ${statSync(file).size}`);
-    const releases = { owner: "invertibleMatrix", repo: "filament-releases" };
+    const releases = { owner: "invertibleMatrix", repo: "filament" };
     assert.deepEqual(smoked.map(({ log, ...o }) => o), [
       { file, version: "1.2.3", engine: true, releases, target: "linux-x64", exists: true },
       { file: small, version: "1.2.3", engine: false, releases, target: "linux-x64", exists: true },
     ]);
     assert.match(said.at(-4) || "", /^Filament 1\.2\.3 for servers: .*filament-server-1\.2\.3-linux-x64\.tar\.gz \(\d+\.\d MB\) — tar -xzf it where it is to live, then filament-server-1\.2\.3-linux-x64\/bin\/filament start\.$/);
     assert.match(said.at(-3) || "", /^Filament 1\.2\.3 for servers, without its memory engine: .*filament-server-1\.2\.3-linux-x64-no-engine\.tar\.gz \(\d+\.\d MB\) — tar -xzf it where it is to live, then filament-server-1\.2\.3-linux-x64-no-engine\/bin\/filament start\.$/);
-    assert.equal(said.at(-2), `Its update file: ${feed} — a release of invertibleMatrix/filament-releases offers them to servers with the tarballs beside it.`);
+    assert.equal(said.at(-2), `Its update file: ${feed} — a release of invertibleMatrix/filament offers them to servers with the tarballs beside it.`);
     assert.equal(said.at(-1), "Built on glibc 2.35: its node-pty loads on a server with glibc 2.35 or newer — on an older one Filament starts, but no terminal does.");
     // what is inside, as tar unpacks it
     const into = join(at, "unpacked");
@@ -355,7 +355,7 @@ test("dist:server: dist/server/<version>/ holds the tarball — Node, bin, src, 
     // the marker: a server's build, the glibc it was built on, the repository its updates come from, and the build's facts
     const marker = {
       kind: "server", version: "1.2.3", target: "linux-x64", file: "filament-server-1.2.3-linux-x64.tar.gz", feed: "latest-server.yml", engine: true, node: "v24.11.0", glibc: "2.35",
-      releases: { provider: "github", owner: "invertibleMatrix", repo: "filament-releases" },
+      releases: { provider: "github", owner: "invertibleMatrix", repo: "filament" },
       commit: "abc1234567", subject: "a commit", dirty: false, builtAt: "2026-11-08T10:00:00.000Z",
     };
     assert.deepEqual(JSON.parse(readFileSync(join(top, MARKER), "utf8")), marker);
@@ -388,7 +388,7 @@ test("dist:server: dist/server/<version>/ holds the tarball — Node, bin, src, 
     assert.deepEqual(filesUnder(top3), withoutEngine(inside));
     assert.equal(JSON.parse(readFileSync(join(top3, MARKER), "utf8")).glibc, null);
     assert.match(said.at(-3) || "", /^Filament 1\.2\.3 for servers, without its memory engine: .*filament-server-1\.2\.3-linux-x64-no-engine\.tar\.gz \(\d+\.\d MB\) — tar -xzf it where it is to live, then filament-server-1\.2\.3-linux-x64-no-engine\/bin\/filament start\.$/);
-    assert.equal(said.at(-2), `Its update file: ${feed} — a release of invertibleMatrix/filament-releases offers it to servers with the tarball beside it.`);
+    assert.equal(said.at(-2), `Its update file: ${feed} — a release of invertibleMatrix/filament offers it to servers with the tarball beside it.`);
     assert.equal(said.at(-1), glibcWords(null));
     assert.match(glibcWords(null), /^The glibc it was built on is not known/);
 
@@ -535,11 +535,11 @@ test("the smoke test reads the build-info.json it unpacks: one that is not this 
   const at = tmp();
   try {
     const file = join(at, tarballName("1.2.3"));
-    const marker = { kind: "server", version: "1.2.2", engine: true, releases: { owner: "invertibleMatrix", repo: "filament-releases" } };
+    const marker = { kind: "server", version: "1.2.2", engine: true, releases: { owner: "invertibleMatrix", repo: "filament" } };
     await writeTarGz([{ name: MARKER, mode: 0o644, body: Buffer.from(JSON.stringify(marker)) }], file, { top: "filament-server-1.2.3-linux-x64" });
-    assert.equal(await smokeTest({ file, version: "1.2.3", engine: true, releases: { owner: "invertibleMatrix", repo: "filament-releases" } }), `its ${MARKER} is not this build's: ${JSON.stringify(marker)}`);
+    assert.equal(await smokeTest({ file, version: "1.2.3", engine: true, releases: { owner: "invertibleMatrix", repo: "filament" } }), `its ${MARKER} is not this build's: ${JSON.stringify(marker)}`);
     const before = readdirSync(tmpdir()).filter((n) => n.startsWith("filament-server-smoke-")).length;
-    await smokeTest({ file, version: "1.2.2", engine: false, releases: { owner: "invertibleMatrix", repo: "filament-releases" } });
+    await smokeTest({ file, version: "1.2.2", engine: false, releases: { owner: "invertibleMatrix", repo: "filament" } });
     assert.equal(readdirSync(tmpdir()).filter((n) => n.startsWith("filament-server-smoke-")).length, before, "its throwaway folder gone");
   } finally {
     rmSync(at, { recursive: true, force: true });

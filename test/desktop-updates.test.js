@@ -46,14 +46,16 @@ test("the repository a package.json names, versions compared, and the SHA-512 la
   assert.deepEqual(repoOf({ repository: "git@github.com:a/b.git" }), { owner: "a", repo: "b" });
   assert.equal(repoOf({ repository: "https://gitlab.com/a/b" }), null);
   assert.equal(repoOf(null), null);
-  // (fails before: yes — the owner's of 11-07: the app looked in the code's own repository, which is private, and a
-  // private repository's releases answer 404 to anyone not signed in: no installed app would ever see an update)
+  // (fails before: yes — the owner's of 11-07: the app looked in the code's own repository, which was private then, and a
+  // private repository's releases answer 404 to anyone not signed in, so releases went to filament-releases; the code is
+  // public since 0.9.83, and its own repository holds the releases again, filament-releases a mirror of them for the apps
+  // built before)
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const builder = readFileSync(new URL("../electron-builder.yml", import.meta.url), "utf8");
   const publish = /^publish:\n((?: {2}.*\n)+)/m.exec(builder)?.[1] || "";
   const releases = releasesRepoOf(publish.replace(/^ {2}/gm, ""));
-  assert.deepEqual(releases, { owner: "invertibleMatrix", repo: "filament-releases" }, "the build names the releases' repository, so latest*.yml and app-update.yml are written");
-  assert.notDeepEqual(releases, repoOf(pkg), "not the code's own");
+  assert.deepEqual(releases, { owner: "invertibleMatrix", repo: "filament" }, "the build names the releases' repository, so latest*.yml and app-update.yml are written");
+  assert.deepEqual(releases, repoOf(pkg), "the code's own");
   // what electron-builder writes into the app (resources/app-update.yml), as the app reads it
   assert.deepEqual(releasesRepoOf("owner: invertibleMatrix\nrepo: filament-releases\nprovider: github\nupdaterCacheDirName: filament-updater\n"), { owner: "invertibleMatrix", repo: "filament-releases" });
   assert.equal(releasesRepoOf("provider: generic\nurl: https://x\n"), null);

@@ -1,7 +1,8 @@
 // GitHub's Build workflow (.github/workflows/build.yml) survives being run again: "Re-run failed jobs" or "Re-run all
 // jobs" of a tag's run must not die on the draft it made, nor a build by hand's on the artifact the first attempt kept
 // (Hunter's of 10-29). A wrong tag stops the run before npm ci spends minutes. It builds every system (the owner's of
-// 11-07), drafts the release where the installed apps look for their updates before any build, each build puts its
+// 11-07), drafts the release where the installed apps look for their updates before any build (the code's own
+// repository, and the mirror the apps up to 0.9.83 look in, published with it by mirror-release.yml), each build puts its
 // files straight into that draft and keeps no artifact on a tag's run (one release's outgrew the account's 2 GB of
 // artifact storage: the owner's of 11-16), and every file an installed app fetches from that release is one the run
 // builds and checks is there. Filament for servers is built beside them, and its release carries its tarballs,
@@ -30,13 +31,22 @@ const keeps = (j) =>
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith("#"));
 
-/** The files a job puts into the draft on a tag's run: its upload's quoted paths, in the artifact's words. @param {string} j */
+/** The files a job puts into the drafts on a tag's run: its upload step's files list, in the artifact's words. @param {string} j */
 const sends = (j) =>
-  (/\n {10}gh release upload "\$GITHUB_REF_NAME" --repo "\$RELEASES_REPO" --clobber \\\n((?: {12}".*\n)+)/.exec(j.slice(j.indexOf("- name: Into the draft release")))?.[1] || "")
+  (/\n {10}files=\(\n((?: {12}".*\n)+) {10}\)\n/.exec(j.slice(j.indexOf("- name: Into the draft release")))?.[1] || "")
     .split("\n")
-    .map((l) => l.trim().replace(/ \\$/, "").replace(/^"|"$/g, ""))
+    .map((l) => l.trim().replace(/^"|"$/g, ""))
     .filter(Boolean)
     .map((f) => f.replaceAll("$VERSION", "${{ needs.version.outputs.version }}"));
+
+/** The lines that put a files list into both drafts: here with the run's own token, the mirror's with RELEASES_TOKEN. */
+const UPLOADS = [
+  '\n          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"\n',
+  '\n          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi\n',
+];
+
+/** A step's env: the run's own token, and the mirror's. */
+const TOKENS = /\n {10}OWN_TOKEN: \$\{\{ github\.token \}\}\n {10}MIRROR_TOKEN: \$\{\{ secrets\.RELEASES_TOKEN \}\}\n/;
 
 /** The release's check of the draft's files: the step's text. @param {string} text */
 const checkStep = (text) => text.slice(text.indexOf("- name: Every system's files are here"), text.indexOf("- name: The release's notes"));
@@ -45,34 +55,41 @@ const checkStep = (text) => text.slice(text.indexOf("- name: Every system's file
 const BUILDS = ["windows", "mac", "linux", "server", "server-arm64"];
 
 // (fails before: yes — the release job made the draft from the builds' artifacts, which one release's outgrew the 2 GB of)
-test("a tag's run drafts the release before any build: one there is left as it is, a published one stops the run, and each build puts its files into it", async () => {
+test("a tag's run drafts the release here and in the mirror before any build: one there is left as it is, a published one stops the run, and each build puts its files into both", async () => {
   const text = await yml();
   const version = job(text, "version");
   const step = version.slice(version.indexOf("- name: The draft release"));
-  assert.ok(step.length < version.length, "the version job makes the draft");
+  assert.ok(step.length < version.length, "the version job makes the drafts");
   assert.ok(version.indexOf("- name: The tag names this version") < version.indexOf("- name: The draft release"), "after the tag's check");
   assert.match(step, /\n {8}if: startsWith\(github\.ref, 'refs\/tags\/v'\)\n/);
-  assert.match(step, /\n {10}GH_TOKEN: \$\{\{ secrets\.RELEASES_TOKEN \}\}\n/);
-  assert.match(step, /if \[ -z "\$GH_TOKEN" \]; then\n[^\n]*No RELEASES_TOKEN secret[^\n]*\n\s+exit 1\n/, "a missing token stops the run before any build");
+  assert.match(step, TOKENS);
+  assert.match(step, /if \[ -n "\$MIRROR_REPO" \] && \[ -z "\$MIRROR_TOKEN" \]; then\n[^\n]*No RELEASES_TOKEN secret[^\n]*\n\s+exit 1\n/, "a missing mirror token stops the run before any build");
   assert.match(
     step,
-    /if draft=\$\(gh release view "\$GITHUB_REF_NAME" --repo "\$RELEASES_REPO" --json isDraft --jq \.isDraft[^\n]*\); then\n\s+if \[ "\$draft" != true \]; then\n[^\n]*\n\s+exit 1\n\s+fi\n[\s\S]*?else\n\s+gh release create "\$GITHUB_REF_NAME" --repo "\$RELEASES_REPO" --draft /,
+    /if draft=\$\(GH_TOKEN="\$2" gh release view "\$GITHUB_REF_NAME" --repo "\$1" --json isDraft --jq \.isDraft[^\n]*\); then\n\s+if \[ "\$draft" != true \]; then\n[^\n]*\n\s+exit 1\n\s+fi\n[\s\S]*?else\n\s+GH_TOKEN="\$2" gh release create "\$GITHUB_REF_NAME" --repo "\$1" --draft /,
   );
+  assert.ok(step.includes('\n          draft "$RELEASES_REPO" "$OWN_TOKEN"\n'), "drafted here with the run's own token");
+  assert.ok(step.includes('\n          if [ -n "$MIRROR_REPO" ]; then draft "$MIRROR_REPO" "$MIRROR_TOKEN"; fi\n'), "and in the mirror with its token");
   for (const name of BUILDS) {
     const j = job(text, name);
     const send = j.slice(j.indexOf("- name: Into the draft release"));
-    assert.ok(send.length < j.length, `${name} puts its files into the draft`);
-    assert.match(send, /^- name: Into the draft release\n {8}if: startsWith\(github\.ref, 'refs\/tags\/v'\)\n {8}shell: bash\n {8}env:\n {10}GH_TOKEN: \$\{\{ secrets\.RELEASES_TOKEN \}\}\n/, name);
+    assert.ok(send.length < j.length, `${name} puts its files into the drafts`);
+    assert.match(send, /^- name: Into the draft release\n {8}if: startsWith\(github\.ref, 'refs\/tags\/v'\)\n {8}shell: bash\n {8}env:\n/, name);
+    assert.match(send, TOKENS, name);
+    for (const line of UPLOADS) assert.ok(send.includes(line), `${name}: ${line.trim()}`);
     assert.ok(sends(j).length > 0, `${name}'s files replace one of their names an earlier attempt put there`);
   }
 });
 
 // (fails before: yes — the notes were written as the release job made the draft, and the job read the files from artifacts)
-test("the release job finds every file whole in the draft, and writes its notes over the version job's placeholder alone", async () => {
+test("the release job finds every file whole in both drafts, and writes its notes over the version job's placeholder alone", async () => {
   const text = await yml();
   const release = job(text, "release");
-  assert.match(release, /there=\$\(gh release view "\$GITHUB_REF_NAME" --repo "\$RELEASES_REPO" --json assets \\\n\s+--jq '\.assets\[\] \| select\(\.state == "uploaded" and \.size > 0\) \| \.name'\)\n/);
-  assert.match(checkStep(text), /grep -qxF "\$f" <<< "\$there" \|\| \{ echo "::error::\$f is not in the draft\."; missing=1; \}/);
+  const check = checkStep(text);
+  assert.match(check, TOKENS);
+  assert.match(check, /\n {10}for repo in "\$RELEASES_REPO" \$MIRROR_REPO; do\n {12}token="\$OWN_TOKEN"\n {12}if \[ "\$repo" != "\$RELEASES_REPO" \]; then token="\$MIRROR_TOKEN"; fi\n/, "here, then the mirror where there is one");
+  assert.match(release, /there=\$\(GH_TOKEN="\$token" gh release view "\$GITHUB_REF_NAME" --repo "\$repo" --json assets \\\n\s+--jq '\.assets\[\] \| select\(\.state == "uploaded" and \.size > 0\) \| \.name'\)\n/);
+  assert.match(check, /grep -qxF "\$f" <<< "\$there" \|\| \{ echo "::error::\$f is not in \$repo's draft\."; missing=1; \}/);
   const placeholder = /--notes "(Filament \$VERSION: [^"]+)"/.exec(job(text, "version"))?.[1];
   assert.ok(placeholder, "the version job drafts it with a placeholder");
   const notes = release.slice(release.indexOf("- name: The release's notes"));
@@ -81,15 +98,44 @@ test("the release job finds every file whole in the draft, and writes its notes 
   assert.doesNotMatch(text, /download-artifact|gh release create "\$GITHUB_REF_NAME" out/, "the release reads the draft, never an artifact");
 });
 
-// (fails before: yes — the release was drafted in the code's own repository, which is private: no installed app could read it)
-test("the release is drafted in the repository electron-builder.yml publishes to, which the installed apps look in", async () => {
+// (fails before: yes — the release was drafted in invertibleMatrix/filament-releases, apart from the code that is public
+// now; before that, in the code's own repository while it was private, where no installed app could read it)
+test("the release is drafted in the code's own repository, which electron-builder.yml publishes to and the installed apps look in, with the run's own token", async () => {
   const text = await yml();
   const builder = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
   const publish = /^publish:\n((?: {2}.*\n)+)/m.exec(builder.replace(/\r\n/g, "\n"))?.[1] || "";
   const field = (/** @type {string} */ k) => new RegExp(`^ {2}${k}:\\s*(\\S+)`, "m").exec(publish)?.[1];
   assert.equal(field("provider"), "github");
-  assert.equal(/^ {2}RELEASES_REPO: (\S+)$/m.exec(text)?.[1], `${field("owner")}/${field("repo")}`);
-  for (const name of ["version", "release"]) assert.match(job(text, name), /GH_TOKEN: \$\{\{ secrets\.RELEASES_TOKEN \}\}/, `${name}: a token of that repository's: the run's own reaches its own alone`);
+  const releases = /^ {2}RELEASES_REPO: (\S+)$/m.exec(text)?.[1];
+  assert.equal(releases, `${field("owner")}/${field("repo")}`);
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(`github.com/${releases}.git`, /github\.com\/\S+\.git$/.exec(pkg.repository.url)?.[0], "package.json's repository: the code's own");
+  // The run's own token writes releases in the jobs that ask for it, and their checkouts leave it nowhere on disk, where
+  // an install script of npm ci's could read it.
+  for (const name of ["version", ...BUILDS, "release"]) {
+    const j = job(text, name);
+    assert.match(j, /\n {4}permissions:\n {6}contents: write\n/, `${name} may write the releases`);
+    for (const checkout of j.match(/- uses: actions\/checkout@v7\n(?: {8}.*\n)*/g) || []) assert.match(checkout, /\n {10}persist-credentials: false\n/, `${name}'s checkout keeps no credentials`);
+  }
+  assert.match(text, /^permissions:\n {2}contents: read\n/m, "every other job reads alone");
+});
+
+// (fails before: yes — there was no mirror: releases went to invertibleMatrix/filament-releases alone)
+test("the mirror the apps up to 0.9.83 look in gets every release: drafted with RELEASES_TOKEN, and published as the release is published here, with its notes", async () => {
+  const text = await yml();
+  const mirror = (await readFile(new URL("../.github/workflows/mirror-release.yml", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+  const named = /^ {2}MIRROR_REPO: (\S+)$/m.exec(text)?.[1];
+  assert.equal(named, "invertibleMatrix/filament-releases");
+  assert.equal(/^ {2}MIRROR_REPO: (\S+)$/m.exec(mirror)?.[1], named, "both workflows name one mirror");
+  assert.notEqual(named, /^ {2}RELEASES_REPO: (\S+)$/m.exec(text)?.[1]);
+  assert.match(mirror, /\non:\n {2}release:\n {4}types: \[published\]\n/);
+  assert.match(mirror, /\n {4}if: github\.repository == 'invertibleMatrix\/filament'\n/, "a fork's releases stay its own");
+  assert.match(mirror, /\n {10}GH_TOKEN: \$\{\{ secrets\.RELEASES_TOKEN \}\}\n/);
+  // The notes come through the environment: written into the script, a release's words could run as its commands.
+  assert.match(mirror, /\n {10}NOTES: \$\{\{ github\.event\.release\.body \}\}\n/);
+  const run = mirror.slice(mirror.indexOf("run: |"));
+  assert.doesNotMatch(run, /\$\{\{/, "no expression inside the script");
+  assert.match(run, /printf '%s\\n' "\$NOTES" > notes\.md\n\s+gh release edit "\$TAG" --repo "\$MIRROR_REPO" --notes-file notes\.md --draft=false --latest="\$LATEST"\n/);
 });
 
 // (fails before: yes — a tag's builds were kept as artifacts for 7 days, and one release's filled the 2 GB)

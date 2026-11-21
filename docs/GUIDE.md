@@ -1664,8 +1664,8 @@ app's own **Notifications** switch, the same choice as **Notifications** in the 
 **Start at logon** (a check in the tray's menu) starts the app hidden in the tray when you sign in.
 
 **Updates.** The installed app looks for a newer Filament a minute after it starts and every six hours after, in the
-public repository its releases are published to (`invertibleMatrix/filament-releases`, electron-builder.yml's
-`publish`). A newer one shows at the sidebar's foot — **Filament *x* is out**, **Update**, **Later** — and in the tray's
+public repository its releases are published to (`invertibleMatrix/filament`, electron-builder.yml's `publish`; an
+app up to 0.9.83 looks in `invertibleMatrix/filament-releases`, which gets a copy of each release). A newer one shows at the sidebar's foot — **Filament *x* is out**, **Update**, **Later** — and in the tray's
 menu; nothing is downloaded until you press **Update**. It downloads while you work, the notice showing how far, and
 is kept only if it matches the SHA-512 its release gives (the release's `latest.yml`, `latest-mac.yml` or
 `latest-linux.yml`): a release without one offers no update. Then the notice says Filament *x* is ready, with

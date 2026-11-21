@@ -14,8 +14,9 @@ npmRebuild: false
 # electron-builder run by itself; `npm run dist` sends it to dist/<platform>/<version>.
 directories:
   output: dist
-# Where the installed app looks for its updates (desktop/lib/updates.js): the public repository that holds Filament's
-# releases alone, apart from the code.
+# Where the installed app looks for its updates (desktop/lib/updates.js): the code's own repository, public since
+# 0.9.83. The apps up to 0.9.83 were built with invertibleMatrix/filament-releases, which held the releases while the
+# code was private, and look there still: CI drafts each release in both (build.yml's MIRROR_REPO).
 # Named so electron-builder writes latest.yml, latest-mac.yml and latest-linux.yml beside the builds — the SHA-512 the
 # app checks a download by — and the app's resources/app-update.yml, which the app reads this repository from. Nothing
 # is published from a build: `npm run dist` runs electron-builder with --publish never; CI drafts a release there on a
@@ -23,7 +24,7 @@ directories:
 publish:
   provider: github
   owner: invertibleMatrix
-  repo: filament-releases
+  repo: filament
 # The app's own entry; the package's `main` stays the server for those who import it. The author, as LICENSE names
 # it: the app's publisher in Windows' file details (Electron's own otherwise: GitHub, Inc.); the deb's maintainer.
 # desktopName: the Linux app's .desktop entry (linux.executableName's), which Electron gives its windows as their app

@@ -5,11 +5,12 @@
 # build keeps electron-builder's blockmaps: the installed apps download an update whole (desktop/lib/updates.js), so a
 # release carries none (the owner's of 11-10). Run it by hand (Actions › Build › Run workflow, one system or all): each
 # build is kept as the run's artifact for a day. Or push a tag v<version>: the tag must name package.json's version, the
-# run drafts a release in the public repository electron-builder.yml publishes to, each build puts its files straight
-# into that draft, and it stays a draft until someone publishes it there. A tag's builds keep no artifact: one release's
-# (about 2.9 GB) outgrew the account's 2 GB of artifact storage, and a release's files count toward none (the owner's of
-# 11-16). docs/releasing.md says what the secrets are and how to set them. Beside the desktop builds,
-# Filament for servers: `npm run dist:server`'s tarballs, their latest-server.yml and the install.sh that installs them
+# run drafts a release in this repository, which electron-builder.yml publishes to, and the same one in the mirror the
+# apps up to 0.9.83 look in (MIRROR_REPO); each build puts its files straight into both drafts, and they stay drafts
+# until someone publishes the release here (mirror-release.yml then publishes the mirror's). A tag's builds keep no
+# artifact: one release's (about 2.9 GB) outgrew the account's 2 GB of artifact storage, and a release's files count
+# toward none (the owner's of 11-16). docs/releasing.md says what the secrets are and how to set them. Beside the
+# desktop builds, Filament for servers: `npm run dist:server`'s tarballs, their latest-server.yml and the install.sh that installs them
 # (the remote-agents plan's sv-ci), in the same release — x64's, and arm64's with latest-server-arm64.yml (sv-arm), on
 # the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off.
 name: Build
@@ -29,9 +30,14 @@ permissions:
   contents: read
 
 env:
-  # Where releases are drafted: electron-builder.yml's publish, which the installed apps look for updates in
-  # (test/build-workflow.test.js keeps the two the same).
-  RELEASES_REPO: invertibleMatrix/filament-releases
+  # Where releases are drafted: this repository, electron-builder.yml's publish, which the installed apps look for updates
+  # in (test/build-workflow.test.js keeps the two the same). The run's own token writes it, in the jobs that ask for
+  # contents: write; their checkouts keep no credentials, so no install script finds that token on disk.
+  RELEASES_REPO: invertibleMatrix/filament
+  # The repository releases were published to while the code was private, which the apps up to 0.9.83 look in: each
+  # release is drafted there too, with a token for that repository (RELEASES_TOKEN, docs/releasing.md), so an older
+  # app finds the release that moves it here. Its line here and in mirror-release.yml go once those apps have updated.
+  MIRROR_REPO: invertibleMatrix/filament-releases
 
 # One build of a ref at a time; a second waits rather than cutting the first.
 concurrency:
@@ -43,10 +49,14 @@ jobs:
     name: Version
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Version
         id: version
@@ -63,31 +73,37 @@ jobs:
             exit 1
           fi
 
-      # The draft each build puts its files into, made before any build starts, so no two race to make it. The releases
-      # have a repository of their own: the run's own token reaches only the code's, so a token for the releases'
-      # repository (RELEASES_TOKEN, docs/releasing.md) drafts it there. Run again ("Re-run all jobs"), it finds
-      # the draft there and leaves it: each build's files replace what got up the first time. A release already published
-      # stops the run: a build's files would replace a published release's under the installed apps.
+      # The drafts each build puts its files into, made before any build starts, so no two race to make them: here, with
+      # the run's own token, and in the mirror, with RELEASES_TOKEN (the run's own reaches this repository alone). Run
+      # again ("Re-run all jobs"), it finds a draft and leaves it: each build's files replace what got up the first
+      # time. A release already published in either stops the run: a build's files would replace a published release's
+      # under the installed apps.
       - name: The draft release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::No RELEASES_TOKEN secret: a token that can write $RELEASES_REPO's releases (docs/releasing.md)."
+          if [ -n "$MIRROR_REPO" ] && [ -z "$MIRROR_TOKEN" ]; then
+            echo "::error::No RELEASES_TOKEN secret: a token that can write $MIRROR_REPO's releases (docs/releasing.md)."
             exit 1
           fi
-          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --json isDraft --jq .isDraft 2> /dev/null); then
-            if [ "$draft" != true ]; then
-              echo "::error::$GITHUB_REF_NAME is published in $RELEASES_REPO already: release a new version (docs/releasing.md)."
-              exit 1
+          # $1 the repository, $2 a token that writes it.
+          draft() {
+            if draft=$(GH_TOKEN="$2" gh release view "$GITHUB_REF_NAME" --repo "$1" --json isDraft --jq .isDraft 2> /dev/null); then
+              if [ "$draft" != true ]; then
+                echo "::error::$GITHUB_REF_NAME is published in $1 already: release a new version (docs/releasing.md)."
+                exit 1
+              fi
+              echo "The draft $GITHUB_REF_NAME is in $1: this run's files replace what got up before."
+            else
+              GH_TOKEN="$2" gh release create "$GITHUB_REF_NAME" --repo "$1" --draft --title "Filament $VERSION" --notes "Filament $VERSION: its files are going up."
             fi
-            echo "The draft $GITHUB_REF_NAME is there: this run's files replace what got up before."
-          else
-            gh release create "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --draft --title "Filament $VERSION" --notes "Filament $VERSION: its files are going up."
-          fi
+          }
+          draft "$RELEASES_REPO" "$OWN_TOKEN"
+          if [ -n "$MIRROR_REPO" ]; then draft "$MIRROR_REPO" "$MIRROR_TOKEN"; fi
 
   windows:
     name: Windows installer
@@ -95,12 +111,16 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 90
+    permissions:
+      contents: write
     env:
       # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
       # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
       FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -125,19 +145,23 @@ jobs:
           # Unsigned, as a local build is.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      # A tag's run: into the draft the version job made, each file replacing one of its name an earlier attempt put
-      # there. latest.yml is the SHA-512 the installed apps check an update's file by (desktop/lib/updates.js): a
-      # release without it offers no update.
+      # A tag's run: into the drafts the version job made, here and in the mirror, each file replacing one of its name an
+      # earlier attempt put there. latest.yml is the SHA-512 the installed apps check an update's file by
+      # (desktop/lib/updates.js): a release without it offers no update.
       - name: Into the draft release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
-            "dist/windows/$VERSION/Filament-$VERSION-setup-x64.exe" \
+          files=(
+            "dist/windows/$VERSION/Filament-$VERSION-setup-x64.exe"
             "dist/windows/$VERSION/latest.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
 
       # A build by hand: the run's artifact, for a day.
       - uses: actions/upload-artifact@v7
@@ -158,12 +182,16 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'mac' }}
     runs-on: macos-15
     timeout-minutes: 120
+    permissions:
+      contents: write
     env:
       # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
       # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
       FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -262,13 +290,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
-            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.dmg" \
-            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.zip" \
+          files=(
+            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.dmg"
+            "dist/mac/$VERSION/Filament-$VERSION-mac-arm64.zip"
             "dist/mac/$VERSION/latest-mac.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
 
       - uses: actions/upload-artifact@v7
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -296,12 +328,16 @@ jobs:
     # The oldest Ubuntu GitHub runs: the app runs on systems as old as the one it was built on.
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    permissions:
+      contents: write
     env:
       # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
       # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
       FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -327,13 +363,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
-            "dist/linux/$VERSION/Filament-$VERSION-linux-x86_64.AppImage" \
-            "dist/linux/$VERSION/Filament-$VERSION-linux-amd64.deb" \
+          files=(
+            "dist/linux/$VERSION/Filament-$VERSION-linux-x86_64.AppImage"
+            "dist/linux/$VERSION/Filament-$VERSION-linux-amd64.deb"
             "dist/linux/$VERSION/latest-linux.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
 
       - uses: actions/upload-artifact@v7
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -355,12 +395,16 @@ jobs:
     # is the oldest a hosted runner has.
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    permissions:
+      contents: write
     env:
       # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
       # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
       FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -393,14 +437,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
-            "dist/server/$VERSION/filament-server-$VERSION-linux-x64.tar.gz" \
-            "dist/server/$VERSION/filament-server-$VERSION-linux-x64-no-engine.tar.gz" \
-            "dist/server/$VERSION/latest-server.yml" \
+          files=(
+            "dist/server/$VERSION/filament-server-$VERSION-linux-x64.tar.gz"
+            "dist/server/$VERSION/filament-server-$VERSION-linux-x64-no-engine.tar.gz"
+            "dist/server/$VERSION/latest-server.yml"
             "dist/server/$VERSION/install.sh"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
 
       - uses: actions/upload-artifact@v7
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -424,6 +472,8 @@ jobs:
     # Ubuntu 22.04 one, or the one ARM64_RUNNER names (a private repository may have no use of GitHub's).
     runs-on: ${{ vars.ARM64_RUNNER || 'ubuntu-22.04-arm' }}
     timeout-minutes: 90
+    permissions:
+      contents: write
     env:
       # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
       # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
@@ -440,6 +490,8 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -466,13 +518,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber \
-            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64.tar.gz" \
-            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64-no-engine.tar.gz" \
+          files=(
+            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64.tar.gz"
+            "dist/server/$VERSION/filament-server-$VERSION-linux-arm64-no-engine.tar.gz"
             "dist/server/$VERSION/latest-server-arm64.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
 
       - uses: actions/upload-artifact@v7
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -495,14 +551,17 @@ jobs:
     needs: [version, windows, mac, linux, server, server-arm64]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
-      # Every system's installers and update files in the draft, or the run fails and says which is missing: a release
-      # without a system's latest*.yml offers that system no update. The servers' install.sh reads latest-server.yml, and
-      # installs nothing from a release without it. arm64's servers' files are asked for where their job ran. A file
-      # counts once it is whole: an upload cut off leaves an asset GitHub has not marked uploaded.
+      # Every system's installers and update files in both drafts, or the run fails and says which is missing where: a
+      # release without a system's latest*.yml offers that system no update. The servers' install.sh reads
+      # latest-server.yml, and installs nothing from a release without it. arm64's servers' files are asked for where
+      # their job ran. A file counts once it is whole: an upload cut off leaves an asset GitHub has not marked uploaded.
       - name: Every system's files are here
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
           ARM64: ${{ needs.server-arm64.result }}
         run: |
@@ -512,23 +571,28 @@ jobs:
           else
             echo "::notice::The arm64 server build was $ARM64 (SERVER_ARM64 is off?): this release carries x64's servers' files alone."
           fi
-          there=$(gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --json assets \
-            --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')
           missing=0
-          for f in "Filament-$VERSION-setup-x64.exe" latest.yml \
-                   "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
-                   "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
-                   "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh $arm64; do
-            grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in the draft."; missing=1; }
+          for repo in "$RELEASES_REPO" $MIRROR_REPO; do
+            token="$OWN_TOKEN"
+            if [ "$repo" != "$RELEASES_REPO" ]; then token="$MIRROR_TOKEN"; fi
+            there=$(GH_TOKEN="$token" gh release view "$GITHUB_REF_NAME" --repo "$repo" --json assets \
+              --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')
+            for f in "Filament-$VERSION-setup-x64.exe" latest.yml \
+                     "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
+                     "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
+                     "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh $arm64; do
+              grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in $repo's draft."; missing=1; }
+            done
+            echo "$repo:"
+            echo "$there"
           done
-          echo "$there"
           exit $missing
 
-      # The notes, once: written over the version job's placeholder, never over notes someone wrote in the draft
-      # before "Re-run failed jobs".
+      # The notes, once, here: written over the version job's placeholder, never over notes someone wrote in the draft
+      # before "Re-run failed jobs". The mirror's draft takes them as the release is published (mirror-release.yml).
       - name: The release's notes
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
           ARM64: ${{ needs.server-arm64.result }}
         run: |

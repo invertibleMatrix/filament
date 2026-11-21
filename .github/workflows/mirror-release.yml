@@ -1,0 +1,42 @@
+# The installed apps up to 0.9.83 look for their updates in invertibleMatrix/filament-releases, where Filament's releases
+# were published while its code was private. Releases are published here now (electron-builder.yml), and build.yml drafts
+# each one in that repository too (its MIRROR_REPO): publishing a release here publishes the mirror's draft with the same
+# notes, so an older app finds the release that moves it here. The run's own token reaches this repository alone, so a
+# token for the mirror's (RELEASES_TOKEN, docs/releasing.md) publishes it. A release published by a workflow's own token
+# starts no workflow: publish it yourself (Publish release, or gh release edit). This file and MIRROR_REPO go once those
+# apps have updated.
+name: Mirror release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  MIRROR_REPO: invertibleMatrix/filament-releases
+
+jobs:
+  mirror:
+    name: Publish the mirror's copy
+    # A fork's releases are its own: none goes to the mirror.
+    if: github.repository == 'invertibleMatrix/filament'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The notes come through the environment, never into the script's text: a release's words run nothing.
+      - name: Published there, with these notes
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          NOTES: ${{ github.event.release.body }}
+          LATEST: ${{ !github.event.release.prerelease }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::No RELEASES_TOKEN secret: a token that can write $MIRROR_REPO's releases (docs/releasing.md)."
+            exit 1
+          fi
+          printf '%s\n' "$NOTES" > notes.md
+          gh release edit "$TAG" --repo "$MIRROR_REPO" --notes-file notes.md --draft=false --latest="$LATEST"
+          gh release view "$TAG" --repo "$MIRROR_REPO" --json isDraft,url --jq '"\(.url) draft: \(.isDraft)"'

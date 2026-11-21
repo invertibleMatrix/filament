@@ -182,7 +182,7 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
     const made = [];
     for (const engine of small ? [true, false] : [true]) {
       const name = tarballName(version, engine);
-      const marker = { kind: "server", version, target: "linux-x64", file: name, feed: FEED, engine, node: "v24.11.0", glibc, releases: { provider: "github", owner: "invertibleMatrix", repo: "filament-releases" } };
+      const marker = { kind: "server", version, target: "linux-x64", file: name, feed: FEED, engine, node: "v24.11.0", glibc, releases: { provider: "github", owner: "invertibleMatrix", repo: "filament" } };
       const entries = [
         { name: "bin/filament", mode: 0o755, body: Buffer.from(LAUNCHER) },
         { name: "bin/filament.js", mode: 0o755, body: Buffer.from("console.log('filament');\n") },
@@ -225,7 +225,7 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
       for (const [os, arch] of [["Darwin", "arm64"], ["Linux", "riscv64"], ["FreeBSD", "x86_64"]]) {
         const r = await sh({ ...h.env, UNAME_S: os, UNAME_M: arch });
         assert.equal(r.code, 1, `${os} ${arch}: ${r.out}`);
-        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and this machine is ${os} on ${arch}: nothing was installed\\. On a Mac or Windows, install the desktop app from https://github\\.com/invertibleMatrix/filament-releases/releases/latest\\.\\n$`));
+        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and this machine is ${os} on ${arch}: nothing was installed\\. On a Mac or Windows, install the desktop app from https://github\\.com/invertibleMatrix/filament/releases/latest\\.\\n$`));
       }
       // another C library than glibc, or a glibc older than Node's own builds need
       const musl = await sh({ ...h.env, GLIBC: "musl" });

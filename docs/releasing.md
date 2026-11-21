@@ -40,9 +40,13 @@ machine.
   **More info › Run anyway**. Filament's Windows build is unsigned for now (section 7).
 - **Linux:** nothing to sign.
 
-**Where releases live.** Releases go to a repository that holds only releases, apart from the code:
-`invertibleMatrix/filament-releases`, named in `electron-builder.yml`'s `publish`. Every build records it inside the app
-(`resources/app-update.yml`), and the app looks there for updates.
+**Where releases live.** Releases go to the code's own repository, `invertibleMatrix/filament`, named in
+`electron-builder.yml`'s `publish`. Every build records it inside the app (`resources/app-update.yml`), and the app
+looks there for updates. While the code was private, releases went to a repository of their own,
+`invertibleMatrix/filament-releases`, and the apps up to 0.9.83 still look there. So each release is drafted in both
+(`MIRROR_REPO` in `.github/workflows/build.yml`), and publishing it in `filament` publishes the copy in
+`filament-releases` too (`.github/workflows/mirror-release.yml`). Once those older apps have updated, remove
+`MIRROR_REPO` and `mirror-release.yml`, and archive `filament-releases`.
 
 **How an installed app updates.** A minute after it starts, and every six hours after that, the app asks GitHub for the
 releases repository's newest published release. A newer one shows a notice at the foot of the sidebar,
@@ -201,21 +205,15 @@ Notarization uses this key to sign in to Apple:
 
 ### The releases repository
 
-Create a public repository that holds only releases. It needs one commit (the README), because a release's tag is made
-on its branch when the release is published.
+Releases are drafted in the code's own repository, with the workflow's own token: nothing to set up. To publish them
+elsewhere, change `publish` in `electron-builder.yml` and `RELEASES_REPO` in `.github/workflows/build.yml` together;
+`test/build-workflow.test.js` checks that they match. An installed app keeps looking in the repository it was built
+with, which is why the mirror below exists.
 
-```sh
-gh repo create invertibleMatrix/filament-releases --public --add-readme --description "Filament's releases"
-```
+### A token that can write the mirror's releases
 
-To use another name, change `publish` in `electron-builder.yml` and `RELEASES_REPO` in
-`.github/workflows/build.yml` together; `test/build-workflow.test.js` checks that they match. An installed app keeps
-looking in the repository it was built with.
-
-### A token that can write its releases
-
-The workflow runs in the code repository, and its own token can't write to another repository. So it uses a token of
-yours:
+The mirror, `invertibleMatrix/filament-releases`, is another repository, and the workflow's own token can't write to
+it. So it uses a token of yours:
 
 1. Go to github.com › your picture › **Settings** › **Developer settings** › **Personal access tokens** ›
    **Fine-grained tokens** › **Generate new token**.
@@ -223,6 +221,8 @@ yours:
    Resource owner: **invertibleMatrix**. Repository access: **Only select repositories** › `filament-releases`.
 3. Under **Permissions › Repository permissions**, set **Contents** to **Read and write**. **Metadata: Read** comes
    with it. Press **Generate token** and copy it.
+
+Once the mirror is gone, the token isn't needed: delete it and the `RELEASES_TOKEN` secret.
 
 ### The secrets
 
@@ -245,10 +245,11 @@ These are the Mac's commands, run where the `.p12` and the `.p8` are. From Windo
 
 ## 6. Building and releasing on GitHub Actions
 
-The workflow is `.github/workflows/build.yml`. A version job checks the tag and, on a tag's run, drafts the release.
-Then, in parallel: the Windows installer, the Mac app on an Apple Silicon machine, the Linux AppImage and deb on Ubuntu
-22.04, and the server tarballs on Ubuntu 22.04 too, x64's and arm64's. The typecheck and the tests are not run there:
-they run on your machine before a commit lands. On a tag's run each build puts its files straight into the draft, and
+The workflow is `.github/workflows/build.yml`. A version job checks the tag and, on a tag's run, drafts the release,
+in `filament` and in the mirror. Then, in parallel: the Windows installer, the Mac app on an Apple Silicon machine, the
+Linux AppImage and deb on Ubuntu 22.04, and the server tarballs on Ubuntu 22.04 too, x64's and arm64's. The typecheck
+and the tests are not run there: they run on your machine before a commit lands. On a tag's run each build puts its
+files straight into both drafts, and
 keeps no artifact: artifacts count toward the account's Actions storage, 2 GB on its plan, and one release's builds
 (about 2.9 GB for 0.9.77) outgrew it; a release's files count toward none. A build by hand keeps its files as an
 artifact of the run for a day. To see what artifacts take room, and delete one:
@@ -285,7 +286,7 @@ app:
 A release carries all four. A server installs the newest published release with:
 
 ```sh
-curl -fsSL https://github.com/invertibleMatrix/filament-releases/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
 ```
 
 A draft changes nothing for it until it is published. Built on Ubuntu 22.04 (glibc 2.35), Filament's terminals open
@@ -327,19 +328,21 @@ again.
    ```
 
    A tag that isn't `v` plus `package.json`'s version stops the run at once.
-3. The run drafts the release **Filament 0.9.1** in `filament-releases`, then builds all three systems and the server
-   tarballs, x64's and arm64's (unless `SERVER_ARM64` is `off`), each putting its files into the draft as it ends. The
-   Mac build is signed and notarized; without the five Mac secrets it fails rather than make a release Macs refuse.
-   The run then checks that every installer, every update file and `install.sh` are in the draft, and writes its
-   notes.
-4. Look at the draft: github.com › `filament-releases` › **Releases**. Download and try what you want to, edit the
-   notes, then press **Publish release**.
+3. The run drafts the release **Filament 0.9.1** in `filament` and in the mirror, `filament-releases`, then builds all
+   three systems and the server tarballs, x64's and arm64's (unless `SERVER_ARM64` is `off`), each putting its files
+   into both drafts as it ends. The Mac build is signed and notarized; without the five Mac secrets it fails rather than
+   make a release Macs refuse. The run then checks that every installer, every update file and `install.sh` are in
+   both drafts, and writes the notes in `filament`'s.
+4. Look at the draft: github.com › `filament` › **Releases**. Download and try what you want to, edit the notes, then
+   press **Publish release** (or `gh release edit v0.9.1 --repo invertibleMatrix/filament --draft=false --latest`).
+   The **Mirror release** workflow then publishes the mirror's draft with the same notes. Publish it yourself: a
+   release published by a workflow's own token starts no other workflow.
 5. Installed apps find it within six hours, or a minute after they start, or at once with **Settings › About › Updates ›
    Check now**. Until the release is published, nothing sees it.
 
-If a build fails, the draft keeps the files that got up, without notes: **Re-run failed jobs** puts the rest in,
-replacing any of the same name. A tag whose release is already published stops the run in its version job: release
-a new version instead. To give up on a tag, delete its draft and the tag.
+If a build fails, the drafts keep the files that got up, without notes: **Re-run failed jobs** puts the rest in,
+replacing any of the same name. A tag whose release is already published, in either repository, stops the run in its
+version job: release a new version instead. To give up on a tag, delete its draft in both repositories, and the tag.
 
 ## 7. Windows signing, later
 
@@ -372,11 +375,12 @@ When signing is worth it:
 | A Mac says Filament "is damaged and can't be opened" | An unsigned or unnotarized app, downloaded | Build it signed and notarized. To try an unsigned one anyway: `xattr -dr com.apple.quarantine /Applications/Filament.app` |
 | A Mac build ends: `… and notarized …, but stapler validate didn't confirm the ticket here` | Apple notarized it and the ticket was stapled, but `stapler validate` said no on the build machine (GitHub's runners have, of a stapled app) | On a Mac: `spctl -a -vv /Applications/Filament.app`. `source=Notarized Developer ID` means it opens on any Mac |
 | The Mac job fails: `Some of the Mac signing secrets are set, not all` | One of the five is missing | `gh secret list` and set the missing one (section 5) |
-| The version job or a build's **Into the draft release** fails: `No RELEASES_TOKEN secret` or `HTTP 403` | The token is missing, expired, or can't write `filament-releases` | Make a new token (section 5) and set it again |
-| The version job fails: `… is published in filament-releases already` | The tag's release was published before this run | Bump the version and tag that (section 6) |
+| The version job or a build's **Into the draft release** fails: `No RELEASES_TOKEN secret`, or `HTTP 403` on `filament-releases` | The mirror's token is missing, expired, or can't write `filament-releases` | Make a new token (section 5) and set it again |
+| The version job fails: `… is published in … already` | The tag's release was published before this run | Bump the version and tag that (section 6) |
+| A release is published in `filament`, but `filament-releases` still has it as a draft | The **Mirror release** run failed (its token?), or the release was published by a workflow's own token | Fix the token, then **Re-run** the Mirror release run, or `gh release edit v<version> --repo invertibleMatrix/filament-releases --draft=false --latest` |
 | A build by hand fails on `Artifact storage quota has been hit` | Earlier runs' artifacts fill the account's 2 GB | Delete them (section 6), and wait up to 12 hours for GitHub to count again |
 | The AppImage won't start: `dlopen(): error loading libfuse.so.2` | FUSE 2 isn't installed | `sudo apt install libfuse2` (`libfuse2t64` on 24.04) |
-| An installed app offers no update | The release is still a draft, or it lacks this system's `latest*.yml` | Publish it. A published release missing a file: build that system by hand from the tag, then `gh release upload v<version> <file> --repo invertibleMatrix/filament-releases` from the run's artifact |
+| An installed app offers no update | The release is still a draft, or it lacks this system's `latest*.yml` (an app up to 0.9.83: in `filament-releases`) | Publish it. A published release missing a file: build that system by hand from the tag, then `gh release upload v<version> <file> --repo invertibleMatrix/filament` (and `--repo invertibleMatrix/filament-releases`) from the run's artifact |
 | The arm64 server job sits at `Waiting for a runner to pick up this job` | The repository has no runner by `ARM64_RUNNER`'s name (or `ubuntu-22.04-arm`), or its plan's minutes are spent | Cancel the run, then set `ARM64_RUNNER` to a runner it has, or `SERVER_ARM64` to `off`, and run it again (section 6) |
 | The arm64 server job fails: `This runner has glibc …` | `ARM64_RUNNER` names a runner on another system than Ubuntu 22.04 | Name an Ubuntu 22.04 arm64 runner |
 

@@ -135,7 +135,7 @@ function installOf(root) {
     version = basename(dir);
   if (build.version !== version || !isLink(join(base, "current")) || realOf(join(base, "current")) !== realOf(dir))
     throw new CliError(
-      `This Filament for servers (${dir}) is not where install.sh installs it — a version's folder, with current beside it pointing at it: install.sh installs one (curl -fsSL https://github.com/${named ? `${owner}/${repo}` : "invertibleMatrix/filament-releases"}/releases/latest/download/install.sh | sh), which filament update then updates.`,
+      `This Filament for servers (${dir}) is not where install.sh installs it — a version's folder, with current beside it pointing at it: install.sh installs one (curl -fsSL https://github.com/${named ? `${owner}/${repo}` : "invertibleMatrix/filament"}/releases/latest/download/install.sh | sh), which filament update then updates.`,
       EXIT.failed,
     );
   if (!named) throw new CliError(`This build's ${MARKER} names no GitHub repository its releases are published to: there is nowhere to look for an update.`, EXIT.failed);
