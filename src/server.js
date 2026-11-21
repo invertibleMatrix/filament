@@ -197,7 +197,7 @@ import { initTokenCalib, disposeTokenCalib } from "./services/token-calib.js";
 import { describeDiff } from "./services/config/diff.js";
 import { teamsSpendOf, usageOf } from "./services/spend.js";
 import { readBody, checkInboundAuth, readsEverySession } from "./http/guards.js";
-import { createTelemetry, officialBuild } from "./services/telemetry.js";
+import { createTelemetry, officialBuild, takeInstallChoice } from "./services/telemetry.js";
 import { changeFields } from "./app/config-fields.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -3406,6 +3406,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     } catch {}
     return isCheckout() ? "checkout" : "other";
   })();
+  // The Windows installer's no, asked before this first start: the setting, where the person has chosen nothing yet.
+  if (takeInstallChoice(dataDir) && typeof config.get()?.telemetry?.enabled !== "boolean") changeFields(config, { set: { "telemetry.enabled": false } });
   const telemetry = createTelemetry({
     dataDir,
     armed: !!sendsTelemetry,

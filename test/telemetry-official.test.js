@@ -6,13 +6,13 @@
 // test reaches the network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildFacts } from "../desktop/lib/build-info.js";
 import { dist } from "../scripts/dist.mjs";
 import { markerOf } from "../scripts/dist-server.mjs";
-import { createTelemetry, officialBuild } from "../src/services/telemetry.js";
+import { INSTALL_NO, createTelemetry, officialBuild, takeInstallChoice } from "../src/services/telemetry.js";
 import { createEventBus } from "../src/services/events.js";
 import { normalizeConfig, sparseConfig } from "../src/services/config/store.js";
 import { telemetrySwitchOn, telemetryWords } from "../src/ui/harness/settings/data-privacy.js";
@@ -190,4 +190,30 @@ test("Filament passes its build's default to the service, and the release CI set
     assert.match(body, /^    env:\r?\n(?:      .*\r?\n)*      FILAMENT_OFFICIAL_BUILD: \$\{\{ github\.repository_owner == 'invertibleMatrix' && '1' \|\| '0' \}\}$/m, job);
   }
   assert.equal((yml.match(/FILAMENT_OFFICIAL_BUILD/g) || []).length, 5, "set on the five build jobs alone");
+});
+
+// (fails before: the installer asked nothing, and services/telemetry.js had no takeInstallChoice)
+test("the Windows installer's no: taken once from the data folder, made the setting where nothing is chosen, and asked only on a first install a person runs", () => {
+  const dir = tmp();
+  try {
+    assert.equal(takeInstallChoice(dir), false, "no file: the installer said nothing");
+    assert.equal(takeInstallChoice(null), false);
+    writeFileSync(join(dir, INSTALL_NO), "no\r\n");
+    assert.equal(takeInstallChoice(dir), true);
+    assert.equal(existsSync(join(dir, INSTALL_NO)), false, "read once: the file goes");
+    assert.equal(takeInstallChoice(dir), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  const server = readFileSync("src/server.js", "utf8");
+  const wired = server.indexOf('if (takeInstallChoice(dataDir) && typeof config.get()?.telemetry?.enabled !== "boolean") changeFields(config, { set: { "telemetry.enabled": false } });');
+  assert.ok(wired > 0 && wired < server.indexOf("const telemetry = createTelemetry({"), "the server makes it the setting before telemetry is made, and a choice already made stands");
+  const nsh = readFileSync("build/installer.nsh", "utf8");
+  const install = nsh.slice(nsh.indexOf("!macro customInstall"), nsh.indexOf("!macro customUnInstall"));
+  const ask = install.slice(install.indexOf("${ifNot} ${isUpdated}\n    IfSilent filamentAsked"));
+  const question = /^\$\{ifNot\} \$\{isUpdated\}\n {4}IfSilent filamentAsked\n {4}\$\{ifNot\} \$\{FileExists\} "\$APPDATA\\Filament\\config\.json"\n {6}MessageBox MB_YESNO\|MB_ICONQUESTION "([^"]*)" IDYES filamentAsked\n/.exec(ask);
+  assert.ok(question, "an update, a silent install and one over a data folder ask nothing");
+  assert.ok(question[1].includes("https://filamentdev.com/telemetry") && question[1].includes("https://filamentdev.com/privacy"), "the question links every field and the privacy policy");
+  assert.ok(!/[^\x20-\x7e]/.test(question[1]), "its words are ASCII: NSIS reads a script without a BOM in the system's code page");
+  assert.match(ask, /FileOpen \$R0 "\$APPDATA\\Filament\\telemetry-off" w\n/, "a no leaves the file the first start reads");
 });

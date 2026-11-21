@@ -12,7 +12,7 @@
 // has been shown the notice (`telemetry.noticeSeen`). A failed send waits for the next hour's look; it never holds a
 // start or a stop.
 import { randomUUID } from "node:crypto";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appOpened, dailySummary, whyOff } from "../core/telemetry-payload.js";
 import { localDay } from "./daily-usage.js";
@@ -41,6 +41,23 @@ export function officialBuild(root) {
       if (JSON.parse(readFileSync(file, "utf8"))?.official === true) return true;
     } catch {}
   return false;
+}
+
+/** The file a Windows installer leaves in the data folder when it was told not to send them (build/installer.nsh). */
+export const INSTALL_NO = "telemetry-off";
+
+/**
+ * The Windows installer's answer, read once: a first install asks whether to send anonymous usage statistics before
+ * Filament ever starts, and a no leaves INSTALL_NO in the data folder. Whether it said no; the file goes either way,
+ * so a choice made later in Settings is never undone by it.
+ * @param {string | null | undefined} dataDir
+ */
+export function takeInstallChoice(dataDir) {
+  if (!dataDir) return false;
+  const file = join(dataDir, INSTALL_NO);
+  if (!existsSync(file)) return false;
+  try { rmSync(file, { force: true }); } catch {}
+  return true;
 }
 
 /**

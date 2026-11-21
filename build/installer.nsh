@@ -56,6 +56,22 @@ Var pid
   ${if} ${FileExists} "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${SHORTCUT_NAME}.lnk"
     WinShell::SetLnkAUMI "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${SHORTCUT_NAME}.lnk" "${APP_ID}"
   ${endIf}
+  ; Anonymous usage statistics, asked before Filament ever starts (SignPath Foundation's condition for a signed program
+  ; that sends data: its policy shown during the install, and an option there to turn it off). Only a first install a
+  ; person runs asks: never an update (silent, or over a Filament whose data folder is there, whose choice Settings keeps).
+  ; A no leaves telemetry-off in the data folder, which Filament's first start makes its setting (services/telemetry.js
+  ; takeInstallChoice) and then removes; a yes leaves nothing, the official build's default.
+  ${ifNot} ${isUpdated}
+    IfSilent filamentAsked
+    ${ifNot} ${FileExists} "$APPDATA\Filament\config.json"
+      MessageBox MB_YESNO|MB_ICONQUESTION "Filament can send anonymous usage statistics to filamentdev.com, when it starts and once a day: its version, your system, and counts such as how many requests ran and which kinds of models and providers were used. Never your code, your chats, your keys, file names or anything you typed.$\n$\nEvery field: https://filamentdev.com/telemetry$\nPrivacy policy: https://filamentdev.com/privacy$\n$\nSend anonymous usage statistics? You can change this at any time in Settings > Data and privacy." IDYES filamentAsked
+      CreateDirectory "$APPDATA\Filament"
+      FileOpen $R0 "$APPDATA\Filament\telemetry-off" w
+      FileWrite $R0 "The installer was told not to send anonymous usage statistics.$\r$\n"
+      FileClose $R0
+    ${endIf}
+    filamentAsked:
+  ${endIf}
 !macroend
 
 !macro customUnInstall

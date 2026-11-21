@@ -1941,7 +1941,8 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   off; builds you make yourself send nothing unless you turn them on (below, or with `FILAMENT_TELEMETRY=1`). Where
   they are on, it is said once before anything is sent: a notice in the harness, or the start lines of a Filament
   started in a terminal. Nothing is sent until that notice has been shown, and nothing is sent, counted or kept while
-  they are off.
+  they are off. On Windows the installer asks first, on a first install: its **No** turns them off before Filament
+  ever starts (an update asks nothing again).
   - **Turn them off or on** at Settings › Data and privacy › Anonymous usage statistics, with
     `filament settings set telemetry.enabled false`, or in the environment with `DO_NOT_TRACK=1` or
     `FILAMENT_TELEMETRY=0`. **Show what's sent** on the same page shows the last batch exactly as it went.
