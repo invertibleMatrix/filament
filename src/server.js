@@ -49,6 +49,7 @@ import { createChatWatchers } from "./app/chat-watchers.js";
 import { createAgentSelf } from "./app/agent-self.js";
 import { createCodingAgents } from "./app/coding-agents.js";
 import { createRegistry } from "./adapters/agents/registry.js";
+import { createAgyFeed, withAgyFeed } from "./adapters/agents/agy-feed.js";
 import { createInstalls } from "./adapters/agents/installs.js";
 import { createReplayCompare } from "./app/sessions/replay-compare.js";
 import { createTerminalService } from "./services/terminal.js";
@@ -1095,10 +1096,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   logins.refresh();
   // Settings → Coding agents (HarnessV3-ACP AC3-8): the agents Filament knows and ACP's registry's — read by the server,
   // kept with their icons under `<data dir>/agents` — installed in a terminal the person sees, connected, turned off,
-  // updated and removed; the open pages hear each change as `coding-agents`, on the accounts' topic. A test hands in a
-  // stand-in for the registry's CDN and the makers' downloads (`registryFetch`).
+  // updated and removed; the open pages hear each change as `coding-agents`, on the accounts' topic. Antigravity's
+  // version and program come from Google's own release feed, read beside the registry (agy-feed.js). A test hands in a
+  // stand-in for the registry's CDN, Google's feed and the makers' downloads (`registryFetch`).
   const agentsDir = join(dataDir, "agents");
-  const registry = createRegistry({ dir: agentsDir, fetch: overrides.registryFetch || globalThis.fetch, log });
+  const registry = withAgyFeed(
+    createRegistry({ dir: agentsDir, fetch: overrides.registryFetch || globalThis.fetch, log }),
+    createAgyFeed({ dir: agentsDir, fetch: overrides.registryFetch || globalThis.fetch, log }),
+  );
   const installs = createInstalls({ dir: join(agentsDir, "installed"), fetch: overrides.registryFetch || globalThis.fetch, log });
   const codingAgents = createCodingAgents({
     config,

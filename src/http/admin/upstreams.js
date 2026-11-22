@@ -734,7 +734,7 @@ export function upstreamRoutes(a) {
         const id = decodeURIComponent(r.params.id);
         const u = findUpstream(config.get(), id);
         if (!isAgentUpstream(u)) return sendJson(r.res, 404, { error: "not an agent upstream" });
-        // The catalogue's words, for one PATH detection doesn't look for too (Antigravity, which ACP's registry installs).
+        // The catalogue's words, for one PATH detection doesn't look for too (Antigravity, which Filament installs itself).
         const known = KNOWN_AGENTS.find((x) => x.id === id) || null;
         return sendJson(r.res, 200, {
           ...(await destinationFor(u).agent.offer(u, { force: r.url.searchParams.get("refresh") === "1" })),

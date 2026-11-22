@@ -898,12 +898,17 @@ key. Its SDK is the second way, behind **Settings › Experimental › Cursor th
 | Claude Code | `claude-agent-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` (needs Claude Code) | `claude auth login` | `claude-code/<model>` (the default route; you may have renamed it, for example to `cc/**`): `sonnet`, `opus`, `opus[1m]`, `haiku`, `claude-fable-5-2[1m]` |
 | Codex | `codex app-server` | `npm i -g @openai/codex` | `codex login` | `codex/<model>` and `codex/<model>-<effort>` from Codex's own list, e.g. `codex/gpt-5.3-codex-high` |
 | Qoder CLI | `qodercli --acp` | `npm i -g @qoder-ai/qodercli` | `qodercli login` | `qoder/<model>` |
-| Antigravity | `agy_acp_server`, Google's ACP server from ACP's registry | **Install** on its card in Settings → Coding agents, into Filament's own folder | its card's sign-in: Google, Gemini Enterprise, a Gemini API key or Agent Platform | `antigravity/<model>`, from the ones it lists once signed in |
+| Antigravity | `agy acp`, Google's agy CLI from Google's own release feed | **Install** on its card in Settings → Coding agents, into Filament's own folder | its card's sign-in: Google, Gemini Enterprise, a Gemini API key or Agent Platform; an added account in a terminal (`agy acp --login`) | `antigravity/<model>`, from the ones it lists once signed in |
 
-Antigravity is Google's coding agent here: Google retired Gemini CLI for it in June 2026. An account of its own is a
-folder of its own (`GEMINI_HOME`), though its harness keeps a program of its own in `~/.gemini/antigravity/bin`
-whatever that folder. Its models are the ones your plan lists once signed in, each at a thinking level (a Google AI
-Plus plan lists Gemini 3.8 Flash); its modes are Default, where it asks, Auto Edit and YOLO. Filament's context reaches
+Antigravity is Google's coding agent here: Google retired Gemini CLI for it in June 2026. Filament installs Google's
+agy CLI from the release feed Google's own updater reads, checks its SHA-512, and finds a newer release on Refresh
+(and when Settings → Coding agents opens, once an hour); ACP's registry lists Google's older ACP server, which follows
+Google's releases late. Its models are the ones your plan lists once signed in, each at a thinking level, and a model
+Google releases arrives with the release that lists it: Update on its card, then Refresh. An install older than 1.5.1
+says on its card to update: below that version it showed Filament only some of your plan's models. Moving from the
+older server, Antigravity asks you to sign in once more. An account of its own is a folder of its own (`--gemini-dir`),
+which keeps its Google sign-in in that folder; such an account signs in in a terminal, where agy shows Google's page's
+address and takes the code it gives. Its modes are Default, where it asks, Auto Edit and YOLO. Filament's context reaches
 it through its own system prompt channel. On Windows it runs its commands in Windows PowerShell, and Filament judges
 them as PowerShell, in the folder it names. A Gemini CLI connection
 you turned on keeps running as it is set up; its card says Google retired it, and what turning it off does. One that is

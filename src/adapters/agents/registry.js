@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from "node:path";
 
 export const REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
-/** The index's size at most, as t3 caps it. */
+/** The index's size at most. */
 export const REGISTRY_MAX_BYTES = 1024 * 1024;
 /** An icon's size at most. */
 export const ICON_MAX_BYTES = 64 * 1024;
@@ -23,8 +23,11 @@ export const REGISTRY_STALE_MS = 24 * 3600_000;
  * @typedef {{ name: string, version: string, args: string[], env: Record<string, string> }} PackageWay
  */
 /**
- * A program to download for one system: its archive, the command inside it, how it's started, its checksum if said.
- * @typedef {{ archive: string, cmd: string, args: string[], env: Record<string, string>, sha256: string | null }} ProgramWay
+ * A program to download for one system: its archive, the command inside it, how it's started, its checksum if said —
+ * the registry's sha256; a maker's own feed may give a sha512 instead (agy-feed.js), and names itself (`from`) where the
+ * install says whose checksum it checked.
+ * @typedef {{ archive: string, cmd: string, args: string[], env: Record<string, string>, sha256: string | null,
+ *   sha512?: string | null, from?: string }} ProgramWay
  */
 /**
  * An agent of the registry, as checked.
@@ -41,7 +44,7 @@ const VERSION = /^[\w+-](?:[\w.+-]{0,62}[\w+-])?$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const TARGET = /^(darwin|linux|windows)-(aarch64|x86_64)$/;
 const NPM_SPEC = /^((?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*)@([\w.+-]{1,64})$/i;
-// uvx takes `name==version` and `name@version` (a leading v dropped, as t3 reads it).
+// uvx takes `name==version` and `name@version` (a leading v dropped).
 const UV_SPEC = /^([A-Za-z0-9][\w.-]*)(?:==|@)v?([\w.+!-]{1,64})$/;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f]/;
@@ -200,7 +203,7 @@ export function platformTarget(platform, arch) {
  * A text at an https address, at most `max` bytes, read as it comes so a larger one stops early.
  * @param {typeof fetch} get @param {string} url @param {number} max
  */
-async function fetchText(get, url, max) {
+export async function fetchText(get, url, max) {
   const res = await get(url, { signal: AbortSignal.timeout(20_000), redirect: "follow" });
   if (!res.ok) throw new Error(`it answered ${res.status}`);
   if (res.url && new URL(res.url).protocol !== "https:") throw new Error("it was sent on somewhere that isn't https");

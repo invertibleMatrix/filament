@@ -53,6 +53,20 @@
  *   a first of 17,096 said 17,273 input and 15,217 cached): its input beside the cache is what is left of them
  * @property {boolean} [onByDefault]  one of the agents a fresh install turns on where its program is found (`seededOn`):
  *   Claude Code, Codex and Cursor's CLI. The others are added off, Settings → Coding agents' Connect away
+ * @property {string[]} [programs]  the other names its program goes by on another system (`agentKey`): Antigravity's
+ *   `antigravity` off Windows
+ * @property {string[]} [formerPrograms]  the names of the program it ran until an update (`agentKey`), which took
+ *   its account's folder from `home` alone and none of `homeArg`, `folderEnv` and `folderSignIn`: Antigravity's
+ *   `agy_acp_server`, until its card's Update
+ * @property {string} [homeArg]  the option its program takes its account's folder from, where it reads no variable
+ *   (`agentArgs`): Antigravity's `--gemini-dir`
+ * @property {Record<string, string>} [folderEnv]  what an account with a folder of its own also starts with
+ *   (`agentLaunchEnv`): Antigravity keeps such an account's sign-in in its folder only as it does over SSH
+ * @property {string[]} [folderSignIn]  the command that signs an account with a folder of its own in, in a terminal,
+ *   where the agent's own ways can't (`catalogueSignIn`): Antigravity's page can't hand such an account its sign-in, so
+ *   `agy acp --login` shows Google's page's address and takes the code it gives
+ * @property {{ version: string, why: string }} [minVersion]  the version below which Filament's install of it is told
+ *   to update, and why (app/coding-agents.js `outdated`)
  */
 
 // Shipped as upstreams on a fresh install (the agents on by default enabled when their CLI is present), re-detectable
@@ -157,15 +171,18 @@ export const KNOWN_AGENTS = [
   },
   {
     // Google's coding agent (the owner's of 11-10: Google retired Gemini CLI for Antigravity on 06-18, so Google's models
-    // run on Antigravity here, `RETIRED_AGENTS`): the ACP server Google ships in ACP's registry, a program Filament
-    // downloads into its own folder (`install.registry`, its id the registry's: app/coding-agents.js installs, updates and
-    // removes it as the registry's). It names its sign-in ways itself (Google, Gemini Enterprise, a Gemini API key, Agent
-    // Platform) and reads its folder from GEMINI_HOME.
+    // run on Antigravity here, `RETIRED_AGENTS`): Google's agy CLI as an ACP server (`agy acp`, the owner's of 11-22), a
+    // program Filament downloads into its own folder from Google's release feed (agy-feed.js), laid over the registry's
+    // entry (`install.registry`, its id the registry's: app/coding-agents.js installs, updates and removes it as the
+    // registry's). It names its sign-in ways itself (Google, Gemini Enterprise, a Gemini API key, Agent Platform). An
+    // account's folder is its `--gemini-dir`: it reads no GEMINI_HOME, which accounts keep as the folder's name.
     id: "antigravity-acp",
     name: "Antigravity (agent via ACP)",
     prefix: "antigravity",
-    command: "agy_acp_server",
-    args: [],
+    command: "agy",
+    args: ["acp", "--app-data-dir", "antigravity-acp"],
+    programs: ["antigravity"],
+    formerPrograms: ["agy_acp_server"],
     mode: "agent",
     modelSelection: "session",
     install: { registry: "antigravity-acp" },
@@ -173,8 +190,14 @@ export const KNOWN_AGENTS = [
     registry: "antigravity-acp",
     docs: "https://antigravity.google/docs/ide/extensions",
     notes:
-      "Google's ACP server for Antigravity, downloaded from ACP's registry into Filament's own folder (Install on its card). Signs in with Google, Gemini Enterprise, a Gemini API key or Gemini Enterprise Agent Platform: its card offers its own ways. Its models are the ones your plan lists once signed in, each at a thinking level; its modes Default (it asks), Auto Edit and YOLO. On Windows it runs its commands in Windows PowerShell. It has sub-agent tools of its own, which no setting of its turns off. Its harness keeps a program in ~/.gemini/antigravity/bin, whatever its folder.",
+      "Google's Antigravity CLI as an ACP server (agy acp), downloaded from Google's release feed into Filament's own folder (Install on its card; Update when Google ships a newer one). Signs in with Google, Gemini Enterprise, a Gemini API key or Gemini Enterprise Agent Platform: its card offers its own ways; an account added beside the first signs in with Google in a terminal (agy acp --login), its sign-in kept in its own folder. Its models are the ones your plan lists once signed in, each at a thinking level. On Windows it runs its commands in Windows PowerShell. It has sub-agent tools of its own, which no setting of its turns off. Its harness keeps a program in ~/.gemini/antigravity/bin, whatever its folder.",
     home: "GEMINI_HOME",
+    homeArg: "--gemini-dir",
+    // agy 1.5 keeps every folder's Google sign-in in one entry of the system's keyring, unless it takes itself to run
+    // over SSH: then in the folder, where an added account's must be to be its own.
+    folderEnv: { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" },
+    folderSignIn: ["agy", "acp", "--app-data-dir", "antigravity-acp", "--login"],
+    minVersion: { version: "1.5.1", why: "before 1.5.1 it shows Filament only some of your plan's models, and none Google released since" },
     cachedInInput: true,
     account: "Your Google account (or a Gemini API key)",
     guide: {
@@ -453,13 +476,45 @@ export function agentRoute(a, { enabled } = {}) {
 export function agentKey(u) {
   if (u?.type === "codex") return "codex";
   if (u?.type === "cursor-sdk") return "cursor";
-  const cmd = String(u?.acp?.command || "agent")
-    .split(/[\\/]/)
-    .pop()
-    ?.replace(/\.(cmd|exe|bat|ps1|par)$/i, "")
-    .toLowerCase();
+  const cmd = programName(u);
   if (cmd === "cursor-agent") return "cursor";
-  return KNOWN_AGENTS.find((a) => (a.type || "acp") === "acp" && a.command.toLowerCase() === cmd)?.id || cmd || "agent";
+  return (
+    KNOWN_AGENTS.find((a) => (a.type || "acp") === "acp" && [a.command, ...(a.programs || []), ...(a.formerPrograms || [])].some((n) => n.toLowerCase() === cmd))?.id ||
+    cmd ||
+    "agent"
+  );
+}
+/**
+ * An upstream's program by its name alone: its command's file, without its folder or its extension, in lower case.
+ * @param {{ acp?: { command?: string } } | null | undefined} u
+ */
+function programName(u) {
+  return (
+    String(u?.acp?.command || "agent")
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.(cmd|exe|bat|ps1|par)$/i, "")
+      .toLowerCase() || ""
+  );
+}
+/**
+ * The agent of the catalogue an upstream runs, as its program is now (`formerPrograms`): null for one that still runs
+ * the program the agent ran until an update, which reads its folder as it did then — and for any other.
+ * @param {{ type?: string, acp?: { command?: string } } | null | undefined} u
+ * @returns {KnownAgent | null}
+ */
+function currentAgent(u) {
+  const known = KNOWN_AGENTS.find((a) => a.id === agentKey(u)) || null;
+  const cmd = programName(u);
+  return known && !(known.formerPrograms || []).some((n) => n.toLowerCase() === cmd) ? known : null;
+}
+/**
+ * What an account with a folder of its own starts with beside the folder's variable (`folderEnv`); none for any other.
+ * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
+ * @returns {Record<string, string>}
+ */
+function folderVars(u) {
+  return String(u?.acp?.home || "").trim() ? { ...(currentAgent(u)?.folderEnv || {}) } : {};
 }
 /**
  * What drives saw of an upstream's agent beyond what it declares (HarnessV3-ACP AC-D5): whether a turn it cancels
@@ -487,14 +542,15 @@ export function agentHomeVar(u) {
 }
 /**
  * The environment an upstream's agent starts with: its own variables, and its account's folder as the variable its CLI
- * reads (HarnessV3-ACP AC3-7) — the folder wins over a variable of the same name.
+ * reads (HarnessV3-ACP AC3-7) — the folder wins over a variable of the same name — with what such an account also
+ * starts with (`folderEnv`).
  * @param {{ type?: string, acp?: { command?: string, env?: Record<string, unknown>, home?: string } } | null | undefined} u
  * @returns {Record<string, unknown>}
  */
 export function agentLaunchEnv(u) {
   const home = String(u?.acp?.home || "").trim();
   const name = home ? agentHomeVar(u) : null;
-  return { ...(u?.acp?.env || {}), ...(name ? { [name]: home } : {}) };
+  return { ...(u?.acp?.env || {}), ...folderVars(u), ...(name ? { [name]: home } : {}) };
 }
 /**
  * How an agent keeps its accounts (HarnessV3-ACP AC3-7): `folder` — an added account has a folder of its own, read
@@ -525,14 +581,33 @@ export function accountId(u, slug) {
  */
 export function catalogueSignIn(u) {
   const known = KNOWN_AGENTS.find((a) => a.id === agentKey(u));
-  const cmd = known?.signIn;
+  // An account with a folder of its own signs in its own way where the agent has one (`folderSignIn`: Antigravity's).
+  const folder = String(u?.acp?.home || "").trim() ? currentAgent(u)?.folderSignIn : null;
+  const cmd = folder || known?.signIn;
   if (!known || !cmd) return null;
   if (u?.type === "codex") {
     const args = Array.isArray(u.acp?.args) ? u.acp.args : [];
     const at = args.indexOf("app-server");
     return { name: agentName(u), command: u.acp?.command || cmd[0], args: [...(at >= 0 ? args.slice(0, at) : args), ...cmd.slice(1)], env: agentLaunchEnv(u) };
   }
-  return { name: agentName(u), command: cmd[0] === known.command ? u?.acp?.command || cmd[0] : cmd[0], args: cmd.slice(1), env: agentLaunchEnv(u) };
+  return { name: agentName(u), command: cmd[0] === known.command ? u?.acp?.command || cmd[0] : cmd[0], args: [...cmd.slice(1), ...homeArgs(u)], env: agentLaunchEnv(u) };
+}
+/**
+ * Whether an account signs in by the catalogue's command alone (`folderSignIn`): one with a folder of its own, of an
+ * agent whose own ways that open a page can't reach such an account — Antigravity's refuse, saying it runs over SSH.
+ * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
+ */
+export const signsInInTerminal = (u) => !!(String(u?.acp?.home || "").trim() && currentAgent(u)?.folderSignIn);
+/**
+ * The account's folder as its program takes it on its command line (`homeArg`), where it reads no variable for it;
+ * none for an account with no folder, and for any other agent.
+ * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
+ * @returns {string[]}
+ */
+function homeArgs(u) {
+  const home = String(u?.acp?.home || "").trim();
+  const opt = home ? currentAgent(u)?.homeArg : null;
+  return opt ? [opt, home] : [];
 }
 /**
  * A command as a line to copy into a terminal on `platform` (HarnessV3-ACP AC3-7), its variables set for it alone:
@@ -569,7 +644,7 @@ export function signInLine(u, platform) {
   if (!own) return null;
   const home = String(u?.acp?.home || "").trim();
   const name = home ? agentHomeVar(u) : null;
-  return commandLine([own.command, ...own.args], name ? { [name]: home } : {}, platform);
+  return commandLine([own.command, ...own.args], { ...folderVars(u), ...(name ? { [name]: home } : {}) }, platform);
 }
 /**
  * Whether an agent can switch its built-in tools off and work with Filament's hands (`acp.clientBridge` native): its
@@ -603,11 +678,14 @@ export function signInAdvice(u, platform) {
   return `Sign in under Settings → Coding agents in Filament's harness${line ? `, or run \`${line}\` in a terminal` : ""}`;
 }
 // The arguments an ACP agent is started with. Only Cursor's CLI needs the `acp` subcommand when nothing is configured;
-// adapters such as claude-agent-acp take no arguments and reject unknown ones.
-/** @param {{ command?: string, args?: string[] }} [acp] */
+// adapters such as claude-agent-acp take no arguments and reject unknown ones. An account's folder follows where its
+// program takes it on its command line (`homeArg`: Antigravity's `--gemini-dir`), never kept in its arguments: an
+// account added copies them, and an update replaces them.
+/** @param {{ command?: string, args?: string[], home?: string }} [acp] */
 export function agentArgs(acp = {}) {
-  if (Array.isArray(acp.args) && acp.args.length) return acp.args;
-  return /^(agent|cursor-agent)$/i.test(String(acp.command || "agent")) ? ["acp"] : [];
+  const own = Array.isArray(acp.args) && acp.args.length ? acp.args : /^(agent|cursor-agent)$/i.test(String(acp.command || "agent")) ? ["acp"] : [];
+  const folder = homeArgs({ acp });
+  return folder.length ? [...own, ...folder] : own;
 }
 
 // Known Qoder model ids (the live list from the account is preferred; this is the fallback for the picker).

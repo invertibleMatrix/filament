@@ -1,17 +1,19 @@
 // @ts-check
 // Google's coding agent is Antigravity (the owner's of 11-10: "Google had depricated gemini cli with antigravity so remove
-// gemini cli and only use antigravity as coding agent for google's models"): the ACP server Google ships in ACP's
-// registry, which Filament downloads into its own folder, named by its own prefix and reading its folder from
-// GEMINI_HOME. Gemini CLI leaves the catalogue, detection and the templates; the one an install seeded, still off and
-// holding nothing of the person's, goes as the settings are read, with its routes, which would hold `gemini/*`; one
-// turned on stays as it is, and a write never takes one.
+// gemini cli and only use antigravity as coding agent for google's models"): since 11-22 Google's agy CLI as an ACP
+// server, which Filament downloads into its own folder from Google's release feed (test/agy-feed.test.js), named by its
+// own prefix, an account's folder its `--gemini-dir`. Gemini CLI leaves the catalogue, detection and the templates; the
+// one an install seeded, still off and holding nothing of the person's, goes as the settings are read, with its routes,
+// which would hold `gemini/*`; one turned on stays as it is, and a write never takes one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentHomeVar, agentKey, installCommand, viaRegistry } from "../src/core/catalogues.js";
+import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentArgs, agentHomeVar, agentKey, agentLaunchEnv, catalogueSignIn, installCommand, signInLine, signsInInTerminal, viaRegistry } from "../src/core/catalogues.js";
+import { CLIENT_INFO } from "../src/adapters/agents/acp/process.js";
+import { AcpBridge } from "../src/adapters/agents/acp/bridge.js";
 import { detectAgents } from "../src/adapters/agents/acp/detect.js";
 import { TEMPLATES } from "../src/services/config/templates.js";
 import { defaultConfig, loadConfig, normalizeConfig, withoutRetiredAgents } from "../src/services/config/store.js";
@@ -43,6 +45,67 @@ test("the catalogue: Antigravity in Gemini CLI's place, installed ACP's registry
   // No PATH holds it, and no template starts it by its name: Settings → Coding agents downloads and connects it.
   assert.equal(detectAgents().some((x) => x.id === "antigravity-acp" || x.id === "gemini"), false);
   assert.equal(TEMPLATES.some((t) => /antigravity|gemini-via-acp/.test(t.id)), false, TEMPLATES.map((t) => t.id).join(", "));
+});
+
+// (fails before: yes — the owner's of 11-22: Filament ran the registry's agy_acp_server, which read GEMINI_HOME; Google's
+// agy reads none, keeps every folder's Google sign-in in one keyring entry, and signs a folder's in only in a terminal)
+test("agy: known by each of its names; an account's folder is its --gemini-dir, its sign-in kept there, signed in in a terminal; the Default account and the older server as before", () => {
+  const win = "C:\\Users\\x\\AppData\\Roaming\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
+  const mac = "/Users/x/Library/Application Support/Filament/agents/installed/antigravity-acp/1.5.14/program/antigravity";
+  const old = "C:\\Users\\x\\AppData\\Roaming\\Filament\\agents\\installed\\antigravity-acp\\1.4.5\\program\\agy_acp_server.exe";
+  for (const command of [win, mac, old]) assert.equal(agentKey({ type: "acp", acp: { command } }), "antigravity-acp", command);
+  const args = ["acp", "--app-data-dir", "antigravity-acp"];
+  const env = { AGY_CLI_DISABLE_AUTO_UPDATE: "1" };
+  const home = "C:\\Users\\x\\AppData\\Roaming\\Filament\\accounts\\antigravity-acp-work";
+  const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", acp: { command: win, args, env } };
+  const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home } };
+  // The Default account: ~/.gemini, Google's page by its own ways, no terminal line.
+  assert.deepEqual([agentArgs(base.acp), agentLaunchEnv(base), catalogueSignIn(base), signInLine(base, "win32"), signsInInTerminal(base)], [args, env, null, null, false]);
+  // An account of its own: its folder on the command line, its sign-in kept there, signed in by `agy acp --login`.
+  const ssh = { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" };
+  assert.deepEqual(agentArgs(work.acp), [...args, "--gemini-dir", home]);
+  assert.deepEqual(agentLaunchEnv(work), { ...env, ...ssh, GEMINI_HOME: home });
+  assert.deepEqual(catalogueSignIn(work), { name: "Antigravity", command: win, args: [...args, "--login", "--gemini-dir", home], env: { ...env, ...ssh, GEMINI_HOME: home } });
+  assert.equal(signsInInTerminal(work), true);
+  assert.equal(
+    signInLine(work, "win32"),
+    `$env:SSH_CONNECTION='127.0.0.1 0 127.0.0.1 0'; $env:GEMINI_HOME='${home}'; ${win} acp --app-data-dir antigravity-acp --login --gemini-dir ${home}; Remove-Item Env:SSH_CONNECTION; Remove-Item Env:GEMINI_HOME`,
+  );
+  assert.deepEqual(agentArgs({ ...work.acp, args: [] }), ["--gemini-dir", home], "its folder follows whatever arguments it has");
+  // The older server, until its card's Update: its folder by GEMINI_HOME alone, as it read it.
+  const before = { ...work, acp: { command: old, args: [], env: {}, home } };
+  assert.deepEqual([agentArgs(before.acp), agentLaunchEnv(before), catalogueSignIn(before), signsInInTerminal(before)], [[], { GEMINI_HOME: home }, null, false]);
+  // Any other agent with a folder of its own is as it was.
+  const claude = { id: "claude-code-work", type: "acp", acp: { command: "claude-agent-acp", args: [], home: "/x/claude-work" } };
+  assert.deepEqual([agentArgs(claude.acp), agentLaunchEnv(claude)], [[], { CLAUDE_CONFIG_DIR: "/x/claude-work" }]);
+});
+
+// (fails before: yes — an added account's card offered Google's page, which agy refuses for a folder's sign-in: "No
+// browser is available here (this is a remote (SSH) session…)")
+test("an added account's ways to sign in: agy acp --login in a terminal, its pages not offered; the Default account keeps Google's page", async () => {
+  const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
+  const args = ["acp", "--app-data-dir", "antigravity-acp"];
+  const home = "C:\\Filament\\accounts\\antigravity-acp-work";
+  const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", acp: { command: win, args, env: {} } };
+  const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home } };
+  // Its four ways as agy 1.5.14 names them, none with a type: it carries each out itself.
+  const ways = ["oauth-personal", "oauth-business", "gemini-api-key", "agent-platform"].map((id) => ({ kind: "agent", id, name: id, description: "" }));
+  const bridge = new AcpBridge(/** @type {any} */ ({ log: () => {} }));
+  try {
+    for (const u of [base, work]) bridge.profiles.put(u.id, /** @type {any} */ ({ ways }));
+    assert.deepEqual((await bridge.signInWays(base)).map((w) => [w.id, w.kind]), ways.map((w) => [w.id, "browser"]));
+    const own = await bridge.signInWays(work);
+    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["cli", "terminal"]]);
+    const cli = /** @type {any} */ (own[0]);
+    assert.deepEqual([cli.command, cli.args, cli.env.SSH_CONNECTION], [win, [...args, "--login", "--gemini-dir", home], "127.0.0.1 0 127.0.0.1 0"]);
+  } finally {
+    bridge.shutdown();
+  }
+});
+
+test("Filament tells an agent its own version as it starts, package.json's", () => {
+  const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
+  assert.deepEqual(CLIENT_INFO, { name: "Filament", version: pkg.version });
 });
 
 // (fails before: yes — every install kept the Gemini CLI it seeded, off, with its route on, holding `gemini/*`; then, the

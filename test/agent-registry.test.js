@@ -316,7 +316,7 @@ describe("ACP's registry as read (adapters/agents/registry.js)", () => {
 });
 
 describe("Filament's installs of the registry's agents (adapters/agents/installs.js)", () => {
-  test("an npm package's command, told as t3 tells it", () => {
+  test("an npm package's command, told from its bin", () => {
     assert.equal(npmCommandName("x", "@scope/tool", "cli.js"), "tool");
     // (fails before: no — a guard the mutation pass asked for: no lone script's package had a name that isn't a file's)
     assert.equal(npmCommandName("x", "tool.", "cli.js"), null);
@@ -423,6 +423,28 @@ describe("Filament's installs of the registry's agents (adapters/agents/installs
       assert.deepEqual([readFileSync(join(r.folder, "program", exe("raw-agent-amd64")), "utf8"), readdirSync(r.folder)], ["MZ the raw agent", ["program"]]);
       assert.equal(t.ins.settle(r).command, join(r.folder, "program", exe("raw-agent-amd64")));
       assert.deepEqual(t.ins.all().map((x) => x.id).sort(), ["raw-agent", "zip-agent"]);
+    } finally {
+      rmSync(t.dir, { recursive: true, force: true });
+    }
+  });
+
+  // (fails before: yes — the owner's of 11-22: Antigravity comes from Google's own release feed, which gives a SHA-512,
+  // and only a registry's sha256 was ever checked)
+  test("a program from a maker's feed is checked against its SHA-512 and says whose checksum it is; a wrong one is refused in those words", async () => {
+    const t = programs();
+    try {
+      const raw = Buffer.from("MZ Google's agent");
+      const sha512 = createHash("sha512").update(raw).digest("hex");
+      t.served.set("https://example.test/cli_windows_x64.exe", raw);
+      const p = t.planOf("feed-agent", { archive: "https://example.test/cli_windows_x64.exe", cmd: exe("agy"), sha512, from: "Google's release feed" });
+      await t.download(p);
+      assert.equal(readFileSync(join(p.folder, "program", exe("agy")), "utf8"), "MZ Google's agent");
+      assert.ok(t.said.join("").includes("Its checksum is the one Google's release feed gives."), t.said.join(""));
+      const wrong = "f".repeat(128);
+      await assert.rejects(t.download(t.planOf("feed-agent", { archive: "https://example.test/cli_windows_x64.exe", cmd: exe("agy"), sha512: wrong, from: "Google's release feed" })), {
+        message: `its checksum isn't the one Google's release feed gives (sha512 ${sha512.slice(0, 12)}…, not ${wrong.slice(0, 12)}…): nothing was installed`,
+      });
+      assert.equal(existsSync(join(p.folder, "program", exe("agy"))), false, "the program refused is not there");
     } finally {
       rmSync(t.dir, { recursive: true, force: true });
     }
@@ -1452,6 +1474,32 @@ describe("Settings → Coding agents one step at a time, over stand-ins (app/cod
     // Removed from this computer as the registry's are: its upstream and route go.
     await section.remove("antigravity-acp");
     assert.deepEqual([s.cfg().upstreams.map((/** @type {any} */ x) => x.id), s.cfg().routes], [["gemini"], []]);
+  });
+
+  // (fails before: yes — the owner's of 11-22: the 1.4.5 Filament had installed showed only Gemini 3.8 Flash, a newer
+  // Antigravity sat behind a menu's Update, and nothing said why it mattered)
+  test("Antigravity older than 1.5.1 says why on its card, beside its Update; the update moves every account to agy, its folder kept", async () => {
+    const program = { archive: "https://example.test/cli_windows_x64.exe", cmd: "agy.exe", args: ["acp", "--app-data-dir", "antigravity-acp"], env: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" }, sha256: null, sha512: "a".repeat(128), from: "Google's release feed" };
+    const old = join(tmpdir(), "agy_acp_server.exe");
+    const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", enabled: true, acp: { command: old, args: [], env: {} } };
+    const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home: join(tmpdir(), "accounts", "antigravity-acp-work") } };
+    const { section, s } = stand({ upstreams: [base, work], agents: [agentOf("antigravity-acp", "1.5.14", { name: "Google Antigravity", binary: { [String(TARGET)]: program } })] });
+    s.receipts.set("antigravity-acp", { id: "antigravity-acp", version: "1.4.5", way: "binary", package: "https://example.test/agy.zip", command: process.execPath, args: [], env: {}, at: 1 });
+    const e = s.entry("antigravity-acp");
+    assert.deepEqual([e.upstreams, e.update, e.outdated], [["antigravity-acp", "antigravity-acp-work"], "1.5.14", "Antigravity 1.4.5 is older than 1.5.1: before 1.5.1 it shows Filament only some of your plan's models, and none Google released since"]);
+    const agy = join(tmpdir(), "agy.exe");
+    s.next.set("antigravity-acp", { id: "antigravity-acp", version: "1.5.14", way: "binary", package: program.archive, command: agy, args: program.args, env: program.env, at: 2 });
+    const r = /** @type {any} */ (await section.install("antigravity-acp"));
+    await /** @type {any} */ (s.tasks.get(r.installing.terminal))({ say: () => {}, signal: new AbortController().signal });
+    /** @type {any} */ (s.terminals.get(r.installing.terminal))(0, false);
+    for (let i = 0; i < 5; i++) await settle();
+    const ups = s.cfg().upstreams.map((/** @type {any} */ u) => [u.id, u.acp.command, u.acp.args, u.acp.env, u.acp.home || null]);
+    assert.deepEqual(ups, [
+      ["antigravity-acp", agy, ["acp", "--app-data-dir", "antigravity-acp"], { AGY_CLI_DISABLE_AUTO_UPDATE: "1" }, null],
+      ["antigravity-acp-work", agy, ["acp", "--app-data-dir", "antigravity-acp"], { AGY_CLI_DISABLE_AUTO_UPDATE: "1" }, work.acp.home],
+    ]);
+    const now = s.entry("antigravity-acp");
+    assert.deepEqual([now.installed?.version, now.update, now.outdated, now.upstreams], ["1.5.14", null, undefined, ["antigravity-acp", "antigravity-acp-work"]]);
   });
 
   // (fails before: yes — the Fable 5.2 re-read's finding 7: an entry said nothing of whether its connection leaves the

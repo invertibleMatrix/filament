@@ -624,7 +624,7 @@ export const ACP = group(
       "string",
       "agent",
       "Executable the agent runs as: it speaks ACP on stdio, or Codex's app-server protocol for a `codex` upstream.",
-      "`agent` is Cursor CLI (Filament finds its real binary on Windows). Other ACP agents: `claude-agent-acp` (Claude Code), `qodercli`, Antigravity's `agy_acp_server`… anything that implements the protocol. A `codex` upstream runs `codex`.",
+      "`agent` is Cursor CLI (Filament finds its real binary on Windows). Other ACP agents: `claude-agent-acp` (Claude Code), `qodercli`, Antigravity's `agy` (`antigravity` off Windows)… anything that implements the protocol. A `codex` upstream runs `codex`.",
     ),
     args: p(
       "array",

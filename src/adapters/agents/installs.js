@@ -133,7 +133,7 @@ function linkOut(root) {
 }
 
 /**
- * The command an npm package's `bin` names for the agent, as t3 finds it: the package's own name (without its scope)
+ * The command an npm package's `bin` names for the agent: the package's own name (without its scope)
  * for a lone script; a lone command; else the one named as the package or as the agent; else the first, where all run
  * one file. Null where none can be told.
  * @param {string} id @param {string} pkg @param {unknown} bin @returns {string | null}
@@ -214,8 +214,8 @@ export function createInstalls({ dir, platform = process.platform, arch = proces
 
   /**
    * A download fetched into `file`, over https only — each redirect followed by hand and checked — at most `maxBytes`,
-   * its progress said as it comes. Answers its sha256.
-   * @param {string} url @param {string} file @param {TaskIo} io @returns {Promise<string>}
+   * its progress said as it comes. Answers its sha256 and its sha512, in hex.
+   * @param {string} url @param {string} file @param {TaskIo} io @returns {Promise<{ sha256: string, sha512: string }>}
    */
   async function fetchTo(url, file, { say, signal }) {
     let at = url;
@@ -242,6 +242,7 @@ export function createInstalls({ dir, platform = process.platform, arch = proces
     const reader = res.body?.getReader();
     if (!reader) throw new Error("its address sent nothing");
     const hash = createHash("sha256");
+    const hash512 = createHash("sha512");
     const out = await open(file, "w");
     let size = 0;
     let saidAt = 0;
@@ -258,6 +259,7 @@ export function createInstalls({ dir, platform = process.platform, arch = proces
           throw tooBig;
         }
         hash.update(value);
+        hash512.update(value);
         await out.write(value);
         if (Date.now() - saidAt > 250) {
           saidAt = Date.now();
@@ -268,12 +270,13 @@ export function createInstalls({ dir, platform = process.platform, arch = proces
       await out.close();
     }
     say(`${progress()}\r\n`);
-    return hash.digest("hex");
+    return { sha256: hash.digest("hex"), sha512: hash512.digest("hex") };
   }
 
   /**
    * A program's download (`plan`'s `binary` way), run as its install terminal's task: fetched (`fetchTo`), its checksum
-   * checked where the registry gives one, each of its entries checked to unpack inside `<folder>/program` and then
+   * checked where the registry gives one — or the maker's feed, a sha512 (agy-feed.js) —, each of its entries checked
+   * to unpack inside `<folder>/program` and then
    * unpacked there — a program that comes as it is copied there under its command's name — and its command found where
    * the registry names it. Throws, in words, at the first thing wrong; the version's folder goes when the install ends
    * so (`dropOthers`).
@@ -293,9 +296,12 @@ export function createInstalls({ dir, platform = process.platform, arch = proces
     try {
       say(`Downloading ${program.archive}\r\n`);
       const sha = await fetchTo(program.archive, file, io);
-      if (program.sha256 && sha !== program.sha256)
-        throw new Error(`its checksum isn't the one ACP's registry gives (sha256 ${sha.slice(0, 12)}…, not ${program.sha256.slice(0, 12)}…): nothing was installed`);
-      say(program.sha256 ? "Its checksum is the one ACP's registry gives.\r\n" : "ACP's registry gives no checksum for it: it isn't checked.\r\n");
+      const from = program.from || "ACP's registry";
+      if (program.sha512 && sha.sha512 !== program.sha512)
+        throw new Error(`its checksum isn't the one ${from} gives (sha512 ${sha.sha512.slice(0, 12)}…, not ${program.sha512.slice(0, 12)}…): nothing was installed`);
+      if (program.sha256 && sha.sha256 !== program.sha256)
+        throw new Error(`its checksum isn't the one ${from} gives (sha256 ${sha.sha256.slice(0, 12)}…, not ${program.sha256.slice(0, 12)}…): nothing was installed`);
+      say(program.sha512 || program.sha256 ? `Its checksum is the one ${from} gives.\r\n` : `${from} gives no checksum for it: it isn't checked.\r\n`);
       if (!tool) {
         mkdirSync(dirname(command), { recursive: true });
         await rename(file, command);

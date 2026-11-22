@@ -2,10 +2,24 @@
 // ACP's agent process: the JSON-RPC 2.0 peer every agent process is (../agent-process.js: the command, the
 // environment, requests with timeouts, the agent's own requests, notifications, the kill), with ACP's handshake and
 // the client capabilities Filament declares. The bridge keeps the terminals an agent runs through Filament on it.
+import { readFileSync } from "node:fs";
 import { RpcProcess } from "../agent-process.js";
 
 const PROTOCOL_VERSION = 1;
-const CLIENT_INFO = { name: "Filament", version: "0.1" };
+/**
+ * Who Filament tells an agent it is: its name, and its version as package.json says it (it ships beside src/ in every
+ * build) — an agent may offer a client it knows by name and version models it offers no other.
+ */
+export const CLIENT_INFO = Object.freeze({
+  name: "Filament",
+  version: (() => {
+    try {
+      return String(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8")).version || "0.0.0");
+    } catch {
+      return "0.0.0";
+    }
+  })(),
+});
 
 // What Filament tells an agent it can do. File and terminal services are advertised only for upstreams whose
 // clientBridge is "full": the agent then delegates reads, writes and commands, which Filament hands to the chat

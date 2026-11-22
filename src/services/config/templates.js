@@ -71,7 +71,7 @@ export const TEMPLATES = [
     },
   },
   // One template per known coding agent (Cursor, Qoder, Claude Code over ACP; Codex over its app-server): upstream +
-  // route. Not one ACP's registry installs (Antigravity): Settings → Coding agents downloads and connects it.
+  // route. Not one Filament installs itself (Antigravity): Settings → Coding agents downloads and connects it.
   ...KNOWN_AGENTS.filter((a) => !viaRegistry(a)).map((a) => ({
     id: a.type === "codex" ? a.id : `${a.id}-via-acp`,
     name: `${a.name.replace(" (agent via ACP)", "")} as a model (via its CLI, ${a.type === "codex" ? "app-server" : "ACP"})`,

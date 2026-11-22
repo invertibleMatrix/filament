@@ -38,6 +38,7 @@ import { changeConfig, failure } from "./config-change.js";
  * - `version`: the registry's; `installed`: Filament's own install of it; `runs`: the version of an agent of the
  *   catalogue that npm installs, as installed here — what its next start runs; `update`: the registry's newer version,
  *   of an agent Filament installed or of one of the catalogue whose npm package the registry names (HarnessV3-ACP AF3);
+ *   `outdated`: why Filament's install of it is to be updated, where it is older than the catalogue's `minVersion`;
  * - `install`: how Filament installs it — `npm` and `script` for the whole computer, `npx`, `uvx` and `binary` (a
  *   program it downloads) into Filament's own folder — and the installer it lacks (`needs`); `download`: a program to
  *   download for this computer that Filament can't install (its command outside its download), with the name it runs
@@ -52,7 +53,7 @@ import { changeConfig, failure } from "./config-change.js";
  *   retired?: { leaves: boolean },
  *   from: "filament" | "registry" | "config", mark: string | null, version: string | null,
  *   state: "connected" | "off" | "ready" | "missing", upstreams: string[], primary: string | null,
- *   installed: { version: string, at: number } | null, runs: string | null, update: string | null,
+ *   installed: { version: string, at: number } | null, runs: string | null, update: string | null, outdated?: string,
  *   install: { way: "npm" | "script" | "npx" | "uvx" | "binary", line: string, needs: "npm" | "uv" | null } | null,
  *   download: { url: string, program: string } | null, unavailable: boolean, gone: boolean,
  *   installing: Installing | null, lastInstall: InstallEnd | null,
@@ -70,7 +71,7 @@ const isOn = (u) => u.enabled !== false;
  *   config: import("../core/ports.js").ConfigStore,
  *   destinationFor: (u: any) => any,
  *   terminal: { create: (o: any) => any, kill: (id: string) => boolean },
- *   registry: ReturnType<typeof import("../adapters/agents/registry.js").createRegistry>,
+ *   registry: ReturnType<typeof import("../adapters/agents/agy-feed.js").withAgyFeed>,
  *   installs: ReturnType<typeof import("../adapters/agents/installs.js").createInstalls>,
  *   models: { askAgent: (id: string) => Promise<void>, listed: (id: string) => { count: number, at: number } | null,
  *     discoveryOf: (id: string) => { asking: boolean, error?: string } | null },
@@ -153,12 +154,19 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
 
   /**
    * An agent of the catalogue. Where npm installs it and the registry names its package, a newer version there is its
-   * update (HarnessV3-ACP AF3), installed at that version. One ACP's registry installs (`viaRegistry`: Antigravity) is
-   * its registry entry in its install, its update and its removal, under the catalogue's name, words and docs.
+   * update (HarnessV3-ACP AF3), installed at that version. One Filament installs itself (`viaRegistry`: Antigravity, its entry
+   * Google's feed's, adapters/agents/agy-feed.js) is its registry entry in its install, its update and its removal,
+   * under the catalogue's name, words and docs; one older than the catalogue's `minVersion` says why on its card.
    * @param {any} a @param {any[]} ups @param {RegistryAgent | null} r @param {{ npm: boolean, uv: boolean }} tools @returns {Entry}
    */
   function fromCatalogue(a, ups, r, tools) {
-    if (viaRegistry(a)) return { ...fromRegistry(a.id, r, installs.receipt(a.id), ups, tools), name: agentTitle({ id: a.id, name: a.name }), about: a.about, docs: a.docs, from: "filament" };
+    if (viaRegistry(a)) {
+      const e = fromRegistry(a.id, r, installs.receipt(a.id), ups, tools);
+      // Older than the version the catalogue holds it to: why it is to be updated, which its card says beside Update.
+      const min = a.minVersion;
+      const outdated = min && e.installed && newerVersion(min.version, e.installed.version) ? `${agentTitle(a)} ${e.installed.version} is older than ${min.version}: ${min.why}` : null;
+      return { ...e, name: agentTitle({ id: a.id, name: a.name }), about: a.about, docs: a.docs, from: "filament", ...(outdated ? { outdated } : {}) };
+    }
     const here = catalogueInstalled(a);
     const way = "npm" in a.install ? "npm" : "script";
     const shared = common(a.id, ups);
@@ -616,9 +624,10 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
     await registry.refresh();
     publish("registry");
   };
-  /** The registry read again when the section opens on a copy older than a day (or none). */
+  /** The registry read again when the section opens on a copy older than a day (or none) — Google's feed for Antigravity on one older than an hour. */
   const refreshIfStale = () => {
-    if (registry.stale() && !registry.view().asking) void refreshRegistry();
+    if (registry.stale() && !registry.view().asking)
+      void registry.refresh({ staleOnly: true }).then(() => publish("registry"));
   };
 
   /** The server's stop: every install under way stops, and its end is not followed. */

@@ -12,7 +12,7 @@
  *   retired?: { leaves: boolean },
  *   from: "filament" | "registry" | "config", mark: string | null, version: string | null,
  *   state: "connected" | "off" | "ready" | "missing", upstreams: string[], primary: string | null,
- *   installed: { version: string, at: number } | null, runs: string | null, update: string | null,
+ *   installed: { version: string, at: number } | null, runs: string | null, update: string | null, outdated?: string,
  *   install: { way: "npm" | "script" | "npx" | "uvx" | "binary", line: string, needs: "npm" | "uv" | null } | null,
  *   download: { url: string, program: string } | null, unavailable: boolean, gone: boolean,
  *   installing: { terminal: string, line: string, at: number, version: string | null } | null,
