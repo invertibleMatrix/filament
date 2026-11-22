@@ -406,7 +406,8 @@ export const TEST_ENVIRONMENT = async (root) => ({
  * earlier instance left behind (a restart test); `keep` makes `stop()` leave the dir for that next instance.
  * `environment` is the capture the loop and the New Task board use: the fixed TEST_ENVIRONMENT by default, null for
  * the machine's real one. `overrides`: more of the app's own (a fake SDK's loader, say); an agent's sign-in is read by
- * a stand-in that can't tell (`signInOf`) unless a test hands in its own, so no agent's real CLI runs; no Chrome is found
+ * a stand-in that can't tell (`signInOf`) unless a test hands in its own, so no agent's real CLI runs; Antigravity's
+ * Google sign-in by one that finds none (`agyQuota`), so neither the machine's sign-in nor Google is reached; no Chrome is found
  * on the machine (`findChrome`), so the agent's browser is the app's a test links in, or none. `onShutdown`
  * replaces the process exit a stop asked for over the API ends with (`POST /api/shutdown`): the app has stopped itself
  * by then.
@@ -463,7 +464,7 @@ export async function startApp({
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
   // A sub-agent that changes files starts at its launch, as before the card that holds it while Parallelize tasks is off
   // (the owner's of 11-14): a test of the card passes `overrides: { holdWriters: true }`.
-  const app = createApp(/** @type {any} */ ({ dataDir, overrides: { port: 0, signInOf: async () => ({ signedIn: null, identity: null }), findChrome: () => "", holdWriters: false, ...(environment ? { environment } : {}), ...overrides }, ...(onShutdown ? { onShutdown } : {}), supervisor }));
+  const app = createApp(/** @type {any} */ ({ dataDir, overrides: { port: 0, signInOf: async () => ({ signedIn: null, identity: null }), findChrome: () => "", holdWriters: false, ...(environment ? { environment } : {}), ...overrides, agyQuota: { signIn: async () => null, .../** @type {any} */ (overrides.agyQuota) } }, ...(onShutdown ? { onShutdown } : {}), supervisor }));
   const started = await app.start();
   const { port } = started;
   const url = `http://127.0.0.1:${port}`;

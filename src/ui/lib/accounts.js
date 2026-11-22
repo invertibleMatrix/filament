@@ -337,11 +337,18 @@ export const checkWords = (r) =>
       ? "Ask Cursor who owns the key, and for its models, now"
       : r.agent === "claude-code"
         ? "Ask Claude who it runs as, how much of its plan is used and its models now"
-        : "Ask the agent who it runs as, and for its models, now — it starts if it isn't running; its plan's windows come with its turns";
+        : r.agent === "antigravity-acp"
+          ? "Ask Google how much of Antigravity's plan is left, with Antigravity's own sign-in, now"
+          : "Ask the agent who it runs as, and for its models, now — it starts if it isn't running; its plan's windows come with its turns";
 
-/** Why no window shows yet: Codex is asked; any other agent reports them as it works. @param {AgentRow} r */
+/**
+ * Why no window shows yet: Codex is asked; Antigravity's are Google's, read after its turns; any other agent reports
+ * them as it works. @param {AgentRow} r
+ */
 export const notYetWords = (r) =>
-  r.type === "codex" ? "Codex hasn't reported its plan's windows yet: Check now asks it." : "The agent reports its plan's windows as it works: they show after its next turn.";
+  r.type === "codex" ? "Codex hasn't reported its plan's windows yet: Check now asks it."
+  : r.agent === "antigravity-acp" ? "Antigravity's plan's quota is read from Google after its turns: Check now reads it."
+  : "The agent reports its plan's windows as it works: they show after its next turn.";
 
 /**
  * Whether someone is signed in to an account as nobody said whom (services/agent-accounts.js `signedIn`: a sign-in

@@ -24,6 +24,7 @@ import { detectHousekeeping, makeTitle, makeSummary } from "./housekeeping.js";
 import { requestWasAborted } from "../services/health.js";
 import { agentOwn, observeAgentStart, observeCountedModel } from "../services/token-calib.js";
 import { agentCause, classifyFailure, saysPlanRefused, saysSignedOut, thrashWords } from "../adapters/agents/acp/failures.js";
+import { meteredApart } from "../core/agent-limits.js";
 import { isWall, wallWords } from "../core/provider-cause.js";
 import { worded } from "../core/failure.js";
 import { houseAuth } from "../services/house.js";
@@ -3382,7 +3383,7 @@ export function createAcpTurn(deps) {
         // What the failure says of the agent's account (HarnessV3-TaskGraph-v2 TG2-D54), read with what its plan's
         // windows say now: a sub-agent's run carries it to its lead, and a wall holds the agent as one that cannot serve.
         const account = aborted || ownCycle ? null : deps.agentAccount?.(upstream.id) ?? null;
-        const cause = aborted || ownCycle ? null : agentCause(e, account);
+        const cause = aborted || ownCycle ? null : agentCause(e, account, modelId);
         // A sign-in the agent asks for says nobody is signed in there (app/agent-logins.js `turnSaid`); an allowance used
         // up, or a session or file it may not open, says nothing of it.
         if (!aborted && !ownCycle && saysSignedOut(e)) deps.agentSignIn?.(upstream.id, false, String(failed));
@@ -3422,8 +3423,11 @@ export function createAcpTurn(deps) {
           }
         }
         // An agent whose account cannot serve is held as such (TG2-D54): the pool skips it until its window resets, a
-        // turn there succeeds, or it is fixed. Held with whom it said it runs as: only another sign-in is a fix.
-        if (cause && isWall(cause)) {
+        // turn there succeeds, or it is fixed. Held with whom it said it runs as: only another sign-in is a fix. An
+        // allowance used up on a model its plan meters apart (Antigravity's groups) is that group's: the agent still
+        // serves its other models, and is not held.
+        if (cause?.kind === "out" && meteredApart(account, modelId)) said.push(`health: ${upstream.id} not held: its plan meters ${modelId} apart, and its other models may still have room`);
+        else if (cause && isWall(cause)) {
           const w = health.noteWall(upstream.id, { kind: cause.kind === "out" ? "out" : "account", said: String(failed), status: null, resets: cause.resets, as: account?.identity ?? null });
           said.push(`health: ${wallWords(w, upstream.id)}`);
           log("warn", `${rec.id} health: ${wallWords(w, upstream.id)}`);

@@ -912,7 +912,19 @@ Google's page's address and takes the code it gives, or with a Gemini API key or
 account offers it, Auto. Filament's own tools reach it over HTTP, and what you type while it works goes in at once
 (Steering, under A coding agent in the harness). Filament's context reaches
 it through its own system prompt channel. On Windows it runs its commands in Windows PowerShell, and Filament judges
-them as PowerShell, in the folder it names. A Gemini CLI connection
+them as PowerShell, in the folder it names.
+
+Antigravity's plan quota shows as other agents' plan windows do (the Account chip, Settings → Coding agents, Home →
+Health), with the plan's tier agy names. agy tells Filament none of it, so Filament reads it from Google's quota
+service as agy's own `/usage` does, with the Google sign-in agy keeps for the account: an added account's in its
+folder, the Default account's in the system's keyring (Windows' Credential Manager, the macOS keychain, the Secret
+Service on Linux). Filament only reads that sign-in and sends it to Google alone; one that has expired is renewed by
+agy as it next runs. The quota is read again at a turn's end and while a long one runs, about every ten minutes, and
+at once with **Check now**. Each group of
+models has a weekly window of its own (Claude and GPT share one, Gemini has its own): a spent group stops its own
+models, and the other group's still have room. A Gemini API key or Agent Platform has no plan's quota to show.
+
+A Gemini CLI connection
 you turned on keeps running as it is set up; its card says Google retired it, and what turning it off does. One that is
 off leaves your settings, with its route, the next time Filament starts — but only as a fresh install added it. Any
 setting you made on it (its program or arguments, a variable, an MCP server, a permission policy, a rule, a model name,
@@ -7105,7 +7117,7 @@ The composer holds small **instruments**, each a live figure that opens a popove
   Filament's copy, and the agent starts a fresh session from it). **How earlier turns are kept** opens the sheet with
   the rest.
 - **Account** (first in the typing row, in a coding agent's chat) — the account the chat runs on and its plan's
-  windows, and the agent's other accounts with theirs. **Check now** reads them all again at once: the one shown and
+  windows (Antigravity's are its model groups', from Google), and the agent's other accounts with theirs. **Check now** reads them all again at once: the one shown and
   each other account of that agent, so your work and your personal sign-ins are both current. An account's **Check
   now** (its ↻ under Settings → Coding agents too) also asks the agent for its models again: a model released since
   shows in the picker, and the open chat's Context popover reads its window again, at once.

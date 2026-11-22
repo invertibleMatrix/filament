@@ -130,7 +130,8 @@
  * @property {(upstreamId: string, sent: string, tokens: number) => void} [noteOutputCeiling]
  *   keeps the most a model may write at an upstream, as the upstream said refusing more (models-cache.json): every
  *   output question after reads it
- * @property {(upstreamId: string) => { spent?: boolean, freeAt?: number | null, identity?: import("../core/agent-limits.js").Identity | null } | null} [agentAccount]
+ * @property {(upstreamId: string) => { spent?: boolean, freeAt?: number | null, identity?: import("../core/agent-limits.js").Identity | null,
+ *   windows?: { state?: string, models?: string[], resetsAt?: number | null }[] } | null} [agentAccount]
  *   a coding agent's account as its store reads it now: whether its plan has a spent window, when it is free again,
  *   and whom it said it runs as (HarnessV3-TaskGraph-v2 TG2-D54)
  * @property {(upstreamId: string) => import("../adapters/agents/acp/profile.js").AgentProfile | null} [agentProfile]

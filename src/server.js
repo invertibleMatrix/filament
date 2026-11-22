@@ -340,6 +340,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     log,
     stateFile: join(dataDir, "acp-sessions.json"),
     profilesFile: join(dataDir, "acp-profiles.json"),
+    ...(overrides.agyQuota ? { agyQuota: overrides.agyQuota } : {}),
   });
   // What an agent declared goes with it (HarnessV3-ACP AC0-1): one no longer configured is let go of at start and on
   // every save.

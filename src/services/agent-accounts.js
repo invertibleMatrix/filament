@@ -140,7 +140,8 @@ export function createAgentAccounts({ file = null, log = () => {}, now = () => D
     if (r.noWindows !== undefined) a.noWindows = r.noWindows;
     if (r.windows?.length) {
       const heard = new Set(r.windows.map((w) => w.id));
-      a.windows = mergeWindows(a.windows, r.windows).map((w) => {
+      // A whole reading's windows are the plan's: one it no longer names is gone.
+      a.windows = mergeWindows(r.whole ? a.windows.filter((w) => heard.has(w.id)) : a.windows, r.windows).map((w) => {
         const kept = /** @type {KeptWindow | undefined} */ (a.windows.find((k) => k.id === w.id));
         if (!heard.has(w.id)) return /** @type {KeptWindow} */ (w);
         const readings = [...(kept?.readings || [])];
@@ -203,7 +204,8 @@ export function createAgentAccounts({ file = null, log = () => {}, now = () => D
    * pace, the fullest window's id, whether the plan is spent (a spent window extra usage does not cover,
    * or the agent's word) and when it is free again (every spent window reset; null where one has no reset, or the agent
    * said it stopped without a window to show it), whether extra usage covers its spent windows, the extra usage, the
-   * credits, why there are no windows, and the ages.
+   * credits, why there are no windows, and the ages. A window that bounds only some models (`models`, Antigravity's
+   * groups) spends none of the account: it shows spent, and the others' models still have room.
    * @param {string} upstreamId
    */
   const view = (upstreamId) => {
@@ -217,7 +219,7 @@ export function createAgentAccounts({ file = null, log = () => {}, now = () => D
     const fullest = windows
       .filter((w) => w.state !== "reset")
       .sort((x, y) => RANK[y.state] - RANK[x.state] || (y.usedPercent ?? 0) - (x.usedPercent ?? 0))[0];
-    const spent = windows.filter((w) => w.state === "spent");
+    const spent = windows.filter((w) => w.state === "spent" && !w.models?.length);
     const freeAt = spent.length && spent.every((w) => w.resetsAt != null) ? Math.max(...spent.map((w) => /** @type {number} */ (w.resetsAt))) : null;
     // Codex's word that a rate limit was reached speaks of the period it was heard in: once a window that was running
     // then has reset, the windows say the rest. A workspace out of credits or at its spend limit stays until Codex says

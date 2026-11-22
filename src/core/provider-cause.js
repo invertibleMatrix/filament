@@ -97,6 +97,8 @@ const CONTENT_WORDS = /moderation|flagged|content[ _-](policy|filter|management)
 export const typeCause = (type) => (Object.hasOwn(TYPES, type) ? TYPES[type] : null);
 /** A wait the words ask: "Please try again in 1.2s", "retry in 27.4s", "try again after 1 seconds", "retry in 17h". */
 const WAIT_WORDS = /\b(?:try again|retry)(?: after| in)?\s*(\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?|h|hours?)\b/i;
+/** A wait said as a duration in Go's form after "resets in", as Antigravity says its quota's: "Resets in 2h10m40s". */
+const RESET_IN_WORDS = /\bresets? in\s*(?=\d)(?:(\d+)h\s*)?(?:(\d+)m(?!s)\s*)?(?:(\d+(?:\.\d+)?)s)?\b/i;
 /** A reset said as epoch seconds after a bar, as Claude says its plan's: "Claude AI usage limit reached|1760032800". */
 const EPOCH_WORDS = /\|\s*(\d{10})\b/;
 /** A time with its zone: "2026-10-14T16:50:58Z", "2026-10-14 16:50:58+08:00". One with no zone is said, never read. */
@@ -105,7 +107,11 @@ const ZONED_TIME = /\b(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(
 /** The seconds a failure's words ask to wait, or null. @param {string} said */
 function waitInWords(said) {
   const m = WAIT_WORDS.exec(said);
-  if (!m) return null;
+  if (!m) {
+    const r = RESET_IN_WORDS.exec(said);
+    if (!r || (r[1] == null && r[2] == null && r[3] == null)) return null;
+    return Number(r[1] || 0) * 3600 + Number(r[2] || 0) * 60 + Number(r[3] || 0);
+  }
   const n = Number(m[1]);
   const unit = m[2].toLowerCase();
   return unit.startsWith("ms") || unit.startsWith("milli") ? n / 1000 : unit.startsWith("h") ? n * 3600 : unit.startsWith("m") ? n * 60 : n;

@@ -10,6 +10,7 @@
 // request, or each leg of an outside client's tool loop. A tick or a sub-agent is a child: its cost lands on the turn,
 // its own internal chain's turn gets no facts.
 import { seenWith } from "./cache-facts.js";
+import { bounds } from "./agent-limits.js";
 
 /**
  * Whether a record's billing is carried by its children (D2): an agent-loop parent carries the turn's tokens for
@@ -123,19 +124,20 @@ export function recordFinishMs(rec) {
 
 /**
  * What stopped a coding agent's turn on its plan (HarnessV3-ACP AC3-6), from its record: a failure the agent called a
- * limit while its account had a window spent, or Codex said why it stopped. The windows that ran out, when the plan
- * is free again (every one of them reset; null where one names no reset), Codex's reason, and whose plan it was. Null
- * for any other failure: an overloaded service, or a moment's rate limit with room left in every window, is no
- * plan's end.
+ * limit while its account had a window spent — one that bounds the turn's model, where a window bounds only some
+ * (Antigravity's groups) —, or Codex said why it stopped. The windows that ran out, when the plan is free again (every
+ * one of them reset; null where one names no reset), Codex's reason, and whose plan it was. Null for any other
+ * failure: an overloaded service, or a moment's rate limit with room left in every window, is no plan's end.
  * @param {any} rec
  */
 export function planLimit(rec) {
   const a = rec?.acp?.account;
   if (rec?.failure?.kind !== "limit" || !a) return null;
   const at = recordFinishMs(rec);
+  const model = rec.upstreamModel || rec.model || null;
   /** @type {any[]} */
   const spent = (Array.isArray(a.windows) ? a.windows : []).filter(
-    (/** @type {any} */ w) => (w.resetsAt == null || w.resetsAt > at) && (w.status === "rejected" || (Number(w.usedPercent) || 0) >= 100),
+    (/** @type {any} */ w) => (w.resetsAt == null || w.resetsAt > at) && (w.status === "rejected" || (Number(w.usedPercent) || 0) >= 100) && bounds(w, model),
   );
   if (!spent.length && !a.reached) return null;
   return {

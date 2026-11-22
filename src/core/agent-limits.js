@@ -1,7 +1,8 @@
 // @ts-check
 // An agent's account and its plan's windows in one shape (HarnessV3-ACP AC3-6), whoever reports them: Claude's adapter
 // (`_auth/status_update`, its rate-limit info and Claude Code's `/usage` report), Codex's app-server (`account/*`: its
-// windows, credits, reset credits and why it stopped), the Cursor SDK (`Cursor.me()`). The windows' shape is what the
+// windows, credits, reset credits and why it stopped), the Cursor SDK (`Cursor.me()`), Google's quota service for
+// Antigravity (its groups' and its models' quota, read with agy's own sign-in: adapters/agents/agy-quota.js). The windows' shape is what the
 // store keeps, a turn's record carries and the page draws. Each reader takes the agent's own words and nothing else:
 // what an agent didn't say stays unsaid.
 
@@ -21,10 +22,36 @@
 /**
  * One of a plan's windows: its id as the agent names it, its length's kind and name, how much of it is used (a
  * percent, null when only its status came), when it resets (epoch ms), its length in minutes, and the agent's own
- * word on it (`warning`: near its end; `rejected`: spent).
+ * word on it (`warning`: near its end; `rejected`: spent). `models`: the models it bounds where it bounds only some,
+ * each a model's id or the start of their ids ending `*` (Antigravity's Claude and GPT group, `claude-*` and `gpt-*`):
+ * spent, it stops those models and leaves the account room for the others (`bounds`).
  * @typedef {{ id: string, kind: "session" | "weekly" | "monthly" | "other", label: string, usedPercent: number | null,
- *   resetsAt: number | null, windowMins: number | null, status: "allowed" | "warning" | "rejected" | null }} PlanWindow
+ *   resetsAt: number | null, windowMins: number | null, status: "allowed" | "warning" | "rejected" | null,
+ *   models?: string[] }} PlanWindow
  */
+
+/**
+ * Whether a window bounds a model: every window of the account does where it names no models, and where the model is
+ * not known; else one whose models name it, by its id or the start of it. The model as a route names it may carry its
+ * agent's prefix (`antigravity/claude-sonnet-4-6`): its id is what follows the last `/`.
+ * @param {{ models?: string[] }} w @param {string | null | undefined} model
+ */
+export function bounds(w, model) {
+  if (!Array.isArray(w?.models) || !w.models.length || !model) return true;
+  const id = String(model).split("/").pop()?.toLowerCase() || "";
+  return w.models.some((p) => {
+    const m = String(p).toLowerCase();
+    return m.endsWith("*") ? id.startsWith(m.slice(0, -1)) : id === m;
+  });
+}
+
+/**
+ * Whether an account's plan meters a model apart from its others (Antigravity's groups: a window of some models alone
+ * bounds it): its allowance used up stops that model's group, and the agent still serves the others' — no hold on the
+ * whole agent.
+ * @param {{ windows?: { models?: string[] }[] } | null | undefined} account @param {string | null | undefined} model
+ */
+export const meteredApart = (account, model) => !!model && (account?.windows || []).some((w) => Array.isArray(w.models) && w.models.length > 0 && bounds(w, model));
 
 /**
  * What a plan's extra usage stands at, as Claude says it, each of its channels its own part: its rate-limit info,
@@ -52,10 +79,11 @@
  * (`_auth/status_update`, `rate_limit_event`, `account/read`, `Cursor.me()`…), and any of: who the agent runs as,
  * windows it reported, its extra usage, its credits and reset credits, why it stopped (Codex's
  * `rateLimitReachedType`; null where a full reading says it hasn't), and why it has no windows to report. A field
- * left out is one the agent didn't speak of.
+ * left out is one the agent didn't speak of. `whole`: its windows are the plan's whole set (Google's for Antigravity),
+ * so a window it no longer names is gone.
  * @typedef {{ source: string, identity?: Identity | null, windows?: PlanWindow[], extra?: ExtraUsage | null,
  *   credits?: Credits | null, resetCredits?: ResetCredits | null, reached?: string | null,
- *   noWindows?: string | null }} AccountReport
+ *   noWindows?: string | null, whole?: boolean }} AccountReport
  */
 
 /**
@@ -343,6 +371,94 @@ export function codexWindows(rl) {
     out.push({ id, ...byLength(named ?? fallback), usedPercent: percent(w.usedPercent), resetsAt: fromSeconds(w.resetsAt), windowMins: named, status: null });
   }
   return out;
+}
+
+/**
+ * The model families Antigravity's plan meters apart: Google's word for each one's provider, the words that name it in
+ * a quota group, and the start of its models' ids.
+ */
+const AGY_FAMILIES = [
+  { name: "Gemini", provider: "MODEL_PROVIDER_GOOGLE", named: /\bgemini\b/i, models: ["gemini-*"] },
+  { name: "Claude", provider: "MODEL_PROVIDER_ANTHROPIC", named: /\bclaude\b/i, models: ["claude-*"] },
+  { name: "GPT", provider: "MODEL_PROVIDER_OPENAI", named: /\bgpt/i, models: ["gpt-*"] },
+];
+/** A time Google writes (RFC 3339) as epoch ms to the second; null for none. @param {unknown} t */
+const googleTime = (t) => {
+  const ms = typeof t === "string" ? Date.parse(t) : NaN;
+  return Number.isFinite(ms) ? Math.round(ms / 1000) * 1000 : null;
+};
+/** A share left (0 to 1) as the percent used. @param {number} left */
+const usedOf = (left) => percent((1 - Math.max(0, Math.min(1, left))) * 100);
+
+/**
+ * Antigravity's plan windows, as Google's quota service says them for agy's sign-in (read live on agy 1.5.14, 11-22):
+ * its summary's groups (`retrieveUserQuotaSummary`), each bucket a window of the models its group names — "Claude and
+ * GPT models", a weekly limit — and, for a family no group names, the quota of its models (`fetchAvailableModels`):
+ * the share left of the family's most used model that says when it resets, as the summary leaves Gemini's out for any
+ * client but Google's own desktop app (read the same day: its model `gemini-3.8-flash-tiered` carries the figure that
+ * app's `gemini-weekly` bucket shows). Such a family's window is weekly where the summary says its groups' limits are,
+ * else of no length said, which keeps the length known (`mergeWindows`); its id is the family's whatever answered, so
+ * a reading without the summary is the same window. A bucket switched off, or one without a share, is none. Each
+ * window bounds its family's models (`bounds`): one spent leaves the account room for the others.
+ * @param {any} summary  the summary's answer, null for none @param {any} models  the models' answer, null for none
+ * @returns {PlanWindow[]}
+ */
+export function agyQuotaWindows(summary, models) {
+  /** @type {PlanWindow[]} */
+  const out = [];
+  /** @type {Set<string>} */
+  const named = new Set();
+  for (const g of Array.isArray(summary?.groups) ? summary.groups : []) {
+    const words = `${typeof g?.displayName === "string" ? g.displayName : ""} ${typeof g?.description === "string" ? g.description : ""}`;
+    const families = AGY_FAMILIES.filter((f) => f.named.test(words));
+    const name = (typeof g?.displayName === "string" ? g.displayName.replace(/\s+models?\s*$/i, "").trim() : "") || families.map((f) => f.name).join(" and ") || "Models";
+    for (const b of Array.isArray(g?.buckets) ? g.buckets : []) {
+      const left = Number(b?.remainingFraction);
+      if (b?.disabled === true || typeof b?.bucketId !== "string" || !b.bucketId || typeof b.remainingFraction !== "number" || !Number.isFinite(left)) continue;
+      const length =
+        b.window === "weekly" ? { kind: /** @type {const} */ ("weekly"), label: "Weekly", windowMins: WEEK }
+        : b.window === "5h" ? { kind: /** @type {const} */ ("session"), label: "5-hour", windowMins: 5 * HOUR }
+        : { kind: /** @type {const} */ ("other"), label: "Quota", windowMins: null };
+      out.push({ id: b.bucketId, kind: length.kind, label: `${length.label} · ${name}`, usedPercent: usedOf(left), resetsAt: googleTime(b.resetTime), windowMins: length.windowMins, status: left <= 0 ? "rejected" : null, ...(families.length ? { models: families.flatMap((f) => f.models) } : {}) });
+      for (const f of families) named.add(f.name);
+    }
+  }
+  /** @type {Map<string, { family: typeof AGY_FAMILIES[number], left: number, resets: unknown }>} */
+  const most = new Map();
+  for (const [id, m] of Object.entries(models?.models && typeof models.models === "object" ? models.models : {})) {
+    const q = m?.quotaInfo;
+    const left = Number(q?.remainingFraction);
+    // A model with no reset is one of agy's own helpers (its tab completions), metered apart from the plan.
+    if (typeof q?.remainingFraction !== "number" || !Number.isFinite(left) || typeof q.resetTime !== "string") continue;
+    const family = AGY_FAMILIES.find((f) => f.provider === m?.modelProvider) || AGY_FAMILIES.find((f) => id.toLowerCase().startsWith(f.models[0].slice(0, -1)));
+    if (!family || named.has(family.name)) continue;
+    const was = most.get(family.name);
+    if (!was || left < was.left) most.set(family.name, { family, left, resets: q.resetTime });
+  }
+  const weekly = /\bweekly limit\b/i.test(typeof summary?.description === "string" ? summary.description : "");
+  for (const { family, left, resets } of most.values())
+    out.push({
+      id: `${family.name.toLowerCase()}-models`,
+      kind: weekly ? "weekly" : "other",
+      label: weekly ? `Weekly · ${family.name}` : family.name,
+      usedPercent: usedOf(left),
+      resetsAt: googleTime(resets),
+      windowMins: weekly ? WEEK : null,
+      status: left <= 0 ? "rejected" : null,
+      models: family.models,
+    });
+  return out;
+}
+
+/**
+ * Antigravity's identity, as agy's own Google sign-in names it: the account's email, its way in (a consumer's Google
+ * account, else Gemini Enterprise's) and its plan's tier as agy names it when a session opens ("Google AI Pro").
+ * @param {{ email?: unknown, method?: unknown, tier?: unknown }} said
+ * @returns {Identity}
+ */
+export function agyIdentity({ email, method, tier }) {
+  const business = typeof method === "string" && method !== "consumer" && /business|enterprise|workspace/i.test(method);
+  return { kind: "account", label: business ? "Gemini Enterprise" : "Google account", plan: typeof tier === "string" && tier.trim() ? tier.trim() : null, email: typeof email === "string" && email.includes("@") ? email.trim() : null, organization: null, detail: null, billing: "plan" };
 }
 
 /**

@@ -48,6 +48,7 @@ describe("an agent's profile (AC0-1)", () => {
       sessions: { load: true, list: true, resume: true, fork: true, close: true, delete: true, additionalDirectories: true, subagents: true },
       steering: true,
       promptSteers: false,
+      googleQuota: false,
       cancelKeepsWork: false,
       cachedInInput: false,
       promptQueueing: true,
@@ -226,6 +227,9 @@ describe("an agent's profile (AC0-1)", () => {
     assert.deepEqual(["1.5.14", "1.5.0", "1.4.5", ""].map((v) => readProfile(init(v), confirmedOf(agy)).promptSteers), [true, true, false, false]);
     assert.equal(readProfile(init("1.5.14")).promptSteers, false, "nothing seen of it: not taken");
     assert.equal(readProfile(init("1.5.14"), confirmedOf({ acp: { command: "gemini" } })).promptSteers, false);
+    // Its plan's quota is Google's to read with its sign-in from the same version; never the older server's.
+    assert.deepEqual(["1.5.14", "1.4.5"].map((v) => readProfile(init(v), confirmedOf(agy)).googleQuota), [true, false]);
+    assert.equal(readProfile(init("1.5.14"), confirmedOf({ acp: { command: "agy_acp_server" } })).googleQuota, false);
     const at = supportsRows(readProfile(init("1.5.14"), confirmedOf(agy))).find((r) => r.key === "steering");
     assert.deepEqual([at?.has, at?.means], [true, "It takes a message in the middle of a turn: what is typed while it works goes into its running turn."]);
   });

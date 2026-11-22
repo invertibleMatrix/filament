@@ -5,6 +5,7 @@
 // (its turn's `codexErrorInfo`, AC2-1); the JSON-RPC code; the rest of the words. What it says of the agent's account
 // — busy, rate, out or account (HarnessV3-TaskGraph-v2 TG2-D54) — is `agentCause`'s, read with the account's windows.
 import { providerCause, typeCause } from "../../../core/provider-cause.js";
+import { bounds } from "../../../core/agent-limits.js";
 
 /** @typedef {"auth" | "limit" | "refusal" | "overflow" | "timeout" | "transport"} FailureKind */
 /** @typedef {{ kind: FailureKind, retryable: boolean, cools: boolean }} Failure */
@@ -200,17 +201,22 @@ export function saysPlanRefused(e) {
 /**
  * What a coding agent's failure says of its account (TG2-D54), or null where it is not the account's: a prompt it
  * refused, or one too long for its context. A limit while the account's plan has a spent window is an out until that
- * window resets; else the agent's error kind and words are read as a provider's are (core/provider-cause.js); what
- * they leave unsaid goes by the failure's kind — a sign-in an account, a limit a rate, a process or pipe that broke a
- * busy. Its error kind as `errorKindOf` reads it, the first a provider's cause knows.
+ * window resets — one that bounds only some models (Antigravity's groups) where it bounds the turn's; else the agent's
+ * error kind and words are read as a provider's are (core/provider-cause.js); what they leave unsaid goes by the
+ * failure's kind — a sign-in an account, a limit a rate, a process or pipe that broke a busy. Its error kind as
+ * `errorKindOf` reads it, the first a provider's cause knows.
  * @param {any} e
- * @param {{ spent?: boolean, freeAt?: number | null } | null} [account]  the agent's account as its store reads it now
+ * @param {{ spent?: boolean, freeAt?: number | null, windows?: { state?: string, models?: string[], resetsAt?: number | null }[] } | null} [account]
+ *   the agent's account as its store reads it now
+ * @param {string | null} [model]  the turn's model
  * @returns {import("../../../core/provider-cause.js").Cause | null}
  */
-export function agentCause(e, account = null) {
+export function agentCause(e, account = null, model = null) {
   const f = classifyFailure(e);
   if (f.kind === "refusal" || f.kind === "overflow") return null;
   if (f.kind === "limit" && account?.spent) return { kind: "out", resets: account.freeAt ?? null };
+  const its = f.kind === "limit" && model ? (account?.windows || []).filter((w) => w.state === "spent" && w.models?.length && bounds(w, model)) : [];
+  if (its.length) return { kind: "out", resets: its.every((w) => w.resetsAt != null) ? Math.max(...its.map((w) => Number(w.resetsAt))) : null };
   const words = `${e?.message || ""} ${typeof e?.data?.details === "string" ? e.data.details : ""}`.trim();
   const type = errorKindOf(e, (k) => typeCause(k) != null) || null;
   const read = providerCause({ status: null, type, said: words, network: f.kind === "transport" || f.kind === "timeout" });

@@ -17,6 +17,7 @@ import { versionFrom } from "../../../core/util.js";
  *     additionalDirectories: boolean, subagents: boolean },
  *   steering: boolean,
  *   promptSteers: boolean,
+ *   googleQuota: boolean,
  *   cancelKeepsWork: boolean,
  *   cachedInInput: boolean,
  *   promptQueueing: boolean,
@@ -116,10 +117,12 @@ function ownWay(m) {
  * an earlier one's may not know it —, and that the input it reports for a prompt holds what it read from its cache
  * (`cachedInInput`: updates.js `readUsage` takes it out), and the version from which a prompt sent while its turn runs
  * takes the turn over, the running prompt answered at once and its work going on under the new one (`promptSteers`,
- * read live on agy 1.5.14). `compactWindow`: its sessions take the chat's compaction line as Claude Code's
- * auto-compact window (`COMPACT_WINDOW_FROM`); `sessionEnv`: its sessions take variables of their own (`SESSION_ENV_FROM`).
+ * read live on agy 1.5.14), and the version from which its plan's quota is read from Google's quota service with its
+ * own sign-in (`googleQuota`, agy 1.5: adapters/agents/agy-quota.js). `compactWindow`: its sessions take the chat's
+ * compaction line as Claude Code's auto-compact window (`COMPACT_WINDOW_FROM`); `sessionEnv`: its sessions take
+ * variables of their own (`SESSION_ENV_FROM`).
  * @param {any} init
- * @param {{ cancelKeepsWork?: boolean, thinkingDisplayFrom?: string | null, cachedInInput?: boolean, promptSteersFrom?: string | null }} [confirmed]
+ * @param {{ cancelKeepsWork?: boolean, thinkingDisplayFrom?: string | null, cachedInInput?: boolean, promptSteersFrom?: string | null, googleQuotaFrom?: string | null }} [confirmed]
  * @returns {AgentProfile}
  */
 /**
@@ -176,6 +179,7 @@ export function readProfile(init, confirmed = {}) {
     },
     steering: init?._meta?.steering?.supported === true,
     promptSteers: versionFrom(info?.version, confirmed.promptSteersFrom),
+    googleQuota: versionFrom(info?.version, confirmed.googleQuotaFrom),
     cancelKeepsWork: confirmed.cancelKeepsWork === true,
     cachedInInput: confirmed.cachedInInput === true,
     promptQueueing: caps._meta?.claudeCode?.promptQueueing === true || caps._meta?.qoder?.promptQueueing === true,

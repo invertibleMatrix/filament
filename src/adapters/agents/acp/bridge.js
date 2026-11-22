@@ -16,12 +16,13 @@ import { LiveTurn, TurnBridge, alwaysOf, askingPolicy, describeToolCall, chooseP
 import { pushNote, appendNotes, cwdSourceText } from "../../../core/notes.js";
 import { mainCounted } from "../../../core/answering-model.js";
 import { agentArgs, agentKey, agentLaunchEnv, agentTitle, catalogueSignIn, confirmedOf, pagesRefused, signInAdvice } from "../../../core/catalogues.js";
-import { accountRecord, claudeExtra, claudeIdentity, claudeUsageExtra, claudeUsageWindows, claudeWindow, mergeWindows, sameIdentity } from "../../../core/agent-limits.js";
+import { accountRecord, agyIdentity, claudeExtra, claudeIdentity, claudeUsageExtra, claudeUsageWindows, claudeWindow, mergeWindows, sameIdentity } from "../../../core/agent-limits.js";
 import { classifyFailure, saysSignedOut } from "./failures.js";
 import { flattenMessages, isUserTurn, textOf } from "../../../core/wire/flatten.js";
 import { conversationKey } from "../../../core/conversation.js";
 import { tookWords } from "../../../core/routines.js";
-import { AcpProcess, clientCapabilitiesFor } from "./process.js";
+import { AcpProcess, CLIENT_INFO, clientCapabilitiesFor } from "./process.js";
+import { agySignIn, readAgyQuota, signInExpired } from "../agy-quota.js";
 import { agentEnv, resolveAgentCommand, PROBE_WAIT_MS } from "../agent-process.js";
 import { readSessionOffer, modelSelection, listedModels, matchOffered, modelLabels, typedName } from "./negotiate.js";
 import { KEY_MODELS_MS, keyAccess, keyListWords, keyModels } from "./key-models.js";
@@ -105,8 +106,8 @@ const dirsOf = (opened) => {
   return Array.isArray(dirs) && dirs.length ? { additionalDirectories: dirs } : {};
 };
 /**
- * How long the plan's usage, read last (Claude's `/usage`, `#askUsage`), stands before it is asked for again: at a
- * turn's end, and while a turn runs (`#usageWhile`).
+ * How long the plan's usage, read last (Claude's `/usage`, Antigravity's quota from Google: `#askUsage`), stands before
+ * it is asked for again: at a turn's end, and while a turn runs (`#usageWhile`).
  */
 const USAGE_EVERY_MS = 10 * 60_000;
 /**
@@ -124,15 +125,36 @@ const MODE_BACK_MS = 30_000;
 /** What a `/usage` session asks of Claude's adapter: the raw message that carries the report, and no transcript kept. */
 const USAGE_SESSION = { claudeCode: { emitRawSDKMessages: [{ type: "assistant" }], options: { persistSession: false } } };
 /**
- * What Check now says of a reading of Claude's plan (`AccountCheck`'s `said`): the plan as it was, an answer without it
- * (Claude Code's while its usage service doesn't answer), an ask that failed.
+ * What Check now says of a reading of a plan (`AccountCheck`'s `said`), by its reader: the plan as it was, an answer
+ * without it (Claude Code's while its usage service doesn't answer), an ask that failed; for Antigravity's, too, no
+ * Google sign-in of its to read with, and one that has expired.
  */
 const USAGE_SAID = Object.freeze({
-  same: "Checked just now: Claude's plan is as it was.",
-  empty: "Claude didn't give its plan's usage just now: its usage service didn't answer. It's asked again at a turn's end.",
-  /** @param {string} why */
-  failed: (why) => `Couldn't read Claude's plan's usage: ${why}.`,
+  claude: Object.freeze({
+    same: "Checked just now: Claude's plan is as it was.",
+    empty: "Claude didn't give its plan's usage just now: its usage service didn't answer. It's asked again at a turn's end.",
+    /** @param {string} why */
+    failed: (why) => `Couldn't read Claude's plan's usage: ${why}.`,
+  }),
+  google: Object.freeze({
+    same: "Checked just now: Antigravity's plan is as it was.",
+    empty: "Google named no quota for Antigravity's sign-in just now. It's asked again at a turn's end.",
+    /** @param {string} why */
+    failed: (why) => `Couldn't read Antigravity's plan's quota: ${why}.`,
+    none: "Antigravity keeps no Google sign-in for this account, so there's no plan's quota to read: a Gemini API key or Agent Platform is billed by use.",
+    expired: "Antigravity's Google sign-in here has expired: Antigravity renews it as it next runs, and its plan's quota is read then.",
+  }),
 });
+/** Where the word on an Antigravity account came from: the Google sign-in agy keeps, and Google's quota service. */
+const AGY_SIGN_IN = "agy's Google sign-in";
+const GOOGLE_QUOTA = "Google's quota service";
+/**
+ * What a reading of a plan came to (`#askUsage`): whether there was a plan to read, its windows and extra usage and
+ * where they came from, whether they are its whole set (`whole`), and a word for Check now where nothing was read —
+ * one that stands as a reading does (`standing`: nothing changes it before the sign-in does, or agy's next run).
+ * @typedef {{ plan: boolean, windows?: import("../../../core/agent-limits.js").PlanWindow[], extra?: any, source?: string,
+ *   said?: string | null, standing?: boolean, whole?: boolean }} PlanRead
+ */
 /**
  * A check that had nothing to read or say: the agent's own word on who it runs as says it all.
  * @type {import("../../../core/ports.js").AccountCheck}
@@ -575,8 +597,12 @@ function addSpent(into, from) {
 }
 
 export class AcpBridge extends TurnBridge {
-  /** @param {{ log?: (...a: any[]) => void, stateFile?: string | null, profilesFile?: string | null, taskNoticeMs?: number }} [o]  `taskNoticeMs`: a test's TASK_NOTICE_MS */
-  constructor({ log = () => {}, stateFile = null, profilesFile = null, taskNoticeMs = TASK_NOTICE_MS } = {}) {
+  /**
+   * @param {{ log?: (...a: any[]) => void, stateFile?: string | null, profilesFile?: string | null, taskNoticeMs?: number,
+   *   agyQuota?: { signIn?: typeof agySignIn, read?: typeof readAgyQuota } }} [o]
+   *   `taskNoticeMs`: a test's TASK_NOTICE_MS; `agyQuota`: a test's stand-ins for Antigravity's sign-in and Google's answer
+   */
+  constructor({ log = () => {}, stateFile = null, profilesFile = null, taskNoticeMs = TASK_NOTICE_MS, agyQuota = {} } = {}) {
     super({ log });
     this.#noticeMs = taskNoticeMs;
     this.procs = new Map(); // key -> AcpProcess
@@ -593,6 +619,7 @@ export class AcpBridge extends TurnBridge {
     this.usageRetryMs = USAGE_RETRY_MS; // how long an ask that read nothing stands before the next
     this.usageWaitMs = USAGE_WAIT_MS; // the longest a `/usage` ask waits for its answer
     this.usageWhoMs = USAGE_WHO_MS; // the longest a `/usage` ask's throwaway agent's word on who it runs as is waited for
+    this.agyQuota = { signIn: agySignIn, read: readAgyQuota, ...agyQuota }; // Antigravity's sign-in as agy keeps it, and its plan's quota from Google (`#googleUsage`)
     this.keyModelsMs = KEY_MODELS_MS; // the longest Anthropic's Models API is waited on for what an account's key can use
     this.commandsWaitMs = COMMANDS_WAIT_MS; // the longest a session opened just now is waited on for its commands
     this.processesWaitMs = LIST_WAIT_MS; // the longest a stopped turn waits on each read of the system's process table (`left-running.js`)
@@ -1020,15 +1047,36 @@ export class AcpBridge extends TurnBridge {
   #heardIdentity(upstream, authStatus) {
     const identity = claudeIdentity(authStatus);
     if (!identity) return;
+    const keyed = identity.kind === "api-key" ? "An Anthropic API key has no plan windows: it is billed by the token" : null;
+    this.#heardWho(upstream, identity, "_auth/status_update", keyed || (identity.kind === "gateway" || identity.kind === "external" ? `${identity.label} has no plan windows` : null));
+  }
+  /**
+   * Who an account runs as, as its agent or its sign-in says it: kept, with the windows heard so far where it is the
+   * same login, and handed to the server's store.
+   * @param {any} upstream @param {import("../../../core/agent-limits.js").Identity} identity @param {string} source
+   * @param {string | null} [noWindows]
+   */
+  #heardWho(upstream, identity, source, noWindows) {
     const was = this.accounts.get(upstream.id);
     const keep = !!was && (!was.identity || sameIdentity(was.identity, identity));
     this.accounts.set(upstream.id, { identity, windows: keep ? was.windows : [], extra: keep ? was.extra : null, at: Date.now() });
-    const keyed = identity.kind === "api-key" ? "An Anthropic API key has no plan windows: it is billed by the token" : null;
-    this.heardAccount(upstream.id, {
-      source: "_auth/status_update",
-      identity,
-      noWindows: keyed || (identity.kind === "gateway" || identity.kind === "external" ? `${identity.label} has no plan windows` : null),
-    });
+    this.heardAccount(upstream.id, { source, identity, ...(noWindows !== undefined ? { noWindows } : {}) });
+  }
+  /** upstream id -> the plan's tier Antigravity named as its last session opened (`#heardTier`) */
+  #tiers = new Map();
+  /**
+   * The plan's tier as Antigravity names it when a session opens (`_meta.antigravity.tier`, read live on 1.5.14: its
+   * name, "Antigravity Starter Quota" on a free account), for its identity (`#googleUsage`): one that changes is said at
+   * once where its sign-in already named the account.
+   * @param {any} upstream @param {any} res  the agent's answer to the session's open
+   */
+  #heardTier(upstream, res) {
+    const tier = res?._meta?.antigravity?.tier?.name;
+    const name = typeof tier === "string" ? tier.trim() : "";
+    if (!name || this.#tiers.get(upstream.id) === name) return;
+    this.#tiers.set(upstream.id, name);
+    const was = this.accounts.get(upstream.id)?.identity;
+    if (was?.kind === "account" && this.#usageReader(upstream.id) === "google") this.#heardWho(upstream, { ...was, plan: name }, AGY_SIGN_IN);
   }
   // One of the plan's windows, as Claude's SDK says it when it changes (`rate_limit_event`): forwarded raw, and beside
   // the context's size once the turn has used some (`usage_update`'s `_claude/rateLimit`). The same word twice is one.
@@ -1038,14 +1086,16 @@ export class AcpBridge extends TurnBridge {
   }
   // Windows of the plan and its extra usage, as the agent said them: kept with its account, and handed to the server's
   // store. Each of Claude's channels says its own part of the extra usage, so what one says joins what the other said.
-  #heardWindows(upstream, windows, extra, source) {
+  // `whole`: the windows are the plan's whole set (Google's for Antigravity), and one no longer named is gone.
+  #heardWindows(upstream, windows, extra, source, whole = false) {
     if (!windows.length && !extra) return;
     const a = this.accounts.get(upstream.id) || { identity: null, windows: [], extra: null, at: 0 };
-    if (windows.length) a.windows = mergeWindows(a.windows, windows);
+    const ids = new Set(windows.map((w) => w.id));
+    if (windows.length) a.windows = mergeWindows(whole ? a.windows.filter((w) => ids.has(w.id)) : a.windows, windows);
     if (extra) a.extra = { ...a.extra, ...extra };
     a.at = Date.now();
     this.accounts.set(upstream.id, a);
-    this.heardAccount(upstream.id, { source, windows, extra });
+    this.heardAccount(upstream.id, { source, windows, extra, ...(whole ? { whole: true } : {}) });
   }
   /** upstream id -> the `/usage` ask under way (`#askUsage`), and its stop: its upstream let go of (`letGo`) */
   #usageAsks = new Map();
@@ -1061,12 +1111,14 @@ export class AcpBridge extends TurnBridge {
   /** The throwaway agents a `/usage` ask runs now: the bridge's shutdown ends them. */
   #usageProcs = new Set();
   /**
-   * Claude's account and its plan's usage, read by a throwaway agent in the account's folder (`#usageReport`), as the
-   * model list is (HarnessV3-ACP AC3-6): who it runs as, which it says as it starts, and on a plan's login the plan's
-   * windows and extra usage as Claude Code's `/usage` says them — the rate-limit info says a window's share only as the
-   * window nears its end, and `/usage` reads claude.ai's own figures at any level. One ask at a time per upstream. What
-   * it came to, for Check now to say: the plan read — as it was, or moved, which its meters show — an answer without
-   * it, or an ask that failed (a debug line too); nothing to say where the login has no plan.
+   * The account and its plan's usage (HarnessV3-ACP AC3-6), by its reader (`#usageReader`). Claude's, read by a
+   * throwaway agent in the account's folder (`#claudeUsage`), as the model list is: who it runs as, which it says as it
+   * starts, and on a plan's login the plan's windows and extra usage as Claude Code's `/usage` says them — the
+   * rate-limit info says a window's share only as the window nears its end, and `/usage` reads claude.ai's own figures
+   * at any level. Antigravity's, from Google's quota service with the Google sign-in agy keeps (`#googleUsage`): agy
+   * says neither over ACP. One ask at a time per upstream. What it came to, for Check now to say: the plan read — as it
+   * was, or moved, which its meters show — an answer without it, why there was none to read, or an ask that failed (a
+   * debug line too); nothing to say where the login has no plan.
    * @param {any} upstream
    * @returns {Promise<import("../../../core/ports.js").AccountCheck>}
    */
@@ -1076,6 +1128,8 @@ export class AcpBridge extends TurnBridge {
     if (asking) return asking.ask;
     this.#usageTried.set(id, Date.now());
     const was = usageKey(this.accounts.get(id));
+    const google = this.#usageReader(id) === "google";
+    const said = google ? USAGE_SAID.google : USAGE_SAID.claude;
     /**
      * An ask its upstream let go of meanwhile (`letGo`: a sign-in, a sign-out) asked in the old login: it ends then, its
      * throwaway agent heard no more, and says nothing — to whoever joined it too — nor lets go of the one after it.
@@ -1083,27 +1137,55 @@ export class AcpBridge extends TurnBridge {
     const stop = new AbortController();
     const goneBy = () => stop.signal.aborted;
     /** @type {Promise<import("../../../core/ports.js").AccountCheck>} */
-    const ask = this.#usageReport(upstream, stop.signal)
-      .then(({ plan, report }) => {
-        if (!plan || goneBy()) return NOTHING_ASKED;
-        const windows = claudeUsageWindows(report);
-        const extra = claudeUsageExtra(report);
-        if (!windows.length && !extra) return { read: false, said: USAGE_SAID.empty };
+    const ask = (google ? this.#googleUsage(upstream, stop.signal) : this.#claudeUsage(upstream, stop.signal))
+      .then(({ plan, windows = [], extra = null, source = "", said: word = null, standing = false, whole = false }) => {
+        if (goneBy()) return NOTHING_ASKED;
+        if (!plan) {
+          if (standing) this.#usageAt.set(id, Date.now());
+          return word ? { read: false, said: word } : NOTHING_ASKED;
+        }
+        if (!windows.length && !extra) return { read: false, said: said.empty };
         this.#usageAt.set(id, Date.now());
-        this.#heardWindows(upstream, windows, extra, "/usage");
-        return { read: true, said: usageKey(this.accounts.get(id)) === was ? USAGE_SAID.same : null };
+        this.#heardWindows(upstream, windows, extra, source, whole);
+        return { read: true, said: usageKey(this.accounts.get(id)) === was ? said.same : null };
       })
       .catch((e) => {
         if (goneBy()) return NOTHING_ASKED;
         const why = String(e?.message || e).replace(/[.\s]+$/, "");
         this.log("debug", `[acp] ${id}: its plan's usage could not be read (${why})`);
-        return { read: false, said: USAGE_SAID.failed(why) };
+        return { read: false, said: said.failed(why) };
       })
       .finally(() => {
         if (!goneBy()) this.#usageAsks.delete(id);
       });
     this.#usageAsks.set(id, { ask, stop });
     return ask;
+  }
+  /**
+   * Claude's plan as its `/usage` report says it (`#usageReport`).
+   * @param {any} upstream @param {AbortSignal} signal @returns {Promise<PlanRead>}
+   */
+  async #claudeUsage(upstream, signal) {
+    const { plan, report } = await this.#usageReport(upstream, signal);
+    return plan ? { plan, windows: claudeUsageWindows(report), extra: claudeUsageExtra(report), source: "/usage" } : { plan };
+  }
+  /**
+   * Antigravity's plan as Google's quota service says it (adapters/agents/agy-quota.js), with the Google sign-in agy
+   * keeps for the account: who it is — its email, its way in, and the tier agy named as its last session opened —, then
+   * its groups' and its models' windows, the plan's whole set. None kept is nothing to read (an API key's or Agent
+   * Platform's account, or nobody signed in); one expired waits for agy's next run, which renews it — as a reading does,
+   * so one never renewed (a sign-in left behind) is no ask every few minutes.
+   * @param {any} upstream @param {AbortSignal} signal @returns {Promise<PlanRead>}
+   */
+  async #googleUsage(upstream, signal) {
+    const said = USAGE_SAID.google;
+    const signIn = await this.agyQuota.signIn({ home: String(upstream.acp?.home || "").trim() || null });
+    if (signal.aborted) return { plan: false };
+    if (!signIn) return { plan: false, said: said.none, standing: true };
+    this.#heardWho(upstream, agyIdentity({ email: signIn.email, method: signIn.method, tier: this.#tiers.get(upstream.id) }), AGY_SIGN_IN);
+    if (signInExpired(signIn)) return { plan: false, said: said.expired, standing: true };
+    const windows = await this.agyQuota.read({ signIn, agyVersion: this.profiles.all()[upstream.id]?.agent?.version || "", filamentVersion: CLIENT_INFO.version });
+    return { plan: true, windows, extra: null, source: GOOGLE_QUOTA, whole: true };
   }
   /**
    * What a throwaway agent says, its session keeping no transcript: who it runs as, which Claude's adapter says as it
@@ -1171,13 +1253,23 @@ export class AcpBridge extends TurnBridge {
     }
   }
   /**
+   * How an upstream's plan is read, as its agent's last start declared it: Claude's `/usage` by a throwaway agent
+   * (`rawMessages`), Antigravity's quota from Google with agy's own sign-in (`googleQuota`), or not at all.
+   * @param {string} id @returns {"claude" | "google" | null}
+   */
+  #usageReader(id) {
+    const p = this.profiles.all()[id];
+    return p?.rawMessages ? "claude" : p?.googleQuota ? "google" : null;
+  }
+  /**
    * How long until the plan's usage is due to be read again, 0 once it is: what was read last `usageEveryMs` old, and
-   * an ask that read nothing `usageRetryMs` old. Null where there is no plan to read: any agent but Claude's adapter,
-   * and a login that is no plan's.
+   * an ask that read nothing `usageRetryMs` old. Null where there is no plan to read: an agent with no reader, and
+   * Claude's login that is no plan's (Antigravity's sign-in says itself whose it is, at each read).
    * @param {string} id @returns {number | null}
    */
   #usageDueIn(id) {
-    if (!this.profiles.all()[id]?.rawMessages || this.accounts.get(id)?.identity?.kind !== "account") return null;
+    const reader = this.#usageReader(id);
+    if (!reader || (reader === "claude" && this.accounts.get(id)?.identity?.kind !== "account")) return null;
     const due = Math.max((this.#usageAt.get(id) ?? -Infinity) + this.usageEveryMs, (this.#usageTried.get(id) ?? -Infinity) + this.usageRetryMs);
     return Math.max(0, due - Date.now());
   }
@@ -1197,7 +1289,7 @@ export class AcpBridge extends TurnBridge {
    */
   #usageWhile(upstream) {
     const id = upstream.id;
-    if (!this.profiles.all()[id]?.rawMessages) return () => {};
+    if (!this.#usageReader(id)) return () => {};
     /** @type {ReturnType<typeof setTimeout> | null} */
     let timer = null;
     let over = false;
@@ -1231,19 +1323,22 @@ export class AcpBridge extends TurnBridge {
    * reads the plan with `/usage` (`#askUsage`) — nothing else starts. Any other agent, or one not started since Filament
    * runs it, whose start tells: a running one has said it, and says it again as each prompt starts; one that isn't
    * running is started, and its first word waited for, eight seconds at most — then, Claude's on a plan's login, the plan
-   * read as above. An agent's that has no `/usage` come with its turns.
+   * read as above. Antigravity's, as its last start declared it, reads its plan's quota from Google with its sign-in
+   * (`#askUsage`), which says who it is, nothing else started. An agent's that has no `/usage` come with its turns.
    * @param {any} upstream
    * @returns {Promise<import("../../../core/ports.js").AccountCheck>}
    */
   async checkAccount(upstream) {
     const declared = this.profiles.all()[upstream.id];
+    if (this.#usageReader(upstream.id) === "google") return this.#askUsage(upstream);
     if (declared?.account === false) return NOTHING_ASKED;
     if (declared?.rawMessages) return this.#askUsage(upstream);
     if (![...this.procs.values()].some((p) => p.key.startsWith(`${upstream.id}|`) && !p.exited && p.authStatus)) {
       const p = await this.getProcess(upstream, null);
       if (readProfile(p.initResult).account) await p.heardWho(8000);
     }
-    return this.profiles.all()[upstream.id]?.rawMessages && this.accounts.get(upstream.id)?.identity?.kind === "account" ? this.#askUsage(upstream) : NOTHING_ASKED;
+    const reader = this.#usageReader(upstream.id);
+    return reader === "google" || (reader === "claude" && this.accounts.get(upstream.id)?.identity?.kind === "account") ? this.#askUsage(upstream) : NOTHING_ASKED;
   }
   /**
    * The agent's ways to sign in (HarnessV3-ACP AC3-7), as it declared them at its last start — one not started since
@@ -1930,6 +2025,7 @@ export class AcpBridge extends TurnBridge {
     try {
       const res = await proc.request(method, params, 0, signal, late);
       this.#sessionOp(upstream, method, res?.sessionId);
+      this.#heardTier(upstream, res);
       return res;
     } catch (e) {
       if (!(
@@ -1944,6 +2040,7 @@ export class AcpBridge extends TurnBridge {
           await proc.request("authenticate", { methodId: m }, 0, signal);
           const res = await proc.request(method, params, 0, signal, late);
           this.#sessionOp(upstream, method, res?.sessionId, { afterAuth: true });
+          this.#heardTier(upstream, res);
           return res;
         } catch (e2) {
           if (signal?.aborted) throw e2;
@@ -5027,6 +5124,7 @@ export class AcpBridge extends TurnBridge {
           throw e;
         });
       this.heardSignIn(upstream.id, true);
+      this.#heardTier(upstream, s);
       const offer = readSessionOffer(s);
       const names = offer.models.filter((m) => m !== "default");
       if (names.length) {

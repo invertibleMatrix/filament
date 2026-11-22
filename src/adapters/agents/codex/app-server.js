@@ -36,6 +36,7 @@ export function codexProfile(version) {
     },
     steering: has("turn/steer"),
     promptSteers: false,
+    googleQuota: false,
     cancelKeepsWork: false,
     cachedInInput: false,
     promptQueueing: false,

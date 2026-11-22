@@ -1925,6 +1925,8 @@ async function handle(m) {
       notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `${answer} ` } });
       if (rawCall) asst(`m_${callId}_said`, [{ type: "text", text: `${answer} ` }]);
     }
+    // `~agyquota`: the prompt fails as agy 1.5 words its plan's quota used up.
+    if (agySteers && /~agyquota\b/i.test(text)) return write({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: "Internal error", data: { details: "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 2h10m40s." } } });
     if (agySteers && /~agysteer\b/i.test(text)) {
       agySays(sessionId, "working… ");
       s.agyAt = m.id;

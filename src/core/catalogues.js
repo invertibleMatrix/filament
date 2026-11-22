@@ -51,6 +51,8 @@
  * @property {string} [promptSteersFrom]  the version from which a prompt sent while its turn runs takes the turn over
  *   (`promptSteers`): its running prompt is answered at once and the work goes on under the new one, which it answers
  *   once done, as read live on agy 1.5.14
+ * @property {string} [googleQuotaFrom]  the version from which its plan's quota is read from Google's quota service with
+ *   its own Google sign-in (`googleQuota`, adapters/agents/agy-quota.js), as read live on agy 1.5.14
  * @property {boolean} [cachedInInput]  the input tokens it reports for a prompt are the whole prompt, what it read
  *   from its cache among them, as its records showed (the owner's chat of 11-11: a second prompt twenty seconds after
  *   a first of 17,096 said 17,273 input and 15,217 cached): its input beside the cache is what is left of them
@@ -213,6 +215,7 @@ export const KNOWN_AGENTS = [
     // its total says so: updates.js `readUsage`).
     cachedInInput: true,
     promptSteersFrom: "1.5.0",
+    googleQuotaFrom: "1.5.0",
     account: "Your Google account (or a Gemini API key)",
     guide: {
       context: "Fixed per model, as Antigravity says it.",
@@ -535,14 +538,22 @@ function folderVars(u) {
  * keeps what it did (`cancelKeepsWork`, AC3's drive C6), the adapter version from which its Claude Code takes how
  * it shows its thinking (`thinkingDisplayFrom`, AC-R2), whether the input it reports holds what it read from its
  * cache (`cachedInInput`), and the version from which a prompt sent while its turn runs takes the turn over
- * (`promptSteersFrom`, the program it runs now's: never the one it ran until an update) — an agent over ACP that the
- * catalogue knows, by its command.
+ * (`promptSteersFrom`, the program it runs now's: never the one it ran until an update), and the version from which
+ * its plan's quota is Google's to read with its sign-in (`googleQuotaFrom`, the same program's) — an agent over ACP
+ * that the catalogue knows, by its command.
  * @param {{ type?: string, acp?: { command?: string } } | null | undefined} u
- * @returns {{ cancelKeepsWork: boolean, thinkingDisplayFrom: string | null, cachedInInput: boolean, promptSteersFrom: string | null }}
+ * @returns {{ cancelKeepsWork: boolean, thinkingDisplayFrom: string | null, cachedInInput: boolean, promptSteersFrom: string | null, googleQuotaFrom: string | null }}
  */
 export function confirmedOf(u) {
   const known = (u?.type || "acp") === "acp" ? KNOWN_AGENTS.find((a) => a.id === agentKey(u)) : null;
-  return { cancelKeepsWork: known?.cancelKeepsWork === true, thinkingDisplayFrom: known?.thinkingDisplayFrom || null, cachedInInput: known?.cachedInInput === true, promptSteersFrom: (known && currentAgent(u)?.promptSteersFrom) || null };
+  const now = known && currentAgent(u);
+  return {
+    cancelKeepsWork: known?.cancelKeepsWork === true,
+    thinkingDisplayFrom: known?.thinkingDisplayFrom || null,
+    cachedInInput: known?.cachedInInput === true,
+    promptSteersFrom: (now && now.promptSteersFrom) || null,
+    googleQuotaFrom: (now && now.googleQuotaFrom) || null,
+  };
 }
 /**
  * The variable an upstream's agent reads its folder from (HarnessV3-ACP AC3-7): `CLAUDE_CONFIG_DIR` for Claude Code,
