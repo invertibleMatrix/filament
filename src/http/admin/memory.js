@@ -20,6 +20,7 @@ import { PROCEDURE_FORM } from "../../services/memory/procedures.js";
 import { OUTCOME_DAYS, OUTCOME_KINDS } from "../../services/memory/outcomes.js";
 import { METRIC_DAYS, METRIC_DAYS_MAX } from "../../services/memory/metrics.js";
 import { WALK_VERSION, onlyGone, ownChangesOf, turnsChanged, walkOf } from "../../adapters/git/changes.js";
+import { remoteKeys } from "../../adapters/git/inspect.js";
 import { placeOf } from "../../adapters/git/snapshot.js";
 import { outputsOf } from "../../app/sessions/outputs.js";
 import { FEED_PAGE } from "../../services/memory/index.js";
@@ -40,6 +41,8 @@ export const TURN_WHOLE_KEPT = { most: 2, perKey: 4 };
 export const TURN_FIRST_MOST = 1000;
 /** The most rows a `?match=` answer takes. */
 export const TURN_MATCH_MOST = 50;
+/** How long a list asked its remotes' keys (`?remotes=1`) waits for the folders not read yet: the rest come at the next ask. */
+export const REMOTES_WAIT_MS = 1500;
 
 /**
  * A turn's files whose path, as the command center names it, holds `q`: the first `take` in the answer's own order. A
@@ -254,6 +257,27 @@ function claimStream(r, memory, sseClients) {
  */
 export function memoryRoutes(a) {
   const { memory, usage, sseClients } = a;
+  /** Each project's folder's remote's key, for the lists that are asked them (`withRemotes`). */
+  const folderKeys = a.remoteKeys ?? remoteKeys();
+  /**
+   * Rows with their repository's remote's key (`remoteKey`), where `?remotes=1` asks (the remote desk of 11-22: another
+   * machine's app lists a repository's chats and projects on every machine as one): read from each project's folder — a
+   * chat's from its project's, else its own —, never a network share's, kept five minutes, the list waiting
+   * REMOTES_WAIT_MS at most for those not kept; one read past it is said at the next ask. Null where the folder has
+   * no remote; none where it is not known yet.
+   * @template {{ cwd?: string | null, project?: string | null }} R @param {R[]} rows @param {(row: R) => string} folderOf
+   * @returns {Promise<(R & { remoteKey?: string | null })[]>}
+   */
+  const withRemotes = async (rows, folderOf) => {
+    const folders = rows.map((row) => folderOf(row)).map((f) => (f && isAbsolute(f) && !networkShare(f) ? f : ""));
+    const keys = await folderKeys.of(folders, { waitMs: REMOTES_WAIT_MS });
+    return rows.map((row, i) => {
+      const key = folders[i] ? keys.get(folders[i]) : undefined;
+      return key === undefined ? row : { ...row, remoteKey: key };
+    });
+  };
+  /** Each project's folder, by its id, as the list reads them now. @returns {Map<string, string>} */
+  const projectFolders = () => new Map((memory.projects() || []).map((/** @type {any} */ p) => [String(p.id), String(p.cwd || "")]));
   /**
    * Each turn's changes answers, kept while what they rest on holds (`turnBasis`): every tree card reads its turn's first
    * rows, the command center its newest turn's whole, and one turn's read was 65 s of git (the owner's of 11-17). The
@@ -476,29 +500,31 @@ export function memoryRoutes(a) {
     [
       "GET",
       "/memory/sessions",
-      guard((r) => {
+      guard(async (r) => {
         const q = r.url.searchParams;
         // `kind=interactive,fork,tick,subagent` names the kinds wanted; the list's default is the developer's own
         // tasks (interactive, fork) unless `internal=all` asks for every kind, Filament's own calls (a loop's ticks)
         // included. `client=` narrows to one client name (`harness`, `claude-code`, …).
         const named = (q.get("kind") || "").split(",").map((s) => s.trim()).filter(Boolean);
         const internal = q.get("internal") === "all" ? "all" : "exclude";
-        sendJson(r.res, 200, {
-          sessions: memory.sessions(q.get("q") || "", {
-            limit: Number(q.get("limit")) || 20,
-            // `offset`: the rows a list read a page at a time has had already (Settings' auto-archive sweep and its
-            // Archived chats read every page).
-            offset: Math.max(0, Math.floor(Number(q.get("offset")) || 0)),
-            project: q.get("project") || null,
-            // `archived=only` is the Archived view, `all` both; the default list leaves archived sessions out.
-            archived: ["only", "all"].includes(q.get("archived") || "") ? q.get("archived") : "exclude",
-            internal,
-            kinds: named.length ? named : internal === "all" ? [] : [...LISTED_KINDS],
-            client: q.get("client") || null,
-            // A chat another machine's agents started says whose (`fromAgents`), by name alone.
-            agentsOf: agentsName,
-          }),
+        const sessions = memory.sessions(q.get("q") || "", {
+          limit: Number(q.get("limit")) || 20,
+          // `offset`: the rows a list read a page at a time has had already (Settings' auto-archive sweep and its
+          // Archived chats read every page).
+          offset: Math.max(0, Math.floor(Number(q.get("offset")) || 0)),
+          project: q.get("project") || null,
+          // `archived=only` is the Archived view, `all` both; the default list leaves archived sessions out.
+          archived: ["only", "all"].includes(q.get("archived") || "") ? q.get("archived") : "exclude",
+          internal,
+          kinds: named.length ? named : internal === "all" ? [] : [...LISTED_KINDS],
+          client: q.get("client") || null,
+          // A chat another machine's agents started says whose (`fromAgents`), by name alone.
+          agentsOf: agentsName,
         });
+        // `remotes=1`: each with its repository's remote's key (`withRemotes`), as another machine's app lists them.
+        if (q.get("remotes") !== "1") return sendJson(r.res, 200, { sessions });
+        const folders = projectFolders();
+        return sendJson(r.res, 200, { sessions: await withRemotes(sessions, (s) => folders.get(String(s.project ?? "")) || String(s.cwd || "")) });
       }),
     ],
     // What memory did for one turn (HarnessV3-Memory M6-1): what it showed, said at the calls, filed and asks.
@@ -666,7 +692,12 @@ export function memoryRoutes(a) {
     [
       "GET",
       "/memory/projects",
-      guard((r) => sendJson(r.res, 200, { projects: memory.projects() })),
+      // `remotes=1`: each with its repository's remote's key (`withRemotes`).
+      guard(async (r) => {
+        const projects = memory.projects();
+        if (r.url.searchParams.get("remotes") !== "1") return sendJson(r.res, 200, { projects });
+        return sendJson(r.res, 200, { projects: await withRemotes(projects || [], (p) => String(p.cwd || "")) });
+      }),
     ],
     // A project named from the harness (Add project): the folder must exist, 400 in words when it does not. One outside
     // the roots agentLoop.roots lists is refused 403 in a chat's create's words (`outsideRootsWords`) — its chats could

@@ -1442,9 +1442,9 @@ async function run() {
 
   // ---- the desk (the remote desk of 11-22) -----------------------------------------------------------------------------
   /**
-   * Each other machine's Now and chats as its last look found them, by its id: kept while it is away, so the desk greys
-   * its rows rather than losing them; none for one signed out here, disconnected or removed.
-   * @type {Map<string, { rows: import("./lib/watch.js").NowGroups, recent: import("./lib/watch.js").DeskChat[] }>}
+   * Each other machine's Now, chats and desk flags as its last look found them, by its id: kept while it is away, so the
+   * desk greys its rows rather than losing them; none for one signed out here, disconnected or removed.
+   * @type {Map<string, { rows: import("./lib/watch.js").NowGroups, recent: import("./lib/watch.js").DeskChat[], flags: string[] }>}
    */
   const deskLooks = new Map();
   /** The desk as this computer's page last heard it, and as sent. @type {any} */
@@ -1452,8 +1452,9 @@ async function run() {
   let deskSaid = "";
   /**
    * What this computer's page lists every machine's chats from: This computer as it wears itself, and each other machine
-   * kept — its state, its colour and icon, its Now's rows and its chats. Another machine's page hears none of it: no
-   * page there hears another machine's names (lib/rail.js).
+   * kept — its state, its colour and icon, its Now's rows, its chats and what its Filament does for the desk (`flags`,
+   * watch.js `deskFlagsOf`: what one lacks, the desk greys). Another machine's page hears none of it: no page there
+   * hears another machine's names (lib/rail.js).
    */
   const deskOf = () => ({
     here: { id: LOCAL_ID, name: LOCAL_NAME, ...hereLook() },
@@ -1461,7 +1462,7 @@ async function run() {
       const row = machineRows.find((r) => r.id === k.id);
       const refused = !k.off && !!row?.refused;
       const had = k.off || refused ? null : deskLooks.get(k.id);
-      return { id: k.id, name: k.name, status: k.off ? "disconnected" : (row?.status ?? "reconnecting"), refused, color: colorOf(k), icon: iconOf(k), rows: had?.rows ?? { needs: [], works: [], done: [] }, recent: had?.recent ?? [] };
+      return { id: k.id, name: k.name, status: k.off ? "disconnected" : (row?.status ?? "reconnecting"), refused, color: colorOf(k), icon: iconOf(k), rows: had?.rows ?? { needs: [], works: [], done: [] }, recent: had?.recent ?? [], flags: had?.flags ?? [] };
     }),
   });
   /** The desk told to this computer's page — Filament's own page in the harness window — where it moved. */
@@ -1517,7 +1518,7 @@ async function run() {
       // The desk: each machine's rows as its look found them — one that did not look this tick keeps its last.
       for (const m of others) {
         if (m.refused) deskLooks.delete(m.id);
-        else if (m.look) deskLooks.set(m.id, { rows: m.look.rows, recent: m.look.recent });
+        else if (m.look) deskLooks.set(m.id, { rows: m.look.rows, recent: m.look.recent, flags: m.look.flags });
       }
       for (const id of [...deskLooks.keys()]) if (!kept.some((k) => k.id === id && !k.off)) deskLooks.delete(id);
       tellDesk();

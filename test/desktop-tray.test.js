@@ -264,6 +264,8 @@ describe("the harness, watched", () => {
       chats: [{ id: "c1", title: "Parser refactor", cwd: "H:\\work\\shop-api" }, { id: "c2", title: "Release notes", projectName: "site" }],
       asked: /** @type {string[]} */ ([]),
       down: false,
+      /** GET /remote/me's answer. @type {any} */
+      me: { who: "device", desk: ["remote-key"] },
     };
     /** @param {string} p */
     const call = async (p) => {
@@ -271,6 +273,7 @@ describe("the harness, watched", () => {
       if (f.down) throw new Error("ECONNREFUSED");
       if (p === "/runs?limit=50") return { runs: f.runs };
       if (p.startsWith("/memory/sessions")) return { sessions: f.chats };
+      if (p === "/remote/me") return f.me;
       const m = /^\/runs\/([^/]+)\/events/.exec(p);
       if (m) return { events: f.events[m[1]] || [] };
       return {};
@@ -328,9 +331,9 @@ describe("the harness, watched", () => {
     let t = 50_000_000;
     const { f, call } = fake();
     f.chats = /** @type {any} */ ([
-      { id: "c1", title: "Parser refactor", cwd: "H:\\work\\shop-api", project: "p1", lastAt: t - 5000, when: "2026-11-22", pinned: true },
-      { id: "c2", title: "Release notes", projectName: "site", project: "p2", lastAt: t - 1000, unread: true },
-      { id: "c3", preview: "fix the build", cwd: "/home/kai/app", lastAt: t - 9000, threadOf: "c1", fromAgents: { name: "Laptop" } },
+      { id: "c1", title: "Parser refactor", cwd: "H:\\work\\shop-api", project: "p1", lastAt: t - 5000, when: "2026-11-22", pinned: true, remoteKey: "github.com/o/shop-api" },
+      { id: "c2", title: "Release notes", projectName: "site", project: "p2", lastAt: t - 1000, unread: true, remoteKey: null },
+      { id: "c3", preview: "fix the build", cwd: "/home/kai/app", lastAt: t - 9000, threadOf: "c1", fromAgents: { name: "Laptop" }, remoteKey: 7 },
       { id: "c4", title: "Old", archived: true, lastAt: t },
       { title: "no id" },
     ]);
@@ -341,10 +344,11 @@ describe("the harness, watched", () => {
     assert.deepEqual(l.rows.done.map((/** @type {any} */ r) => [r.key, r.fact]), [["chat:c2", "finished"]], "its unread mark: under Done, as the harness has it");
     assert.deepEqual(l.rows.needs, []);
     assert.deepEqual(l.recent, [
-      { chain: "c2", title: "Release notes", project: "site", projectId: "p2", cwd: "", when: t - 1000, unread: true, pinned: false, threadOf: null, from: "" },
-      { chain: "c1", title: "Parser refactor", project: "shop-api", projectId: "p1", cwd: "H:\\work\\shop-api", when: t - 5000, unread: false, pinned: true, threadOf: null, from: "" },
-      { chain: "c3", title: "fix the build", project: "app", projectId: "", cwd: "/home/kai/app", when: t - 9000, unread: false, pinned: false, threadOf: "c1", from: "Laptop" },
-    ], "the newest first; an archived chat and a row with no id none");
+      { chain: "c2", title: "Release notes", project: "site", projectId: "p2", cwd: "", when: t - 1000, unread: true, pinned: false, threadOf: null, from: "", remoteKey: null },
+      { chain: "c1", title: "Parser refactor", project: "shop-api", projectId: "p1", cwd: "H:\\work\\shop-api", when: t - 5000, unread: false, pinned: true, threadOf: null, from: "", remoteKey: "github.com/o/shop-api" },
+      { chain: "c3", title: "fix the build", project: "app", projectId: "", cwd: "/home/kai/app", when: t - 9000, unread: false, pinned: false, threadOf: "c1", from: "Laptop", remoteKey: null },
+    ], "the newest first; an archived chat and a row with no id none; a remote's key that is no string none");
+    assert.ok(f.asked.includes("/memory/sessions?limit=200&kind=interactive,fork,team&remotes=1"), "its chats asked with their remotes' keys");
     assert.equal(l.needs, 0, "the tray's count: what asks you, nothing more");
     // (fails before: yes — the review of s1a) A Done row whose run the list no longer holds: at its chat's whole moment,
     // not the start of its day.
@@ -997,9 +1001,10 @@ describe("every machine, watched", () => {
   // (fails before: yes — the remote desk of 11-22: the watch's rows never left main.js)
   test("the desk: each other machine's rows as its last look found them — kept while it is away, none once it signs this window out, is disconnected or removed — told to this computer's page where they moved", () => {
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
-    assert.match(main, /for \(const m of others\) \{\n\s+if \(m\.refused\) deskLooks\.delete\(m\.id\);\n\s+else if \(m\.look\) deskLooks\.set\(m\.id, \{ rows: m\.look\.rows, recent: m\.look\.recent \}\);\n\s+\}/, "one that did not look this tick keeps its last");
+    assert.match(main, /for \(const m of others\) \{\n\s+if \(m\.refused\) deskLooks\.delete\(m\.id\);\n\s+else if \(m\.look\) deskLooks\.set\(m\.id, \{ rows: m\.look\.rows, recent: m\.look\.recent, flags: m\.look\.flags \}\);\n\s+\}/, "one that did not look this tick keeps its last");
     assert.match(main, /for \(const id of \[\.\.\.deskLooks\.keys\(\)\]\) if \(!kept\.some\(\(k\) => k\.id === id && !k\.off\)\) deskLooks\.delete\(id\);\n\s+tellDesk\(\);/);
     assert.match(main, /const had = k\.off \|\| refused \? null : deskLooks\.get\(k\.id\);/);
+    assert.match(main, /recent: had\?\.recent \?\? \[\], flags: had\?\.flags \?\? \[\] \};/, "its desk flags: none until a look read them");
     assert.match(main, /const said = JSON\.stringify\(d\);\n\s+if \(said === deskSaid\) return;/, "told only what moved");
     // Before the tick's notification, which may end the tick early.
     const tickAt = main.indexOf("async function watchLook()");

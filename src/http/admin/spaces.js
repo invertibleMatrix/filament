@@ -23,7 +23,7 @@ import { ARCHIVED_ROW, atWords, headWords, listenWords, routineRunsOn, rowWords 
 import { SPACE_ASKS, SPACE_EFFORTS } from "../../core/space-settings.js";
 import { asProcedure } from "../../services/memory/procedures.js";
 import { sendJson } from "../../app/pipeline/respond.js";
-import { branchOf, remoteKey, remoteRead } from "../../adapters/git/inspect.js";
+import { branchOf, remoteKey, remoteKeys } from "../../adapters/git/inspect.js";
 import { agentFolderRefusal } from "./remote.js";
 import { pressRefused } from "../guards.js";
 import { pullAsksLess, pullFault } from "../../core/space-pulls.js";
@@ -166,22 +166,14 @@ export function spaceRoutes(a) {
   const nameOf = a.spaceNames ?? ((chain) => chain);
   /** Whether a chat's words are none of another chat's agent's to read (core/space.js `readerNames`). @type {(chain: string) => boolean} */
   const apart = a.spaceApart ?? (() => false);
-  /** Each Space's folder's remote's key as another machine's feed last read it, and when (sp-cross). @type {Map<string, { key: string | null, at: number }>} */
-  const folderRemotes = new Map();
+  /** Each Space's folder's remote's key as another machine's feed last read it (sp-cross), read again after FEED_REMOTE_MS. */
+  const folderRemotes = remoteKeys({ ttl: FEED_REMOTE_MS });
   /**
-   * A Space's folder's remote's key (`remoteKey`), read again after FEED_REMOTE_MS; null for none; undefined where git
-   * could not read the folder just now (`remoteRead`'s `unread`), kept for no while: no remote is known either way.
+   * A Space's folder's remote's key (`remoteKey`); null for none; undefined where git could not read the folder just
+   * now (`remoteRead`'s `unread`), kept for no while: no remote is known either way.
    * @param {string} folder @returns {Promise<string | null | undefined>}
    */
-  const remoteKeyOf = async (folder) => {
-    const kept = folderRemotes.get(folder);
-    if (kept && Date.now() - kept.at < FEED_REMOTE_MS) return kept.key;
-    const r = await remoteRead(folder).catch(() => ({ remote: null, unread: true }));
-    if (r.unread) return undefined;
-    const key = r.remote ? remoteKey(r.remote.url) : null;
-    folderRemotes.set(folder, { key, at: Date.now() });
-    return key;
-  };
+  const remoteKeyOf = async (folder) => (await folderRemotes.of([folder])).get(folder);
   /** @type {import("../../app/own-spaces.js").OwnSpaces | null} */
   const ownSpaces = a.ownSpaces ?? null;
   /** Spaces of your own (A1), or the refusal that says they are not wired. */

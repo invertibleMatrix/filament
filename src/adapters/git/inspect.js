@@ -944,6 +944,76 @@ export async function remoteRead(folder) {
 }
 
 /**
+ * Folders' remotes' keys (`remoteKey`), each read again `ttl` after it was read (the remote desk of 11-22: a list of
+ * chats or projects says each one's, so a desk lists a repository's on every machine as one): `of(folders)` gives those
+ * read within `ttl` at once and reads the rest, `lanes` at a time, waiting `waitMs` at most for them — one read past it
+ * is kept for the next ask, and one read again gives its last key meanwhile, so a desk's list does not come apart every
+ * `ttl` (the review of s1c). A key is null where the folder has no remote; a folder git could not read just now
+ * (`remoteRead`'s `unread`) is kept for no while and given none (undefined).
+ * @param {{ read?: typeof remoteRead, now?: () => number, ttl?: number, lanes?: number }} [o]
+ */
+export function remoteKeys({ read = remoteRead, now = Date.now, ttl = 5 * 60_000, lanes = 4 } = {}) {
+  /** @type {Map<string, { key: string | null, at: number }>} */
+  const kept = new Map();
+  /** Each folder read now, once however many ask. @type {Map<string, Promise<void>>} */
+  const reading = new Map();
+  /** The reads waiting for a lane. @type {(() => void)[]} */
+  const waiting = [];
+  let busy = 0;
+  /** @param {string} folder @returns {Promise<void>} */
+  const start = (folder) => {
+    const had = reading.get(folder);
+    if (had) return had;
+    // Begun past this turn, once it is listed as read: a `read` that threw at once would let it go before then, and
+    // the folder would stand read for ever (the review of s1c).
+    const p = Promise.resolve().then(async () => {
+      while (busy >= lanes) await new Promise((r) => void waiting.push(() => r(undefined)));
+      busy++;
+      try {
+        const r = await read(folder);
+        if (r.unread) kept.delete(folder);
+        else kept.set(folder, { key: r.remote ? remoteKey(r.remote.url) : null, at: now() });
+      } catch {
+        kept.delete(folder);
+      } finally {
+        busy--;
+        reading.delete(folder);
+        waiting.shift()?.();
+      }
+    });
+    reading.set(folder, p);
+    return p;
+  };
+  /** @param {string} folder */
+  const fresh = (folder) => {
+    const k = kept.get(folder);
+    return k && now() - k.at < ttl ? k : null;
+  };
+  return {
+    /**
+     * Each folder's key: those read within `ttl` at once, the rest read first, `waitMs` at most (Infinity: every one);
+     * one read again that has not landed by then, its last.
+     * @param {readonly string[]} folders @param {{ waitMs?: number }} [o] @returns {Promise<Map<string, string | null | undefined>>}
+     */
+    async of(folders, { waitMs = Infinity } = {}) {
+      const all = [...new Set(folders.filter(Boolean))];
+      const missing = all.filter((f) => !fresh(f));
+      if (missing.length) {
+        const reads = Promise.all(missing.map(start));
+        if (waitMs === Infinity) await reads;
+        else {
+          /** @type {ReturnType<typeof setTimeout> | undefined} */
+          let timer;
+          await Promise.race([reads, new Promise((r) => (timer = setTimeout(r, waitMs)))]);
+          clearTimeout(timer);
+        }
+      }
+      return new Map(all.map((f) => [f, kept.get(f)?.key]));
+    },
+  };
+}
+
+/**
  * @typedef {object} CloneFacts  a folder's repository as another machine matches it (`cloneOf`)
  * @property {boolean} ok  false where no repository holds the folder, or git could not read it (`error`)
  * @property {string | null} path  the top folder of its repository or worktree, in this system's separators

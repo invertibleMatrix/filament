@@ -16,7 +16,7 @@
 // part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login.
 // Plain Node (NA-D13).
 import { pickRoute } from "./machines.js";
-import { routeFetch } from "./watch.js";
+import { deskFlagsOf, routeFetch } from "./watch.js";
 import { bodyText } from "../../src/services/machines/client.js";
 
 /** How long one call to the machine waits. */
@@ -92,7 +92,7 @@ export function createMachineAgents({ machines, cookieOf, store, pick = pickRout
    * The machine reached as this window's full device there: a call of its admin API — the answer's status and JSON, a
    * way that does not answer thrown — and the device this window is there; else the row that says what stands in the way.
    * @param {Machine} m @param {typeof FOR.switch} [f]  who reaches it: Settings' switch, or the new-chat menu
-   * @returns {Promise<{ send: Send, route: Route, origin: string, me: any } | { row: AgentsRow }>}
+   * @returns {Promise<{ send: Send, route: Route, origin: string, me: any, flags: string[] } | { row: AgentsRow }>}
    */
   async function reach(m, f = FOR.switch) {
     const kept = !!keptOf(m);
@@ -136,11 +136,13 @@ export function createMachineAgents({ machines, cookieOf, store, pick = pickRout
     const who = me.json?.who;
     // Through a tunnel — the app's SSH route, or an address the person forwarded — the machine takes this computer for
     // itself: the menu reads there as its page in the rail does.
-    if ((who === "tailnet" && f.tailnet) || (who === "local" && f.tunnel)) return { send, route, origin, me: me.json };
+    // `flags`: what its Filament does for the desk (watch.js `deskFlagsOf`), for its callers to say what one lacks.
+    const flags = deskFlagsOf(me.json);
+    if ((who === "tailnet" && f.tailnet) || (who === "local" && f.tunnel)) return { send, route, origin, me: me.json, flags };
     if (who === "tailnet") return stop(`This app reaches ${m.name} by your tailnet login, not as a paired device: pair it with a code from its Settings › Remote access, and ${f.then}.`);
     if (who !== "device") return stop(gone);
     if (me.json?.device?.scope !== "full") return stop(`This app is paired with ${m.name} view-only: ${f.full}. Pair it again as Full with Add a machine.`);
-    return { send, route, origin, me: me.json };
+    return { send, route, origin, me: me.json, flags };
   }
 
   /**

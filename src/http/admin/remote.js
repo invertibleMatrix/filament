@@ -500,6 +500,14 @@ export function agentFolderRefusal(cwd, { dataDir, home = homedir(), roots = [],
  */
 export const PAGES = Object.freeze(["new"]);
 
+/**
+ * What this Filament does for another machine's desk — the app that lists every machine's chats as one (the remote
+ * desk of 11-22) —, by name (GET /remote/me `desk`): an app greys what a machine's list leaves out, saying to update it
+ * there. `remote-key`: its chats' and projects' lists say their repository's remote (`?remotes=1`), by which the desk
+ * lists a repository's on every machine as one.
+ */
+export const DESK = Object.freeze(["remote-key"]);
+
 /** The claim's path, answered before any caller is known (index.js). */
 export const CLAIM_PATH = "/remote/claim";
 
@@ -727,8 +735,8 @@ export function remoteRoutes(a) {
     // Who reads this answer, as the page's rail says it: this computer, the admin token, your own tailnet login, or the
     // device, its scope and its grants — what another machine's agents read to say why they are refused. `pages`: the
     // addresses this Filament's page opens that another machine's app sends it to (`PAGES`): an app that reads none
-    // sends it nowhere a page from before would not open.
-    ["GET", "/remote/me", (r) => sendJson(r.res, 200, { who: r.who?.kind ?? null, ...(r.who?.kind === "device" ? { device: r.who.device } : {}), ...(r.who?.kind === "tailnet" ? { login: r.who.login } : {}), machine: machine(), pages: PAGES })],
+    // sends it nowhere a page from before would not open. `desk`: what it does for another machine's desk (`DESK`).
+    ["GET", "/remote/me", (r) => sendJson(r.res, 200, { who: r.who?.kind ?? null, ...(r.who?.kind === "device" ? { device: r.who.device } : {}), ...(r.who?.kind === "tailnet" ? { login: r.who.login } : {}), machine: machine(), pages: PAGES, desk: DESK })],
     [
       // A device signs itself out: its token stops working at once, and its cookie goes.
       "POST",

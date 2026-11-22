@@ -951,7 +951,7 @@ it was, under kind `ability:<name>`, but is recalled nowhere, briefed nowhere an
 (SSE progress), `POST /api/memory/recall`, `POST /api/memory/remember`,
 `POST /api/memory/forget` (retire), `GET /api/memory/items?status=`, `POST /api/memory/items/:id` (confirm/dismiss/restore, through `brain.setItemStatus` as the owner),
 `GET /api/memory/items/:id/history` (a claim's events, slot and replacements; takes `<n>` or any line id),
-`GET`/`POST`/`DELETE /api/memory/identity` (the user's facts of no project in a user slot: listed and set by name, deleted by id: `brain.identityFacts`, `setIdentity`, `forgetIdentity`), `GET /api/memory/sessions?q=&limit=&offset=`,
+`GET`/`POST`/`DELETE /api/memory/identity` (the user's facts of no project in a user slot: listed and set by name, deleted by id: `brain.identityFacts`, `setIdentity`, `forgetIdentity`), `GET /api/memory/sessions?q=&limit=&offset=&remotes=` (`remotes=1`: each row's repository's remote's `remoteKey`, as another machine's desk merges a repository's chats; null for none, none while unread),
 `GET /api/memory/sessions/:id?view=`, `GET /api/memory/activity`, `GET /api/memory/benchmark` (memory cost per
 request from the traces, learning runs), `GET /api/memory/traffic` (memory's own model calls as request records),
 `GET /api/memory/usage[.csv]?from=&to=` (their per-day totals from `memory-usage.json`, rows split by purpose:

@@ -32,7 +32,10 @@ export const CHATS_MS = 60_000;
 const THREADS_QUIET_MS = 30_000;
 /** Your Space's rows are read this often (S5b): a dashboard's watch looks minutes apart, a source stops after three. */
 export const SPACE_MS = 30_000;
-const CHATS_PATH = "/memory/sessions?limit=200&kind=interactive,fork,team";
+/** Each with its repository's remote's key (`remotes=1`), by which the desk lists a repository's on every machine as one; a Filament from before leaves it out. */
+const CHATS_PATH = "/memory/sessions?limit=200&kind=interactive,fork,team&remotes=1";
+/** The most desk flags a machine's answer is read for. */
+const FLAGS_MOST = 32;
 /** Your Space's rows, without At a glance: the tray reads no dashboard's source. */
 const SPACE_PATH = "/your-space?glance=0";
 
@@ -43,13 +46,14 @@ const SPACE_PATH = "/your-space?glance=0";
  * @typedef {import("../../src/ui/harness/lib/now.js").NowRow} NowRow
  * @typedef {{ project: string, count: number }} SpaceNew  how many rows came to Your Space since the last read, of one
  *   project, by its name
- * @typedef {{ chain: string, title: string, project: string, projectId: string, cwd: string, when: number, unread: boolean, pinned: boolean, threadOf: string | null, from: string }} DeskChat
+ * @typedef {{ chain: string, title: string, project: string, projectId: string, cwd: string, when: number, unread: boolean, pinned: boolean, threadOf: string | null, from: string, remoteKey: string | null }} DeskChat
  *   a chat of the machine's as the desk lists it (the remote desk of 11-22): its title, its project's name and id, its
- *   folder, its newest moment (ms), its marks, the chat a thread of it is under, and whose agents started it (another
- *   machine's, by name)
+ *   folder, its newest moment (ms), its marks, the chat a thread of it is under, whose agents started it (another
+ *   machine's, by name), and its repository's remote's key (null: none, or not known yet)
  * @typedef {{ needs: NowRow[], works: NowRow[], done: NowRow[] }} NowGroups  Now's three groups, as the harness's left bar has them
- * @typedef {{ needs: number, works: number, needsNew: NowRow[], ended: Ended[], spaceNew: SpaceNew[], rows: NowGroups, recent: DeskChat[] }} Look
- *   `rows`: its Now, Done's chats among them (the unread marks its list says); `recent`: its chats, the newest first
+ * @typedef {{ needs: number, works: number, needsNew: NowRow[], ended: Ended[], spaceNew: SpaceNew[], rows: NowGroups, recent: DeskChat[], flags: string[] }} Look
+ *   `rows`: its Now, Done's chats among them (the unread marks its list says); `recent`: its chats, the newest first;
+ *   `flags`: what its Filament does for the desk (`deskFlagsOf`)
  */
 
 /** A chat's own turn, not a sub-agent's run nor a replay. @param {any} r */
@@ -87,8 +91,17 @@ export const deskChats = (sessions) =>
       pinned: !!s.pinned,
       threadOf: typeof s.threadOf === "string" && s.threadOf ? s.threadOf : null,
       from: typeof s.fromAgents?.name === "string" ? s.fromAgents.name : "",
+      remoteKey: typeof s.remoteKey === "string" && s.remoteKey ? s.remoteKey : null,
     }))
     .sort((a, b) => b.when - a.when);
+
+/**
+ * What a machine's Filament does for the desk, by name (its GET /remote/me `desk`, the server's `DESK`): names alone —
+ * another machine's Filament, of another version or none of ours, answers what it likes —; none from one from before.
+ * @param {any} me @returns {string[]}
+ */
+export const deskFlagsOf = (me) =>
+  Array.isArray(me?.desk) ? [...new Set(me.desk.filter((/** @type {unknown} */ f) => typeof f === "string" && /^[a-z][a-z0-9-]{0,39}$/.test(f)))].slice(0, FLAGS_MOST) : [];
 
 /**
  * @param {{ call: (path: string, init?: any) => Promise<any>, now?: () => number, outageMs?: number }} o
@@ -117,6 +130,16 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
   /** Your Space's open rows as its last read saw them; null until its first read, which only learns. @type {Set<string> | null} */
   let spaceOpen = null;
   let spaceAt = -Infinity;
+  /** What its Filament does for the desk as last read (`deskFlagsOf`), read again at the chats' pace. @type {string[]} */
+  let flags = [];
+  let flagsAt = -Infinity;
+
+  /** Its desk flags read at the chats' pace; a read that fails keeps the last. @param {number} t */
+  async function readFlags(t) {
+    if (t - flagsAt < CHATS_MS) return;
+    const me = await call("/remote/me").catch(() => null);
+    if (me) [flags, flagsAt] = [deskFlagsOf(me), t];
+  }
 
   /**
    * Your Space read at its pace (S5b, A8): the rows Filament keeps that are open now and were not at its last read,
@@ -190,7 +213,7 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     const crews = chainsWithThreads(runs);
     for (const c of [...threads.keys()]) if (!crews.includes(c)) [threads.delete(c), threadsAt.delete(c)];
     const due = (/** @type {string} */ chain) => !threads.has(chain) || runs.some((/** @type {any} */ r) => r.kind === "subagent" && r.endedAt == null && String(r.meta?.chain || "") === chain) || t - (threadsAt.get(chain) || 0) >= THREADS_QUIET_MS;
-    const [spaceNew] = await Promise.all([readSpace(t), ...follow.map(readFold), ...crews.filter(due).map(readThreads)]);
+    const [spaceNew] = await Promise.all([readSpace(t), readFlags(t), ...follow.map(readFold), ...crews.filter(due).map(readThreads)]);
     // Done's chats as the list marks them unread, as the harness's own Now has them: the desk draws every group.
     const unread = new Set([...chats].filter(([, s]) => s.unread).map(([chain]) => chain));
     const g = nowRows({ runs, folds, threads, chats: facts, unread, holders: new Map(), now: t });
@@ -228,7 +251,7 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     if (marked) chatsAt = -Infinity;
     primed = true;
     seenAt = now();
-    return { needs: asks.length, works: g.works.length, needsNew, ended, spaceNew: quiet ? [] : /** @type {SpaceNew[]} */ (spaceNew), rows: g, recent };
+    return { needs: asks.length, works: g.works.length, needsNew, ended, spaceNew: quiet ? [] : /** @type {SpaceNew[]} */ (spaceNew), rows: g, recent, flags };
   }
   return { look };
 }
