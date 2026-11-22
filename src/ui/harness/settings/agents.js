@@ -615,10 +615,11 @@ export function renderAgents(body, cb, io = {}) {
       e.gone && !e.installing
         ? m("div", { class: "cag-callout", role: "note" }, m("span", {}, `${e.name}'s program isn't on this computer any more: its turns can't start.`), getIt(e))
         : null,
-      // Older than the version Filament holds it to (Antigravity before 1.5.1): why, with its Update at hand.
+      // Older than the version Filament holds it to (Antigravity before 1.5.1): why, with its Update at hand — or why
+      // there's none yet, its maker's feed unread.
       e.outdated && !e.installing && !e.gone
         ? m("div", { class: "cag-callout", role: "note" },
-            m("span", {}, `${e.outdated}.`),
+            m("span", {}, e.waiting && !e.update ? `${e.outdated}. ${e.waiting}.` : `${e.outdated}.`),
             e.update && e.install && !e.install.needs ? btn("secondary", held ? "Updating…" : `Update to ${e.update}`, () => cb.install(e.id), { disabled: held }) : null)
         : null,
       update,

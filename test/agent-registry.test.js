@@ -1519,6 +1519,7 @@ describe("Settings → Coding agents one step at a time, over stand-ins (app/cod
     const back = stand({ agents: [agentOf("antigravity-acp", "1.5.13", { name: "Google Antigravity", binary: { [String(TARGET)]: program } })] });
     back.s.receipts.set("antigravity-acp", { id: "antigravity-acp", version: "1.5.14", way: "binary", package: program.archive, command: process.execPath, args: program.args, env: {}, at: 1 });
     assert.deepEqual([back.s.entry("antigravity-acp").installed?.version, back.s.entry("antigravity-acp").update], ["1.5.14", null]);
+    await assert.rejects(back.section.install("antigravity-acp"), { message: "Antigravity 1.5.14 is installed, newer than the 1.5.13 its source names now: nothing to install" });
     back.s.receipts.set("antigravity-acp", { id: "antigravity-acp", version: "1.5.12", way: "binary", package: program.archive, command: process.execPath, args: program.args, env: {}, at: 1 });
     assert.equal(back.s.entry("antigravity-acp").update, "1.5.13", "a newer one still is");
   });

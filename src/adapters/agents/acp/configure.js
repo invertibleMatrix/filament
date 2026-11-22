@@ -16,10 +16,12 @@ export const askingMode = (conv) => ASKING_MODES.find((m) => conv.availableModes
 
 /**
  * The common words for a mode, each mapped onto what an agent offers (`resolveMode`): Cursor's `agent` is Gemini's
- * and Qoder's `yolo`; `ask` is an agent's own `ask`, else its `default` (it asks before it acts), else its plan mode.
+ * and Qoder's `yolo`, Antigravity's `auto` where its account offers it, else its `accept-edits` (agy 1.5 names its modes
+ * `default`, `accept-edits`, `plan` and `auto`, read live on 1.5.14); `ask` is an agent's own `ask`, else its `default`
+ * (it asks before it acts), else its plan mode.
  */
 export const MODE_ALIASES = Object.freeze({
-  agent: ["agent", "yolo", "bypassPermissions", "auto", "acceptEdits"],
+  agent: ["agent", "yolo", "bypassPermissions", "auto", "acceptEdits", "accept-edits"],
   plan: ["plan", "dontAsk"],
   ask: ["ask", "default", "plan"],
 });

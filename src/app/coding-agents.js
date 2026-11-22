@@ -520,6 +520,9 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
       }
       if (e.install?.needs) throw failure(400, `${e.name} installs with ${e.install.needs}, which isn't on this computer`);
       if (e.installed?.version === p.version && !e.gone) throw failure(400, `${e.name} ${p.version} is installed already`);
+      // Never over a newer one, as a feed that went back would have it (the card offers no such Update either).
+      if (e.installed && !e.gone && newerVersion(e.installed.version, p.version))
+        throw failure(400, `${e.name} ${e.installed.version} is installed, newer than the ${p.version} its source names now: nothing to install`);
       mkdirSync(p.folder, { recursive: true });
       /** @type {string | null} */
       let why = null;

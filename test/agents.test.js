@@ -56,6 +56,16 @@ test("resolveMode maps the common words onto each agent's own mode ids", () => {
   assert.equal(resolveMode("agent", cursor, c), "agent"); assert.equal(resolveMode("YOLO", cursor, c), null); assert.equal(resolveMode("plan", [], c), "plan");
 });
 
+// (fails before: yes — agy 1.5.14 names its modes default, accept-edits and plan, read live, and auto where the account
+// offers it: `agent` matched none, so every turn noted it not offered and the session stayed in default)
+test("Antigravity's modes, an upstream with no aliases of its own: agent is auto where offered, else accept-edits; plan is plan; ask is default", async () => {
+  const { MODE_ALIASES, modeAsks } = await import("../src/adapters/agents/acp/configure.js");
+  const agy = ["default", "accept-edits", "plan"];
+  assert.deepEqual(["agent", "plan", "ask"].map((m) => resolveMode(m, agy, MODE_ALIASES)), ["accept-edits", "plan", "default"]);
+  assert.equal(resolveMode("agent", [...agy, "auto"], MODE_ALIASES), "auto");
+  assert.deepEqual([modeAsks("accept-edits"), modeAsks("default"), modeAsks("plan")], [false, true, true]);
+});
+
 test("an agent's own words for its models: a session's model option, the classic availableModels, a list's entries (HarnessV3-ACP AF2)", () => {
   // Claude Code's adapter as it answered on the owner's machine (0.76.0).
   const claude = { configOptions: [{ id: "model", name: "Model", currentValue: "opus", options: [
