@@ -455,7 +455,8 @@ test("the page: /api/state's device makes it view-only — the box, the left bar
   assert.match(app, /\{ id: "welcome", label: "Welcome tour", [^\n]*when: \(\) => !viewOnlyPage\(\), run: \(\) => openTour\(\) \}/);
   // The review of p4-view-ui: the doors the hidden controls still had.
   assert.match(app, /const VIEW_ONLY_KEYS_OFF = new Set\(\["model", "mode", "effort", "fork", "subagent"\]\);/);
-  assert.match(app, /e\.preventDefault\(\);\n[^\n]*\n  if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;/, "Ctrl+M, Ctrl+Shift+M, Ctrl+T, Ctrl+Shift+F and Alt+A");
+  // (After the chat alone hands the desk its list's keys: none of those is one.)
+  assert.match(app, /e\?\.preventDefault\(\);\n(?:[^\n]*\n){3}  if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;/, "Ctrl+M, Ctrl+Shift+M, Ctrl+T, Ctrl+Shift+F and Alt+A");
   assert.match(app, /settings: \(\) => \(viewOnlyPage\(\) \? null : settingFacts\(\)\),/, "Ctrl+K's setting rows");
   assert.match(app, /\{ id: "side-new", [^\n]*when: \(\) => !viewOnlyPage\(\) && /, "the palette's Ask on the side");
   assert.match(app, /\{ id: "catch-up", [^\n]*when: \(\) => !viewOnlyPage\(\) && /, "and its Catch me up…");

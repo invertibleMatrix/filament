@@ -622,6 +622,8 @@ describe("the page's shortcuts where you type", () => {
       viewOnlyPage: () => false,
       CHAT_ONLY: false,
       CHAT_ONLY_OFF: new Set(),
+      toDesk: null,
+      DESK_KEYS: [],
       document: { querySelector: (/** @type {string} */ s) => (s === '.zc-dialog[aria-modal="true"]' ? modal : s === '[aria-modal="true"]' && sheet ? {} : null) },
       commandCenter: { open: () => opened.push("command center") },
       forkModal: () => opened.push("fork"),

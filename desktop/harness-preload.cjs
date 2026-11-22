@@ -9,6 +9,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 /** The fields a desk operation may carry (desktop/lib/desk.js `OPS`, which checks each again). */
 const DESK_FIELDS = ["op", "machine", "chat", "q", "after", "cwd", "title", "model", "mode", "content", "ask", "allow", "choice", "words"];
+/** A rectangle as plain numbers. @param {any} r */
+const rectOf = (r) => ({ x: Number(r?.x) || 0, y: Number(r?.y) || 0, width: Number(r?.width) || 0, height: Number(r?.height) || 0 });
 
 contextBridge.exposeInMainWorld("filamentBrowser", {
   /**
@@ -202,6 +204,35 @@ contextBridge.exposeInMainWorld("filamentMachines", {
     const heard = (/** @type {any} */ _e, /** @type {any} */ f) => fn(f);
     ipcRenderer.on("filament:desk-event", heard);
     return () => ipcRenderer.removeListener("filament:desk-event", heard);
+  },
+  /**
+   * Another machine's chat shown in place over the page's column beside its list (lib/rail.js `showChat`): `{ machine,
+   * route, rect, theme, focus }`, the rectangle in the page's pixels, the look light or dark, `focus` the keys its. →
+   * whether it shows. @param {any} p @returns {Promise<boolean>}
+   */
+  showChat: (p) =>
+    ipcRenderer.invoke("filament:desk-show", { machine: String(p?.machine ?? ""), route: String(p?.route ?? ""), rect: rectOf(p?.rect), theme: p?.theme === "light" ? "light" : "dark", focus: p?.focus === true }),
+  /**
+   * The chat shown in place moved with the column, or out of sight while something of the page lies over it (null);
+   * `keys`: the keys its again. @param {any} rect @param {boolean} [keys]
+   */
+  placeChat: (rect, keys) => ipcRenderer.send("filament:desk-place", rect ? rectOf(rect) : null, keys === true),
+  /** The chat shown in place let go: the column the page's own again. */
+  hideChat: () => ipcRenderer.send("filament:desk-hide"),
+  /**
+   * The chat shown in place as its page goes — `{ id, hash }`: the machine, its page's address, null as it stops showing
+   * there. @param {(g: any) => void} fn @returns {() => void}  stops hearing it
+   */
+  onGuest: (fn) => {
+    const heard = (/** @type {any} */ _e, /** @type {any} */ g) => fn({ id: String(g?.id ?? ""), hash: typeof g?.hash === "string" ? g.hash : null });
+    ipcRenderer.on("filament:desk-guest", heard);
+    return () => ipcRenderer.removeListener("filament:desk-guest", heard);
+  },
+  /** A key the chat shown in place hands the page, by its shortcut's id (lib/chat-only.js `DESK_KEYS`). @param {(id: string) => void} fn @returns {() => void}  stops hearing it */
+  onKey: (fn) => {
+    const heard = (/** @type {any} */ _e, /** @type {any} */ id) => fn(String(id));
+    ipcRenderer.on("filament:desk-key", heard);
+    return () => ipcRenderer.removeListener("filament:desk-key", heard);
   },
 });
 

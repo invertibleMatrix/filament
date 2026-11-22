@@ -11,7 +11,7 @@ import { join } from "node:path";
 import vm from "node:vm";
 import { LOCAL_ID, colorOf, localMachine, partitionOf } from "../desktop/lib/machines.js";
 import { ICONS } from "../src/ui/harness/lib/icons.js";
-import { LOOK_EVERY_MS, MAC_LEFT, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, switchLayout, unreachablePage, zoomRows } from "../desktop/lib/rail.js";
+import { GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, zoomRows } from "../desktop/lib/rail.js";
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 import { PEER_BYTES, PEER_MS, PEERS_MAX, cappedJson, tailnetFilaments } from "../desktop/lib/tailnet-peers.js";
@@ -242,9 +242,9 @@ function fakeContents() {
 /**
  * @param {{ kept?: any[], answers?: Record<string, any>, zoom?: number, inserts?: string[], check?: any, keep?: any, claim?: () => Promise<any>,
  *   menu?: (rows: any[]) => void, confirm?: (q: any) => Promise<boolean>, ownId?: () => string | null, peers?: () => Promise<any>,
- *   waiting?: (id: string) => number, platform?: string, browserOf?: (id: string) => any }} [o]
+ *   waiting?: (id: string) => number, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void }} [o]
  */
-function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, platform = "win32", browserOf } = {}) {
+function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, platform = "win32", browserOf, onGuest } = {}) {
   let list = [localMachine(ORIGIN), ...kept];
   /** @type {any[]} */
   const views = [];
@@ -366,6 +366,7 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
     ...(ownId ? { ownId } : {}),
     ...(peers ? { peers } : {}),
     ...(browserOf ? { browserOf } : {}),
+    ...(onGuest ? { onGuest } : {}),
   });
   const settle = async () => {
     for (let i = 0; i < 6; i++) await new Promise((res) => setImmediate(res));
@@ -1761,7 +1762,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
     const electron = {
       contextBridge: { exposeInMainWorld: (/** @type {string} */ k, /** @type {any} */ v) => void (bridge[k] = v) },
       ipcRenderer: {
-        send: (/** @type {string} */ ch, /** @type {any} */ arg) => void sent.push([ch, arg ?? null]),
+        send: (/** @type {string} */ ch, /** @type {any} */ arg, /** @type {any[]} */ ...more) => void sent.push([ch, arg ?? null, ...more]),
         invoke: async (/** @type {string} */ ch, /** @type {any} */ arg) => (invoked.push([ch, arg ?? null]), answers[ch] ?? null),
         on: (/** @type {string} */ ch, /** @type {Function} */ fn) => void heard.set(ch, fn),
         removeListener: (/** @type {string} */ ch) => void heard.delete(ch),
@@ -1773,7 +1774,8 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   const m = loadPreload("machine-preload.cjs");
   // Its Browser pane's too (b-remote), the shape This computer's has, so the pane draws a page the app holds for it.
   assert.deepEqual(Object.keys(m.bridge), ["filamentMachines", "filamentBrowser"], "no other bridge");
-  assert.deepEqual(Object.keys(m.bridge.filamentMachines).sort(), ["onState", "open", "titleBar"]);
+  // Showing a chat alone beside This computer's list (s1j): its way to its whole page, and the list's keys by their id.
+  assert.deepEqual(Object.keys(m.bridge.filamentMachines).sort(), ["deskKey", "full", "onState", "open", "titleBar"]);
   assert.deepEqual(Object.keys(m.bridge.filamentBrowser).sort(), Object.keys(loadPreload("harness-preload.cjs").bridge.filamentBrowser).sort());
   m.bridge.filamentMachines.open({ x: "12", y: 3, width: 40, height: 28, more: "dropped" });
   m.bridge.filamentMachines.titleBar({ color: "#101010", symbolColor: 7, extra: 1 });
@@ -1783,14 +1785,18 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   m.heard.get("filament:machines")?.({}, { shown: true });
   stop();
   assert.equal(m.heard.has("filament:machines"), false, "stopped");
+  m.bridge.filamentMachines.full({ toString: () => "#/settings" });
+  m.bridge.filamentMachines.deskKey("x".repeat(60));
   assert.deepEqual(JSON.parse(JSON.stringify(m.sent)), [
     ["filament:machines-open", { x: 12, y: 3, width: 40, height: 28 }],
     ["filament:machines-title-bar", { color: "#101010", symbolColor: "7" }],
     ["filament:machines-ready", null],
+    ["filament:machines-full", "#/settings"],
+    ["filament:machines-key", "x".repeat(40)],
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");
-  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["call", "onDesk", "onEvent", "onState", "open", "seen"], "This computer's controls wear its colours through its own bridge");
+  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["call", "hideChat", "onDesk", "onEvent", "onGuest", "onKey", "onState", "open", "placeChat", "seen", "showChat"], "This computer's controls wear its colours through its own bridge");
   h.bridge.filamentMachines.open({ x: 1, y: 2, width: 3, height: 4 });
   h.bridge.filamentApp.frameArea({ left: "78", right: 0, top: 9 });
   assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [
@@ -1839,6 +1845,52 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   assert.match(main, /ipcMain\.on\("filament:frame-area", \(e, r\) => void \(rail\?\.hearsPage\(e\.sender, e\.senderFrame\) === LOCAL_ID && rail\.frameArea\(r\)\)\);/);
   assert.match(main, /ipcMain\.on\("filament:rail-select", \(e, id\) => void \(rail\?\.hears\(e\.sender, e\.senderFrame\?\.url\) && rail\.pick\(String\(id\)\)\)\);/);
   assert.match(main, /machinePreload: join\(ROOT, "desktop", "machine-preload\.cjs"\),/);
+  // (fails before: yes — s1j) Another machine's chat shown in place: This computer's page asks it with plain fields alone,
+  // and hears where it went and the keys it hands over; another machine's page has none of it.
+  for (const k of ["showChat", "placeChat", "hideChat", "onGuest", "onKey"]) assert.ok(!(k in m.bridge.filamentMachines), k);
+  await d.bridge.filamentMachines.showChat({ machine: "m-box", route: "#/task/c1", rect: { x: "280", y: 0, width: 900, height: 700, more: 1 }, theme: "sepia", url: "https://elsewhere" });
+  assert.deepEqual(JSON.parse(JSON.stringify(d.invoked.find((x) => x[0] === "filament:desk-show")?.[1])), { machine: "m-box", route: "#/task/c1", rect: { x: 280, y: 0, width: 900, height: 700 }, theme: "dark", focus: false });
+  await d.bridge.filamentMachines.showChat({ machine: "m-box", route: "#/task/c1", focus: "yes" });
+  await d.bridge.filamentMachines.showChat({ machine: "m-box", route: "#/task/c1", focus: true });
+  assert.deepEqual(d.invoked.filter((x) => x[0] === "filament:desk-show").map((x) => x[1].focus), [false, false, true], "the keys its: true alone");
+  d.bridge.filamentMachines.placeChat({ x: 1, y: 2, width: 3, height: 4, z: 9 });
+  d.bridge.filamentMachines.placeChat(null);
+  d.bridge.filamentMachines.placeChat({ x: 1, y: 2, width: 3, height: 4 }, true);
+  d.bridge.filamentMachines.hideChat();
+  assert.deepEqual(JSON.parse(JSON.stringify(d.sent.filter((x) => String(x[0]).startsWith("filament:desk-")))), [
+    ["filament:desk-place", { x: 1, y: 2, width: 3, height: 4 }, false],
+    ["filament:desk-place", null, false],
+    ["filament:desk-place", { x: 1, y: 2, width: 3, height: 4 }, true],
+    ["filament:desk-hide", null],
+  ]);
+  /** @type {any[]} */
+  const went = [];
+  const stopGuest = d.bridge.filamentMachines.onGuest((/** @type {any} */ g) => went.push(g));
+  d.heard.get("filament:desk-guest")?.({}, { id: "m-box", hash: "#/task/c9", more: 1 });
+  d.heard.get("filament:desk-guest")?.({}, { id: "m-box", hash: null });
+  stopGuest();
+  assert.deepEqual(JSON.parse(JSON.stringify(went)), [{ id: "m-box", hash: "#/task/c9" }, { id: "m-box", hash: null }]);
+  /** @type {string[]} */
+  const keys = [];
+  const stopKeys = d.bridge.filamentMachines.onKey((/** @type {string} */ k) => keys.push(k));
+  d.heard.get("filament:desk-key")?.({}, "command-center");
+  stopKeys();
+  assert.deepEqual(keys, ["command-center"]);
+  // Heard by main from the harness window's own page alone — This computer's, not a popped pane's —, a machine's view's
+  // asks as that machine, and its keys only while its chat shows in place, one of DESK_KEYS.
+  for (const said of [
+    `const deskPage = (e) => {\n    const w = windows.get("harness");\n    return w && !w.isDestroyed() && paneOf(e) === w && rail?.hearsPage(e.sender, e.senderFrame) === LOCAL_ID ? w : null;`,
+    `ipcMain.handle("filament:desk-show", (e, p) => {\n    const w = deskPage(e);`,
+    `return !!ask && !!rail?.showChat(ask.id, ask.hash, ask.rect, ask.theme, ask.focus);`,
+    `ipcMain.on("filament:desk-place", (e, rect, keys) => {\n    const w = deskPage(e);\n    if (w) rail?.placeChat(rect ? deskRect(w, rect) : null, keys === true);`,
+    `ipcMain.on("filament:desk-hide", (e) => void (deskPage(e) && rail?.hideChat()));`,
+    // (fails before: yes — any machine's view, one out of sight or kept from before, pulled the window to its whole page)
+    `ipcMain.on("filament:machines-full", (e, route) => {\n    const id = rail?.hearsPage(e.sender, e.senderFrame);\n    if (id && id !== LOCAL_ID && rail?.guest() === id) rail?.openOn(id, String(route ?? ""));`,
+    `if (!id || id === LOCAL_ID || rail?.guest() !== id || !DESK_KEYS.includes(String(key)) || !w || w.isDestroyed()) return;\n    w.webContents.focus();\n    w.webContents.send("filament:desk-key", String(key));`,
+    // Its Browser pane's pages placed over it where it shows in place too.
+    `active: rail?.showing() ?? null,`,
+  ])
+    assert.ok(main.includes(said), said.slice(0, 60));
 });
 
 describe("the app's page", () => {
@@ -2227,5 +2279,211 @@ describe("the app's page", () => {
     pick("https://phone.tail1234.ts.net");
     assert.equal(els["add-link"].value, "https://studio.tail1234.ts.net");
     assert.equal(edits.length, 1);
+  });
+});
+
+// The remote desk of 11-22 (s1j): another machine's chat shown in place over This computer's column beside its list.
+describe("another machine's chat shown in place", () => {
+  const COL = { x: 280, y: 0, width: 1160, height: 920 };
+  const BOX_PAGE = "https://box.tail1234.ts.net/ui/harness.html";
+  /** A rig whose box answers, and what This computer's page was told of the chat shown in place. @param {Record<string, any>} [o] */
+  const desk = async (o = {}) => {
+    /** @type {any[]} */
+    const told = [];
+    const t = rig({ answers: { "m-box": answered(BOX.routes[1]) }, onGuest: (g) => void told.push(g), ...o });
+    await t.settle();
+    return { ...t, told, box: () => t.viewOf("persist:machine-m-box") };
+  };
+
+  // (fails before: yes — a chat of another machine's opened its whole page over the window, This computer's list with it)
+  test("its view over the column alone, its page the chat alone in the desk's look; another chat moves its page, a look loads it anew; This computer's column alone undragged", async () => {
+    const t = await desk();
+    assert.equal(t.r.showChat("m-box", "#/task/c1", COL, "light", true), true);
+    await t.settle();
+    const v = t.box();
+    assert.deepEqual(v.webContents.loads, [`${BOX_PAGE}?only=chat&theme=light#/task/c1`], "opened there as it answered, at the chat");
+    assert.equal(t.r.active(), LOCAL_ID, "This computer still shows");
+    assert.equal(t.r.guest(), "m-box");
+    assert.equal(t.r.showing(), "m-box");
+    assert.deepEqual(v.bounds, COL);
+    assert.equal(v.visible, true);
+    assert.equal(t.win.children.at(-1), v, "over This computer's page");
+    assert.deepEqual(t.win.webContents.css, [UNDRAG_COLUMN_CSS], "that page's column drags no more; its list's top row still does");
+    assert.ok(v.webContents.focused > 0, "the keys its");
+    // Another chat of its: moved within its page, the same address but its hash — no load anew.
+    assert.equal(t.r.showChat("m-box", "#/task/c2/plan", COL, "light"), true);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}?only=chat&theme=light#/task/c2/plan`);
+    // The desk's look moved: its page in the new one, the keys left where they are.
+    const keys = v.webContents.focused;
+    assert.equal(t.r.showChat("m-box", "#/task/c2", COL, "dark"), true);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}?only=chat&theme=dark#/task/c2`);
+    assert.equal(v.webContents.focused, keys, "not asked: not taken");
+    assert.equal(t.views.filter((x) => x.prefs.partition === "persist:machine-m-box").length, 1, "one view all along");
+  });
+
+  test("out of sight while something of This computer's page lies over the column, back as it goes; let go, its view kept out of sight and the column the page's again", async () => {
+    const t = await desk();
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    await t.settle();
+    const v = t.box();
+    t.r.placeChat(null);
+    assert.equal(v.visible, false);
+    assert.equal(t.r.guest(), null, "not in sight");
+    assert.equal(t.r.showing(), LOCAL_ID);
+    await t.settle();
+    assert.deepEqual(t.win.webContents.removed, ["key-1"], "the column drags again under the menu");
+    const moved = { ...COL, x: 48, width: 1392 };
+    const keys = v.webContents.focused;
+    t.r.placeChat(moved);
+    assert.deepEqual([v.visible, v.bounds], [true, moved], "back, where the column is now (its bar folded)");
+    assert.deepEqual(t.win.webContents.css, [UNDRAG_COLUMN_CSS, UNDRAG_COLUMN_CSS]);
+    assert.equal(v.webContents.focused, keys, "the keys left where they are");
+    // (fails before: yes — nothing gave the keys back to it once a dialog of This computer's page it opened was gone)
+    t.r.placeChat(moved, true);
+    assert.equal(v.webContents.focused, keys + 1, "the keys its again, where it stood");
+    t.r.placeChat(null, true);
+    assert.equal(v.webContents.focused, keys + 1, "out of sight: not");
+    t.r.placeChat(moved);
+    const focused = t.win.webContents.focused;
+    t.r.hideChat();
+    assert.equal(v.visible, false);
+    assert.equal(t.r.guest(), null);
+    assert.equal(t.win.webContents.focused, focused + 1, "the keys This computer's page's");
+    await t.settle();
+    assert.deepEqual(t.win.webContents.removed, ["key-1", "key-2", "key-3"], "each time out of sight, and let go");
+    assert.equal(v.webContents.closed, false, "kept for the next");
+    assert.deepEqual(t.told, [], "the page let it go itself: nothing to tell it");
+    // Shown again in the same look: its page moves to the chat, no load anew.
+    t.r.showChat("m-box", "#/task/c3", COL, "dark");
+    assert.deepEqual(v.webContents.loads.slice(-1), [`${BOX_PAGE}?only=chat&theme=dark#/task/c3`]);
+    assert.equal(v.visible, true);
+  });
+
+  // (fails before: yes — nothing followed a chat's page once it went elsewhere)
+  test("its page's own address followed — another chat of its, Back — and This computer's page told; another origin's, or a frame's, not", async () => {
+    const t = await desk();
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    await t.settle();
+    const v = t.box();
+    v.webContents.emit("did-navigate-in-page", {}, `${BOX_PAGE}?only=chat&theme=dark#/task/c9`, true);
+    assert.deepEqual(t.told, [{ id: "m-box", hash: "#/task/c9" }]);
+    v.webContents.emit("did-navigate-in-page", {}, `${BOX_PAGE}#/task/frame`, false);
+    v.webContents.emit("did-navigate-in-page", {}, "https://evil.example/ui/harness.html#/task/x", true);
+    assert.equal(t.told.length, 1, "neither");
+    // Shown whole by its key or its pick: its whole page, at the chat its page went to; This computer's page told it went.
+    assert.equal(t.r.select("m-box"), true);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}#/task/c9`);
+    assert.deepEqual(t.told.at(-1), { id: "m-box", hash: null });
+    assert.deepEqual(v.bounds, { x: 0, y: 0, width: 1440, height: 920 }, "over the whole window");
+    assert.deepEqual(t.win.webContents.css, [UNDRAG_COLUMN_CSS, UNDRAG_CSS], "This computer's page wholly covered");
+  });
+
+  // (fails before: yes — the chat alone had no way to its machine's whole page)
+  test("its page asks for its whole page at a screen: shown whole there, its chat gone from the column", async () => {
+    const t = await desk();
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    await t.settle();
+    const v = t.box();
+    assert.equal(t.r.openOn("m-box", "#/settings/general"), true);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}#/settings/general`);
+    assert.equal(t.r.active(), "m-box");
+    assert.deepEqual(t.told, [{ id: "m-box", hash: null }]);
+    // Shown in place again later: the chat alone anew.
+    t.r.select(LOCAL_ID);
+    assert.equal(t.r.showChat("m-box", "#/task/c1", COL, "dark"), true);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}?only=chat&theme=dark#/task/c1`);
+  });
+
+  test("its chip's popover opens under it, where its view stands; its title bar's colours are the window's while it shows; the room the controls take lent over its column alone", async () => {
+    const t = await desk();
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    await t.settle();
+    const v = t.box();
+    assert.deepEqual(stateOf(v.webContents).frame, { left: 0, right: WIN_RIGHT }, "Windows' buttons over its right end");
+    t.r.tintFrom("m-box", { color: "#202020", symbolColor: "#eeeeee" });
+    assert.deepEqual(t.tinted.at(-1), { color: "#202020", symbolColor: "#eeeeee" });
+    assert.equal(t.r.openPop("m-mac", { x: 1, y: 1, width: 1, height: 1 }), false, "a page not before the person: no");
+    assert.equal(t.r.openPop("m-box", { x: 900, y: 6, width: 90, height: 28 }), true);
+    assert.deepEqual(t.railView().webContents.sent.at(-1)[1].at, { x: 1180, y: 6, width: 90, height: 28 }, "its chip where its view stands");
+    assert.equal(stateOf(v.webContents).open, true);
+  });
+
+  test("the room lent: what of the controls' room lies over the column, on Windows and a Mac", () => {
+    assert.deepEqual(lentFrame({ platform: "win32", at: COL, width: 1440 }), { left: 0, right: WIN_RIGHT });
+    assert.deepEqual(lentFrame({ platform: "win32", at: { ...COL, width: 1000 }, width: 1440 }), { left: 0, right: 0 }, "short of the right end");
+    assert.deepEqual(lentFrame({ platform: "darwin", at: COL, width: 1440 }), { left: 0, right: 0 }, "the list under a Mac's buttons");
+    assert.deepEqual(lentFrame({ platform: "darwin", at: { x: 48, y: 0, width: 1392, height: 900 }, width: 1440 }), { left: MAC_LEFT - 48, right: 0 }, "the bar folded: what of them is over it");
+    assert.deepEqual(lentFrame({ platform: "darwin", area: { left: 90, right: 0 }, zoom: 2, at: { x: 48, y: 0, width: 100, height: 100 }, width: 148 }), { left: 21, right: 0 }, "in its page's pixels");
+    assert.equal(lentFrame({ full: true, at: COL, width: 1440 }), null);
+  });
+
+  // (fails before: yes — the leak hunt of 11-19: a page moved from chat to chat for long kept what it drew)
+  test(`after ${GUEST_MOVES} chats moved to in one page, its view made anew where it is reached — no ask again, nothing told`, async () => {
+    const t = await desk();
+    for (let i = 1; i <= GUEST_MOVES + 1; i++) t.r.showChat("m-box", `#/task/c${i}`, COL, "dark");
+    await t.settle();
+    const boxes = () => t.views.filter((x) => x.prefs.partition === "persist:machine-m-box");
+    assert.equal(boxes().length, 1, `${GUEST_MOVES + 1} chats: one page`);
+    const old = boxes()[0];
+    t.r.showChat("m-box", "#/task/next", COL, "dark");
+    assert.equal(boxes().length, 2, "made anew");
+    assert.equal(old.webContents.closed, true);
+    const fresh = boxes()[1];
+    assert.deepEqual(fresh.webContents.loads, [`${BOX_PAGE}?only=chat&theme=dark#/task/next`], "at the chat at once");
+    assert.deepEqual([fresh.visible, fresh.bounds], [true, COL]);
+    assert.deepEqual(t.told, [], "This computer's page still shows it");
+    assert.equal(t.r.guest(), "m-box");
+  });
+
+  test("refused: This computer, a machine not kept or disconnected, an address none of a harness's, that machine shown whole, or the Add sheet open", async () => {
+    const t = await desk();
+    assert.equal(t.r.showChat(LOCAL_ID, "#/task/c1", COL, "dark"), false);
+    assert.equal(t.r.showChat("m-none", "#/task/c1", COL, "dark"), false);
+    for (const bad of ["javascript:alert(1)", "https://elsewhere.example/#/", "#/task/a b", "", "#/x#/y"]) assert.equal(t.r.showChat("m-box", bad, COL, "dark"), false, bad);
+    t.r.openAdd();
+    assert.equal(t.r.showChat("m-box", "#/task/c1", COL, "dark"), false);
+    t.r.closeAdd();
+    assert.equal(t.box(), undefined, "no view made for any");
+    t.r.select("m-box");
+    assert.equal(t.r.showChat("m-box", "#/task/c1", COL, "dark"), false, "its whole page before the person: not made the chat alone under them");
+  });
+
+  // (fails before: yes — the desk's look moved while another machine showed whole was refused, and never asked again)
+  test("asked while another machine shows whole: it waits out of sight, the keys left there, and is in sight as This computer shows again", async () => {
+    const t = await desk();
+    t.r.select("m-mac");
+    assert.equal(t.r.showChat("m-box", "#/task/c1", COL, "light", true), true);
+    await t.settle();
+    const v = t.box();
+    assert.deepEqual([v.visible, t.r.guest(), t.r.active()], [false, null, "m-mac"]);
+    assert.equal(v.webContents.focused, 0);
+    assert.equal(v.webContents.loads.at(-1), `${BOX_PAGE}?only=chat&theme=light#/task/c1`);
+    t.r.select(LOCAL_ID);
+    assert.deepEqual([v.visible, v.bounds, t.r.guest()], [true, COL, "m-box"]);
+  });
+
+  test("its machine removed from the window, or This computer's page loaded anew: gone from the column — told, where the page did not let it go", async () => {
+    const t = await desk();
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    await t.settle();
+    t.win.webContents.emit("did-navigate");
+    assert.equal(t.r.guest(), null);
+    assert.equal(t.box().visible, false);
+    assert.deepEqual(t.told, [], "the page loaded anew knows of none");
+    t.r.showChat("m-box", "#/task/c1", COL, "dark");
+    t.setList([localMachine(ORIGIN), MAC]);
+    t.r.refresh();
+    assert.deepEqual(t.told, [{ id: "m-box", hash: null }]);
+    assert.equal(t.r.guest(), null);
+  });
+
+  test("what This computer's page asks to show in place, read as the app takes it", () => {
+    const place = (/** @type {any} */ r, /** @type {number} */ z) => (r ? { x: r.x * z, y: r.y * z, width: r.width * z, height: r.height * z } : null);
+    assert.deepEqual(showAsk({ machine: "m-box", route: "#/task/c1", rect: { x: 10, y: 0, width: 100, height: 50 }, theme: "light" }, 2, { width: 1440, height: 900 }, place), { id: "m-box", hash: "#/task/c1", rect: { x: 20, y: 0, width: 200, height: 100 }, theme: "light", focus: false });
+    assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", theme: "sepia" }, 1, { width: 1, height: 1 }, place)?.theme, "dark");
+    assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", focus: true }, 1, { width: 1, height: 1 }, place)?.focus, true);
+    assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", focus: "yes" }, 1, { width: 1, height: 1 }, place)?.focus, false);
+    for (const p of [{ machine: LOCAL_ID, route: "#/" }, { machine: "../x", route: "#/" }, { machine: "m-box", route: "#/a b" }, { machine: "m-box", route: `#/${"x".repeat(2000)}` }, null])
+      assert.equal(showAsk(p, 1, { width: 1, height: 1 }, place), null, JSON.stringify(p)?.slice(0, 40));
   });
 });

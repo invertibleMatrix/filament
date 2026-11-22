@@ -194,7 +194,7 @@ test("harness.html wears the desk's look before the first paint, on the chat alo
 });
 
 test("app.js: the chat alone is read once, wears the desk's look, and the shell draws it", () => {
-  assert.match(APP, /import \{ chatOnlyOf, fullPageOf, themeHintOf \} from "\.\/lib\/chat-only\.js";/);
+  assert.match(APP, /import \{ DESK_KEYS, chatOnlyOf, deskKeyOf, fullPageOf, themeHintOf \} from "\.\/lib\/chat-only\.js";/);
   assert.match(APP, /const CHAT_ONLY = !POPPED && chatOnlyOf\(\);\nconst fullPage = CHAT_ONLY \? fullPageOf\(\) : null;\nif \(CHAT_ONLY\) hintTheme\(themeHintOf\(\)\);/);
   assert.match(APP, /const shell = createShell\(must\("app"\), \{\n  chatOnly: CHAT_ONLY,\n  \.\.\.\(fullPage \? \{ onFullPage: \(\) => fullPage\(location\.hash \|\| backTo\(\)\) \} : \{\}\),/);
 });
@@ -230,7 +230,7 @@ test("app.js: no sweep, tour or tips on the chat alone; what goes through the hi
   assert.ok(off);
   assert.deepEqual(JSON.parse(`[${off[1]}]`).sort(), ["new", "new-task", "next-needs", "open-workspace", "sidebar", "task-next", "task-prev", "tips", "welcome"]);
   assert.match(APP, / {2}\]\.filter\(\(a\) => !CHAT_ONLY \|\| !CHAT_ONLY_OFF\.has\(a\.id\)\),\n {2}onOpenTask:/, "Ctrl+K's actions");
-  assert.match(APP, / {2}if \(!run\) return;\n {2}e\.preventDefault\(\);\n[^\n]*\n {2}if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;\n {2}if \(CHAT_ONLY && CHAT_ONLY_OFF\.has\(id\)\) return;/, "the keys");
+  assert.match(APP, / {2}if \(!run\) return;\n {2}e\?\.preventDefault\(\);\n(?:[^\n]*\n){3} {2}if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;\n {2}if \(CHAT_ONLY && CHAT_ONLY_OFF\.has\(id\)\) return;/, "the keys — the desk's handed to it first, where the desk shows the chat (desk-in-place.test.js)");
   assert.match(APP, /if \(rail\.closeFocused\(\)\) return;\n {6}if \(viewOnlyPage\(\) \|\| CHAT_ONLY\) return;\n {6}pushNextAddress = true;\n {6}newChat\(\);/, "Alt+W closes a pane, never the chat");
   assert.match(APP, /id: "theme", [^\n]*when: \(\) => !themeHinted\(\),/, "no theme's switch while the page wears the desk's look");
   // It is a tab of its own: it claims its chat as any page does (claimWriting's refusal is a popped pane's and a view-only page's alone).

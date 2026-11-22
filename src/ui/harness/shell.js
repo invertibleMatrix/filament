@@ -112,6 +112,11 @@ export function createShell(root, cb = {}) {
     root.style.setProperty("--pane-w", `${panes.width}px`);
   };
 
+  /** Whether the crumb in the sidebar's row is off: a screen up, or another machine's chat over the column. */
+  function crumbOff() {
+    return root.classList.contains("screen-up") || root.classList.contains("guest-up");
+  }
+
   /** Whether a Mac's window buttons stand at the top row's left end (lib/app-frame.js). */
   function lightsAtLeft() {
     return document.documentElement.classList.contains("app-frame-left");
@@ -198,6 +203,8 @@ export function createShell(root, cb = {}) {
   return {
     root,
     mainFrame,
+    /** The column beside the sidebar — the header, the frame —, where another machine's chat shows in place (lib/desk-guest.js). */
+    contentCol,
     sidebarHost,
     collapsedRail,
     header,
@@ -226,12 +233,23 @@ export function createShell(root, cb = {}) {
       header.el.inert = on;
       splitRow.inert = on;
       // The crumb in the sidebar's row is the chat's, as the header is: unseen and inert under the screen too.
-      if (crumbSlot) crumbSlot.inert = on;
+      if (crumbSlot) crumbSlot.inert = crumbOff();
+    },
+    /**
+     * Another machine's chat over the column (lib/desk-guest.js): in sight, out of sight a moment, or gone (null). In
+     * sight, the column under it is inert — nothing typed lands in this computer's chat unseen there —, and while it
+     * stands at all, that chat's crumb in the sidebar's row goes unseen and inert, its menu acting on no chat shown.
+     * @param {"in" | "out" | null} s
+     */
+    setGuest: (s) => {
+      root.classList.toggle("guest-up", !!s);
+      contentCol.inert = s === "in";
+      if (crumbSlot) crumbSlot.inert = crumbOff();
     },
     /** The sidebar's room for the crumb, once the sidebar is made (app.js). @param {HTMLElement} el */
     setCrumbSlot(el) {
       crumbSlot = el;
-      crumbSlot.inert = root.classList.contains("screen-up");
+      crumbSlot.inert = crumbOff();
       paintLayout();
     },
     /** The room the panes are fitted to: the split row's width, the window's, and the row's height. */

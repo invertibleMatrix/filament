@@ -291,7 +291,18 @@ Under **Projects**, a chat on another machine stands with the project here of th
 names it, on GitHub, GitLab or any host; two folders that are only paths say nothing across machines — and the rest
 stand in projects of their own, a repository on two machines as one. Each machine tells this computer as a turn begins
 or ends there, and as its agents' questions start or stop waiting for you, so its rows move within a few seconds; the
-app's look every ten seconds catches what a dropped connection missed. A press on another machine's chat shows that machine in the window, at that chat. What one of
+app's look every ten seconds catches what a dropped connection missed. A press on another machine's chat — its row, its
+card's **Open**, or a chat Ctrl+K found there — shows it in place: that machine's own page of the chat, its header, its
+box and its panes, beside this computer's left bar, which stays, its row marked. It is that machine's chat as its own
+window shows it: what you send there, you send there. Go to another chat of that machine's from inside it and the bar
+follows; choose one of this computer's and it goes — pressed while Settings, the Library or a Space is up, it leaves
+them, as this computer's chats do. A menu, a dialog, Ctrl+K or Settings of this computer's opens over it — it steps out
+of sight meanwhile —, and Ctrl+K, Ctrl+B, Alt+N, Ctrl+N, Ctrl+O and Ctrl+Shift+[ and ] pressed in it are the left bar's,
+as anywhere else in the window, the keys back in the chat as what they opened goes. While it shows, this computer's
+chat's title steps out of the bar's top row. Its header's **Open full page** — or Settings, the Library or a Space
+asked for there — shows that machine whole in the window, as Ctrl+2 does. A machine whose Filament is older than this
+one opens its whole page instead, and says so once, as you come back to this computer. A notification of its chat
+still shows that machine whole, at the chat. What one of
 theirs asks you waits under its row in **Needs you**, answered there without the window going to it: its question and
 the command it would run, a button for each of its answers, a box where words answer it, and **Open** for its whole
 card in its chat. What a card could show only a part of — a plan, a form, a link, a secret, an edit's changes, a command
@@ -303,7 +314,8 @@ chats the bar lists — This computer's alone, or **All machines**, each one tic
 **Machine**: This computer's projects first, then each other machine's under its name. Grouped by time, and in the
 Archived view, the other machines' chats show in Now alone; a thread, or a team on a chat's side, shows under its chat
 on its own machine. A chat of theirs under a project wears its mark there too — waiting for you, working — while Now
-is folded. Ctrl+Shift+[ and ] move through This computer's chats alone. Another machine's page in the window lists
+is folded. Ctrl+Shift+[ and ] move through the chats the bar lists, another machine's shown in place as they come —
+not one whose machine does not answer. Another machine's page in the window lists
 its own chats alone. A machine whose Filament is older than the one that brought this list says no repository for its
 chats: they stand in projects of their own until it is updated.
 
@@ -314,8 +326,8 @@ It writes its chat as any page does. Settings, the Library, a Space or the artif
 machine's whole page in the app, at that screen (**Open full page** in its header opens it at the chat), and the chat
 stays as it was; in a browser, a note says to open the full page for them. What goes through the left bar it hides —
 the chats before and after (Ctrl+Shift+[ and ]), what needs you next — and what leaves the chat for a new one (New
-chat, Open Workspace, the welcome tour) are not there; nor the tips, the Auto-archive sweep, or the theme's switch
-while it wears the look it was given.
+chat, Open Workspace, the welcome tour) are not there — in the app, their keys and Ctrl+K go to the window's own left
+bar —; nor the tips, the Auto-archive sweep, or the theme's switch while it wears the look it was given.
 
 **Another machine's agents.** A Filament can let another Filament's agents work on it: start chats in its projects,
 send them turns and follow them. They come in by a device of their own, apart from yours, named for the machine whose

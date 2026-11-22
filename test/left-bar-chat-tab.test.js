@@ -15,7 +15,7 @@ test("a left-bar click opens the chat on its Chat tab, an address on the view it
   // (Its unread mark goes with the open, `markRead`: chat-open-path.)
   assert.match(bar, /onOpen: \(s\) => \{\n\s*openSession\(s, \{ push: true, view: "chat" \}\);\n\s*leaveScreen\(\);\n\s*\},/);
   // The view asked for is the one it opens on, for a chat already open as for one opened now.
-  assert.match(src, /function selectChat\(id, opts = \{\}\) \{\n\s*state\.currentId = id;\n\s*const chat = chatOf\(id\);\n\s*if \(!chat\) return;\n\s*if \(opts\.view\) chat\.viewTab = opts\.view;/);
+  assert.match(src, /function selectChat\(id, opts = \{\}\) \{\n(?:\s*\/\/[^\n]*\n)?\s*deskGuest\?\.close\(\);\n\s*state\.currentId = id;\n\s*const chat = chatOf\(id\);\n\s*if \(!chat\) return;\n\s*if \(opts\.view\) chat\.viewTab = opts\.view;/);
   assert.match(src, /if \(open\) \{\n\s*pushNextAddress = !!opts\.push;\n\s*selectChat\(open\.id, \{ view: opts\.view \}\);/);
   assert.match(src, /viewTab: opts\.view \|\| was\?\.viewTab \|\| "chat",/);
   // An address keeps the view it names: the route sets it, and a thread a row of Now names opens in Agents.

@@ -74,7 +74,9 @@ describe("the floating pane fitted to the window", () => {
     const shell = src("shell.js");
     // In the desktop app's own title bar the header is the window's bar, out of the frame (titlebar.test.js).
     assert.match(shell, /const mainFrame = h\("section", \{ class: "main-frame" \}, titleBar \? null : header\.el, splitRow\);/);
-    assert.match(shell, /setScreen: \(on\) => \{\n\s*mainFrame\.classList\.toggle\("screen-on", on\);\n(?:\s*\/\/[^\n]*\n)?\s*root\.classList\.toggle\("screen-up", on\);\n\s*header\.el\.inert = on;\n\s*splitRow\.inert = on;\n(?:\s*\/\/[^\n]*\n)?\s*if \(crumbSlot\) crumbSlot\.inert = on;\n\s*\},/, "what it covers keeps no focus: keys go to the screen — the chat's crumb too, where the sidebar holds it");
+    assert.match(shell, /setScreen: \(on\) => \{\n\s*mainFrame\.classList\.toggle\("screen-on", on\);\n(?:\s*\/\/[^\n]*\n)?\s*root\.classList\.toggle\("screen-up", on\);\n\s*header\.el\.inert = on;\n\s*splitRow\.inert = on;\n(?:\s*\/\/[^\n]*\n)?\s*if \(crumbSlot\) crumbSlot\.inert = crumbOff\(\);\n\s*\},/, "what it covers keeps no focus: keys go to the screen — the chat's crumb too, where the sidebar holds it");
+    // The crumb is off under a screen, or while another machine's chat stands over the column.
+    assert.match(shell, /function crumbOff\(\) \{\n\s*return root\.classList\.contains\("screen-up"\) \|\| root\.classList\.contains\("guest-up"\);/);
     const css = readFileSync(new URL("../src/ui/harness.css", import.meta.url), "utf8");
     assert.match(css, /\n\.main-frame\.screen-on > :is\(\.c-bar, \.split-row\), \.main-frame\.screen-on > \.split-row > \.pane-frame \{ visibility: hidden; \}/, "what it covers waits unseen, laid out as it was");
     // (fails before: yes — Phase 1's pictures: the floating pane's own rule made it visible, over Settings)

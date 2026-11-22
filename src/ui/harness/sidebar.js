@@ -130,7 +130,8 @@ export const VIEW_ONLY_BAR_WORDS = "This device is view-only: it reads this Fila
  *   askedChats?: () => ReadonlyMap<string, { line: string, at: number, working?: boolean }>,
  *   compactingChats?: () => ReadonlyMap<string, { at: number }>,
  *   onHide: () => void, onProjectGone?: (cwd: string) => void, onDeleted?: (id: string) => void, onAtWork?: () => void,
- *   onCommands?: () => void, onComeBacks?: () => void, onSpaces?: () => void, viewOnly?: () => boolean }} cb
+ *   onCommands?: () => void, onComeBacks?: () => void, onSpaces?: () => void, viewOnly?: () => boolean,
+ *   openThere?: (machine: { id: string, name: string, flags: readonly string[] }, route: string) => void }} cb
  *   `besideChat`: a team beside's chat the page heard of — its team, and the chat it runs beside; `askedChats`: the
  *   page's chats whose message a card stopped, each with its card's question, which Now lists as needing you — or at
  *   work, room made for that message or the message gone again; `compactingChats`: the chats whose compaction is
@@ -139,7 +140,8 @@ export const VIEW_ONLY_BAR_WORDS = "This device is view-only: it reads this Fila
  *   or went (state.js `atWork`); `onCommands`: the five-second read set the running commands right (E38-D4);
  *   `onComeBacks`: it set the chats' come-backs right (the Designer's of 10-27); `onSpaces`: which projects have a Space,
  *   and the Spaces of your own, moved (`spaceFor`); `viewOnly`: the page is a view-only device's, which starts nothing
- *   — no project added, no folder opened, no Space made (p4-view-ui)
+ *   — no project added, no folder opened, no Space made (p4-view-ui); `openThere`: another machine's chat opened —
+ *   shown in place beside the bar (lib/desk-guest.js), else on its machine's whole page
  * @param {HTMLElement | null} [rail]  the rail the hidden bar leaves (shell.js); its buttons are drawn here
  */
 export function createSidebar(host, cb, rail = null) {
@@ -288,6 +290,8 @@ export function createSidebar(host, cb, rail = null) {
   };
   /** The desk's inbox — another machine's asks answered under its row in Needs you (desk-inbox.js) —, made with the desk below. @type {ReturnType<typeof createDeskInbox> | null} */
   let inbox = null;
+  /** Another machine's chat shown in place beside the bar (lib/desk-guest.js): its row is the mark, no chat of this computer's. @type {{ machine: string, chain: string | null } | null} */
+  let guestAt = null;
   const now = createNow({
     chats: chatFacts,
     unread: () => new Set([...state.unreadChains, ...(state.sessions || []).filter((s) => s.unread).map((s) => String(s.id))]),
@@ -307,8 +311,9 @@ export function createSidebar(host, cb, rail = null) {
       paintYourRow();
     },
     current: () => [...state.chats.values()].find((c) => c.id === state.currentId)?.chainId || null,
-    // No chat's row marked while a Space is on screen: its row in the bar is the mark (`atSpace`).
-    marked: () => (spaceAt ? null : [...state.chats.values()].find((c) => c.id === state.currentId)?.chainId || null),
+    // No chat's row marked while a Space is on screen: its row in the bar is the mark (`atSpace`); another machine's
+    // chat shown in place is marked by its row (`showingThere`).
+    marked: () => (spaceAt ? null : guestAt ? `m:${guestAt.machine}/chat:${guestAt.chain}` : [...state.chats.values()].find((c) => c.id === state.currentId)?.chainId || null),
     // A team on the side at work is a line under the chat it works for (the Designer's answer of 10-27).
     beside: (chain) => besideOf(chain),
     // This Now decides where the bar's chats stand: here or under their project, never both.
@@ -370,8 +375,17 @@ export function createSidebar(host, cb, rail = null) {
    */
   function openThere(r) {
     if (r.group === "done") clearedThere.set(r.key, r.at);
-    void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(r.machine.id, deskRoute(r.there)))?.catch?.(() => {});
+    openOnMachine(r.machine, deskRoute(r.there));
     now.refresh();
+  }
+  /**
+   * Another machine's chat opened at an address of its harness: shown in place beside the bar where the page can
+   * (`cb.openThere`), else on its machine's whole page (the app's `openOn`). @param {{ id: string, name: string }} m @param {string} route
+   */
+  function openOnMachine(m, route) {
+    const flags = desk?.machines.find((x) => x.id === m.id)?.flags || [];
+    if (cb.openThere) return cb.openThere({ id: m.id, name: m.name, flags }, route);
+    void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(m.id, route))?.catch?.(() => {});
   }
   /** Another machine's Done cleared: each marked seen there, through the app (harness-preload.cjs `seen`). @param {import("./lib/desk.js").DeskRow[]} rows */
   function seenThere(rows) {
@@ -1416,8 +1430,8 @@ export function createSidebar(host, cb, rail = null) {
    */
   function sessionRow(s, o = {}) {
     const chat = s.local || [...state.chats.values()].find((c) => c.chainId === s.id) || null;
-    // Not while a Space is on screen: its row is the mark (`atSpace`).
-    const current = !spaceAt && !!chat && chat.id === state.currentId;
+    // Not while a Space is on screen, nor another machine's chat shown in place: their row is the mark (`atSpace`, `showingThere`).
+    const current = !spaceAt && !guestAt && !!chat && chat.id === state.currentId;
     // The spinner serves any holder (Facade D11): a run of this page's own, or another tab's turn, a coding agent's
     // own, a chat's move — whose words ("Claude Code is working on its own") are the server's, from the `turns` topic
     // or the holders tick.
@@ -1544,7 +1558,7 @@ export function createSidebar(host, cb, rail = null) {
   function sideRow(x) {
     const s = x.s;
     const chat = [...state.chats.values()].find((c) => c.chainId === s.id) || null;
-    const current = !spaceAt && !!chat && chat.id === state.currentId;
+    const current = !spaceAt && !guestAt && !!chat && chat.id === state.currentId;
     const lead = x.state === "works"
       ? h("span", { class: "live-spin", html: ICONS.loader })
       : x.state === "asks"
@@ -2084,16 +2098,17 @@ export function createSidebar(host, cb, rail = null) {
    */
   function deskChatRow(c) {
     const away = awayWords(c.machine);
-    const open = () => {
-      void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(c.machine.id, deskRoute(c.there)))?.catch?.(() => {});
-    };
+    const open = () => openOnMachine(c.machine, deskRoute(c.there));
+    // Shown in place beside the bar: its row the mark.
+    const current = !spaceAt && !!guestAt && c.key === `m:${guestAt.machine}/chat:${guestAt.chain}`;
     return h("div", {
-      class: `sess-row from desk-row${away ? " is-away" : ""}`,
+      class: `sess-row from desk-row${away ? " is-away" : ""}${current ? " current" : ""}`,
       role: "button",
       tabindex: "0",
       "data-key": c.key,
       "data-flip": c.key,
       "data-machine": c.machine.id,
+      ...(current ? { "aria-current": "page" } : {}),
       title: [c.title, `on ${c.machine.name}`, c.from ? `from ${c.from}` : "", away].filter(Boolean).join(" · "),
       onclick: open,
       onkeydown: (/** @type {KeyboardEvent} */ e) => {
@@ -2330,12 +2345,14 @@ export function createSidebar(host, cb, rail = null) {
   }
 
   /**
-   * The previous or next chat in the bar (Ctrl+Shift+[ and ]): Now's and the list's, in the order they stand — this
-   * computer's alone: another machine's would show that machine in the window (the review of s1b). @param {number} dir
+   * The previous or next chat in the bar (Ctrl+Shift+[ and ]): Now's and the list's, in the order they stand, from the
+   * one marked — this computer's open chat, or another machine's shown in place. @param {number} dir
    */
   function cycleChat(dir) {
-    const inNow = [...now.el.querySelectorAll(".now-row[data-chain]")];
-    const inList = [...list.querySelectorAll(".sess-row:not(.desk-row)")];
+    // Another machine's chats too, in Now and under Projects, shown in place as they come — not its threads' rows, nor
+    // one whose machine does not answer.
+    const inNow = [...now.el.querySelectorAll('.now-row[data-chain], .now-row.is-there[data-key*="/chat:"]:not(.is-away)')];
+    const inList = [...list.querySelectorAll(".sess-row:not(.desk-row.is-away)")];
     const rows = nowOnTop ? [...inNow, ...inList] : [...inList, ...inNow];
     if (!rows.length) return;
     const idx = rows.findIndex((r) => r.classList.contains("current") || r.classList.contains("is-current"));
@@ -2375,6 +2392,19 @@ export function createSidebar(host, cb, rail = null) {
     openNow: (r) => openRow(r),
     /** The other machines whose chats the bar lists now (the remote desk): Ctrl+K searches them too. */
     deskMachines: () => (desk && deskOn() ? desk.machines.filter((m) => !hiddenMachines.has(m.id)) : []),
+    /**
+     * Another machine's chat shown in place beside the bar, or none (lib/desk-guest.js): its row marked, this computer's
+     * open chat's not. @param {{ machine: string, chain: string | null } | null} g
+     */
+    showingThere: (g) => {
+      const was = JSON.stringify(guestAt);
+      guestAt = g && g.machine ? { machine: g.machine, chain: g.chain } : null;
+      if (JSON.stringify(guestAt) === was) return;
+      now.refresh();
+      draw();
+    },
+    /** Another machine's chat opened from outside the bar (Ctrl+K, a notification): as its row would. @param {{ id: string, name: string }} m @param {string} route */
+    openOnMachine: (m, route) => openOnMachine(m, route),
     /** Now's row of a chat, its own before its threads': what a Space's lane says of it. @param {string} chain */
     nowOf: (chain) => now.rowOf(chain),
     /** The Spaces of your own as the bar lists them (E50): where work handed from one may go (A4). */

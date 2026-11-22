@@ -27,6 +27,32 @@ import { tailnetFilaments } from "./tailnet-peers.js";
 export const LOOK_EVERY_MS = 10_000;
 /** This computer's page with no region that drags, put in while a view lies over it (createRail's `undrag`). */
 export const UNDRAG_CSS = "*, *::before, *::after { -webkit-app-region: no-drag !important; }";
+/**
+ * Its column beside its list with none, while another machine's chat is shown over that column alone (`showChat`): the
+ * list's top row still drags the window, and the chat's own header does over the rest. The column is the shell's
+ * (src/ui/harness/shell.js `contentCol`), the place the page gives.
+ */
+export const UNDRAG_COLUMN_CSS = ".content-col, .content-col *, .content-col *::before, .content-col *::after { -webkit-app-region: no-drag !important; }";
+/** The chats one view shows in place before it is made anew: a page moved from chat to chat for long keeps nodes it drew (the leak hunt of 11-19). */
+export const GUEST_MOVES = 24;
+/** An address of a machine's harness: `#/`, one part after the mark, no space. */
+const HARNESS_HASH = /^#\/[^\s#]*$/;
+
+/**
+ * What This computer's page asks to show in place (harness-preload.cjs `showChat`), read as the app takes it: the
+ * machine by its id, an address of its harness, the column's rectangle in the window's units (browser-host.js
+ * `placeRect`'s rule: the page's pixels times its zoom, inside the window), the look, light or dark, and whether the
+ * keys go to it (`focus`, true alone). Null for anything else. @param {any} p @param {number} zoom
+ * @param {{ width: number, height: number }} content
+ * @param {(rect: unknown, zoom: number, content: { width: number, height: number }) => Rect | null} place
+ * @returns {{ id: string, hash: string, rect: Rect | null, theme: "light" | "dark", focus: boolean } | null}
+ */
+export function showAsk(p, zoom, content, place) {
+  const id = String(p?.machine ?? "");
+  const hash = String(p?.route ?? "");
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(id) || id === LOCAL_ID || !HARNESS_HASH.test(hash) || hash.length > 2000) return null;
+  return { id, hash, rect: place(p?.rect, zoom, content), theme: p?.theme === "light" ? "light" : "dark", focus: p?.focus === true };
+}
 
 /**
  * @typedef {{ x: number, y: number, width: number, height: number }} Rect
@@ -56,16 +82,18 @@ export const WIN_RIGHT = 138;
  * The room the window's controls take over the top row, lent to another machine's page — no Window Controls Overlay
  * reaches a view of the window's own, so its page cannot read it (src/ui/harness/lib/app-frame.js `startLentFrame`) —:
  * as This computer's page last said it (`area`, in the window's units), else the system's own; in that page's pixels at
- * its `zoom`. None in full screen, where no controls stand over it.
- * @param {{ platform?: string, full?: boolean, area?: { left: number, right: number } | null, zoom?: number }} o
+ * its `zoom`. None in full screen, where no controls stand over it. `at`: the page's place in a window `width` wide,
+ * where it stands beside This computer's list (a chat shown in place, `showChat`): what of that room lies over it.
+ * @param {{ platform?: string, full?: boolean, area?: { left: number, right: number } | null, zoom?: number, at?: Rect | null, width?: number }} o
  * @returns {{ left: number, right: number } | null}
  */
-export function lentFrame({ platform = process.platform, full = false, area = null, zoom = 1 }) {
+export function lentFrame({ platform = process.platform, full = false, area = null, zoom = 1, at = null, width = 0 }) {
   if (full) return null;
   const a = area ?? (platform === "darwin" ? { left: MAC_LEFT, right: 0 } : { left: 0, right: WIN_RIGHT });
   const z = zoom > 0 ? zoom : 1;
   const px = (/** @type {number} */ n) => Number((Math.max(0, Number(n) || 0) / z).toFixed(3));
-  return { left: px(a.left), right: px(a.right) };
+  if (!at) return { left: px(a.left), right: px(a.right) };
+  return { left: px((Number(a.left) || 0) - at.x), right: px((Number(a.right) || 0) - Math.max(0, width - (at.x + at.width))) };
 }
 
 /**
@@ -280,11 +308,14 @@ button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radiu
 const SWITCH_SCRIPT = `(()=>{const m=window.filamentMachines,b=document.getElementById("switch");if(!m||!b)return;b.hidden=false;b.onclick=()=>{const r=b.getBoundingClientRect();m.open({x:r.left,y:r.top,width:r.width,height:r.height})}})()`;
 
 /**
- * @typedef {{ view: any, at: string | null, page?: string, shown: string, opening: boolean, popups: Set<any>, wanted?: { hash: string, asked: number } | null }} RemoteView
+ * @typedef {{ view: any, at: string | null, page?: string, shown: string, opening: boolean, popups: Set<any>, wanted?: { hash: string, asked: number } | null,
+ *   only?: string, chat?: string, moves?: number }} RemoteView
  *   `at`: the origin its page is Filament's at, null while it shows the app's own page; `page`: the harness's address
  *   it was sent to there, its hash left out; `shown`: the app's page shown, as last drawn; `popups`: the windows its
  *   pages opened, in its partition — closed with it; `wanted`: the address of its harness it opens at next, asked for
- *   while its page was the app's own (`openOn`), and when — past `WANTED_MS` it is let go
+ *   while its page was the app's own (`openOn`), and when — past `WANTED_MS` it is let go; `only`: the query its page
+ *   shows a chat alone by (`only=chat&theme=…`, `showChat`), "" for its whole page; `chat`: the chat it shows so, as its
+ *   address last said; `moves`: the chats it was moved to so since its page was made
  */
 
 /**
@@ -312,16 +343,17 @@ export const WANTED_MS = 60_000;
  *   check?: typeof checkMachine, deviceName?: () => string, claimMs?: number, menu?: (rows: MenuRow[]) => void, confirm?: (q: { title: string, detail: string, yes: string }) => Promise<boolean>,
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
  *   waiting?: (id: string) => number, tint?: (colors: { color: string, symbolColor: string } | null) => void,
- *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null }} o
+ *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void }} o
  *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
  *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
  *   machine's chats that wait on you, as the app's watch last saw them; `tint`: the window's controls dressed in the
  *   colours of the machine's page that shows — null, This computer's; `browserOf`: a machine's chats' pages this app
  *   holds (lib/machine-browser.js), drawn over its view's Browser pane — put back on top as its view comes to the front,
- *   parked as it goes from sight
+ *   parked as it goes from sight; `onGuest`: the chat shown in place moved — its address there as its page went to it,
+ *   null as it stopped showing there (`showChat`)
  */
-export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, tint = () => {}, browserOf = () => null }) {
+export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, tint = () => {}, browserOf = () => null, onGuest = () => {} }) {
   const wc = win.webContents;
   /** @type {Machine[]} */
   let list = [];
@@ -355,6 +387,12 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const pairings = new Map();
   /** The name each machine answered by that the machines file could not keep: not tried again until it answers by another. @type {Map<string, string>} */
   const unkept = new Map();
+  /**
+   * Another machine's chat shown in place (the remote desk of 11-22): its view over This computer's column beside its
+   * list, at `rect` in the window's units — null while something of This computer's page lies over that column, its
+   * view then out of sight —, while This computer shows. @type {{ id: string, rect: Rect | null } | null}
+   */
+  let guest = null;
   const zoomOf =(/** @type {any} */ c = wc) => {
     try {
       return Number(c.getZoomFactor?.()) || 1;
@@ -370,14 +408,38 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const rowsNow = () => railRows(list, statusOf, active, waiting);
   /** The page a machine is in the window: This computer's, or its view's while that lives. @param {string} id */
   const pageOf = (id) => (id === LOCAL_ID ? wc : views.get(id) && alive(views.get(id)?.view) ? views.get(id)?.view.webContents : null);
+  /** The chat shown in place, while it is in sight: This computer showing, its place given, its view alive. */
+  const guestShown = () => (!!guest && active === LOCAL_ID && !!guest.rect && alive(views.get(guest.id)?.view) ? guest : null);
+  /** The machine whose page is before the person: the one showing, else the chat shown in place's, else This computer. */
+  const showing = () => (active !== LOCAL_ID ? active : (guestShown()?.id ?? LOCAL_ID));
+  /** A view's page's address with the chat alone's query where it shows one. @param {RemoteView} v */
+  const pageUrl = (v) => (v.only ? `${v.page}${String(v.page).includes("?") ? "&" : "?"}${v.only}` : String(v.page));
+  /** An address's hash. @param {string} url */
+  const hashOf = (url) => {
+    try {
+      return new URL(String(url)).hash;
+    } catch {
+      return "";
+    }
+  };
+  /** The chat shown in place gone from it: This computer's page told. */
+  const unguest = () => {
+    if (!guest) return;
+    const id = guest.id;
+    guest = null;
+    onGuest({ id, hash: null });
+  };
 
   /** Each harness page told its chip's state — only what moved —; `again`: that one told whatever it heard before. @param {string | null} [again] */
   const tell = (again = null) => {
     const rows = rowsNow();
+    const placed = guestShown();
     for (const id of [LOCAL_ID, ...views.keys()]) {
       const page = pageOf(id);
       if (!page || page.isDestroyed?.()) continue;
-      const frame = id === LOCAL_ID ? null : lentFrame({ platform, full: !!win.isFullScreen?.(), area, zoom: zoomOf(page) });
+      // A chat shown in place is lent what of the controls' room lies over its column alone.
+      const at = placed && placed.id === id ? placed.rect : null;
+      const frame = id === LOCAL_ID ? null : lentFrame({ platform, full: !!win.isFullScreen?.(), area, zoom: zoomOf(page), at, width: at ? win.getContentSize()[0] : 0 });
       const s = pageState(rows, id, { open: popping?.from === id, frame });
       const said = JSON.stringify(s);
       if (said === told.get(id) && again !== id) continue;
@@ -479,10 +541,11 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     v.at = at;
     v.shown = "";
     log(`rail: a machine's harness opens at ${v.at}`);
-    const wanted = v.wanted && now() - v.wanted.asked <= WANTED_MS ? v.wanted.hash : "";
+    // A chat shown alone opens at its chat again, whatever its page went through meanwhile.
+    const wanted = v.wanted && now() - v.wanted.asked <= WANTED_MS ? v.wanted.hash : v.only ? v.chat || "" : "";
     v.wanted = null;
     v.page = harnessAt(route);
-    void Promise.resolve(v.view.webContents.loadURL(`${v.page}${wanted}`)).catch(() => {});
+    void Promise.resolve(v.view.webContents.loadURL(`${pageUrl(v)}${wanted}`)).catch(() => {});
   };
   /**
    * A machine asked: its state, and its view moved where it now answers. `opening`: the ask that opens its view the
@@ -546,7 +609,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const view = new View({ webPreferences: machinePreload ? { ...prefs, preload: machinePreload } : prefs });
     view.setBackgroundColor?.(look().dark ? "#1e1e1e" : "#ffffff");
     /** @type {RemoteView} */
-    const v = { view, at: null, shown: "", opening: false, popups: new Set() };
+    const v = { view, at: null, shown: "", opening: false, popups: new Set(), only: "", chat: "", moves: 0 };
     guard(view.webContents, {
       originOf: () => v.at,
       prefs,
@@ -556,6 +619,20 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       },
     });
     view.webContents.on("before-input-event", keys);
+    // Its chat shown alone moved — a chat of its own opened there, its history gone back —: This computer's list follows
+    // it. Its page's own address alone, at its Filament.
+    const moved = (/** @type {string} */ url) => {
+      if (!v.only || views.get(m.id) !== v || v.at === null) return;
+      let origin = "";
+      try {
+        origin = new URL(String(url)).origin;
+      } catch {}
+      if (origin !== v.at) return;
+      v.chat = hashOf(url);
+      if (guest?.id === m.id) onGuest({ id: m.id, hash: v.chat });
+    };
+    view.webContents.on("did-navigate-in-page", (/** @type {any} */ _e, /** @type {string} */ url, /** @type {boolean} */ main) => void (main !== false && moved(url)));
+    view.webContents.on("did-navigate", (/** @type {any} */ _e, /** @type {string} */ url) => moved(url));
     // Its Filament's page that did not load — the machine went, its certificate is another: the app's page says so. Not
     // while a pairing has the view: the claim's own load says how it went, and the app's page would cut it off.
     view.webContents.on("did-fail-load", (/** @type {any} */ _e, /** @type {number} */ code, /** @type {string} */ desc, /** @type {string} */ url, /** @type {boolean} */ main) => {
@@ -572,6 +649,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   /** @param {string} id */
   const drop = (id) => {
     const v = views.get(id);
+    if (guest?.id === id) unguest();
     views.delete(id);
     watched.delete(id);
     told.delete(id);
@@ -594,10 +672,11 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    */
   const raise = () => {
     if (gone || win.isDestroyed()) return;
-    const v = views.get(active);
-    if (active !== LOCAL_ID && v && alive(v.view)) {
+    const id = showing();
+    const v = views.get(id);
+    if (id !== LOCAL_ID && v && alive(v.view)) {
       win.contentView.addChildView(v.view);
-      browserOf(active)?.lift(win);
+      browserOf(id)?.lift(win);
     }
     if (alive(rail) && (adding || popping)) win.contentView.addChildView(rail);
   };
@@ -608,25 +687,40 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    * regions in the order the views were added, This computer's page first, whatever lies over it (Electron 45
    * native_window.cc `NonClientHitTest`; the owner's of 11-09: the Mac's Settings gear and machine chip took no press in
    * Windows' window). While anything lies over This computer's page, its drag regions are off — the view over it drags by
-   * its own. The key of the CSS that does it, while it is in. @type {Promise<string | null> | null}
+   * its own; while a chat shown in place lies over its column alone, that column's are (`UNDRAG_COLUMN_CSS`). The key of
+   * the CSS that does it, while it is in, and which CSS. @type {Promise<string | null> | null}
    */
   let undragged = null;
-  let covered = false;
+  /** The CSS in, or on its way. */
+  let undragCss = "";
+  /** What lies over This computer's page: everything (another machine showing, the app's page), its column, or nothing. @type {"" | "all" | "column"} */
+  let covered = "";
   const undrag = () => {
-    if (covered && !undragged) undragged = Promise.resolve(wc.insertCSS(UNDRAG_CSS)).catch(() => null);
-    else if (!covered && undragged) {
+    const want = covered === "all" ? UNDRAG_CSS : covered === "column" ? UNDRAG_COLUMN_CSS : "";
+    if (want === undragCss && (!!undragged || !want)) return;
+    if (undragged) {
       const was = undragged;
       undragged = null;
       void was.then((k) => k && wc.removeInsertedCSS(k)).catch(() => {});
     }
+    undragCss = want;
+    if (want) undragged = Promise.resolve(wc.insertCSS(want)).catch(() => null);
   };
   // Its page loaded anew has none of it: put in again while covered. One put in as the new page came, before its
   // dom-ready, is in that page: taken out, or it would stay once nothing covers it (a key the page holds not is nothing).
   wc.on("dom-ready", () => {
     const was = undragged;
     undragged = null;
+    undragCss = "";
     void was?.then((k) => k && wc.removeInsertedCSS(k)).catch(() => {});
     undrag();
+  });
+  // This computer's page loaded anew knows of no chat it showed in place: that chat goes from over its column.
+  wc.on("did-navigate", () => {
+    if (!guest || gone) return;
+    guest = null;
+    layout();
+    tell();
   });
   const layout = () => {
     if (gone || win.isDestroyed()) return;
@@ -638,7 +732,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     // The title bar Filament draws on every system (lib/frame.js), none in full screen: the Add sheet's top row drags.
     bar = !win.isFullScreen() ? BAR_H : 0;
     const at = switchLayout({ width, height }, { remote: active !== LOCAL_ID, over: adding || !!popping });
-    covered = !!at.over || !!at.view;
+    const placed = guestShown();
+    covered = at.over || at.view ? "all" : placed ? "column" : "";
     undrag();
     if (at.over) {
       const r = railOf();
@@ -646,11 +741,11 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       r.setVisible(true);
     } else if (alive(rail)) rail.setVisible(false);
     for (const [id, v] of views) {
-      const showing = id === active && !!at.view;
-      if (showing) v.view.setBounds(at.view);
-      v.view.setVisible(showing);
+      const bounds = id === active && at.view ? at.view : placed?.id === id ? placed.rect : null;
+      if (bounds) v.view.setBounds(bounds);
+      v.view.setVisible(!!bounds);
       // Its chats' pages drawn over its Browser pane go from sight with it.
-      if (!showing) browserOf(id)?.parkAll(win);
+      if (!bounds) browserOf(id)?.parkAll(win);
     }
     raise();
     dress();
@@ -658,16 +753,18 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   /** The colours the window's controls were last dressed in: the page showing's — none kept for This computer's (`tintFrom`). */
   let dressed = "";
   const dress = () => {
-    const c = tints.get(active) ?? null;
+    const c = tints.get(showing()) ?? null;
     const key = c ? `${c.color} ${c.symbolColor}` : "";
     if (key === dressed) return;
     dressed = key;
     tint(c);
   };
+  /** The keys to the page before the person: the app's page while it shows, the machine showing's, else the chat shown in place's. */
   const focus = () => {
     if ((adding || popping) && alive(rail)) return rail.webContents.focus();
-    const v = views.get(active);
-    (active !== LOCAL_ID && v && alive(v.view) ? v.view.webContents : wc).focus();
+    const id = showing();
+    const v = views.get(id);
+    (id !== LOCAL_ID && v && alive(v.view) ? v.view.webContents : wc).focus();
   };
 
   /**
@@ -739,6 +836,9 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       log(`rail: ${m.local ? "this computer" : `machine ${m.id}`} shown`);
       if (!m.local) {
         const v = viewOf(m);
+        // Its chat shown in place, shown whole now: its whole page, at that chat.
+        if (guest?.id === id) unguest();
+        whole(v);
         if (v.at === null && !v.opening) {
           v.opening = true;
           void ask(m, { opening: true }).finally(() => {
@@ -751,6 +851,74 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       paint();
     }
     focus();
+    return true;
+  }
+
+  /**
+   * A view that shows a chat alone shows its whole page again, at the address it shows — the one its page last went to,
+   * loaded anew, its query gone —; `hash`: at that address instead. @param {RemoteView} v @param {string} [hash]
+   */
+  function whole(v, hash) {
+    if (!v.only) return false;
+    const at = hash ?? (v.chat || hashOf(v.view.webContents.getURL?.() || ""));
+    v.only = "";
+    v.chat = "";
+    v.moves = 0;
+    if (v.at === null || !v.page || !alive(v.view)) return false;
+    v.wanted = null;
+    void Promise.resolve(v.view.webContents.loadURL(`${v.page}${at}`)).catch(() => {});
+    return true;
+  }
+
+  /**
+   * Another machine's chat shown in place, over This computer's column at `rect` (window units; null: out of sight until
+   * placed): its view's page made to show it alone (`?only=chat&theme=`), moved to it within that page — a fragment's
+   * move, no load — while it shows one already in that look, loaded anew otherwise, and made anew after `GUEST_MOVES`
+   * such moves. One not opened yet is asked and opened at it; `keys`: the keys its, while it is in sight. False for
+   * This computer, a machine the window does not keep or keeps disconnected or shows whole, or an address that is none
+   * of a harness's own. Another machine shown whole meanwhile, it waits out of sight until This computer shows again.
+   * @param {string} id @param {string} hash @param {Rect | null} rect @param {"light" | "dark"} theme @param {boolean} [keys]
+   */
+  function showChat(id, hash, rect, theme, keys = false) {
+    if (gone || !HARNESS_HASH.test(String(hash)) || active === id || adding) return false;
+    const m = machineOf(id);
+    if (!m || m.local || m.off || !shown()) return false;
+    const only = `only=chat&theme=${theme === "light" ? "light" : "dark"}`;
+    let v = viewOf(m);
+    // Moved through many chats: made anew, where it is reached, so what the old page kept goes with it.
+    if (v.only === only && (v.moves || 0) >= GUEST_MOVES && v.at !== null && v.page) {
+      const { at, page } = v;
+      const was = watched.get(id);
+      // Shown in place again at once: nothing to tell This computer's page.
+      if (guest?.id === id) guest = null;
+      drop(id);
+      if (was) watched.set(id, was);
+      v = viewOf(m);
+      Object.assign(v, { at, page });
+      log(`rail: machine ${id}'s page made anew after ${GUEST_MOVES} chats shown in place`);
+    }
+    if (guest && guest.id !== id) unguest();
+    guest = { id, rect: rect ?? null };
+    const same = v.only === only;
+    v.only = only;
+    v.moves = same ? (v.moves || 0) + 1 : 0;
+    v.chat = hash;
+    if (v.at !== null && v.page && alive(v.view)) {
+      v.wanted = null;
+      void Promise.resolve(v.view.webContents.loadURL(`${pageUrl(v)}${hash}`)).catch(() => {});
+    } else {
+      v.wanted = { hash, asked: now() };
+      if (!v.opening) {
+        v.opening = true;
+        void ask(m, { opening: true }).finally(() => {
+          v.opening = false;
+          paint();
+        });
+      }
+    }
+    layout();
+    paint();
+    if (keys && guestShown()) focus();
     return true;
   }
 
@@ -770,12 +938,14 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    * @param {string} from  the page's machine @param {any} rect
    */
   function openPop(from, rect) {
-    if (gone || !shown() || adding || from !== active) return false;
+    if (gone || !shown() || adding || (from !== active && from !== guestShown()?.id)) return false;
     const page = pageOf(from);
     if (!page) return false;
     const z = zoomOf(page);
     const n = (/** @type {any} */ v) => Math.max(0, Number(v) || 0) * z;
-    popping = { at: { x: n(rect?.x), y: n(rect?.y), width: n(rect?.width), height: n(rect?.height) }, from };
+    // The chat shown in place's chip stands where its view does.
+    const off = from !== active ? guestShown()?.rect : null;
+    popping = { at: { x: n(rect?.x) + (off?.x ?? 0), y: n(rect?.y) + (off?.y ?? 0), width: n(rect?.width), height: n(rect?.height) }, from };
     layout();
     paint();
     focus();
@@ -1043,16 +1213,50 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
      * @param {string} id @param {string} hash
      */
     openOn: (id, hash) => {
-      if (gone || !/^#\/[^\s#]*$/.test(String(hash))) return false;
+      if (gone || !HARNESS_HASH.test(String(hash))) return false;
       const m = machineOf(id);
       if (!m || m.local) return false;
       const v = viewOf(m);
+      // Its chat shown in place goes from there: its whole page shows, at the address asked.
+      if (guest?.id === id) unguest();
       if (v.at !== null && v.page && alive(v.view)) {
         v.wanted = null;
-        void Promise.resolve(v.view.webContents.loadURL(`${v.page}${hash}`)).catch(() => {});
-      } else v.wanted = { hash, asked: now() };
+        if (!whole(v, hash)) void Promise.resolve(v.view.webContents.loadURL(`${v.page}${hash}`)).catch(() => {});
+      } else {
+        v.only = "";
+        v.chat = "";
+        v.wanted = { hash, asked: now() };
+      }
       return select(id);
     },
+    showChat,
+    /**
+     * The chat shown in place moved with This computer's column, or out of sight while something of that page lies over
+     * it (null), or back; `keys`: the keys its again, while it is in sight. @param {Rect | null} rect  window units
+     * @param {boolean} [keys]
+     */
+    placeChat: (rect, keys = false) => {
+      if (gone || !guest) return;
+      const was = JSON.stringify(guest.rect);
+      guest.rect = rect ?? null;
+      if (JSON.stringify(guest.rect) !== was) {
+        layout();
+        tell();
+      }
+      if (keys && guestShown()) focus();
+    },
+    /** The chat shown in place gone from it — its view kept, out of sight, for the next —, the keys This computer's page's. */
+    hideChat: () => {
+      if (gone || !guest) return;
+      guest = null;
+      layout();
+      tell();
+      wc.focus();
+    },
+    /** The machine whose chat shows in place, while it is in sight; else null. */
+    guest: () => guestShown()?.id ?? null,
+    /** The machine whose page is before the person: the one showing, else the chat shown in place's, else This computer. */
+    showing,
     /**
      * The machines of this computer's tailnet that answer as a Filament (tailnet-peers.js), for the Add sheet: each
      * marked `kept` where a machine of this window is reached at its address — not by the id it says, which another machine

@@ -1,7 +1,9 @@
 // Another machine's page's bridges (the owner's of 11-08: a switcher in the top bar in the rail's place): what its
 // chip left of Changes hears — the machine it is, its state, how many chats wait on you on the others, whether the
 // popover is open, and the room the window's controls take over its top row — and its press, which opens the app's own
-// popover under it; and the colours it asks the window's controls to wear while it shows. The same `filamentMachines`
+// popover under it; the colours it asks the window's controls to wear while it shows; and, showing a chat alone beside
+// This computer's list (the remote desk of 11-22), its way to its whole page and the keys it hands that list, by their
+// shortcut's id — never the list's words, nor any of This computer's state. The same `filamentMachines`
 // This computer's page has (harness-preload.cjs), so one chip serves both. And its Browser pane's `filamentBrowser`
 // (b-remote), the shape This computer's page has: a chat's page this app holds for that machine — its browser switched
 // on in Settings › Remote access — drawn over the pane, parked, and the developer's hand on it; a tab the app holds
@@ -27,6 +29,13 @@ contextBridge.exposeInMainWorld("filamentMachines", {
   },
   /** The colours of the page's top row, which the window's controls wear while it shows: two #rrggbb. @param {{ color: string, symbolColor: string }} c */
   titleBar: (c) => ipcRenderer.send("filament:machines-title-bar", { color: String(c?.color || ""), symbolColor: String(c?.symbolColor || "") }),
+  /**
+   * The page shows its chat alone, beside This computer's list (src/ui/harness/lib/chat-only.js): this machine's whole
+   * page shown in the window at an address of its harness (`#/…`), the screen asked for there. @param {string} route
+   */
+  full: (route) => ipcRenderer.send("filament:machines-full", String(route ?? "").slice(0, 2000)),
+  /** A key of This computer's list pressed in the chat shown alone, by its shortcut's id (chat-only.js `DESK_KEYS`): its page runs it. @param {string} id */
+  deskKey: (id) => ipcRenderer.send("filament:machines-key", String(id ?? "").slice(0, 40)),
 });
 
 contextBridge.exposeInMainWorld("filamentBrowser", {

@@ -297,8 +297,8 @@ describe("the left bar's desk (sidebar.js, pinned in the source)", () => {
     // A laptop that drives a workstation and has no project of its own lists the workstation's.
     assert.match(bar, /\[\.\.\.state\.chats\.values\(\)\]\.some\(\(c\) => c\.cwd\)\) \|\| deskOn\(\);/);
     assert.match(bar, /\[\.\.\.state\.chats\.values\(\)\]\.some\(\(c\) => c\.cwd\) \|\| deskListed\(\);/);
-    // Ctrl+Shift+[ and ]: This computer's chats alone.
-    assert.match(bar, /const inList = \[\.\.\.list\.querySelectorAll\("\.sess-row:not\(\.desk-row\)"\)\];/);
+    // Ctrl+Shift+[ and ]: every chat the bar lists, another machine's shown in place — not one of a machine that does not answer.
+    assert.ok(bar.includes('const inList = [...list.querySelectorAll(".sess-row:not(.desk-row.is-away)")];'));
     assert.match(bar, /const deskOn = \(\) => !!desk\?\.machines\.length && allMachines;/);
     assert.match(bar, /const g = deskGroups\(desk, hiddenMachines\);/);
     assert.match(bar, /allMachines = localStorage\.getItem\(MACHINES_KEY\) !== "here";/, "every machine's by default");
@@ -307,8 +307,9 @@ describe("the left bar's desk (sidebar.js, pinned in the source)", () => {
     assert.match(bar, /\.\.\.\(deskOn\(\) \? \[\{ type: "radio", label: "Machine", checked: organizeBy === "machine",/, "Group by Machine where there is another");
   });
 
-  test("a row of theirs opens on its machine through the app (`openOn`), at its chat's address; Clear marks them seen there", () => {
-    assert.match(bar, /void \(\/\*\* @type \{any\} \*\/ \(globalThis\)\.filamentApp\?\.openOn\?\.\(r\.machine\.id, deskRoute\(r\.there\)\)\)\?\.catch\?\.\(\(\) => \{\}\);/);
+  test("a row of theirs opens at its chat's address — in place beside the bar where the page can (desk-in-place.test.js), else on its machine through the app (`openOn`); Clear marks them seen there", () => {
+    assert.match(bar, /openOnMachine\(r\.machine, deskRoute\(r\.there\)\);/);
+    assert.match(bar, /if \(cb\.openThere\) return cb\.openThere\(\{ id: m\.id, name: m\.name, flags \}, route\);\n\s+void \(\/\*\* @type \{any\} \*\/ \(globalThis\)\.filamentApp\?\.openOn\?\.\(m\.id, route\)\)\?\.catch\?\.\(\(\) => \{\}\);/);
     assert.match(bar, /for \(const \[id, chains\] of by\) void bridge\?\.seen\?\.\(id, chains\)\?\.catch\?\.\(\(\) => \{\}\);/);
     assert.match(preload, /seen: \(id, chains\) => ipcRenderer\.invoke\("filament:desk-seen", \{ id: String\(id\), chains: Array\.isArray\(chains\) \? chains\.slice\(0, 50\)\.map\(String\) : \[\] \}\),/);
   });

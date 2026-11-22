@@ -41,7 +41,8 @@ import { appVersion, buildWords, readBuild } from "./lib/build-info.js";
 import { underWay, waitPage, waitWords } from "./lib/waiting.js";
 import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickRoute, readHere, readKept, readMachines, removeMachine, renameMachine, setMachineBrowser, setMachineLook, setMachineOff } from "./lib/machines.js";
 import { createMachineBrowsers, machineGuards, partitionFor, placeOnMachine } from "./lib/machine-browser.js";
-import { createRail, zoomRows } from "./lib/rail.js";
+import { createRail, showAsk, zoomRows } from "./lib/rail.js";
+import { DESK_KEYS } from "../src/ui/harness/lib/chat-only.js";
 import { checkMachine } from "./lib/add-machine.js";
 import { createTunnels } from "./lib/ssh-route.js";
 import { createMachineAgents } from "./lib/machine-agents.js";
@@ -364,7 +365,7 @@ async function run() {
    * does (lib/machine-browser.js `placeOnMachine`). @param {Electron.IpcMainInvokeEvent} e @param {any} p
    */
   const placeForMachine = (e, p) => {
-    const placed = placeOnMachine({ pane: rail?.machinePane(e.sender, e.senderFrame) ?? null, active: rail?.active() ?? null, pagesOf: (id) => machineBrowsers.pagesOf(id), win: windows.get("harness"), zoom: e.sender.getZoomFactor(), ask: p });
+    const placed = placeOnMachine({ pane: rail?.machinePane(e.sender, e.senderFrame) ?? null, active: rail?.showing() ?? null, pagesOf: (id) => machineBrowsers.pagesOf(id), win: windows.get("harness"), zoom: e.sender.getZoomFactor(), ask: p });
     // Its view and its page on top, in that order, and the app's popover or Add sheet over both.
     if (placed) rail?.raise();
     return placed;
@@ -675,6 +676,10 @@ async function run() {
           } catch {}
         },
         look: () => ({ dark: nativeTheme.shouldUseDarkColors, colors: chrome }),
+        // The chat shown in place moved there, or stopped showing: This computer's page follows it (harness-preload.cjs `onGuest`).
+        onGuest: (g) => {
+          if (!w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk-guest", g);
+        },
         guard: (contents, o) => {
           guard(contents, o);
           remotePages.set(contents, String(/** @type {any} */ (o.prefs).partition || ""));
@@ -1505,6 +1510,46 @@ async function run() {
     },
   });
   ipcMain.handle("filament:desk-call", (e, p) => (paneOf(e) ? desk.call(p) : null));
+  /**
+   * The harness window's own page — This computer's, Filament's page there, not a popped pane's — a word to the desk's
+   * chat shown in place comes from, else null. @param {Electron.IpcMainEvent | Electron.IpcMainInvokeEvent} e
+   */
+  const deskPage = (e) => {
+    const w = windows.get("harness");
+    return w && !w.isDestroyed() && paneOf(e) === w && rail?.hearsPage(e.sender, e.senderFrame) === LOCAL_ID ? w : null;
+  };
+  /** A rectangle of the page's, in the window's units. @param {BrowserWindow} w @param {unknown} rect */
+  const deskRect = (w, rect) => {
+    const [width, height] = w.getContentSize();
+    return placeRect(rect, w.webContents.getZoomFactor(), { width, height });
+  };
+  // Another machine's chat shown in place over This computer's column beside its list (lib/rail.js `showChat`), moved
+  // with that column, out of sight while something of the page lies over it, and let go — that page's words alone.
+  ipcMain.handle("filament:desk-show", (e, p) => {
+    const w = deskPage(e);
+    const [width, height] = w ? w.getContentSize() : [0, 0];
+    const ask = w ? showAsk(p, w.webContents.getZoomFactor(), { width, height }, placeRect) : null;
+    return !!ask && !!rail?.showChat(ask.id, ask.hash, ask.rect, ask.theme, ask.focus);
+  });
+  ipcMain.on("filament:desk-place", (e, rect, keys) => {
+    const w = deskPage(e);
+    if (w) rail?.placeChat(rect ? deskRect(w, rect) : null, keys === true);
+  });
+  ipcMain.on("filament:desk-hide", (e) => void (deskPage(e) && rail?.hideChat()));
+  // A machine's page showing a chat alone (machine-preload.cjs), while that chat shows in place: its whole page shown at
+  // an address of its harness, or a key of the list beside it handed to This computer's page — by its id, one of
+  // DESK_KEYS. A view out of sight, or kept from before, pulls the window nowhere.
+  ipcMain.on("filament:machines-full", (e, route) => {
+    const id = rail?.hearsPage(e.sender, e.senderFrame);
+    if (id && id !== LOCAL_ID && rail?.guest() === id) rail?.openOn(id, String(route ?? ""));
+  });
+  ipcMain.on("filament:machines-key", (e, key) => {
+    const id = rail?.hearsPage(e.sender, e.senderFrame);
+    const w = windows.get("harness");
+    if (!id || id === LOCAL_ID || rail?.guest() !== id || !DESK_KEYS.includes(String(key)) || !w || w.isDestroyed()) return;
+    w.webContents.focus();
+    w.webContents.send("filament:desk-key", String(key));
+  });
   /** @type {NodeJS.Timeout | null} */
   let soon = null;
   /** The machines whose events stream said something moved there since the last look of theirs. @type {Set<string>} */

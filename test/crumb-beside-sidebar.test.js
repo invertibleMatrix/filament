@@ -97,10 +97,12 @@ test("the sidebar's top row: Hide, the room for the crumb, Settings; the page ha
   assert.deepEqual(top.children.map((/** @type {any} */ c) => c.getAttribute("aria-label") || c.className), ["Hide sidebar", "sess-top-crumb", "Settings"]);
   assert.equal(sb.crumbSlot, top.children[1]);
   const app = readFileSync("src/ui/harness/app.js", "utf8");
-  assert.match(app, /\}, shell\.collapsedRail\);[\s\S]{0,300}?shell\.setCrumbSlot\(sidebar\.crumbSlot\);/);
+  // (The desk's guest is made between, once the bar is: lib/desk-guest.js.)
+  assert.match(app, /\}, shell\.collapsedRail\);[\s\S]{0,1600}?shell\.setCrumbSlot\(sidebar\.crumbSlot\);/);
   const css = readFileSync("src/ui/harness.css", "utf8");
   assert.match(css, /\.sess-top-crumb \{ position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; \}/, "it takes the row's room, cut as it needs");
-  assert.match(css, /\.app-shell\.screen-up \.sess-top-crumb \{ visibility: hidden; \}/);
+  // Unseen under a screen, and while another machine's chat stands over the column (shell.js `setGuest`).
+  assert.match(css, /\.app-shell\.screen-up \.sess-top-crumb, \.app-shell\.guest-up \.sess-top-crumb \{ visibility: hidden; \}/);
   assert.match(css, /\.c-bar\.crumb-away \.c-mid \{ justify-content: flex-start; \}/);
   // The shell moves it whenever it paints the sidebar's state: the folded rail and a hidden bar are one there.
   // A Mac's window buttons at that row's left end keep it in the header (the owner's of 11-08), painted again as they show.

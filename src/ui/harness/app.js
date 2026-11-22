@@ -20,7 +20,8 @@ import { settingsFollower } from "./live-topic.js";
 import { state, chatOf, putChat, newChatId, recentFolders, rememberFolder, forgetFolder, lastModel, rememberModel, newChatModelPref, startModel, applySessionView, onSessionView, draftFor, saveDraft, draftFilesFor, saveDraftFiles, startKept, atWork } from "./state.js";
 import { settingsRead, viewSettingsOf } from "./view-settings.js";
 import { watchTheme, setThemePref, hintTheme, themeHinted } from "./theme.js";
-import { chatOnlyOf, fullPageOf, themeHintOf } from "./lib/chat-only.js";
+import { DESK_KEYS, chatOnlyOf, deskKeyOf, fullPageOf, themeHintOf } from "./lib/chat-only.js";
+import { createDeskGuest } from "./lib/desk-guest.js";
 import { createShell } from "./shell.js";
 import { createTimeline, LIVE_LOST_WORDS } from "./conversation/timeline.js";
 import { fileWords, rewindButton, turnsWords } from "./conversation/rewound.js";
@@ -256,6 +257,8 @@ if (CHAT_ONLY) hintTheme(themeHintOf());
  * Workspace, the tour that starts one) — the desk showing it picks its chat — and the tips.
  */
 const CHAT_ONLY_OFF = new Set(["new", "new-task", "next-needs", "task-prev", "task-next", "sidebar", "open-workspace", "welcome", "tips"]);
+/** Where the desk shows the chat alone, its way to hand the desk a key of its list's (chat-only.js `DESK_KEYS`). */
+const toDesk = CHAT_ONLY ? deskKeyOf() : null;
 
 // A view-only device (the owner's remote Filament of 11-06, p4-view-ui): its page reads this Filament and offers nothing
 // the server would refuse it — no Send, New chat, Start or terminal (`paintViewOnly`).
@@ -4494,7 +4497,7 @@ const commandCenter = createCommandCenter({
   // The other machines the left bar lists, searched through the app, a chat of theirs opened there (the remote desk).
   machines: () => sidebar.deskMachines(),
   ...(typeof (/** @type {any} */ (globalThis).filamentMachines?.call) === "function" ? { deskCall: (/** @type {any} */ p) => /** @type {any} */ (globalThis).filamentMachines.call(p) } : {}),
-  onOpenThere: (machine, chain) => void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(machine, deskRoute({ chain, thread: null })))?.catch?.(() => {}),
+  onOpenThere: (machine, chain) => sidebar.openOnMachine({ id: machine, name: sidebar.deskMachines().find((m) => m.id === machine)?.name || machine }, deskRoute({ chain, thread: null })),
   actions: () => [
     { id: "new", label: WORDS.newChat, icon: "messageCirclePlus", tone: "var(--color-sys-blue)", shortcut: "new-task", when: () => !viewOnlyPage(), run: () => newChat() },
     { id: "next-needs", label: "Open what needs you next", icon: "inbox", tone: "var(--color-sys-orange)", shortcut: "next-needs", run: () => openNextNeeds() },
@@ -4532,9 +4535,12 @@ const OPENS_DIALOG = new Set(["command-center", "command-center-alt", "fork", "o
 // The shortcut registry is the one place a key is matched, so a rebind takes effect. Listeners
 // elsewhere own only the keys that are not shortcuts (task cycling, row navigation).
 window.addEventListener("keydown", (e) => onShortcutKey(e));
-/** A key the registry names a shortcut, run. @param {KeyboardEvent} e */
-function onShortcutKey(e) {
-  const id = matchShortcut(e);
+/**
+ * A key the registry names a shortcut, run; `asked`: a shortcut run by its id, no key pressed here — one the chat shown in
+ * place beside the bar handed over (lib/desk-guest.js). @param {KeyboardEvent | null} e @param {string} [asked]
+ */
+function onShortcutKey(e, asked = "") {
+  const id = asked || (e ? matchShortcut(e) : "");
   if (!id) return;
   const run = {
     "command-center": () => commandCenter.open(),
@@ -4584,7 +4590,9 @@ function onShortcutKey(e) {
     },
   }[id];
   if (!run) return;
-  e.preventDefault();
+  e?.preventDefault();
+  // The chat alone another machine's desk shows hands it the keys of the list beside it.
+  if (toDesk && DESK_KEYS.includes(id)) return void toDesk(id);
   // A view-only device's page: no model, mode or effort to pick, no fork, no question on the side (p4-view-ui).
   if (viewOnlyPage() && VIEW_ONLY_KEYS_OFF.has(id)) return;
   if (CHAT_ONLY && CHAT_ONLY_OFF.has(id)) return;
@@ -4838,7 +4846,17 @@ function openNextNeeds() {
   if (!sidebar.openNext()) toast("Nothing needs you now");
 }
 
+/** Another machine's chat shown in place beside the left bar, through the desktop app (lib/desk-guest.js): made once the bar is. @type {ReturnType<typeof createDeskGuest> | null} */
+let deskGuest = null;
 const sidebar = createSidebar(shell.sidebarHost, {
+  // Another machine's chat opened from the bar: shown in place beside it where the app and that machine can, else on
+  // that machine's whole page.
+  openThere: (m, route) => {
+    // A full-frame screen goes for it, as for a chat of this computer's (`onSelectChat`).
+    leaveScreen();
+    if (deskGuest) void deskGuest.open(m, route);
+    else void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(m.id, route))?.catch?.(() => {});
+  },
   // A click here that opens a task leaves a full-frame screen (Settings, a control room) for it — and opens on its Chat,
   // whatever tab it was left on (the owner's words of 10-29: "every click should open the chat tab"); an address that
   // names a view, Back and Forward keep theirs.
@@ -4922,6 +4940,24 @@ const sidebar = createSidebar(shell.sidebarHost, {
   },
 }, shell.collapsedRail);
 spaceForFolder = (cwd) => sidebar.spaceFor(cwd);
+// This computer's page in the desktop app: another machine's chat shows in place over the column beside the bar (the
+// remote desk of 11-22); the bar marks its row, and a key of the bar's pressed in it is run here.
+if (!CHAT_ONLY && !POPPED) {
+  const machines = /** @type {any} */ (globalThis).filamentMachines;
+  deskGuest = createDeskGuest({
+    bridge: machines,
+    stage: shell.contentCol,
+    openWhole: (machine, route) => void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(machine, route))?.catch?.(() => {}),
+    onMoved: (g) => sidebar.showingThere(g),
+    onShown: (s) => shell.setGuest(s),
+    say: (words) => toast(words),
+  });
+  machines?.onKey?.((/** @type {string} */ id) => {
+    if (!DESK_KEYS.includes(id)) return;
+    onShortcutKey(null, id);
+    deskGuest?.handed();
+  });
+}
 // The chat's crumb stands in the sidebar's top row while the sidebar shows (the owner's of 11-01).
 shell.setCrumbSlot(sidebar.crumbSlot);
 
@@ -6828,6 +6864,8 @@ function drawChat(chat) {
  *   left bar
  */
 function selectChat(id, opts = {}) {
+  // A chat of this computer's chosen: another machine's shown in place beside the bar goes (lib/desk-guest.js).
+  deskGuest?.close();
   state.currentId = id;
   const chat = chatOf(id);
   if (!chat) return;

@@ -6,6 +6,19 @@
 // one (`filamentMachines.full`), else a toast says where, and the chat stays. `?theme=` says the desk's look, which the
 // page wears without keeping it: this machine's own pages keep theirs.
 
+/**
+ * The keys the chat alone hands the desk showing it, by their shortcut's id (`filamentMachines.deskKey`): the desk's
+ * own command center, its sidebar, its chats before and after and what needs you next, a new chat and Open Workspace —
+ * what the person pressing them there means of the list beside the chat. The desktop app takes these ids alone.
+ */
+export const DESK_KEYS = Object.freeze(["command-center", "command-center-alt", "sidebar", "next-needs", "new-task", "task-prev", "task-next", "open-workspace"]);
+
+/** The app's way to hand the desk a key, where another machine's desk shows this page, else null. @param {any} [w] @returns {((id: string) => void) | null} */
+export function deskKeyOf(w = globalThis) {
+  const key = w?.filamentMachines?.deskKey;
+  return typeof key === "function" ? (id) => void key(String(id)) : null;
+}
+
 /** Whether the page shows one chat alone, as another machine's desk asks. @param {string} [search]  the page's `location.search` */
 export function chatOnlyOf(search = String(/** @type {any} */ (globalThis).location?.search || "")) {
   try {
