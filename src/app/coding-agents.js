@@ -42,7 +42,8 @@ import { changeConfig, failure } from "./config-change.js";
  * - `install`: how Filament installs it — `npm` and `script` for the whole computer, `npx`, `uvx` and `binary` (a
  *   program it downloads) into Filament's own folder — and the installer it lacks (`needs`); `download`: a program to
  *   download for this computer that Filament can't install (its command outside its download), with the name it runs
- *   by; `unavailable`: the registry has no build of it for this computer;
+ *   by; `unavailable`: the registry has no build of it for this computer; `waiting`: why its program isn't known yet,
+ *   where it comes from its maker's own feed, unread (Antigravity's, adapters/agents/agy-feed.js);
  * - `gone`: connected, but its program isn't here;
  * - `primary`: the upstream its models line reads (its Default), `models` its list as kept, `asking` while asked,
  *   `modelsError` why it couldn't answer; `profile`: what it declared the last time it started;
@@ -55,7 +56,7 @@ import { changeConfig, failure } from "./config-change.js";
  *   state: "connected" | "off" | "ready" | "missing", upstreams: string[], primary: string | null,
  *   installed: { version: string, at: number } | null, runs: string | null, update: string | null, outdated?: string,
  *   install: { way: "npm" | "script" | "npx" | "uvx" | "binary", line: string, needs: "npm" | "uv" | null } | null,
- *   download: { url: string, program: string } | null, unavailable: boolean, gone: boolean,
+ *   download: { url: string, program: string } | null, unavailable: boolean, waiting?: string, gone: boolean,
  *   installing: Installing | null, lastInstall: InstallEnd | null,
  *   models: { count: number, at: number } | null, asking: boolean, modelsError: string | null, profile: any }} Entry
  */
@@ -165,7 +166,9 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
       // Older than the version the catalogue holds it to: why it is to be updated, which its card says beside Update.
       const min = a.minVersion;
       const outdated = min && e.installed && newerVersion(min.version, e.installed.version) ? `${agentTitle(a)} ${e.installed.version} is older than ${min.version}: ${min.why}` : null;
-      return { ...e, name: agentTitle({ id: a.id, name: a.name }), about: a.about, docs: a.docs, from: "filament", ...(outdated ? { outdated } : {}) };
+      // Its program not known yet, its maker's feed unread: why, in place of "no build for this computer".
+      const waiting = r?.waiting && !r.binary ? r.waiting : null;
+      return { ...e, name: agentTitle({ id: a.id, name: a.name }), about: a.about, docs: a.docs, from: "filament", ...(outdated ? { outdated } : {}), ...(waiting ? { waiting, unavailable: false } : {}) };
     }
     const here = catalogueInstalled(a);
     const way = "npm" in a.install ? "npm" : "script";
@@ -224,7 +227,8 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
       state: stateOf(ups, here),
       installed: receipt ? { version: receipt.version, at: receipt.at } : null,
       runs: null,
-      update: receipt && p && p.version !== receipt.version ? p.version : null,
+      // Never an older version than the one installed, as a feed that went back would name (agy-feed.js).
+      update: receipt && p && p.version !== receipt.version && !newerVersion(receipt.version, p.version) ? p.version : null,
       install: p ? { way: p.way, line: p.line, needs } : null,
       download: bin && program ? { url: bin.archive, program } : null,
       unavailable: !!agent && !p && !bin,
@@ -510,7 +514,9 @@ export function createCodingAgents({ config, destinationFor, terminal, registry,
         const program = agent.binary && target ? agent.binary[target] : null;
         throw failure(400, program
           ? `${e.name}'s command (${program.cmd}) isn't inside its download, so Filament can't install it: download it from its page`
-          : `ACP's registry has no build of ${e.name} for this computer${target ? ` (${target})` : ""}`);
+          : agent.waiting
+            ? `${e.name} can't be installed yet: ${agent.waiting}`
+            : `ACP's registry has no build of ${e.name} for this computer${target ? ` (${target})` : ""}`);
       }
       if (e.install?.needs) throw failure(400, `${e.name} installs with ${e.install.needs}, which isn't on this computer`);
       if (e.installed?.version === p.version && !e.gone) throw failure(400, `${e.name} ${p.version} is installed already`);

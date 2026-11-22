@@ -907,8 +907,8 @@ Google's releases late. Its models are the ones your plan lists once signed in, 
 Google releases arrives with the release that lists it: Update on its card, then Refresh. An install older than 1.5.1
 says on its card to update: below that version it showed Filament only some of your plan's models. Moving from the
 older server, Antigravity asks you to sign in once more. An account of its own is a folder of its own (`--gemini-dir`),
-which keeps its Google sign-in in that folder; such an account signs in in a terminal, where agy shows Google's page's
-address and takes the code it gives. Its modes are Default, where it asks, Auto Edit and YOLO. Filament's context reaches
+which keeps its Google sign-in in that folder; such an account signs in with Google in a terminal, where agy shows
+Google's page's address and takes the code it gives, or with a Gemini API key or Agent Platform. Its modes are Default, where it asks, Auto Edit and YOLO. Filament's context reaches
 it through its own system prompt channel. On Windows it runs its commands in Windows PowerShell, and Filament judges
 them as PowerShell, in the folder it names. A Gemini CLI connection
 you turned on keeps running as it is set up; its card says Google retired it, and what turning it off does. One that is

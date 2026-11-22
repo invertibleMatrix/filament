@@ -123,14 +123,23 @@ test("laid over the registry: Antigravity's words and icon the registry's, its v
     const reg = registryOf([LISTED, OTHER]);
     const over = withAgyFeed(reg, feed, { platform: "win32", arch: "x64" });
     const before = /** @type {any} */ (over.view().agents.find((a) => a.id === "antigravity-acp"));
-    assert.deepEqual([before.version, before.binary, before.name], ["1.5.2", null, "Google Antigravity"], "never the registry's older server");
+    assert.deepEqual([before.version, before.binary, before.name, before.waiting], ["", null, "Google Antigravity", "Google's release feed hasn't been read yet: Refresh"], "never the registry's older server, nor its version");
     await over.refresh();
     const v = over.view();
+    assert.equal(/** @type {any} */ (v.agents.find((x) => x.id === "antigravity-acp")).waiting, undefined, "read, nothing to wait for");
+    assert.equal(v.error, null);
     const a = /** @type {any} */ (v.agents.find((x) => x.id === "antigravity-acp"));
     assert.deepEqual([a.name, a.description, a.website, a.icon, a.version, Object.keys(a.binary)], [LISTED.name, LISTED.description, LISTED.website, LISTED.icon, "1.5.14", ["windows-x86_64"]]);
     assert.deepEqual(a.binary["windows-x86_64"], agyProgram(RELEASE, "win32"));
     assert.deepEqual(v.agents.find((x) => x.id === "other-agent"), OTHER, "the rest are the registry's");
     assert.equal(over.iconOf("antigravity-acp"), "/icons/antigravity-acp.svg");
+    // A feed that can't be read, on a fresh install: the entry says why, and so does the registry's line.
+    const down = withAgyFeed(registryOf([LISTED]), createAgyFeed({ dir: join(dir, "down"), fetch: feedFetch(() => 503).get, platform: "win32", arch: "x64" }), { platform: "win32", arch: "x64" });
+    await down.refresh();
+    const unread = /** @type {any} */ (down.view().agents[0]);
+    assert.deepEqual([unread.binary, unread.waiting, down.view().error], [null, "Google's release feed couldn't be read (it answered 503): Refresh to try again", "Google's release feed for Antigravity: it answered 503"]);
+    // A system the feed names none of waits for nothing: no build for it.
+    assert.equal(/** @type {any} */ (withAgyFeed(registryOf([LISTED]), createAgyFeed({ dir, fetch: f.get, platform: "freebsd", arch: "x64" }), { platform: "freebsd", arch: "x64" }).view().agents[0]).waiting, undefined);
     // A registry that lists no Antigravity: the entry is the feed's alone.
     const bare = withAgyFeed(registryOf([OTHER]), feed, { platform: "win32", arch: "x64" });
     const made = /** @type {any} */ (bare.view().agents.find((x) => x.id === "antigravity-acp"));

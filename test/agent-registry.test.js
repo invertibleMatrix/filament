@@ -28,6 +28,7 @@ import {
   safeSvg,
 } from "../src/adapters/agents/registry.js";
 import { createInstalls, npmCommandName, throughLink } from "../src/adapters/agents/installs.js";
+import { AGY_FEED_URL } from "../src/adapters/agents/agy-feed.js";
 import { createCodingAgents } from "../src/app/coding-agents.js";
 import { commandExists } from "../src/adapters/agents/agent-process.js";
 import { findSdkDir } from "../src/adapters/agents/cursor-sdk.js";
@@ -766,6 +767,9 @@ describe("Settings → Coding agents through the app: listed, installed, updated
    */
   const registryFetch = async (url) => {
     if (url === REGISTRY_URL) return down ? new Response("down", { status: 503 }) : new Response(JSON.stringify(served));
+    // Google's release feed for Antigravity, which answers: a read of it that failed would be said on the registry's line.
+    if (String(url).startsWith(`${AGY_FEED_URL}/`))
+      return new Response(JSON.stringify({ version: "1.5.14", url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.14/cli.exe", sha512: "a".repeat(128) }));
     const archive = archives.get(String(url));
     if (archive) return new Response(new Uint8Array(archive));
     return new Response(String(url).endsWith("/far-agent.svg") ? `<svg onload="alert(1)"></svg>` : SVG);
@@ -1500,6 +1504,23 @@ describe("Settings → Coding agents one step at a time, over stand-ins (app/cod
     ]);
     const now = s.entry("antigravity-acp");
     assert.deepEqual([now.installed?.version, now.update, now.outdated, now.upstreams], ["1.5.14", null, undefined, ["antigravity-acp", "antigravity-acp-work"]]);
+  });
+
+  // (fails before: yes — the bug hunt of 11-22: Google's feed unread said "Not made for this computer" and Install that
+  // ACP's registry had no build; a feed that went back offered the older version as an Update)
+  test("Antigravity's feed unread: its card says why and Install says so, not that none is made for this computer; an older version is never an Update", async () => {
+    const waiting = "Google's release feed couldn't be read (it answered 503): Refresh to try again";
+    const unread = stand({ agents: [agentOf("antigravity-acp", "", { name: "Google Antigravity", binary: null, waiting })] });
+    const e = unread.s.entry("antigravity-acp");
+    assert.deepEqual([e.unavailable, e.waiting, e.install, e.download], [false, waiting, null, null]);
+    await assert.rejects(unread.section.install("antigravity-acp"), { message: `Antigravity can't be installed yet: ${waiting}` });
+    // The feed names an older version than the one installed: no Update.
+    const program = { archive: "https://example.test/cli_windows_x64.exe", cmd: "agy.exe", args: ["acp", "--app-data-dir", "antigravity-acp"], env: {}, sha256: null, sha512: "a".repeat(128), from: "Google's release feed" };
+    const back = stand({ agents: [agentOf("antigravity-acp", "1.5.13", { name: "Google Antigravity", binary: { [String(TARGET)]: program } })] });
+    back.s.receipts.set("antigravity-acp", { id: "antigravity-acp", version: "1.5.14", way: "binary", package: program.archive, command: process.execPath, args: program.args, env: {}, at: 1 });
+    assert.deepEqual([back.s.entry("antigravity-acp").installed?.version, back.s.entry("antigravity-acp").update], ["1.5.14", null]);
+    back.s.receipts.set("antigravity-acp", { id: "antigravity-acp", version: "1.5.12", way: "binary", package: program.archive, command: process.execPath, args: program.args, env: {}, at: 1 });
+    assert.equal(back.s.entry("antigravity-acp").update, "1.5.13", "a newer one still is");
   });
 
   // (fails before: yes — the Fable 5.2 re-read's finding 7: an entry said nothing of whether its connection leaves the

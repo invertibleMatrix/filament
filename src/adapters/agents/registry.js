@@ -30,10 +30,11 @@ export const REGISTRY_STALE_MS = 24 * 3600_000;
  *   sha512?: string | null, from?: string }} ProgramWay
  */
 /**
- * An agent of the registry, as checked.
+ * An agent of the registry, as checked. `waiting`: why it has no program yet where its program comes from its maker's
+ * own feed, not read yet or not readable (agy-feed.js), in words.
  * @typedef {{ id: string, name: string, version: string, description: string, authors: string[], license: string | null,
  *   licenseUrl: string | null, website: string | null, repository: string | null, icon: string | null,
- *   npx: PackageWay | null, uvx: PackageWay | null, binary: Record<string, ProgramWay> | null }} RegistryAgent
+ *   npx: PackageWay | null, uvx: PackageWay | null, binary: Record<string, ProgramWay> | null, waiting?: string }} RegistryAgent
  */
 
 // An id and a version are folders' names here: letters, digits, dots, dashes, never ending with a dot (Windows drops

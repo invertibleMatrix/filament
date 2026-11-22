@@ -128,8 +128,10 @@ export function createAgyFeed({ dir, fetch: get = globalThis.fetch, log = () => 
 /**
  * The registry with Antigravity's entry taken from Google's feed (the owner's of 11-22): its words, makers and icon the
  * registry's, its version the feed's, and its one program this computer's from the feed — never the registry's older
- * server. Before the feed was read, or on a system it names none, the entry has no program, so nothing installs the
- * server the registry lists; an entry the registry left out is made from the feed alone. The rest is the registry's.
+ * server. Before the feed was read, or on a system it names none, the entry has no program and no version, so nothing
+ * installs the server the registry lists, and where the feed names this system it says why (`waiting`: not read yet,
+ * or why it couldn't be); an entry the registry left out is made from the feed alone. The rest is the registry's, and
+ * a failed read of the feed is said beside the registry's own error.
  * Its `refresh` reads both, or with `staleOnly` the ones gone stale: the feed is read each hour, the registry and its
  * forty-odd icons each day.
  * @param {ReturnType<typeof import("./registry.js").createRegistry>} registry
@@ -140,11 +142,14 @@ export function withAgyFeed(registry, feed, { platform = process.platform, arch 
   const target = platformTarget(platform, arch);
   /** @param {import("./registry.js").RegistryAgent | null} listed @returns {import("./registry.js").RegistryAgent} */
   const fromFeed = (listed) => {
-    const release = feed.view().release;
+    const { release, error } = feed.view();
+    // Why there's no program yet, on a system the feed names: its card and Install say so, not that none is made for it.
+    const waiting = !release && target && feedTarget(platform, arch) ? (error ? `Google's release feed couldn't be read (${error}): Refresh to try again` : "Google's release feed hasn't been read yet: Refresh") : null;
     return {
       id: AGY_ID,
       name: listed?.name || "Google Antigravity",
-      version: release?.version || listed?.version || "0",
+      // None before the feed is read: the registry's is its older server's, not what Filament installs.
+      version: release?.version || "",
       description: listed?.description || "",
       authors: listed?.authors || ["Google"],
       license: listed?.license ?? null,
@@ -155,6 +160,7 @@ export function withAgyFeed(registry, feed, { platform = process.platform, arch 
       npx: null,
       uvx: null,
       binary: release && target ? { [target]: agyProgram(release, platform) } : null,
+      ...(waiting ? { waiting } : {}),
     };
   };
   return {
@@ -167,7 +173,8 @@ export function withAgyFeed(registry, feed, { platform = process.platform, arch 
       const f = feed.view();
       const listed = v.agents.find((a) => a.id === AGY_ID) || null;
       const agents = listed ? v.agents.map((a) => (a.id === AGY_ID ? fromFeed(a) : a)) : [...v.agents, fromFeed(null)];
-      return { ...v, agents, asking: v.asking || f.asking };
+      // A failed read of the feed is said with the registry's (Settings → Coding agents' registry line), the registry's first.
+      return { ...v, agents, asking: v.asking || f.asking, error: v.error || (f.error ? `Google's release feed for Antigravity: ${f.error}` : null) };
     },
     stale: () => registry.stale() || feed.stale(),
     iconOf: registry.iconOf,

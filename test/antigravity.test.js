@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentArgs, agentHomeVar, agentKey, agentLaunchEnv, catalogueSignIn, installCommand, signInLine, signsInInTerminal, viaRegistry } from "../src/core/catalogues.js";
+import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentArgs, agentHomeVar, agentKey, agentLaunchEnv, catalogueSignIn, folderLineVars, installCommand, pagesRefused, signInLine, viaRegistry } from "../src/core/catalogues.js";
 import { CLIENT_INFO } from "../src/adapters/agents/acp/process.js";
 import { AcpBridge } from "../src/adapters/agents/acp/bridge.js";
 import { detectAgents } from "../src/adapters/agents/acp/detect.js";
@@ -60,13 +60,13 @@ test("agy: known by each of its names; an account's folder is its --gemini-dir, 
   const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", acp: { command: win, args, env } };
   const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home } };
   // The Default account: ~/.gemini, Google's page by its own ways, no terminal line.
-  assert.deepEqual([agentArgs(base.acp), agentLaunchEnv(base), catalogueSignIn(base), signInLine(base, "win32"), signsInInTerminal(base)], [args, env, null, null, false]);
+  assert.deepEqual([agentArgs(base.acp), agentLaunchEnv(base), catalogueSignIn(base), signInLine(base, "win32"), pagesRefused(base)], [args, env, null, null, []]);
   // An account of its own: its folder on the command line, its sign-in kept there, signed in by `agy acp --login`.
   const ssh = { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" };
   assert.deepEqual(agentArgs(work.acp), [...args, "--gemini-dir", home]);
   assert.deepEqual(agentLaunchEnv(work), { ...env, ...ssh, GEMINI_HOME: home });
   assert.deepEqual(catalogueSignIn(work), { name: "Antigravity", command: win, args: [...args, "--login", "--gemini-dir", home], env: { ...env, ...ssh, GEMINI_HOME: home } });
-  assert.equal(signsInInTerminal(work), true);
+  assert.deepEqual(pagesRefused(work), ["oauth-personal", "oauth-business"], "agy refuses its pages there: Google's and Gemini Enterprise's");
   assert.equal(
     signInLine(work, "win32"),
     `$env:SSH_CONNECTION='127.0.0.1 0 127.0.0.1 0'; $env:GEMINI_HOME='${home}'; ${win} acp --app-data-dir antigravity-acp --login --gemini-dir ${home}; Remove-Item Env:SSH_CONNECTION; Remove-Item Env:GEMINI_HOME`,
@@ -74,15 +74,28 @@ test("agy: known by each of its names; an account's folder is its --gemini-dir, 
   assert.deepEqual(agentArgs({ ...work.acp, args: [] }), ["--gemini-dir", home], "its folder follows whatever arguments it has");
   // The older server, until its card's Update: its folder by GEMINI_HOME alone, as it read it.
   const before = { ...work, acp: { command: old, args: [], env: {}, home } };
-  assert.deepEqual([agentArgs(before.acp), agentLaunchEnv(before), catalogueSignIn(before), signsInInTerminal(before)], [[], { GEMINI_HOME: home }, null, false]);
+  assert.deepEqual([agentArgs(before.acp), agentLaunchEnv(before), catalogueSignIn(before), pagesRefused(before)], [[], { GEMINI_HOME: home }, null, []]);
   // Any other agent with a folder of its own is as it was.
   const claude = { id: "claude-code-work", type: "acp", acp: { command: "claude-agent-acp", args: [], home: "/x/claude-work" } };
   assert.deepEqual([agentArgs(claude.acp), agentLaunchEnv(claude)], [[], { CLAUDE_CONFIG_DIR: "/x/claude-work" }]);
 });
 
+// (fails before: yes — the bug hunt of 11-22: the line a sign-in in a terminal shows to copy, and gives where no terminal
+// opens, set GEMINI_HOME alone, so agy run from it kept an added account's sign-in in the keyring, the Default account's)
+test("a line to copy sets what the account's terminal starts with: an added account's folder and SSH_CONNECTION, never the person's own variables", () => {
+  const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
+  const home = "C:\\Filament\\accounts\\antigravity-acp-work";
+  const base = { id: "antigravity-acp", type: "acp", acp: { command: win, args: ["acp", "--app-data-dir", "antigravity-acp"], env: { GEMINI_API_KEY: "secret" } } };
+  const work = { ...base, id: "antigravity-acp-work", acp: { ...base.acp, home } };
+  assert.deepEqual(folderLineVars(work), { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0", GEMINI_HOME: home });
+  assert.deepEqual(folderLineVars(base), {}, "the Default account's line sets nothing");
+  assert.deepEqual(folderLineVars({ ...work, acp: { command: "agy_acp_server.exe", home } }), { GEMINI_HOME: home }, "the older server's, its folder alone");
+  assert.deepEqual(folderLineVars({ type: "acp", acp: { command: "claude-agent-acp", home: "/x/claude-work" } }), { CLAUDE_CONFIG_DIR: "/x/claude-work" });
+});
+
 // (fails before: yes — an added account's card offered Google's page, which agy refuses for a folder's sign-in: "No
 // browser is available here (this is a remote (SSH) session…)")
-test("an added account's ways to sign in: agy acp --login in a terminal, its pages not offered; the Default account keeps Google's page", async () => {
+test("an added account's ways to sign in: agy acp --login in a terminal and its ways that open no page, its pages not offered; the Default account keeps Google's page", async () => {
   const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
   const args = ["acp", "--app-data-dir", "antigravity-acp"];
   const home = "C:\\Filament\\accounts\\antigravity-acp-work";
@@ -95,7 +108,7 @@ test("an added account's ways to sign in: agy acp --login in a terminal, its pag
     for (const u of [base, work]) bridge.profiles.put(u.id, /** @type {any} */ ({ ways }));
     assert.deepEqual((await bridge.signInWays(base)).map((w) => [w.id, w.kind]), ways.map((w) => [w.id, "browser"]));
     const own = await bridge.signInWays(work);
-    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["cli", "terminal"]]);
+    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["cli", "terminal"], ["gemini-api-key", "browser"], ["agent-platform", "browser"]]);
     const cli = /** @type {any} */ (own[0]);
     assert.deepEqual([cli.command, cli.args, cli.env.SSH_CONNECTION], [win, [...args, "--login", "--gemini-dir", home], "127.0.0.1 0 127.0.0.1 0"]);
   } finally {
@@ -104,8 +117,9 @@ test("an added account's ways to sign in: agy acp --login in a terminal, its pag
 });
 
 // (fails before: yes — agy 1.5.14 names a terminal way of its own to a client that runs them, and the card then offered
-// an added account every way, Google's pages among them)
-test("agy's own terminal sign-in: an added account's only way, run in its folder; the Default account has it beside Google's page", async () => {
+// an added account every way, Google's pages among them; then, the bug hunt of 11-22, none but the terminal's, though
+// agy takes a key and Agent Platform there: read live, only its two pages say "No browser is available here")
+test("agy's own terminal sign-in: an added account's way with Google, run in its folder, beside its key and Agent Platform; the Default account has it beside Google's page", async () => {
   const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
   const args = ["acp", "--app-data-dir", "antigravity-acp"];
   const home = "C:\\Filament\\accounts\\antigravity-acp-work";
@@ -121,8 +135,8 @@ test("agy's own terminal sign-in: an added account's only way, run in its folder
     assert.deepEqual(mine.map((w) => [w.id, w.kind]), [...pages.map((w) => [w.id, "browser"]), ["terminal-login", "terminal"]]);
     assert.deepEqual([/** @type {any} */ (mine[4]).args, /** @type {any} */ (mine[4]).env.SSH_CONNECTION], [[...args, "--login"], undefined]);
     const own = await bridge.signInWays(work);
-    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["terminal-login", "terminal"]]);
-    const t = /** @type {any} */ (own[0]);
+    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["gemini-api-key", "browser"], ["agent-platform", "browser"], ["terminal-login", "terminal"]]);
+    const t = /** @type {any} */ (own[2]);
     assert.deepEqual([t.command, t.args, t.env.SSH_CONNECTION, t.env.GEMINI_HOME], [win, [...args, "--gemini-dir", home, "--login"], "127.0.0.1 0 127.0.0.1 0", home]);
   } finally {
     bridge.shutdown();

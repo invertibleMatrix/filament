@@ -14,7 +14,7 @@
  *   state: "connected" | "off" | "ready" | "missing", upstreams: string[], primary: string | null,
  *   installed: { version: string, at: number } | null, runs: string | null, update: string | null, outdated?: string,
  *   install: { way: "npm" | "script" | "npx" | "uvx" | "binary", line: string, needs: "npm" | "uv" | null } | null,
- *   download: { url: string, program: string } | null, unavailable: boolean, gone: boolean,
+ *   download: { url: string, program: string } | null, unavailable: boolean, waiting?: string, gone: boolean,
  *   installing: { terminal: string, line: string, at: number, version: string | null } | null,
  *   lastInstall: { outcome: "installed" | "failed" | "cancelled", error: string | null, at: number } | null,
  *   models: { count: number, at: number } | null, asking: boolean, modelsError: string | null,
@@ -115,6 +115,7 @@ export function installWords(e) {
   if (w === "uvx") return "uv, in Filament's folder";
   if (w === "binary") return "A download, in Filament's folder";
   if (e.download) return "A program to download";
+  if (e.waiting) return "Its download isn't known yet";
   if (e.unavailable) return "No build for this computer";
   return "";
 }

@@ -635,7 +635,7 @@ export function renderAgents(body, cb, io = {}) {
       ? [spinning("Installing…"), btn("secondary", "Show", () => cb.install(e.id))]
       : e.state === "ready"
         ? btn("secondary", held ? "Connecting…" : "Connect", () => void agentWord(e, "connect", `Couldn't connect ${e.name}`, `${e.name} is connected`), { disabled: held })
-        : getIt(e) || m("span", { class: "cag-quiet" }, e.unavailable ? "Not made for this computer" : "Not on this computer");
+        : getIt(e) || m("span", { class: "cag-quiet", ...(e.waiting ? { title: e.waiting } : {}) }, e.waiting ? "Waiting for Google's release feed" : e.unavailable ? "Not made for this computer" : "Not on this computer");
     return m("div", { class: "cag-item", "data-agent": e.id },
       markTile(m, e),
       m("div", { class: "cag-item-main" },

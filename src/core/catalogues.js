@@ -65,6 +65,9 @@
  * @property {string[]} [folderSignIn]  the command that signs an account with a folder of its own in, in a terminal,
  *   where the agent's own ways can't (`catalogueSignIn`): Antigravity's page can't hand such an account its sign-in, so
  *   `agy acp --login` shows Google's page's address and takes the code it gives
+ * @property {string[]} [folderPages]  its own ways to sign in that open a page on this computer, which an account with
+ *   a folder of its own can't take (`pagesRefused`): Antigravity's Google and Gemini Enterprise pages, which agy
+ *   refuses where it keeps the sign-in in the folder; its key and Agent Platform ways stay
  * @property {{ version: string, why: string }} [minVersion]  the version below which Filament's install of it is told
  *   to update, and why (app/coding-agents.js `outdated`)
  */
@@ -197,6 +200,7 @@ export const KNOWN_AGENTS = [
     // over SSH: then in the folder, where an added account's must be to be its own.
     folderEnv: { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" },
     folderSignIn: ["agy", "acp", "--app-data-dir", "antigravity-acp", "--login"],
+    folderPages: ["oauth-personal", "oauth-business"],
     minVersion: { version: "1.5.1", why: "before 1.5.1 it shows Filament only some of your plan's models, and none Google released since" },
     cachedInInput: true,
     account: "Your Google account (or a Gemini API key)",
@@ -593,11 +597,13 @@ export function catalogueSignIn(u) {
   return { name: agentName(u), command: cmd[0] === known.command ? u?.acp?.command || cmd[0] : cmd[0], args: [...cmd.slice(1), ...homeArgs(u)], env: agentLaunchEnv(u) };
 }
 /**
- * Whether an account signs in by the catalogue's command alone (`folderSignIn`): one with a folder of its own, of an
- * agent whose own ways that open a page can't reach such an account — Antigravity's refuse, saying it runs over SSH.
+ * The agent's own ways to sign in that an account can't take (`folderPages`): for one with a folder of its own, those
+ * that open a page on this computer — Antigravity's refuse, saying it runs over SSH, while its key and Agent Platform
+ * ways work. None for any other account.
  * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
+ * @returns {string[]}
  */
-export const signsInInTerminal = (u) => !!(String(u?.acp?.home || "").trim() && currentAgent(u)?.folderSignIn);
+export const pagesRefused = (u) => (String(u?.acp?.home || "").trim() ? [...(currentAgent(u)?.folderPages || [])] : []);
 /**
  * The account's folder as its program takes it on its command line (`homeArg`), where it reads no variable for it;
  * none for an account with no folder, and for any other agent.
@@ -642,9 +648,19 @@ export function signInLine(u, platform) {
   if (u?.type === "cursor-sdk") return null;
   const own = catalogueSignIn(u);
   if (!own) return null;
+  return commandLine([own.command, ...own.args], folderLineVars(u), platform);
+}
+/**
+ * What a line to copy for an account with a folder of its own sets: its folder as the variable its CLI reads, and what
+ * such an account also starts with (`folderEnv`: agy keeps the sign-in in that folder only so) — the catalogue's alone,
+ * never the person's own variables. None for any other account.
+ * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
+ * @returns {Record<string, string>}
+ */
+export function folderLineVars(u) {
   const home = String(u?.acp?.home || "").trim();
   const name = home ? agentHomeVar(u) : null;
-  return commandLine([own.command, ...own.args], { ...folderVars(u), ...(name ? { [name]: home } : {}) }, platform);
+  return { ...folderVars(u), ...(name ? { [name]: home } : {}) };
 }
 /**
  * Whether an agent can switch its built-in tools off and work with Filament's hands (`acp.clientBridge` native): its

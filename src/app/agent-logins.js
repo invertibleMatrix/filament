@@ -21,7 +21,7 @@ import { mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
-import { CURSOR_SDK_OFF, KNOWN_AGENTS, accountId, accountStyle, agentHomeVar, agentKey, agentName, agentTitle, commandLine, cursorSdkHeld, signInLine } from "../core/catalogues.js";
+import { CURSOR_SDK_OFF, KNOWN_AGENTS, accountId, accountStyle, agentKey, agentName, agentTitle, commandLine, cursorSdkHeld, folderLineVars, signInLine } from "../core/catalogues.js";
 import { CANNOT_TELL, notSignedIn } from "../core/agent-limits.js";
 import { placeAgentRoute, withoutUpstreams } from "../core/routing.js";
 import { accountIsOff, isAgentUpstream } from "../core/schema.js";
@@ -160,11 +160,12 @@ export function createAgentLogins({ config, destinationFor, terminal, accounts, 
   };
   /** An account's folder, where it has one. @param {any} u */
   const homeOf = (u) => String(u?.acp?.home || "").trim();
-  /** The account's folder as the variable its CLI reads, for a line to copy. @param {any} u @returns {Record<string, string>} */
-  const homeVars = (u) => {
-    const name = homeOf(u) ? agentHomeVar(u) : null;
-    return name ? { [name]: homeOf(u) } : {};
-  };
+  /**
+   * The account's folder as the variable its CLI reads, and what such an account also starts with, for a line to copy
+   * (`folderLineVars`): the line runs as the terminal does.
+   * @param {any} u @returns {Record<string, string>}
+   */
+  const homeVars = (u) => folderLineVars(u);
   /** A folder Filament made: inside `<data dir>/accounts`. @param {string} home */
   const madeHere = (home) => {
     const r = relative(root, home);
