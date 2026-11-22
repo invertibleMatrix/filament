@@ -68,6 +68,9 @@
  * @property {string[]} [folderPages]  its own ways to sign in that open a page on this computer, which an account with
  *   a folder of its own can't take (`pagesRefused`): Antigravity's Google and Gemini Enterprise pages, which agy
  *   refuses where it keeps the sign-in in the folder; its key and Agent Platform ways stay
+ * @property {Record<string, string>} [ownEnv]  what Filament starts the program it installs with, whatever the account,
+ *   which a line to copy sets too (`lineVars`): Antigravity's updater off, as Filament updates it and a program that
+ *   replaced itself would no longer be the one its receipt names (adapters/agents/agy-feed.js `AGY_ENV`)
  * @property {{ version: string, why: string }} [minVersion]  the version below which Filament's install of it is told
  *   to update, and why (app/coding-agents.js `outdated`)
  */
@@ -201,6 +204,7 @@ export const KNOWN_AGENTS = [
     folderEnv: { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" },
     folderSignIn: ["agy", "acp", "--app-data-dir", "antigravity-acp", "--login"],
     folderPages: ["oauth-personal", "oauth-business"],
+    ownEnv: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
     minVersion: { version: "1.5.1", why: "before 1.5.1 it shows Filament only some of your plan's models, and none Google released since" },
     cachedInInput: true,
     account: "Your Google account (or a Gemini API key)",
@@ -648,19 +652,20 @@ export function signInLine(u, platform) {
   if (u?.type === "cursor-sdk") return null;
   const own = catalogueSignIn(u);
   if (!own) return null;
-  return commandLine([own.command, ...own.args], folderLineVars(u), platform);
+  return commandLine([own.command, ...own.args], lineVars(u), platform);
 }
 /**
- * What a line to copy for an account with a folder of its own sets: its folder as the variable its CLI reads, and what
- * such an account also starts with (`folderEnv`: agy keeps the sign-in in that folder only so) — the catalogue's alone,
- * never the person's own variables. None for any other account.
+ * What a line to copy sets, so it runs as the account's terminal does: what Filament starts the agent's program with
+ * whatever the account (`ownEnv`: agy's updater off), and for an account with a folder of its own, its folder as the
+ * variable its CLI reads and what such an account also starts with (`folderEnv`: agy keeps the sign-in in that folder
+ * only so) — the catalogue's alone, never the person's own variables.
  * @param {{ type?: string, acp?: { command?: string, home?: string } } | null | undefined} u
  * @returns {Record<string, string>}
  */
-export function folderLineVars(u) {
+export function lineVars(u) {
   const home = String(u?.acp?.home || "").trim();
   const name = home ? agentHomeVar(u) : null;
-  return { ...folderVars(u), ...(name ? { [name]: home } : {}) };
+  return { ...(currentAgent(u)?.ownEnv || {}), ...folderVars(u), ...(name ? { [name]: home } : {}) };
 }
 /**
  * Whether an agent can switch its built-in tools off and work with Filament's hands (`acp.clientBridge` native): its

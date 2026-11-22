@@ -10,6 +10,7 @@
 // removes it as it does a registry agent's program.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { KNOWN_AGENTS } from "../../core/catalogues.js";
 import { fetchText, platformTarget } from "./registry.js";
 
 /** The feed, by the system Google names (`feedTarget`). */
@@ -29,7 +30,8 @@ const DOWNLOADS = "https://storage.googleapis.com/antigravity-public/antigravity
  * replaced itself would no longer be the one its receipt names.
  */
 export const AGY_ARGS = Object.freeze(["acp", "--app-data-dir", "antigravity-acp"]);
-export const AGY_ENV = Object.freeze({ AGY_CLI_DISABLE_AUTO_UPDATE: "1" });
+/** The catalogue's (`ownEnv`), which a sign-in line to copy sets too. */
+export const AGY_ENV = Object.freeze({ ...KNOWN_AGENTS.find((a) => a.id === "antigravity-acp")?.ownEnv });
 /** Whose checksum the install checks, in its words. */
 const FROM = "Google's release feed";
 

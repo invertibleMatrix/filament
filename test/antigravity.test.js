@@ -11,9 +11,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentArgs, agentHomeVar, agentKey, agentLaunchEnv, catalogueSignIn, folderLineVars, installCommand, pagesRefused, signInLine, viaRegistry } from "../src/core/catalogues.js";
+import { AGENT_CATALOGUE, KNOWN_AGENTS, RETIRED_AGENTS, agentArgs, agentHomeVar, agentKey, agentLaunchEnv, catalogueSignIn, lineVars, installCommand, pagesRefused, signInLine, viaRegistry } from "../src/core/catalogues.js";
 import { CLIENT_INFO } from "../src/adapters/agents/acp/process.js";
 import { AcpBridge } from "../src/adapters/agents/acp/bridge.js";
+import { AGY_ENV } from "../src/adapters/agents/agy-feed.js";
 import { detectAgents } from "../src/adapters/agents/acp/detect.js";
 import { TEMPLATES } from "../src/services/config/templates.js";
 import { defaultConfig, loadConfig, normalizeConfig, withoutRetiredAgents } from "../src/services/config/store.js";
@@ -69,7 +70,7 @@ test("agy: known by each of its names; an account's folder is its --gemini-dir, 
   assert.deepEqual(pagesRefused(work), ["oauth-personal", "oauth-business"], "agy refuses its pages there: Google's and Gemini Enterprise's");
   assert.equal(
     signInLine(work, "win32"),
-    `$env:SSH_CONNECTION='127.0.0.1 0 127.0.0.1 0'; $env:GEMINI_HOME='${home}'; ${win} acp --app-data-dir antigravity-acp --login --gemini-dir ${home}; Remove-Item Env:SSH_CONNECTION; Remove-Item Env:GEMINI_HOME`,
+    `$env:AGY_CLI_DISABLE_AUTO_UPDATE='1'; $env:SSH_CONNECTION='127.0.0.1 0 127.0.0.1 0'; $env:GEMINI_HOME='${home}'; ${win} acp --app-data-dir antigravity-acp --login --gemini-dir ${home}; Remove-Item Env:AGY_CLI_DISABLE_AUTO_UPDATE; Remove-Item Env:SSH_CONNECTION; Remove-Item Env:GEMINI_HOME`,
   );
   assert.deepEqual(agentArgs({ ...work.acp, args: [] }), ["--gemini-dir", home], "its folder follows whatever arguments it has");
   // The older server, until its card's Update: its folder by GEMINI_HOME alone, as it read it.
@@ -80,17 +81,20 @@ test("agy: known by each of its names; an account's folder is its --gemini-dir, 
   assert.deepEqual([agentArgs(claude.acp), agentLaunchEnv(claude)], [[], { CLAUDE_CONFIG_DIR: "/x/claude-work" }]);
 });
 
-// (fails before: yes — the bug hunt of 11-22: the line a sign-in in a terminal shows to copy, and gives where no terminal
-// opens, set GEMINI_HOME alone, so agy run from it kept an added account's sign-in in the keyring, the Default account's)
-test("a line to copy sets what the account's terminal starts with: an added account's folder and SSH_CONNECTION, never the person's own variables", () => {
+// (fails before: yes — the bug hunts of 11-22: the line a sign-in in a terminal shows to copy, and gives where no terminal
+// opens, set GEMINI_HOME alone, so agy run from it kept an added account's sign-in in the keyring, the Default account's,
+// and ran with its own updater on, which could replace the program Filament's receipt names)
+test("a line to copy sets what the account's terminal starts with: agy's updater off, an added account's folder and SSH_CONNECTION, never the person's own variables", () => {
   const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
   const home = "C:\\Filament\\accounts\\antigravity-acp-work";
   const base = { id: "antigravity-acp", type: "acp", acp: { command: win, args: ["acp", "--app-data-dir", "antigravity-acp"], env: { GEMINI_API_KEY: "secret" } } };
   const work = { ...base, id: "antigravity-acp-work", acp: { ...base.acp, home } };
-  assert.deepEqual(folderLineVars(work), { SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0", GEMINI_HOME: home });
-  assert.deepEqual(folderLineVars(base), {}, "the Default account's line sets nothing");
-  assert.deepEqual(folderLineVars({ ...work, acp: { command: "agy_acp_server.exe", home } }), { GEMINI_HOME: home }, "the older server's, its folder alone");
-  assert.deepEqual(folderLineVars({ type: "acp", acp: { command: "claude-agent-acp", home: "/x/claude-work" } }), { CLAUDE_CONFIG_DIR: "/x/claude-work" });
+  const own = { AGY_CLI_DISABLE_AUTO_UPDATE: "1" };
+  assert.deepEqual(lineVars(work), { ...own, SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0", GEMINI_HOME: home });
+  assert.deepEqual(lineVars(base), own, "the Default account's line: agy's updater off alone");
+  assert.deepEqual(AGY_ENV, own, "what the install starts it with is the catalogue's");
+  assert.deepEqual(lineVars({ ...work, acp: { command: "agy_acp_server.exe", home } }), { GEMINI_HOME: home }, "the older server's, its folder alone");
+  assert.deepEqual(lineVars({ type: "acp", acp: { command: "claude-agent-acp", home: "/x/claude-work" } }), { CLAUDE_CONFIG_DIR: "/x/claude-work" });
 });
 
 // (fails before: yes — an added account's card offered Google's page, which agy refuses for a folder's sign-in: "No
