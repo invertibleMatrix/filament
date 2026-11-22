@@ -116,6 +116,28 @@ test("the registry checks a number it is given: a wrong one settles nothing, and
   l.door.close();
 });
 
+// (fails before: yes — another machine's desk heard of a worker's question only at its next look)
+test("a worker's question is said on `turns` by its chat and its id as the chat's asks name it, as it opens and as it settles", async () => {
+  const { w, l, id, ask } = await setUp();
+  const said = () => w.published.filter((p) => p.topic === "turns" && p.e.type === "ask").map((p) => p.e);
+  const first = ask(Q1);
+  assert.deepEqual(said(), [{ type: "ask", chainId: "c1", id: `${id}.1`, open: true }]);
+  w.registry.answer(id, "c1", "yes");
+  await first;
+  // One its turn's stop ends goes as settled too: the desk's inbox lets go of it.
+  const ac = new AbortController();
+  const second = w.registry.ask(id, Q2, { signal: ac.signal });
+  ac.abort();
+  assert.equal(await second, null);
+  assert.deepEqual(said().slice(1), [
+    { type: "ask", chainId: "c1", id: `${id}.1`, open: false },
+    { type: "ask", chainId: "c1", id: `${id}.2`, open: true },
+    { type: "ask", chainId: "c1", id: `${id}.2`, open: false },
+  ]);
+  assert.ok(!JSON.stringify(said()).includes("npm test"), "its words stay in the chat's asks");
+  l.door.close();
+});
+
 // (fails before: yes — the message named the call, not its question's number)
 test("a message to a worker that waits names its question's number", async () => {
   const { l, id, as, ask, w } = await setUp();

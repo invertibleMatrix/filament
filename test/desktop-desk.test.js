@@ -390,6 +390,16 @@ test("each machine kept and connected has one events stream, as the desk's tab: 
   desk.close();
 });
 
+// (fails before: yes — a machine sent the desk every record its turns made, a coding agent's 140 KB finish included)
+test("a machine that says events-only is asked for the desk's topics alone (an older one for its whole stream: the test above)", async () => {
+  const there = scripted({ me: { who: "device", device: { id: "d-window", scope: "full" }, machine: { id: "m-mac", name: "Mac mini" }, pages: ["new"], desk: ["remote-key", "ask-events", "events-only"] } });
+  const { desk } = deskOver(there);
+  desk.sync();
+  await until(() => there.streams.length === 1, "its stream asked for");
+  assert.deepEqual(there.calls.filter((c) => c.path.startsWith("/events")).map((c) => c.path), ["/events?tab=desk-test&only=turns,writers"]);
+  desk.close();
+});
+
 test("a listener that throws stops no stream; close lets every stream go", async () => {
   const there = scripted();
   let n = 0;

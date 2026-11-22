@@ -504,9 +504,12 @@ export const PAGES = Object.freeze(["new"]);
  * What this Filament does for another machine's desk — the app that lists every machine's chats as one (the remote
  * desk of 11-22) —, by name (GET /remote/me `desk`): an app greys what a machine's list leaves out, saying to update it
  * there. `remote-key`: its chats' and projects' lists say their repository's remote (`?remotes=1`), by which the desk
- * lists a repository's on every machine as one.
+ * lists a repository's on every machine as one. `ask-events`: its events feed says each ask the chat's asks list
+ * (http/admin/sessions.js `asksIn`) that waits in a running turn as it opens and closes (`turns`, `{ type: "ask",
+ * chainId, id, open }`: a coding agent's, a sub-agent's; the chat's own ask ends its turn and its answer begins one,
+ * which `turn` says). `events-only`: its events feed takes `?only=` and sends those topics alone.
  */
-export const DESK = Object.freeze(["remote-key"]);
+export const DESK = Object.freeze(["remote-key", "ask-events", "events-only"]);
 
 /** The claim's path, answered before any caller is known (index.js). */
 export const CLAIM_PATH = "/remote/claim";

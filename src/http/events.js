@@ -152,10 +152,16 @@ export function attachEventsStream(req, res, a, place = null) {
   // open window parsing it for nothing (the owner's of 11-17: 2.5 s of a 14.5 s hold making those lines). Its other
   // record events — `start`, `first-byte`, `finish` — come as to the dashboard, whose live rows read the progress too.
   // The dashboard's is sent each progress's record without `priorChanges` (`progressSent`).
-  const tab = new URL(req.url || "/", "http://local").searchParams.get("tab");
+  const asked = new URL(req.url || "/", "http://local").searchParams;
+  const tab = asked.get("tab");
+  // `?only=turns,writers`: those topics alone — another machine's desk reads its holders, writers and asks, never a
+  // record (a coding agent's finish runs to 140 KB), and is sent none (the remote desk of 11-22).
+  const only = asked.has("only") ? new Set(String(asked.get("only")).split(",").map((t) => t.trim()).filter(Boolean)) : null;
+  /** @param {string} topic @param {(payload: any, entry?: object) => void} fn */
+  const hear = (topic, fn) => (!only || only.has(topic) ? events.subscribe(topic, fn) : () => {});
   /** @param {any} payload @param {object} [entry] */
   const sendRecord = tab ? (payload, entry) => void (payload?.type !== "progress" && send(payload, entry)) : (payload, entry) => send(payload?.type === "progress" ? progressSent(payload) : payload, entry);
-  const offs = [events.subscribe("record", sendRecord), events.subscribe("op", send), events.subscribe("turns", send), events.subscribe("subagents", send), events.subscribe("config", send), events.subscribe("settings", send), events.subscribe("writers", send), events.subscribe("claims", send), events.subscribe("engine", send), events.subscribe("graph", send), events.subscribe("accounts", send), events.subscribe("compactions", send), events.subscribe("artifacts", send), events.subscribe("copies", send), events.subscribe("space", send), events.subscribe("spend", send), events.subscribe("browser", send), events.subscribe("git", send)];
+  const offs = [hear("record", sendRecord), hear("op", send), hear("turns", send), hear("subagents", send), hear("config", send), hear("settings", send), hear("writers", send), hear("claims", send), hear("engine", send), hear("graph", send), hear("accounts", send), hear("compactions", send), hear("artifacts", send), hear("copies", send), hear("space", send), hear("spend", send), hear("browser", send), hear("git", send)];
   const off = () => {
     for (const f of offs) f();
   };

@@ -3914,6 +3914,13 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
     if (p && !p.live.closed) p.emit({ ...evt, parent: p.toolUseId });
   };
   /**
+   * A sub-agent's question that waits for the person, opened or settled (the remote desk of 11-22): said on the events
+   * feed by its chat and its id as the chat's asks name it (http/admin/sessions.js `subagentAsk`) — whether or not its
+   * lead's turn still runs to carry its `subagent-ask` —, so another machine's desk reads the chat's asks again at once.
+   * @param {Subagent} sa @param {number} n  its number among the sub-agent's questions @param {boolean} open
+   */
+  const askSaid = (sa, n, open) => events.publish("turns", { type: "ask", chainId: sa.chainId, id: `${sa.id}.${n}`, open });
+  /**
    * A running sub-agent's progress moved: onto the events feed (HarnessV3-Views V3) — the Team view's cards, a graph
    * task's live line. At once when the last went out PROGRESS_MS ago or more, else once that long has passed, as it
    * stands then: a busy run sends one each PROGRESS_MS, and its newest always goes. An exchange that ended sends none.
@@ -3975,6 +3982,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
     if (a) q.answer = { text: a.text, by: a.by === "lead" ? "lead" : "developer", go: a.go === true };
     run.asking = null;
     run.progress.asking = null;
+    askSaid(sa, q.n, false);
     unasked(sa, q.n);
     // Its plan's go — its lead's or the developer's, `go: true`, never read from their words — or no answer in its 3
     // minutes lets its changes run (TG2-D50). Other words are corrections: the hold stays, for its plan again.
@@ -10588,6 +10596,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
           signal?.removeEventListener("abort", onAbort);
           run.asking = null;
           run.progress.asking = null;
+          askSaid(sa, n, false);
           const there = answer == null && signal?.reason === ANSWERED_THERE ? { there: q.machine } : {};
           toParent(sa, { type: "subagent-ask-end", agentId: sa.id, answered: answer != null, ...(answer?.by ? { by: answer.by, allowed: answer.allow === true, words: answer.text } : {}), ...there });
           changed(sa);
@@ -10598,6 +10607,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
         const n = sa.questions;
         run.asking = { settle, n, ...(q.machine ? { remote: q.machine, kind: q.kind || "permission", options: q.options || [], ...(q.words === false ? { words: false } : {}) } : {}) };
         run.progress.asking = { ...q, n };
+        askSaid(sa, n, true);
         signal?.addEventListener("abort", onAbort, { once: true });
         const where = q.machine ? { machine: q.machine, kind: q.kind || "permission", ...(q.options?.length ? { options: q.options } : {}) } : {};
         toParent(sa, { type: "subagent-ask", agentId: sa.id, tool: q.tool, args: q.args, question: q.question, ask: n, ...where });
@@ -10699,6 +10709,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
       run.leadAsk = asked;
       run.asking = { n: asked.n, lead: true, settle: (a) => endLead(sa, run, asked, "answered", a) };
       run.progress.asking = { to: "lead", tool: "ask_lead", args: "", question: asked.question, options: asked.options, n: asked.n, at: asked.at, plan: asked.plan };
+      askSaid(sa, asked.n, true);
       // Its number rides the events as `ask`, the field an answer names it by: the run log numbers every event `n`.
       const options = asked.options.length ? { options: asked.options } : {};
       const plan = asked.plan ? { plan: true } : {};

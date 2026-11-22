@@ -115,7 +115,7 @@ test("the page wires it: over the box, opening the Browser pane, fed by the even
   // the line stood after the turn had ended)
   assert.match(app, /chargeBand\.paint\(chat\);\n[^\n]*\n  paintBrowserLine\(\);\n\}/, "as the page's own turn ends (nowIn)");
   const feed = readFileSync("src/http/events.js", "utf8");
-  assert.match(feed, /events\.subscribe\("browser", send\)/, "the feed carries the topic");
+  assert.match(feed, /hear\("browser", send\)/, "the feed carries the topic");
   const server = readFileSync("src/server.js", "utf8");
   assert.match(server, /moved: \(chain, use\) => events\.publish\("browser", \{ type: "browser", chainId: chain, \.\.\.use \}\)/);
 });

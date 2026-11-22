@@ -334,7 +334,9 @@ export function createDesk({ machines, cookieOf, tell, pick = pickRoute, fetchOf
     s.ctl.signal.addEventListener("abort", off, { once: true });
     let quiet = setTimeout(off, quietMs);
     try {
-      const res = await r.open(`/events?tab=${enc(tab)}`, { signal: ctl.signal });
+      // Its holders' and writers' topics alone, where its Filament takes `?only=` (its desk flag `events-only`): no record
+      // streams past unread.
+      const res = await r.open(`/events?tab=${enc(tab)}${r.flags.includes("events-only") ? "&only=turns,writers" : ""}`, { signal: ctl.signal });
       if (res.status !== 200 || !String(res.headers.get("content-type") || "").includes("text/event-stream") || !res.body) {
         void res.body?.cancel().catch(() => {});
         return;

@@ -988,7 +988,7 @@ describe("TaskGraph G2: the sub-agents' tasks, drawn", () => {
     assert.match(app, /if \(chat\.graphLive && \(Number\(chat\.graphLive\.rev\) \|\| 0\) >= \(Number\(graph\.rev\) \|\| 0\)\) return;\n\s*chat\.graphLive = graph;/);
     assert.match(app, /\(chat\.taskProgress \|\|= new Map\(\)\)\.set\(String\(msg\.task\), \{ agent: String\(msg\.id \|\| ""\), round: Number\(msg\.progress\?\.round\) \|\| 0, tool: msg\.progress\?\.tool \|\| null[ ,]/);
     assert.match(app, /openAgent: \(id\) => openSubagent\(id\)/);
-    assert.match(readFileSync("src/http/events.js", "utf8"), /events\.subscribe\("graph", send\)/, "the feed carries the graph's changes");
+    assert.match(readFileSync("src/http/events.js", "utf8"), /hear\("graph", send\)/, "the feed carries the graph's changes");
   });
 
   // (fails before: yes — a task's end reached the conversation as a sub-agent's report: "reported — its report joined")

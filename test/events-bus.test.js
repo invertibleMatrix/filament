@@ -7,8 +7,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createEventBus } from "../src/services/events.js";
 import { attachEventsStream, BACKLOG_BYTES } from "../src/http/events.js";
+import { createRunLog } from "../src/services/runs.js";
 
 test("subscribers get every event of their topic, then the wildcard ones, synchronously and in order", () => {
   const bus = createEventBus();
@@ -97,6 +101,61 @@ test("/api/events serialises each event once, however many windows are open, and
   for (const w of windows) assert.deepEqual(w.wrote.slice(1), [`data: ${real(payload).replace("43", "42")}\n\n`, `data: ${real(payload)}\n\n`]);
   for (const w of windows) w.req.emit("close");
   assert.equal(sseClients.size, 0);
+});
+
+// (fails before: yes — every window heard every topic, a coding agent's 140 KB finish included)
+test("/api/events?only= sends those topics alone: another machine's desk hears holders, writers and asks, never a record", () => {
+  const bus = createEventBus();
+  const sseClients = new Set();
+  /** @param {string} url */
+  const window = (url) => {
+    const req = Object.assign(new EventEmitter(), { url });
+    /** @type {string[]} */
+    const wrote = [];
+    const res = { writableEnded: false, destroyed: false, writableNeedDrain: false, writableLength: 0, writeHead: () => res, write: (/** @type {string} */ s) => (wrote.push(s), true), destroy() {} };
+    attachEventsStream(/** @type {any} */ (req), /** @type {any} */ (res), { events: bus, sseClients, VERSION: "t" });
+    return { req, types: () => wrote.slice(1).map((l) => JSON.parse(l.slice(6)).type) };
+  };
+  const desk = window("/api/events?tab=desk-1&only=turns,%20writers");
+  const page = window("/api/events?tab=page-1");
+  bus.publish("record", { type: "finish", record: { id: "r1" } });
+  bus.publish("turns", { type: "turn", chainId: "c1", holder: null });
+  bus.publish("writers", { type: "writer", chainId: "c1", tab: "t", where: null });
+  bus.publish("graph", { type: "graph-changed", sessionId: "c1" });
+  bus.publish("turns", { type: "ask", chainId: "c1", id: "r1.q1", open: true });
+  assert.deepEqual(desk.types(), ["turn", "writer", "ask"], "the desk's window: its topics alone, in order");
+  assert.deepEqual(page.types(), ["finish", "turn", "writer", "graph-changed", "ask"], "a window that names none hears every topic");
+  desk.req.emit("close");
+  page.req.emit("close");
+  assert.equal(sseClients.size, 0);
+});
+
+// (fails before: yes — a coding agent's question reached another machine's desk only at its next look)
+test("a coding agent's question that waits is said on `turns` by its chat and the ask's id, opened and settled; a lead's or one that does not wait is not", (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), "llmshim-ask-events-"));
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }));
+  const bus = createEventBus();
+  /** @type {any[]} */
+  const said = [];
+  bus.subscribe("turns", (p) => said.push(p));
+  const runs = createRunLog({ events: bus, dataDir, config: () => ({ observability: { runEvents: { persist: false, retentionDays: 7, maxPerRun: 5000, keepRuns: 50, toolPreviewChars: 2000 } } }) });
+  runs.startRun({ id: "r1", kind: "coding-agent", meta: { chain: "c1" } });
+  runs.startRun({ id: "r2", kind: "agent-turn", meta: { chain: "c2" } });
+  runs.startRun({ id: "r3", kind: "coding-agent", meta: {} });
+  bus.publish("run:r1", { type: "ask", id: "q1", waits: true, kind: "question", question: "which way?" });
+  bus.publish("run:r1", { type: "ask", id: "q2", waits: true, kind: "lead" });
+  bus.publish("run:r1", { type: "ask", id: "q3", waits: false, kind: "question" });
+  bus.publish("run:r2", { type: "ask", id: "q1", waits: true, kind: "question" });
+  bus.publish("run:r3", { type: "ask", id: "q1", waits: true, kind: "question" });
+  bus.publish("run:r1", { type: "ask-end", id: "q1" });
+  assert.deepEqual(said, [
+    { type: "ask", chainId: "c1", id: "r1.q1", open: true },
+    { type: "ask", chainId: "c1", id: "r1.q1", open: false },
+  ]);
+  assert.ok(!JSON.stringify(said).includes("which way"), "its words stay in the run");
+  runs.endRun("r1", { status: "done" });
+  runs.endRun("r2", { status: "done" });
+  runs.endRun("r3", { status: "done" });
 });
 
 /**
