@@ -331,8 +331,9 @@ It writes its chat as any page does. Settings, the Library, a Space or the artif
 machine's whole page in the app, at that screen (**Open full page** in its header opens it at the chat), and the chat
 stays as it was; in a browser, a note says to open the full page for them. What goes through the left bar it hides —
 the chats before and after (Ctrl+Shift+[ and ]), what needs you next — and what leaves the chat for a new one (New
-chat, Open Workspace, the welcome tour) are not there — in the app, their keys and Ctrl+K go to the window's own left
-bar —; nor the tips, the Auto-archive sweep, or the theme's switch while it wears the look it was given.
+chat, Open Workspace, the welcome tour, which neither its Help menu nor `/welcome` opens there) are not there — in the
+app, their keys and Ctrl+K go to the window's own left bar, except while a dialog of the chat's own is open, which keeps
+them until it closes —; nor the tips, the Auto-archive sweep, or the theme's switch while it wears the look it was given.
 
 **Another machine's agents.** A Filament can let another Filament's agents work on it: start chats in its projects,
 send them turns and follow them. They come in by a device of their own, apart from yours, named for the machine whose

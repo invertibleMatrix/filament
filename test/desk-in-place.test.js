@@ -356,8 +356,9 @@ test("app.js: the desk's guest made on This computer's own page alone, over the 
     // A full-frame screen leaves for it, as for a chat of this computer's.
     "    leaveScreen();\n    if (deskGuest) void deskGuest.open(m, route);",
     "  onOpenThere: (machine, chain) => sidebar.openOnMachine(",
-    // The chat alone hands its list's keys to the desk, before it drops them.
-    "  e?.preventDefault();\n  // The chat alone another machine's desk shows hands it the keys of the list beside it.\n  if (toDesk && DESK_KEYS.includes(id)) return void toDesk(id);",
+    // The chat alone hands its list's keys to the desk, before it drops them — none while a dialog of its own is open
+    // (chat-only-mode.test.js runs it).
+    "  e?.preventDefault();\n  // The chat alone another machine's desk shows hands it the keys of the list beside it — none while a dialog of its own\n  // is open, which holds the keys here as it would on the whole page: the desk opens nothing over it.\n  if (toDesk && DESK_KEYS.includes(id)) return void (document.querySelector('.zc-dialog[aria-modal=\"true\"]') || toDesk(id));",
     "const toDesk = CHAT_ONLY ? deskKeyOf() : null;",
   ])
     assert.ok(app.includes(said), said.slice(0, 70));

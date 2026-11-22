@@ -259,6 +259,8 @@ if (CHAT_ONLY) hintTheme(themeHintOf());
 const CHAT_ONLY_OFF = new Set(["new", "new-task", "next-needs", "task-prev", "task-next", "sidebar", "open-workspace", "welcome", "tips"]);
 /** Where the desk shows the chat alone, its way to hand the desk a key of its list's (chat-only.js `DESK_KEYS`). */
 const toDesk = CHAT_ONLY ? deskKeyOf() : null;
+/** What `/welcome` says on the chat alone: the tour starts chats, which the desk's list picks, so it runs on the whole page. */
+const TOUR_CHAT_ONLY_WORDS = "The welcome tour runs on this machine's whole page, not on a chat shown alone.";
 
 // A view-only device (the owner's remote Filament of 11-06, p4-view-ui): its page reads this Filament and offers nothing
 // the server would refuse it — no Send, New chat, Start or terminal (`paintViewOnly`).
@@ -303,7 +305,8 @@ const shell = createShell(must("app"), {
     },
     onArchived: () => sidebar.load(),
     onToast: (msg, kind) => toast(msg, kind),
-    onWelcome: () => openTour(),
+    // The Help menu's Welcome tour: none on the chat alone, as Ctrl+K offers none there.
+    ...(CHAT_ONLY ? {} : { onWelcome: () => openTour() }),
     // The Open in menu's file manager: named by the system Filament runs on, opened by Filament where the folder is.
     platform: () => state.platform,
     onOpenFolder: (path) => revealFile(path, "The folder did not open"),
@@ -2233,9 +2236,10 @@ const sheetThen = (back) => (/** @type {Parameters<typeof sheet>[0]} */ o) =>
  * folder and its examples start a chat as Ctrl+N and Open folder… do, on the model and in the folder it set.
  */
 function openTour() {
-  // Each step writes a setting, and a view-only device's page writes none (p4-view-ui). One open is the tour: the
-  // tips' replay and the tour's own opening may both ask for it as the page starts.
-  if (viewOnlyPage() || document.querySelector(".wel-sheet")) return;
+  // Each step writes a setting, and a view-only device's page writes none (p4-view-ui); the chat alone runs none, by
+  // any door (its chats are the desk's list's to start). One open is the tour: the tips' replay and the tour's own
+  // opening may both ask for it as the page starts.
+  if (viewOnlyPage() || CHAT_ONLY || document.querySelector(".wel-sheet")) return;
   openWelcome({
     step: stepAt(prefs.get("welcomeStep")),
     // Where a new chat starts now: Your work and Ready say it.
@@ -3090,7 +3094,8 @@ const composer = createComposer(shell.dock, {
   onCraft: ({ words }) => openCrafter({ words }),
   // `/rewind` and Esc Esc in an empty box: the list of your messages to go back to (the Designer's §1).
   onRewind: () => void rewindList(),
-  onWelcome: () => openTour(),
+  // `/welcome` on the chat alone sends nothing either: it says where the tour runs.
+  onWelcome: () => (CHAT_ONLY ? toast(TOUR_CHAT_ONLY_WORDS) : openTour()),
   isFile: (word) => projectFileNamed(word),
   onAskDraft: (on) => { if (on) readAskSizes(); },
   onToast: (msg) => toast(msg),
@@ -4591,8 +4596,9 @@ function onShortcutKey(e, asked = "") {
   }[id];
   if (!run) return;
   e?.preventDefault();
-  // The chat alone another machine's desk shows hands it the keys of the list beside it.
-  if (toDesk && DESK_KEYS.includes(id)) return void toDesk(id);
+  // The chat alone another machine's desk shows hands it the keys of the list beside it — none while a dialog of its own
+  // is open, which holds the keys here as it would on the whole page: the desk opens nothing over it.
+  if (toDesk && DESK_KEYS.includes(id)) return void (document.querySelector('.zc-dialog[aria-modal="true"]') || toDesk(id));
   // A view-only device's page: no model, mode or effort to pick, no fork, no question on the side (p4-view-ui).
   if (viewOnlyPage() && VIEW_ONLY_KEYS_OFF.has(id)) return;
   if (CHAT_ONLY && CHAT_ONLY_OFF.has(id)) return;

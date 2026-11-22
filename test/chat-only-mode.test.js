@@ -9,8 +9,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { stubDocument } from "./helpers/dom-stub.js";
-import { chatOnlyOf, fullPageOf, themeHintOf } from "../src/ui/harness/lib/chat-only.js";
+import { DESK_KEYS, chatOnlyOf, fullPageOf, themeHintOf } from "../src/ui/harness/lib/chat-only.js";
 import { DESK } from "../src/http/admin/remote.js";
+import { lift } from "./helpers/app-lift.js";
 
 const g = /** @type {any} */ (globalThis);
 /** @type {ReturnType<typeof stubDocument>} */
@@ -230,11 +231,58 @@ test("app.js: no sweep, tour or tips on the chat alone; what goes through the hi
   assert.ok(off);
   assert.deepEqual(JSON.parse(`[${off[1]}]`).sort(), ["new", "new-task", "next-needs", "open-workspace", "sidebar", "task-next", "task-prev", "tips", "welcome"]);
   assert.match(APP, / {2}\]\.filter\(\(a\) => !CHAT_ONLY \|\| !CHAT_ONLY_OFF\.has\(a\.id\)\),\n {2}onOpenTask:/, "Ctrl+K's actions");
-  assert.match(APP, / {2}if \(!run\) return;\n {2}e\?\.preventDefault\(\);\n(?:[^\n]*\n){3} {2}if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;\n {2}if \(CHAT_ONLY && CHAT_ONLY_OFF\.has\(id\)\) return;/, "the keys — the desk's handed to it first, where the desk shows the chat (desk-in-place.test.js)");
+  assert.match(APP, / {2}if \(!run\) return;\n {2}e\?\.preventDefault\(\);\n(?:[^\n]*\n){4} {2}if \(viewOnlyPage\(\) && VIEW_ONLY_KEYS_OFF\.has\(id\)\) return;\n {2}if \(CHAT_ONLY && CHAT_ONLY_OFF\.has\(id\)\) return;/, "the keys — the desk's handed to it first, where the desk shows the chat (desk-in-place.test.js)");
   assert.match(APP, /if \(rail\.closeFocused\(\)\) return;\n {6}if \(viewOnlyPage\(\) \|\| CHAT_ONLY\) return;\n {6}pushNextAddress = true;\n {6}newChat\(\);/, "Alt+W closes a pane, never the chat");
   assert.match(APP, /id: "theme", [^\n]*when: \(\) => !themeHinted\(\),/, "no theme's switch while the page wears the desk's look");
   // It is a tab of its own: it claims its chat as any page does (claimWriting's refusal is a popped pane's and a view-only page's alone).
   assert.match(APP, /function claimWriting\(how = "open"\) \{[\s\S]{0,300}?if \(POPPED \|\| viewOnlyPage\(\)\) return;/);
+});
+
+// (fails before: yes — the review of s1i: the header's Help menu and `/welcome` still opened the tour over the chat alone,
+// whose first chat and folder steps start chats the desk's list never picked)
+test("the chat alone runs no welcome tour by any door: openTour refuses, its Help menu offers none, /welcome says where it runs", () => {
+  /** @type {any[]} */
+  const tours = [];
+  const tourOn = (/** @type {boolean} */ chatOnly) =>
+    lift(["openTour"], { CHAT_ONLY: chatOnly, viewOnlyPage: () => false, document: { querySelector: () => null }, openWelcome: (/** @type {any} */ o) => void tours.push(o) }).openTour();
+  tourOn(true);
+  assert.equal(tours.length, 0, "refused on the chat alone");
+  tourOn(false);
+  assert.equal(tours.length, 1, "the whole page opens it");
+  assert.match(APP, /\n {4}\/\/ The Help menu's Welcome tour: none on the chat alone, as Ctrl\+K offers none there\.\n {4}\.\.\.\(CHAT_ONLY \? \{\} : \{ onWelcome: \(\) => openTour\(\) \}\),\n/, "the header is handed no tour there");
+  assert.match(APP, /\n {2}onWelcome: \(\) => \(CHAT_ONLY \? toast\(TOUR_CHAT_ONLY_WORDS\) : openTour\(\)\),\n/, "`/welcome` is still taken, never sent: it says where the tour runs");
+  const { TOUR_CHAT_ONLY_WORDS } = lift(["TOUR_CHAT_ONLY_WORDS"], {});
+  assert.match(TOUR_CHAT_ONLY_WORDS, /whole page/);
+});
+
+// (fails before: yes — the review of s1i: a key of the desk's list was handed to the desk before the one-dialog guard, so
+// Ctrl+K pressed in a dialog of the chat alone's opened the desk's command center with that dialog left open under it)
+test("a key of the desk's list is handed to the desk, and held while a dialog of the chat alone's own is open", () => {
+  /** @type {string[]} */
+  const handed = [];
+  /** @type {string[]} */
+  const opened = [];
+  /** @type {any} */
+  let modal = null;
+  const { onShortcutKey } = lift(["OPENS_DIALOG", "VIEW_ONLY_KEYS_OFF", "CHAT_ONLY_OFF", "onShortcutKey"], {
+    CHAT_ONLY: true,
+    viewOnlyPage: () => false,
+    DESK_KEYS,
+    toDesk: (/** @type {string} */ id) => void handed.push(id),
+    document: { querySelector: (/** @type {string} */ s) => (s === '.zc-dialog[aria-modal="true"]' ? modal : null) },
+    commandCenter: { open: () => void opened.push("command center") },
+    openFolder: () => void opened.push("folder"),
+  });
+  for (const id of DESK_KEYS) onShortcutKey(null, id);
+  assert.deepEqual(handed, [...DESK_KEYS], "each handed to the desk");
+  handed.length = 0;
+  modal = {};
+  for (const id of DESK_KEYS) onShortcutKey(null, id);
+  assert.deepEqual(handed, [], "a dialog of its own holds them");
+  assert.deepEqual(opened, [], "and nothing opens here either");
+  modal = null;
+  onShortcutKey(null, "command-center");
+  assert.deepEqual(handed, ["command-center"], "its dialog closed, the desk has them again");
 });
 
 test("GET /remote/me's desk flags say the page shows a chat alone", () => {
