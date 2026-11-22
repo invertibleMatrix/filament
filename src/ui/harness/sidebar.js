@@ -26,9 +26,10 @@ import { onBus } from "./lib/bus.js";
 import { pageShown, whenPageShown } from "./lib/page-shown.js";
 import { atWork, state } from "./state.js";
 import { sessionAge, rowMoment, timelineBucket, workingWords, fromAgentsWords, threadsNested, threadOfWords, firstMessageName, whereLine, apartMark, placeSaid, localProject, chipProject, branchWords, placeName, sideChatsUnder, besideNamed, projectCountWords } from "./lib/labels.js";
-import { ICONS, icon } from "./lib/icons.js";
+import { ICONS, glyphOf, icon } from "./lib/icons.js";
 import { menu, confirmDialog, dialog, tooltip, popover, toast } from "./lib/ui.js";
 import { chipTone, createNow } from "./now-list.js";
+import { awayWords, deskGroups, deskListKey, deskMarks, deskProjects, deskRoute, ownKeysOf, readDesk } from "./lib/desk.js";
 import { holdersWhileSent, teamLine } from "./lib/now.js";
 import { barHold, notePlaces, playMoves } from "./bar-flight.js";
 import { WORDS } from "./lib/words.js";
@@ -49,6 +50,10 @@ const ORG_KEY = "harness.organize";
 const INTERNAL_KEY = "harness.sidebar.internal";
 const SORT_KEY = "harness.sidebar.sort";
 const NOW_TOP_KEY = "harness.sidebar.nowTop";
+/** Whose chats the bar lists in the desktop app (the remote desk of 11-22): "here", This computer's alone; else every machine's. */
+const MACHINES_KEY = "harness.sidebar.machines";
+/** The machines it leaves out, by id (a JSON list). */
+const MACHINES_HIDDEN_KEY = "harness.sidebar.machinesHidden";
 /** Whether the Library at the foot is open: "0" folded (the owner's word of 10-26), anything else open. */
 const LIB_OPEN_KEY = "harness.sidebar.libraryOpen";
 /** What a non-interactive row is, in a word, for its badge. */
@@ -145,7 +150,9 @@ export function createSidebar(host, cb, rail = null) {
   /** @type {Set<string>} projects archived from the tree; their sessions stay out unless "Archived" is on */
   let archivedProjects = new Set();
   try {
-    organizeBy = localStorage.getItem(ORG_KEY) === "grouped" ? "grouped" : "workspace";
+    // "machine" groups by machine first, where the desktop app keeps another (the remote desk of 11-22).
+    const org = localStorage.getItem(ORG_KEY);
+    organizeBy = org === "grouped" || org === "machine" ? org : "workspace";
     showInternal = localStorage.getItem(INTERNAL_KEY) === "1";
     sortBy = localStorage.getItem(SORT_KEY) === "created" ? "created" : "updated";
     nowOnTop = localStorage.getItem(NOW_TOP_KEY) !== "0";
@@ -309,8 +316,80 @@ export function createSidebar(host, cb, rail = null) {
     // A chat's row in Now is its row: the same menu and Delete as under its project.
     onMenu: (r, anchor) => { const s = sessionOf(r.chain); if (s) chatMenu(s, anchor); },
     onDelete: (r) => { const s = sessionOf(r.chain); if (s) void deleteChat(s); },
+    // The other machines' rows among its own, while the bar lists every machine's (the remote desk of 11-22).
+    more: () => deskNow(),
+    onOpenMore: (r) => { railPop?.close(); openThere(r); },
+    onSeenMore: (rows) => { seenThere(rows); now.refresh(); },
     named: namedSince,
   });
+
+  // --- the desk (the remote desk of 11-22): every other machine's chats beside this computer's, in the desktop app ---
+  // The app tells this computer's page alone what its watch found on each machine kept (lib/desk.js reads it); in a
+  // browser, and on another machine's page, there is none, and the bar is as it was.
+  /** The desk as the app last told it; null until it does. @type {import("./lib/desk.js").Desk | null} */
+  let desk = null;
+  /** Every machine's chats, or This computer's alone (the filter menu's Machines), and the machines left out. */
+  let allMachines = true;
+  /** @type {Set<string>} */
+  let hiddenMachines = new Set();
+  try {
+    allMachines = localStorage.getItem(MACHINES_KEY) !== "here";
+    const hidden = JSON.parse(localStorage.getItem(MACHINES_HIDDEN_KEY) || "[]");
+    hiddenMachines = new Set(Array.isArray(hidden) ? hidden.map(String) : []);
+  } catch {}
+  /**
+   * Another machine's Done rows cleared or opened here, each at the moment it stood at: gone at once, where its machine's
+   * list says it next a moment later. @type {Map<string, number>}
+   */
+  const clearedThere = new Map();
+  /** Whether the bar lists the other machines' chats now: the app keeps one, and the person wants them. */
+  const deskOn = () => !!desk?.machines.length && allMachines;
+  /** Whether the projects' list holds theirs: by project or by machine, not by time nor in the Archived view. */
+  const deskListed = () => deskOn() && organizeBy !== "grouped" && !showArchived;
+  /** What the list last drew of the desk (lib/desk.js `deskListKey`), "" for none. */
+  let deskDrawn = "";
+  /** What it would draw of it now. */
+  const deskListNow = () => (deskListed() ? deskListKey(desk, now.theirsShown(), deskMarks(deskNow())) : "");
+  /** The other machines' Now as the bar draws it: those left out and the Done rows cleared here gone. @returns {import("./lib/desk.js").DeskGroups | null} */
+  function deskNow() {
+    if (!desk || !deskOn()) return null;
+    // Cleared ones let go once their machine's list says them no more, a machine left out too (the review of s1b).
+    const every = deskGroups(desk).done;
+    for (const [key, at] of clearedThere) if (!every.some((r) => r.key === key && r.at === at)) clearedThere.delete(key);
+    const g = deskGroups(desk, hiddenMachines);
+    return { ...g, done: g.done.filter((r) => !clearedThere.has(r.key)) };
+  }
+  /**
+   * Another machine's row opened: that machine's page in the window, at its chat (the app's `openOn`), which marks it
+   * seen there as it opens it. @param {import("./lib/desk.js").DeskRow} r
+   */
+  function openThere(r) {
+    if (r.group === "done") clearedThere.set(r.key, r.at);
+    void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(r.machine.id, deskRoute(r.there)))?.catch?.(() => {});
+    now.refresh();
+  }
+  /** Another machine's Done cleared: each marked seen there, through the app (harness-preload.cjs `seen`). @param {import("./lib/desk.js").DeskRow[]} rows */
+  function seenThere(rows) {
+    /** @type {Map<string, string[]>} */
+    const by = new Map();
+    for (const r of rows) {
+      clearedThere.set(r.key, r.at);
+      by.set(r.machine.id, [...(by.get(r.machine.id) || []), r.there.chain]);
+    }
+    const bridge = /** @type {any} */ (globalThis).filamentMachines;
+    for (const [id, chains] of by) void bridge?.seen?.(id, chains)?.catch?.(() => {});
+  }
+  {
+    const bridge = /** @type {any} */ (globalThis).filamentMachines;
+    if (typeof bridge?.onDesk === "function")
+      bridge.onDesk((/** @type {unknown} */ d) => {
+        desk = readDesk(d);
+        now.refresh();
+        // Their chats stand under the projects too: the list drawn again where what it shows of them moved — not at each
+        // word their agents say, which Now alone draws (the review of s1b).
+        if (deskDrawn !== deskListNow()) draw();
+      });
+  }
 
   /**
    * Now's own draws — its round line moving on — move its rows, and the list's under it, from where they stood; one
@@ -329,6 +408,8 @@ export function createSidebar(host, cb, rail = null) {
     fn();
     refocus(key);
     playMoves(host, fly, before, { homeOf });
+    // Now folded or Earlier pressed moves which of the other machines' chats stand in it, and so under the projects.
+    if (deskDrawn !== deskListNow()) draw();
   }
 
   /**
@@ -404,12 +485,44 @@ export function createSidebar(host, cb, rail = null) {
     tooltip(b, { title: "Group, sort and filter" });
     return b;
   };
+  /**
+   * The filter menu's Machines, where the app keeps another machine (the remote desk of 11-22): This computer's chats
+   * alone or every machine's, and each other machine's in or out of the list.
+   */
+  const machinesItems = () => {
+    if (!desk?.machines.length) return [];
+    const scope = (/** @type {boolean} */ all) => () => {
+      allMachines = all;
+      keep(MACHINES_KEY, all ? "all" : "here");
+      now.refresh();
+      draw();
+    };
+    return [
+      { type: "separator" },
+      { type: "label", label: "Machines" },
+      { type: "radio", label: desk.here.name, checked: !allMachines, onClick: scope(false) },
+      { type: "radio", label: "All machines", checked: allMachines, onClick: scope(true) },
+      ...(allMachines
+        ? desk.machines.map((m) => ({
+          type: "check", label: m.name, inset: true, checked: !hiddenMachines.has(m.id),
+          onClick: () => {
+            if (hiddenMachines.has(m.id)) hiddenMachines.delete(m.id);
+            else hiddenMachines.add(m.id);
+            keep(MACHINES_HIDDEN_KEY, JSON.stringify([...hiddenMachines]));
+            now.refresh();
+            draw();
+          },
+        }))
+        : []),
+    ];
+  };
   /** @param {HTMLElement} anchor  the button pressed */
   const filterMenu = (anchor) => {
     const anyClosed = [...projectEls.values()].some((d) => !d.open);
     menu([
       { type: "label", label: "Group by" },
-      { type: "radio", label: "Project", checked: organizeBy === "workspace", onClick: () => { organizeBy = "workspace"; keep(ORG_KEY, organizeBy); draw(); } },
+      { type: "radio", label: "Project", checked: organizeBy === "workspace" || (organizeBy === "machine" && !deskOn()), onClick: () => { organizeBy = "workspace"; keep(ORG_KEY, organizeBy); draw(); } },
+      ...(deskOn() ? [{ type: "radio", label: "Machine", checked: organizeBy === "machine", onClick: () => { organizeBy = "machine"; keep(ORG_KEY, organizeBy); draw(); } }] : []),
       { type: "radio", label: "Time", checked: organizeBy === "grouped", onClick: () => { organizeBy = "grouped"; keep(ORG_KEY, organizeBy); draw(); } },
       { type: "separator" },
       { type: "label", label: "Sort by" },
@@ -419,7 +532,8 @@ export function createSidebar(host, cb, rail = null) {
       { type: "switch", label: "Now on top", checked: nowOnTop, onClick: () => { nowOnTop = !nowOnTop; keep(NOW_TOP_KEY, nowOnTop ? "1" : "0"); draw(); } },
       { type: "switch", label: "Show archived", checked: showArchived, onClick: () => { showArchived = !showArchived; load(query); } },
       { type: "switch", label: "Rounds and agents", checked: showInternal, onClick: () => { showInternal = !showInternal; keep(INTERNAL_KEY, showInternal ? "1" : "0"); load(query); } },
-      ...(organizeBy === "workspace" && projectEls.size
+      ...machinesItems(),
+      ...(organizeBy !== "grouped" && projectEls.size
         ? [{ type: "separator" }, {
           label: anyClosed ? "Expand all" : "Collapse all", icon: anyClosed ? "maximize2" : "minimize2",
           onClick: () => { for (const [id, d] of projectEls) { d.open = anyClosed; openState.set(id, anyClosed); } },
@@ -717,7 +831,9 @@ export function createSidebar(host, cb, rail = null) {
     try {
       const [r, p, sides] = await Promise.all([
         api(`${base}${showArchived ? "&archived=only" : ""}`),
-        api("/memory/projects").catch(() => null),
+        // In the desktop app, each with its repository's remote, which another machine's chats stand with it by (the
+        // remote desk of 11-22).
+        api(typeof (/** @type {any} */ (globalThis).filamentMachines?.onDesk) === "function" ? "/memory/projects?remotes=1" : "/memory/projects").catch(() => null),
         // A search or the Archived view lists the chats alone; a team's chats stand under theirs in the list of all.
         q || showArchived ? null : api("/memory/sessions?limit=100&kind=team").catch(() => null),
       ]);
@@ -1621,7 +1737,9 @@ export function createSidebar(host, cb, rail = null) {
     // it opens to, and its tooltip says where the rest stand (the Designer's of 10-27, on the Hunter's find).
     const home = g.rows.filter((s) => !s.pinned && !now.stands(String(s.id)));
     const inNow = g.rows.filter((s) => now.stands(String(s.id))).length;
-    const counted = projectCountWords(home.length, inNow, g.rows.length - home.length - inNow);
+    // The other machines' chats of its repository (the remote desk of 11-22) stand with its own, counted with them.
+    const theirs = own ? [] : deskJoined.get(String(g.id)) || [];
+    const counted = projectCountWords(home.length + theirs.length, inNow, g.rows.length - home.length - inNow);
     /** Its folder's glyph, open or folded. @param {boolean} opened */
     const folderIc = (opened) => (own ? ICONS.layoutGrid : opened ? ICONS.folderOpen : ICONS.folder);
     /** Its head, its mark as who is at work in it stands now. @param {boolean} opened */
@@ -1640,7 +1758,7 @@ export function createSidebar(host, cb, rail = null) {
         h("span", { class: `${own ? "proj-ic own-space-ic" : "proj-ic"} c-${chipTone(named)}`, html: folderIc(opened) }),
         h("span", { class: "proj" }, leaf),
         mark,
-        own ? null : h("span", { class: "proj-count", "data-key": "count", title: counted }, String(home.length)),
+        own ? null : h("span", { class: "proj-count", "data-key": "count", title: counted }, String(home.length + theirs.length)),
         own ? ownSpaceMenuBtn(own) : projectMenuBtn(g));
     };
     const opened = !!(remembered ?? open);
@@ -1657,6 +1775,8 @@ export function createSidebar(host, cb, rail = null) {
     // rows are its Board and its apps alone — never its chats (the owner's of 11-05): one at work or waiting on you stands
     // in Now, and the rest are found by search and on the Space's page.
     body.replaceChildren(...keptSpaceRows(g, own, "", !!own), ...(own ? [] : nestThreads(home).flatMap((s) => rowsOf(s))));
+    // The other machines' chats of its repository after its own (the remote desk of 11-22).
+    body.append(...theirs.map(deskChatRow));
     // Who is at work in it moved and no chat came or went: its folded head's mark again, on the head that stands.
     partOf(g.id, () => {
       const live = projectEls.get(g.id);
@@ -1782,13 +1902,15 @@ export function createSidebar(host, cb, rail = null) {
     // The chat open may have changed: Now marks its row too — and draws one a press held, which it may not see moved.
     now.refresh();
     if (nowHeld) paintNow(nowHeld);
-    // Now sits on top, or under the projects when the filter menu says so; never while no folder is open yet.
-    const hasAny = !!((state.sessions || []).length || (state.projects || []).length || [...state.chats.values()].some((c) => c.cwd));
+    deskDrawn = deskListNow();
+    // Now sits on top, or under the projects when the filter menu says so; never while no folder is open yet — but
+    // where another machine's chats show (the review of s1b: a laptop that only drives a workstation listed none).
+    const hasAny = !!((state.sessions || []).length || (state.projects || []).length || [...state.chats.values()].some((c) => c.cwd)) || deskOn();
     placeChildren(nowOnTop ? nowTop : nowBottom, hasAny ? [now.el] : []);
     placeChildren(nowOnTop ? nowBottom : nowTop, []);
     if (loadFailed) return [h("div", { class: "muted pad" }, loadFailed)];
     const sessions = shownSessions();
-    const hasProjects = sessions.length || (state.projects || []).length || [...state.chats.values()].some((c) => c.cwd);
+    const hasProjects = sessions.length || (state.projects || []).length || [...state.chats.values()].some((c) => c.cwd) || deskListed();
     // A draw before the list is read (the Spaces' read answered first): the bar holds nothing yet, rather than saying it
     // has nothing.
     if (!hasProjects && !listRead) return [];
@@ -1861,9 +1983,119 @@ export function createSidebar(host, cb, rail = null) {
       nodes.push(groupEl(g, i < 2 && g.rows.length > 0, o));
     });
     nodes.push(projectsHeader());
+    // The other machines' chats (the remote desk of 11-22): by project, those of a repository a project here has under it
+    // and the rest in groups of their own after; by machine, each machine's under its name, This computer's first.
+    deskJoined = new Map();
+    deskMarked = deskMarks(deskNow());
+    const byMachine = organizeBy === "machine" && deskListed();
+    const theirs = deskListed() ? deskChatsHome() : null;
+    if (theirs && !byMachine) deskJoined = theirs.joined;
+    if (byMachine && desk) nodes.push(machineLabel(desk.here, ""));
     // The first two open where nothing was set by hand; a pinned chat stands under Pinned, and opens no project.
     for (const g of groups) nodes.push(groupEl(g, groups.indexOf(g) < 2));
+    if (theirs && !byMachine) nodes.push(...theirs.apart.map((dg) => deskGroupEl(dg)));
+    if (byMachine && desk) {
+      for (const m of desk.machines) {
+        if (hiddenMachines.has(m.id)) continue;
+        nodes.push(machineLabel(m, awayWords(m)));
+        const own = deskChatsHome(m.id);
+        nodes.push(...own.apart.map((dg) => deskGroupEl(dg)));
+        if (!own.apart.length) nodes.push(h("div", { class: "muted pad desk-none", "data-key": `desk-none:${m.id}` }, m.recent.length ? "Its chats stand in Now" : "No chats there yet"));
+      }
+    }
     return nodes;
+  }
+
+  // --- the other machines' chats under the projects (the remote desk of 11-22) ---
+  /** Each project here's other machines' chats, by its id, as the last draw found them (`deskChatsHome`). @type {Map<string, import("./lib/desk.js").DeskChat[]>} */
+  let deskJoined = new Map();
+  /** Which of theirs wait on you or work, as the last draw found them (lib/desk.js `deskMarks`). @type {Map<string, "needs" | "works">} */
+  let deskMarked = new Map();
+  /**
+   * The other machines' chats that stand under the projects: not one Now shows (one chat, one place — Now folded, or
+   * past its Done's newest three, shows it not, and it stands here), a hidden machine's none. With `only`, that
+   * machine's alone, each of its projects apart; else those of a repository a project here has stand under it
+   * (lib/desk.js `deskProjects`, by its `mergeKey`).
+   * @param {string} [only] @returns {ReturnType<typeof deskProjects>}
+   */
+  function deskChatsHome(only) {
+    const hidden = only ? new Set((desk?.machines || []).map((m) => m.id).filter((id) => id !== only)) : hiddenMachines;
+    return deskProjects(desk, only ? new Map() : ownKeysOf(state.projects || []), hidden, { merge: !only, inNow: now.theirsShown() });
+  }
+
+  /**
+   * A machine's head when the list is grouped by machine: its icon in its colour and its name, greyed with why while
+   * it does not answer. @param {{ id: string, name: string, color: string, icon: string }} m @param {string} away
+   */
+  function machineLabel(m, away) {
+    return h("div", { class: `sess-group-label desk-machine${away ? " is-away" : ""}`, "data-key": `machine:${m.id}`, "data-flip": `machine:${m.id}`, title: away || m.name },
+      h("span", { class: `desk-machine-ic c-${m.color}`, html: glyphOf(m.icon) }), h("span", { class: "desk-machine-name" }, m.name));
+  }
+
+  /**
+   * A project of the other machines' that has none here — a repository's on every machine as one, else one machine's —:
+   * its folder in its chip's colour, its name, its machines' icons; its chats under it, each opening on its machine.
+   * @param {ReturnType<typeof deskProjects>["apart"][number]} dg
+   */
+  function deskGroupEl(dg) {
+    const id = `desk:${dg.key}`;
+    const opened = !!(openState.get(id) ?? false);
+    const leaf = dg.name.split(/[\\/]/).pop() || dg.name;
+    const det = h("details", {
+      class: "sess-group desk-group", "data-key": `project:${id}`, "data-project": id, ...(opened ? { open: "" } : {}),
+      ontoggle: (/** @type {Event} */ e) => {
+        const d = /** @type {HTMLDetailsElement} */ (e.currentTarget);
+        openState.set(id, d.open);
+        const ic = d.querySelector(".proj-ic");
+        if (ic) setHtml(/** @type {HTMLElement} */ (ic), d.open ? ICONS.folderOpen : ICONS.folder);
+      },
+    },
+      h("summary", { "data-flip": `project:${id}`, title: `${dg.name} — on ${dg.machines.map((m) => m.name).join(", ")}` },
+        h("span", { class: `proj-ic c-${chipTone(leaf)}`, html: opened ? ICONS.folderOpen : ICONS.folder }),
+        h("span", { class: "proj" }, leaf),
+        h("span", { class: "desk-group-machines" }, ...dg.machines.map((m) => h("span", { class: `desk-machine-ic c-${m.color}`, html: glyphOf(m.icon), title: m.name }))),
+        h("span", { class: "proj-count", "data-key": "count" }, String(dg.chats.length))),
+      h("div", { class: "sess-group-body" }, ...dg.chats.map(deskChatRow)));
+    return det;
+  }
+
+  /**
+   * Another machine's chat under a project: its machine's icon in its colour and its name on its line — greyed while
+   * that machine does not answer —, its unread dot, its age; pressed, it opens on its machine. Nothing of this computer's
+   * acts on it: no menu, no pin, no Delete. @param {import("./lib/desk.js").DeskChat} c
+   */
+  function deskChatRow(c) {
+    const away = awayWords(c.machine);
+    const open = () => {
+      void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(c.machine.id, deskRoute(c.there)))?.catch?.(() => {});
+    };
+    return h("div", {
+      class: `sess-row from desk-row${away ? " is-away" : ""}`,
+      role: "button",
+      tabindex: "0",
+      "data-key": c.key,
+      "data-flip": c.key,
+      "data-machine": c.machine.id,
+      title: [c.title, `on ${c.machine.name}`, c.from ? `from ${c.from}` : "", away].filter(Boolean).join(" · "),
+      onclick: open,
+      onkeydown: (/** @type {KeyboardEvent} */ e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      },
+    },
+      // Its mark as its row under its own machine's projects wears it: waiting on you, at work (Now folded), unread.
+      h("span", { class: "row-lead" },
+        deskMarked.get(c.key) === "needs"
+          ? h("span", { class: "row-dot needs", title: "waits for you" })
+          : deskMarked.get(c.key) === "works"
+            ? h("span", { class: "live-spin", html: ICONS.loader })
+            : c.unread
+              ? h("span", { class: "row-dot unread" })
+              : null),
+      h("span", { class: "sess-main" },
+        h("span", { class: "row-title-line" }, h("span", { class: "sess-title" }, c.title)),
+        h("span", { class: `row-from desk-on c-${c.machine.color}` },
+          h("span", { class: "row-where-ic", html: glyphOf(c.machine.icon) }), h("span", { class: "row-where-text" }, c.from ? `${c.machine.name} · from ${c.from}` : c.machine.name))),
+      ageEl(c.when ? new Date(c.when).toISOString() : ""));
   }
 
   /**
@@ -2079,10 +2311,13 @@ export function createSidebar(host, cb, rail = null) {
     } catch (e) { cb.onToast?.(errOf(e), "err"); }
   }
 
-  /** The previous or next chat in the bar (Ctrl+Shift+[ and ]): Now's and the list's, in the order they stand. @param {number} dir */
+  /**
+   * The previous or next chat in the bar (Ctrl+Shift+[ and ]): Now's and the list's, in the order they stand — this
+   * computer's alone: another machine's would show that machine in the window (the review of s1b). @param {number} dir
+   */
   function cycleChat(dir) {
     const inNow = [...now.el.querySelectorAll(".now-row[data-chain]")];
-    const inList = [...list.querySelectorAll(".sess-row")];
+    const inList = [...list.querySelectorAll(".sess-row:not(.desk-row)")];
     const rows = nowOnTop ? [...inNow, ...inList] : [...inList, ...inNow];
     if (!rows.length) return;
     const idx = rows.findIndex((r) => r.classList.contains("current") || r.classList.contains("is-current"));

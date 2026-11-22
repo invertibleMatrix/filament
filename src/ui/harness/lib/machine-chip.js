@@ -8,13 +8,12 @@
 // alone (machine-preload.cjs) —; in a browser there is none, and no chip.
 import { h, setHtml } from "../../lib/dom.js";
 import { glyphOf, icon } from "./icons.js";
+// The colours a machine wears, a class of the chip's icon each, and its icons: one the app says that the page has not
+// drawn none.
+import { MACHINE_COLORS as COLORS, MACHINE_ICONS as ICONS } from "./desk.js";
 
 /** The state's words, as the popover says them. */
 const STATE_WORDS = { online: "connected", reconnecting: "reconnecting", offline: "offline" };
-/** The colours a machine wears (desktop/lib/machines.js MACHINE_COLORS): a class of the chip's icon each. */
-const COLORS = ["blue", "orange", "green", "purple", "teal", "pink", "indigo", "yellow"];
-/** Its icons (MACHINE_ICONS): one the app says that the page has not drawn none. */
-const ICONS = ["monitor", "laptop", "server", "cloud", "house", "terminal"];
 
 /**
  * The chip, or null where no bridge is: hidden until the app says another machine is kept, then drawn as each state

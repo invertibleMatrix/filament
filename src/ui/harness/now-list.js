@@ -17,7 +17,8 @@
 // under it. The rail's Now (sidebar.js) lists the same rows in a popover.
 import { h, morphChildren, on } from "../lib/dom.js";
 import { api } from "./lib/api.js";
-import { ICONS } from "./lib/icons.js";
+import { ICONS, glyphOf } from "./lib/icons.js";
+import { awayWords } from "./lib/desk.js";
 import { vendorOf } from "./lib/families.js";
 import { DONE_SHOWN, FOLD_TAIL, QUIET_MS, ageOf, behindItsRun, blankFold, chainsThatNeed, chainsWithThreads, foldEvents, nowKey, nowRows, placeChats, quietWords, readInTurns, runsToFold, stayRow } from "./lib/now.js";
 import { failureSeen } from "./lib/failures-seen.js";
@@ -39,8 +40,12 @@ export const chipTone = (name) => {
   return CHIP_TONES[n % CHIP_TONES.length];
 };
 
+/** No other machine's rows. @type {import("./lib/desk.js").DeskGroups} */
+const NONE_MORE = { needs: [], works: [], done: [] };
+
 /**
  * @typedef {import("./lib/now.js").NowRow} NowRow
+ * @typedef {import("./lib/desk.js").DeskRow} DeskRow
  * @param {{ chats: (chain: string) => import("./lib/now.js").ChatFacts | null, unread: () => ReadonlySet<string>,
  *   holders: () => ReadonlyMap<string, any>, commands?: () => ReadonlyMap<string, readonly import("./lib/commands.js").CommandRow[]>,
  *   comeBacks?: () => ReadonlyMap<string, import("./lib/come-back.js").ComeBack>, idleWakes?: () => ReadonlyMap<string, import("./lib/come-back.js").IdleWake>,
@@ -54,7 +59,11 @@ export const chipTone = (name) => {
  *   drawIn?: (host: any, nodes: any[]) => void,
  *   place?: boolean, held?: () => number, onMoved?: () => void, paint?: (draw: () => void) => void,
  *   onMenu?: (row: NowRow, anchor: HTMLElement) => void, onDelete?: (row: NowRow) => void,
- *   named?: (chain: string, title: string) => number | null }} o
+ *   named?: (chain: string, title: string) => number | null,
+ *   more?: () => import("./lib/desk.js").DeskGroups | null, onOpenMore?: (row: DeskRow) => void, onSeenMore?: (rows: DeskRow[]) => void }} o
+ *   `more`: the other machines' Now (the remote desk of 11-22, lib/desk.js `deskGroups`), drawn among its own rows, each
+ *   with its machine's chip and greyed while that machine does not answer — never placed, never this Now's count to the
+ *   rail —; `onOpenMore`: one of them pressed; `onSeenMore`: Done's Clear, theirs;
  *   `named`: how far a name the side model just gave a chat has written itself in, in ms — null once it is written
  *   (Settings › Experimental): its row's title writes it in, a draw meanwhile patching it in place;
  *   `comeBacks`: each chat's come-back while it waits (lib/now.js), its row's age slot saying how long until it;
@@ -96,6 +105,8 @@ export function createNow(o) {
   let groups = { needs: [], works: [], done: [] };
   /** What the bar's Now draws (`viewOf`): the groups whole, or what stands here. */
   let view = groups;
+  /** The other machines' rows as last read (`o.more`). @type {import("./lib/desk.js").DeskGroups} */
+  let more = NONE_MORE;
   /** The chats that stand in the bar's Now: chain → when its row went (0 while Now has one). @type {Map<string, number>} */
   let placed = new Map();
   /** The next settle is the person's own press (Fold, Clear, Earlier): nothing waits for the pointer. */
@@ -201,11 +212,14 @@ export function createNow(o) {
     forced = false;
     if (o.place && settle(pressed)) o.onMoved?.();
     view = viewOf();
+    more = o.more?.() || NONE_MORE;
     // A row's age as it reads: it moves with the clock, and with what it counts from — a chat's work stretch heard after
-    // its row was drawn, as a page that loads afresh hears it.
+    // its row was drawn, as a page that loads afresh hears it. Another machine's rows, and whether it answers, too.
     const t = Date.now();
-    const ages = [...view.needs, ...view.works, ...view.done].map((r) => (r.due ? "" : ageOf(r.at, t))).join(",");
-    const k = `${nowKey(view)}\0${ages}\0${marked() || ""}\0${open}`;
+    const theirs = [...more.needs, ...more.works, ...more.done];
+    const ages = [...view.needs, ...view.works, ...view.done, ...theirs].map((r) => (r.due ? "" : ageOf(r.at, t))).join(",");
+    // Earlier pressed too: the other machines' Done past their newest three moves nothing else (the review of s1b).
+    const k = `${nowKey(view)}\0${nowKey(more)}\0${theirs.map((r) => `${r.machine.status}:${r.machine.name}:${r.machine.color}:${r.machine.icon}`).join(",")}\0${ages}\0${marked() || ""}\0${open}\0${earlier}`;
     if (k === drawnKey && Date.now() - drawnAt < 60_000) return;
     drawnKey = k;
     draw();
@@ -278,6 +292,8 @@ export function createNow(o) {
       forced = true;
     }
     o.onSeen(groups.done.map((r) => r.chain));
+    // Another machine's, seen there: each goes from here as its machine's list says it next.
+    if (more.done.length) o.onSeenMore?.(more.done);
     // Where marking them seen drew nothing again, they go all the same.
     if (forced) refresh();
   }
@@ -289,12 +305,20 @@ export function createNow(o) {
   };
   /** A row: its tile, its title, its project and its fact, its age; workers folded under a lead. @param {NowRow} r @param {number} now @param {boolean} placing */
   function rowEl(r, now, placing) {
+    // Another machine's row (lib/desk.js): its machine's chip leads its line, it is greyed while that machine does not
+    // answer, and a press opens it there — no menu, no Delete, no mark of this computer's.
+    const there = /** @type {any} */ (r).machine ? /** @type {DeskRow} */ (r) : null;
+    const away = there ? awayWords(there.machine) : "";
     const tile = mk("span", {
       class: `now-tile t-${r.tile}`,
       ...(r.tile === "model" ? { style: `--tile:${vendorOf(r.model).hue}` } : {}),
       html: /** @type {any} */ (ICONS)[r.icon] || ICONS.messageSquare,
     });
     const line = mk("span", { class: "now-line" },
+      there
+        ? mk("span", { class: `now-machine c-${there.machine.color}`, title: away || `On ${there.machine.name}` },
+          mk("span", { class: "now-machine-ic", html: glyphOf(there.machine.icon) }), mk("span", { class: "now-machine-name" }, there.machine.name))
+        : null,
       r.project ? mk("span", { class: `now-proj c-${chipTone(r.project)}` }, r.project) : null,
       mk("span", { class: `now-fact${r.tone ? ` ${r.tone}` : ""}` }, r.fact));
     // Where its chat works — a worktree's branch —, so chats of one project tell apart (the owner's of 10-31), and what
@@ -316,26 +340,28 @@ export function createNow(o) {
     // Finished since you looked, among those that stay seen (the bar's Done holds both).
     const unread = placing && r.group === "done" && !r.stay ? mk("span", { class: "now-unread", title: "Finished since you looked" }) : null;
     // Keyed (`data-key`) as the bar flies it: drawn again, a row is the element that stood, its handlers this draw's.
-    const flip = r.thread || r.space ? `now:${r.key}` : `chat:${r.chain}`;
+    const flip = there ? there.key : r.thread || r.space ? `now:${r.key}` : `chat:${r.chain}`;
+    const go = () => (there ? o.onOpenMore?.(there) : o.onOpen(r));
     const row = mk("div", {
-      class: `now-row is-${r.group}${current ? " is-current" : ""}${r.stay ? " is-stay" : ""}`,
+      class: `now-row is-${r.group}${current ? " is-current" : ""}${r.stay ? " is-stay" : ""}${there ? " is-there" : ""}${away ? " is-away" : ""}`,
       role: "button",
       tabindex: "0",
       "data-key": flip,
       "data-flip": flip,
-      ...(r.thread || r.space ? {} : { "data-chain": r.chain }),
+      ...(there || r.thread || r.space ? {} : { "data-chain": r.chain }),
+      ...(there ? { "data-machine": there.machine.id } : {}),
       ...(current ? { "aria-current": "page" } : {}),
-      title: [r.title, r.project, r.from, r.where?.text, r.apart?.title, r.fact].filter(Boolean).join(" · "),
-      onclick: () => o.onOpen(r),
+      title: [r.title, there ? `on ${there.machine.name}` : "", r.project, r.from, r.where?.text, r.apart?.title, r.fact, away].filter(Boolean).join(" · "),
+      onclick: go,
       onkeydown: (/** @type {KeyboardEvent} */ e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); o.onOpen(r); }
-        else if (e.key === "Delete" && o.onDelete && !r.thread && !r.space) { e.preventDefault(); o.onDelete(r); }
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+        else if (e.key === "Delete" && o.onDelete && !there && !r.thread && !r.space) { e.preventDefault(); o.onDelete(r); }
       },
     }, tile,
       mk("span", { class: "now-text" }, titleOf(r), line, place),
       // A come-back's row says how long until it, where another row says how long since (the Designer's of 10-27).
       mk("span", { class: "now-age" }, unread, r.due ? comeBackInShort(r.due, now) : ageOf(r.at, now)));
-    if (o.onMenu && !r.thread && !r.space) {
+    if (o.onMenu && !there && !r.thread && !r.space) {
       // The row the menu opens on is the one pressed: the element that stands, whichever draw made the handler.
       on(row, "contextmenu", (/** @type {MouseEvent} */ e) => {
         e.preventDefault();
@@ -379,15 +405,22 @@ export function createNow(o) {
     const placing = !!(w.bar && o.place);
     const g = w.bar ? view : groups;
     const now = Date.now();
+    /** Its own rows and the other machines' as one, newest first. @param {NowRow[]} own @param {NowRow[]} theirs */
+    const both = (own, theirs) => (theirs.length ? [...own, ...theirs].sort((a, b) => b.at - a.at) : own);
+    /** The other machines' Done: their newest three, all once Earlier is pressed. */
+    const theirDone = earlier ? more.done : more.done.slice(0, DONE_SHOWN);
+    const needs = both(g.needs, more.needs);
+    const works = both(g.works, more.works);
     /** @type {HTMLElement[]} */
     const nodes = [];
-    if (g.needs.length) nodes.push(groupHead("needs"), ...g.needs.map((r) => rowEl(r, now, placing)));
-    if (g.works.length) nodes.push(groupHead("works"), ...g.works.map((r) => rowEl(r, now, placing)));
-    const shown = placing || earlier ? g.done : g.done.slice(0, DONE_SHOWN);
+    if (needs.length) nodes.push(groupHead("needs"), ...needs.map((r) => rowEl(r, now, placing)));
+    if (works.length) nodes.push(groupHead("works"), ...works.map((r) => rowEl(r, now, placing)));
+    const shown = both(placing || earlier ? g.done : g.done.slice(0, DONE_SHOWN), theirDone);
     if (shown.length) {
       nodes.push(groupHead("done"), ...shown.map((r) => rowEl(r, now, placing)));
-      const more = placing ? (earlier ? 0 : groups.done.filter((r) => !r.thread && !placed.has(r.chain)).length) : g.done.length - shown.length;
-      if (more > 0) {
+      const own = placing ? (earlier ? 0 : groups.done.filter((r) => !r.thread && !placed.has(r.chain)).length) : earlier ? 0 : Math.max(0, g.done.length - DONE_SHOWN);
+      const left = own + more.done.length - theirDone.length;
+      if (left > 0) {
         nodes.push(mk("button", {
           class: "now-earlier", type: "button", "data-key": "now-earlier", "data-flip": "now-earlier",
           onclick: () => {
@@ -395,7 +428,7 @@ export function createNow(o) {
             if (o.place) refresh(true);
             else draw();
           },
-        }, `Earlier (${more})`));
+        }, `Earlier (${left})`));
       }
     }
     drawIn(host, nodes);
@@ -409,10 +442,13 @@ export function createNow(o) {
   }
 
   function paint() {
-    // The bar's Done shows by itself, so its Now is quiet only when it holds nothing at all.
+    // The bar's Done shows by itself, so its Now is quiet only when it holds nothing at all — another machine's rows none.
+    const theirs = more.needs.length + more.works.length + more.done.length;
     const quiet = o.place
-      ? !groups.needs.length && !groups.works.length && !groups.done.length && !view.done.length
-      : !groups.needs.length && !groups.works.length;
+      ? !groups.needs.length && !groups.works.length && !groups.done.length && !view.done.length && !theirs
+      : !groups.needs.length && !groups.works.length && !more.needs.length && !more.works.length;
+    /** What needs you, here and on the other machines. */
+    const needing = groups.needs.length + more.needs.length;
     const chevron = (/** @type {boolean} */ down) => mk("span", { class: "now-chev", html: down ? ICONS.chevronDown : ICONS.chevronRight });
     if (quiet) {
       const words = quietWords(groups.done, Date.now());
@@ -443,7 +479,7 @@ export function createNow(o) {
         else draw();
       },
     }, mk("span", { class: "lb-sec-name" }, "Now"),
-      groups.needs.length ? mk("span", { class: "now-count", title: `${groups.needs.length} need${groups.needs.length === 1 ? "s" : ""} you` }, String(groups.needs.length)) : null,
+      needing ? mk("span", { class: "now-count", title: `${needing} need${needing === 1 ? "s" : ""} you` }, String(needing)) : null,
       mk("span", { class: "grow" }), chevron(open));
     const body = mk("div", { class: "now-body" });
     if (open) fill(body, { bar: true });
@@ -493,5 +529,11 @@ export function createNow(o) {
     get done() { return groups.done; },
     /** Its three groups as they stand: Your Space's Today reads them (S5b). */
     groups: () => groups,
+    /**
+     * The other machines' rows the bar's Now shows now, by key: none while it is folded, their Done's newest three until
+     * Earlier is pressed — the rest stand in their projects (one chat, one place; the review of s1b).
+     * @returns {Set<string>}
+     */
+    theirsShown: () => (open ? new Set([...more.needs, ...more.works, ...(earlier ? more.done : more.done.slice(0, DONE_SHOWN))].map((r) => r.key)) : new Set()),
   };
 }

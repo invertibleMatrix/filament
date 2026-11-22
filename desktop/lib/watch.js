@@ -46,10 +46,11 @@ const SPACE_PATH = "/your-space?glance=0";
  * @typedef {import("../../src/ui/harness/lib/now.js").NowRow} NowRow
  * @typedef {{ project: string, count: number }} SpaceNew  how many rows came to Your Space since the last read, of one
  *   project, by its name
- * @typedef {{ chain: string, title: string, project: string, projectId: string, cwd: string, when: number, unread: boolean, pinned: boolean, threadOf: string | null, from: string, remoteKey: string | null }} DeskChat
+ * @typedef {{ chain: string, title: string, project: string, projectId: string, cwd: string, when: number, unread: boolean, pinned: boolean, threadOf: string | null, from: string, remoteKey: string | null, kind: "interactive" | "fork" | "team" }} DeskChat
  *   a chat of the machine's as the desk lists it (the remote desk of 11-22): its title, its project's name and id, its
  *   folder, its newest moment (ms), its marks, the chat a thread of it is under, whose agents started it (another
- *   machine's, by name), and its repository's remote's key (null: none, or not known yet)
+ *   machine's, by name), its repository's remote's key (null: none, or not known yet), and its kind (`team`: a team's
+ *   on a chat's side)
  * @typedef {{ needs: NowRow[], works: NowRow[], done: NowRow[] }} NowGroups  Now's three groups, as the harness's left bar has them
  * @typedef {{ needs: number, works: number, needsNew: NowRow[], ended: Ended[], spaceNew: SpaceNew[], rows: NowGroups, recent: DeskChat[], flags: string[] }} Look
  *   `rows`: its Now, Done's chats among them (the unread marks its list says); `recent`: its chats, the newest first;
@@ -92,6 +93,8 @@ export const deskChats = (sessions) =>
       threadOf: typeof s.threadOf === "string" && s.threadOf ? s.threadOf : null,
       from: typeof s.fromAgents?.name === "string" ? s.fromAgents.name : "",
       remoteKey: typeof s.remoteKey === "string" && s.remoteKey ? s.remoteKey : null,
+      // A team's on a chat's side stands under that chat there, as a thread does: the desk lists neither on its own.
+      kind: s.kind === "team" || s.kind === "fork" ? s.kind : "interactive",
     }))
     .sort((a, b) => b.when - a.when);
 
@@ -253,7 +256,11 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     seenAt = now();
     return { needs: asks.length, works: g.works.length, needsNew, ended, spaceNew: quiet ? [] : /** @type {SpaceNew[]} */ (spaceNew), rows: g, recent, flags };
   }
-  return { look };
+  return {
+    look,
+    /** Its chats read again at the next look: a mark changed there that the desk lists them by. */
+    reread: () => void (chatsAt = -Infinity),
+  };
 }
 
 /**
@@ -423,6 +430,20 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
     return said(k, { answered: refused, refused });
   }
 
+  /**
+   * A chat's unread mark there, set or taken off: nothing else. A view-only device's is refused there, and that is all;
+   * one removed or disconnected is written nothing. A mark taken off has the chats read again at its next look.
+   * @param {string} id @param {string} chain @param {boolean} unread @returns {Promise<void>}
+   */
+  function mark(id, chain, unread) {
+    const k = kept.get(id);
+    if (!k?.route || !watchedNow().some((m) => m.id === id)) return Promise.resolve();
+    return send(k, `/sessions/${encodeURIComponent(chain)}/settings`, { method: "PATCH", body: JSON.stringify({ patch: { display: { unread } } }) }).then(
+      () => void (unread || k.watch.reread()),
+      () => {},
+    );
+  }
+
   return {
     /**
      * Every machine kept beside this computer looked at once, the tick waiting on none longer than `FLEET_WAIT_MS`: a
@@ -459,13 +480,11 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
      * nothing (the review of p3-watch).
      * @param {string} id @param {string} chain
      */
-    markUnread: (id, chain) => {
-      const k = kept.get(id);
-      if (!k?.route || !watchedNow().some((m) => m.id === id)) return Promise.resolve();
-      return send(k, `/sessions/${encodeURIComponent(chain)}/settings`, { method: "PATCH", body: JSON.stringify({ patch: { display: { unread: true } } }) }).then(
-        () => {},
-        () => {},
-      );
-    },
+    markUnread: (id, chain) => mark(id, chain, true),
+    /**
+     * A chat of that machine's marked seen there, as its own page marks one opened — the desk's Done cleared (the remote
+     * desk of 11-22) —, and read again at its next look, so the desk's Done has it no more. @param {string} id @param {string} chain
+     */
+    markSeen: (id, chain) => mark(id, chain, false),
   };
 }

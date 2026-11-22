@@ -876,6 +876,21 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .now-proj.c-pink { --chip: var(--color-sys-pink); --chip-text: var(--color-sys-pink-text); }
 .now-proj.c-indigo { --chip: var(--color-sys-indigo); --chip-text: var(--color-sys-indigo-text); }
 .now-proj.c-yellow { --chip: var(--color-sys-yellow); --chip-text: var(--color-sys-yellow-text); }
+/* Another machine's row (the remote desk of 11-22): its machine's icon in its colour and its name lead the line, cut
+   before the project's chip; greyed while that machine does not answer, its rows as they last stood. */
+.now-machine { flex: 0 1 auto; max-width: 40%; min-width: 0; display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-ui-xs); font-weight: 600; color: var(--color-foreground-subtle); }
+.now-machine-ic { display: flex; flex: none; }
+.now-machine-ic svg { width: 12px; height: 12px; }
+.now-machine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-machine.c-blue .now-machine-ic { color: var(--color-sys-blue-text); }
+.now-machine.c-orange .now-machine-ic { color: var(--color-sys-orange-text); }
+.now-machine.c-green .now-machine-ic { color: var(--color-sys-green-text); }
+.now-machine.c-purple .now-machine-ic { color: var(--color-sys-purple-text); }
+.now-machine.c-teal .now-machine-ic { color: var(--color-sys-teal-text); }
+.now-machine.c-pink .now-machine-ic { color: var(--color-sys-pink-text); }
+.now-machine.c-indigo .now-machine-ic { color: var(--color-sys-indigo-text); }
+.now-machine.c-yellow .now-machine-ic { color: var(--color-sys-yellow-text); }
+.now-row.is-away > .now-tile, .now-row.is-away > .now-text { opacity: 0.55; }
 /* Where a chat works, on a line of its own under its project's chip: a worktree's branch, quiet, cut before its mark. */
 .now-where { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest); }
 .now-where-ic { display: flex; flex: none; }
@@ -2931,6 +2946,22 @@ textarea.zc-input { height: auto; padding: 8px; }
 .row-from { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: -2px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtlest); }
 .sess-row.from { align-items: flex-start; }
 .sess-row.from:not(.tl) > .row-lead, .sess-row.from:not(.tl) > .sess-age { margin-top: 4px; }
+/* Another machine's chat under a project, and its machine's head when the list is grouped by machine (the remote desk
+   of 11-22): the machine's icon in its colour; greyed while that machine does not answer. */
+.desk-on.c-blue .row-where-ic, .desk-machine-ic.c-blue { color: var(--color-sys-blue-text); }
+.desk-on.c-orange .row-where-ic, .desk-machine-ic.c-orange { color: var(--color-sys-orange-text); }
+.desk-on.c-green .row-where-ic, .desk-machine-ic.c-green { color: var(--color-sys-green-text); }
+.desk-on.c-purple .row-where-ic, .desk-machine-ic.c-purple { color: var(--color-sys-purple-text); }
+.desk-on.c-teal .row-where-ic, .desk-machine-ic.c-teal { color: var(--color-sys-teal-text); }
+.desk-on.c-pink .row-where-ic, .desk-machine-ic.c-pink { color: var(--color-sys-pink-text); }
+.desk-on.c-indigo .row-where-ic, .desk-machine-ic.c-indigo { color: var(--color-sys-indigo-text); }
+.desk-on.c-yellow .row-where-ic, .desk-machine-ic.c-yellow { color: var(--color-sys-yellow-text); }
+.desk-row.is-away > .sess-main, .desk-machine.is-away { opacity: 0.55; }
+.desk-machine { display: flex; align-items: center; gap: 6px; }
+.desk-machine-ic { display: flex; flex: none; }
+.desk-machine-ic svg { width: 12px; height: 12px; }
+.desk-machine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-group-machines { display: inline-flex; gap: 3px; flex: none; margin-left: 4px; }
 .sess-row.where { align-items: flex-start; }
 .sess-row.where:not(.tl) > .row-lead, .sess-row.where:not(.tl) > .sess-age { margin-top: 4px; }
 .sess-row .sess-age { flex: none; }

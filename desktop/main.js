@@ -1476,6 +1476,15 @@ async function run() {
   };
   // This computer's page asks for it as it starts listening (harness-preload.cjs `onDesk`), Filament's own page alone.
   ipcMain.handle("filament:desk", (e) => (paneOf(e) ? (deskNow ?? deskOf()) : null));
+  // The desk's Done cleared: those chats of a machine kept marked seen there (harness-preload.cjs `seen`), this
+  // computer's page alone, its chats' ids as ids — fifty at most —, the machine's own mark and nothing else.
+  ipcMain.handle("filament:desk-seen", async (e, p) => {
+    const id = String(p?.id ?? "");
+    if (!paneOf(e) || !readKept(machinesFile).some((k) => k.id === id && !k.off)) return false;
+    const chains = (Array.isArray(p?.chains) ? p.chains : []).map(String).filter((c) => /^[A-Za-z0-9_.:-]{1,100}$/.test(c)).slice(0, 50);
+    await Promise.all(chains.map((c) => fleet.markSeen(id, c)));
+    return true;
+  });
   /** A machine's colour now, as the tray's row wears it. @param {string} id */
   const colorNow = (id) => (id === LOCAL_ID ? hereLook().color : colorOf(readKept(machinesFile).find((k) => k.id === id) ?? { id }));
   /** A machine's colour or icon chosen: the tray and the desk dressed anew at once. */

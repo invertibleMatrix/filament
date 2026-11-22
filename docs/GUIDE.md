@@ -284,6 +284,22 @@ open, no SSH tunnel — until you pick it again (or **Connect** in its **⋯**),
 it out of the window and forgets its sign-in here. A machine that cannot be reached shows why, and **Switch machine**
 takes you to another.
 
+**Every machine in one list.** Once another machine is kept, This computer's left bar lists every machine's chats,
+not its own alone. Now's **Needs you**, **Working** and **Done** hold the other machines' rows among this computer's,
+the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere.
+Under **Projects**, a chat on another machine stands with the project here of the same repository — its git remote
+names it, on GitHub, GitLab or any host; two folders that are only paths say nothing across machines — and the rest
+stand in projects of their own, a repository on two machines as one. A press on another machine's chat shows that
+machine in the window, at that chat. **Clear** under Done marks theirs seen on their machines too. A machine that does
+not answer keeps its rows as they last stood, greyed, its words on hover. The filter menu's **Machines** says whose
+chats the bar lists — This computer's alone, or **All machines**, each one ticked in or out — and **Group by** gains
+**Machine**: This computer's projects first, then each other machine's under its name. Grouped by time, and in the
+Archived view, the other machines' chats show in Now alone; a thread, or a team on a chat's side, shows under its chat
+on its own machine. A chat of theirs under a project wears its mark there too — waiting for you, working — while Now
+is folded. Ctrl+Shift+[ and ] move through This computer's chats alone. Another machine's page in the window lists
+its own chats alone. A machine whose Filament is older than the one that brought this list says no repository for its
+chats: they stand in projects of their own until it is updated.
+
 **Another machine's agents.** A Filament can let another Filament's agents work on it: start chats in its projects,
 send them turns and follow them. They come in by a device of their own, apart from yours, named for the machine whose
 agents they are, as its Settings › Remote access › This machine names it (else for your device that made it):

@@ -599,8 +599,8 @@ describe("Now: one chat, one place in the left bar", () => {
     assert.match(bar, /const before = moving\(\) && layout === laidOut \? notePlaces\(host\) : new Map\(\);/, "still while the page first places what already works");
     assert.match(bar, /playMoves\(host, fly, before, \{ homeOf \}\);/);
     assert.match(bar, /"data-flip": `chat:\$\{s\.id\}`,/, "a chat's row keyed the same in either place");
-    // A Space's button running (10-29) is no chat's: keyed as a thread is.
-    assert.match(src("now-list.js"), /const flip = r\.thread \|\| r\.space \? `now:\$\{r\.key\}` : `chat:\$\{r\.chain\}`;\n[\s\S]{0,400}"data-key": flip,\n\s+"data-flip": flip,/);
+    // A Space's button running (10-29) is no chat's: keyed as a thread is. Another machine's row by its machine (s1b).
+    assert.match(src("now-list.js"), /const flip = there \? there\.key : r\.thread \|\| r\.space \? `now:\$\{r\.key\}` : `chat:\$\{r\.chain\}`;\n[\s\S]{0,500}"data-key": flip,\n\s+"data-flip": flip,/);
     assert.match(src("bar-flight.js"), /if \(!before\.size \|\| mo === "off" \|\| typeof root\.animate !== "function"\) return;/, "Motion Off draws still");
   });
 
@@ -813,9 +813,11 @@ describe("the left bar under the person's hand, and what its rows say (the Hunte
     assert.equal(projectCountWords(1, 0, 3), "1 chat here · 3 pinned");
     const bar = src("sidebar.js");
     assert.match(bar, /const home = g\.rows\.filter\(\(s\) => !s\.pinned && !now\.stands\(String\(s\.id\)\)\);/);
-    assert.match(bar, /h\("span", \{ class: "proj-count", "data-key": "count", title: counted \}, String\(home\.length\)\),/);
+    // Its other machines' chats of its repository (the remote desk of 11-22, s1b) stand with its own, and count.
+    assert.match(bar, /const theirs = own \? \[\] : deskJoined\.get\(String\(g\.id\)\) \|\| \[\];\n\s+const counted = projectCountWords\(home\.length \+ theirs\.length, inNow,/);
+    assert.match(bar, /h\("span", \{ class: "proj-count", "data-key": "count", title: counted \}, String\(home\.length \+ theirs\.length\)\),/);
     // Each thread among them under the chat that started it (thread-ui.test.js): drawn still, and counted.
-    assert.match(bar, /body\.replaceChildren\(\.\.\.keptSpaceRows\(g, own, \"\", !!own\), \.\.\.\(own \? \[\] : nestThreads\(home\)\.flatMap\(\(s\) => rowsOf\(s\)\)\)\);/, "the count and the rows read the same chats");
+    assert.match(bar, /body\.replaceChildren\(\.\.\.keptSpaceRows\(g, own, \"\", !!own\), \.\.\.\(own \? \[\] : nestThreads\(home\)\.flatMap\(\(s\) => rowsOf\(s\)\)\)\);\n(?:\s*\/\/[^\n]*\n)*\s*body\.append\(\.\.\.theirs\.map\(deskChatRow\)\);/, "the count and the rows read the same chats");
     assert.match(bar, /const mark = foldedMark\(home\);/);
     assert.match(bar, /if \(live && summary\) morph\(summary, summaryOf\(live\.open\)\);/, "a turn that begins or ends marks the same chats, on the head that stands");
     assert.doesNotMatch(bar, /groupEl\(g, g\.rows\.some\(\(\/\*\* @type \{any\} \*\/ s\) => s\.pinned\)/);

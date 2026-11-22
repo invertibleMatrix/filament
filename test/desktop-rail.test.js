@@ -1756,17 +1756,19 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
     const sent = [];
     /** @type {Map<string, Function>} */
     const heard = new Map();
+    /** What it asked of main, and with what. @type {any[]} */
+    const invoked = [];
     const electron = {
       contextBridge: { exposeInMainWorld: (/** @type {string} */ k, /** @type {any} */ v) => void (bridge[k] = v) },
       ipcRenderer: {
         send: (/** @type {string} */ ch, /** @type {any} */ arg) => void sent.push([ch, arg ?? null]),
-        invoke: async (/** @type {string} */ ch) => answers[ch] ?? null,
+        invoke: async (/** @type {string} */ ch, /** @type {any} */ arg) => (invoked.push([ch, arg ?? null]), answers[ch] ?? null),
         on: (/** @type {string} */ ch, /** @type {Function} */ fn) => void heard.set(ch, fn),
         removeListener: (/** @type {string} */ ch) => void heard.delete(ch),
       },
     };
     vm.runInNewContext(src, { require: (/** @type {string} */ m) => (m === "electron" ? electron : null) });
-    return { bridge, sent, heard };
+    return { bridge, sent, heard, invoked };
   };
   const m = loadPreload("machine-preload.cjs");
   // Its Browser pane's too (b-remote), the shape This computer's has, so the pane draws a page the app holds for it.
@@ -1788,7 +1790,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");
-  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["onDesk", "onState", "open"], "This computer's controls wear its colours through its own bridge");
+  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["onDesk", "onState", "open", "seen"], "This computer's controls wear its colours through its own bridge");
   h.bridge.filamentMachines.open({ x: 1, y: 2, width: 3, height: 4 });
   h.bridge.filamentApp.frameArea({ left: "78", right: 0, top: 9 });
   assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [
@@ -1808,11 +1810,18 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   stopDesk();
   assert.equal(d.heard.has("filament:desk"), false, "stopped");
   assert.deepEqual(desks, [first, { ...first, machines: [{ id: "m-box" }] }]);
+  // (fails before: yes — s1b) The desk's Done cleared: those chats of a machine marked seen there, through main, fifty at most.
+  assert.ok(!("seen" in m.bridge.filamentMachines), "another machine's page marks no other machine's chats");
+  await d.bridge.filamentMachines.seen("m-box", ["c1", 7, ...Array.from({ length: 60 }, (_, i) => `x${i}`)]);
+  const asked = d.invoked.find((x) => x[0] === "filament:desk-seen");
+  assert.deepEqual([asked?.[1].id, asked?.[1].chains.length, asked?.[1].chains.slice(0, 2)], ["m-box", 50, ["c1", "7"]]);
   // main.js hears each from a harness page of the window alone, as its machine.
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
   // The desk told to Filament's own page in the harness window alone, and asked for by a harness page of Filament's alone.
   assert.match(main, /if \(w && !w\.isDestroyed\(\) && paneHears\(true, w\.webContents\.getURL\(\), origin\)\) w\.webContents\.send\("filament:desk", d\);/);
   assert.match(main, /ipcMain\.handle\("filament:desk", \(e\) => \(paneOf\(e\) \? \(deskNow \?\? deskOf\(\)\) : null\)\);/);
+  // Seen there: This computer's page alone, a machine kept and connected, its chats' ids as ids.
+  assert.match(main, /ipcMain\.handle\("filament:desk-seen", async \(e, p\) => \{\n\s+const id = String\(p\?\.id \?\? ""\);\n\s+if \(!paneOf\(e\) \|\| !readKept\(machinesFile\)\.some\(\(k\) => k\.id === id && !k\.off\)\) return false;\n\s+const chains = [^\n]+\.filter\(\(c\) => \/\^\[A-Za-z0-9_\.:-\]\{1,100\}\$\/\.test\(c\)\)\.slice\(0, 50\);\n\s+await Promise\.all\(chains\.map\(\(c\) => fleet\.markSeen\(id, c\)\)\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-open", \(e, rect\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.openPop\(id, rect\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-title-bar", \(e, c\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.tintFrom\(id, c\);/);
   assert.match(main, /ipcMain\.on\("filament:frame-area", \(e, r\) => void \(rail\?\.hearsPage\(e\.sender, e\.senderFrame\) === LOCAL_ID && rail\.frameArea\(r\)\)\);/);

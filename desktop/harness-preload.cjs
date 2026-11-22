@@ -170,6 +170,11 @@ contextBridge.exposeInMainWorld("filamentMachines", {
       ipcRenderer.removeListener("filament:desk", heard);
     };
   },
+  /**
+   * Chats of another machine's marked seen there — the desk's Done cleared —, as its own page marks them: their unread
+   * mark goes, and nothing else. @param {string} id  the machine @param {string[]} chains  its chats' ids there
+   */
+  seen: (id, chains) => ipcRenderer.invoke("filament:desk-seen", { id: String(id), chains: Array.isArray(chains) ? chains.slice(0, 50).map(String) : [] }),
 });
 
 // Pop out (HarnessV4_BrowserSize_Plan BS4): a tile's pane in a window of its own — the harness page showing that one

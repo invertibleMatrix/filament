@@ -344,9 +344,9 @@ describe("the harness, watched", () => {
     assert.deepEqual(l.rows.done.map((/** @type {any} */ r) => [r.key, r.fact]), [["chat:c2", "finished"]], "its unread mark: under Done, as the harness has it");
     assert.deepEqual(l.rows.needs, []);
     assert.deepEqual(l.recent, [
-      { chain: "c2", title: "Release notes", project: "site", projectId: "p2", cwd: "", when: t - 1000, unread: true, pinned: false, threadOf: null, from: "", remoteKey: null },
-      { chain: "c1", title: "Parser refactor", project: "shop-api", projectId: "p1", cwd: "H:\\work\\shop-api", when: t - 5000, unread: false, pinned: true, threadOf: null, from: "", remoteKey: "github.com/o/shop-api" },
-      { chain: "c3", title: "fix the build", project: "app", projectId: "", cwd: "/home/kai/app", when: t - 9000, unread: false, pinned: false, threadOf: "c1", from: "Laptop", remoteKey: null },
+      { chain: "c2", title: "Release notes", project: "site", projectId: "p2", cwd: "", when: t - 1000, unread: true, pinned: false, threadOf: null, from: "", remoteKey: null, kind: "interactive" },
+      { chain: "c1", title: "Parser refactor", project: "shop-api", projectId: "p1", cwd: "H:\\work\\shop-api", when: t - 5000, unread: false, pinned: true, threadOf: null, from: "", remoteKey: "github.com/o/shop-api", kind: "interactive" },
+      { chain: "c3", title: "fix the build", project: "app", projectId: "", cwd: "/home/kai/app", when: t - 9000, unread: false, pinned: false, threadOf: "c1", from: "Laptop", remoteKey: null, kind: "interactive" },
     ], "the newest first; an archived chat and a row with no id none; a remote's key that is no string none");
     assert.ok(f.asked.includes("/memory/sessions?limit=200&kind=interactive,fork,team&remotes=1"), "its chats asked with their remotes' keys");
     assert.equal(l.needs, 0, "the tray's count: what asks you, nothing more");
@@ -649,6 +649,16 @@ describe("every machine, watched", () => {
     // A chat's unread mark goes to its own machine, with its sign-in; a refusal there (a view-only device's) is all.
     await fleet.markUnread("m-mac", "c 9");
     assert.deepEqual(x.asked.at(-1), { kind: "url", url: "/api/sessions/c%209/settings", cookie: "__Host-filament_device=persist:machine-m-mac.1@mac.tail1234.ts.net", method: "PATCH", body: JSON.stringify({ patch: { display: { unread: true } } }) });
+    // (fails before: yes — s1b) Seen there, as the desk's Done is cleared: its mark taken off, and its chats read again at
+    // its next look, so the desk's Done has it no more.
+    const reads = () => x.asked.filter((a) => a.kind === "lan" && String(a.url).startsWith("/api/memory/sessions")).length;
+    const before = reads();
+    await fleet.markSeen("m-box", "c2");
+    assert.deepEqual([x.asked.at(-1)?.url, x.asked.at(-1)?.method, x.asked.at(-1)?.body], ["/api/sessions/c2/settings", "PATCH", JSON.stringify({ patch: { display: { unread: false } } })]);
+    t += WATCH_MS;
+    await fleet.look();
+    await settle();
+    assert.equal(reads(), before + 1, "its chats read again at the next look");
     x.at["https://mac.tail1234.ts.net"].status = 403;
     await fleet.markUnread("m-mac", "c9");
     await fleet.markUnread("m-gone", "c9");
