@@ -152,6 +152,14 @@ function chatOf(c, m) {
 }
 
 /**
+ * A machine's chats as one of its lists answered them (the desk's `search`, desktop/lib/desk.js: watch.js `deskChats`'s
+ * shape), read as its rows are: each field checked or dropped, `ROWS_MOST` at most. @param {unknown} list @param {DeskMachine} m
+ * @returns {DeskChat[]}
+ */
+export const readDeskChats = (list, m) =>
+  (Array.isArray(list) ? list.slice(0, ROWS_MOST) : []).map((c) => chatOf(c, m)).filter(/** @returns {c is DeskChat} */ (c) => !!c);
+
+/**
  * The desk as the app told it, read: This computer's name and look, and each other machine with its rows and chats —
  * none for one this window is refused by. Null for what is no desk.
  * @param {unknown} raw @returns {Desk | null}

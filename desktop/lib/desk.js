@@ -125,11 +125,14 @@ const OPS = Object.freeze(
   Object.assign(Object.create(null), {
     /** Its chats, newest first, as the desk lists them. */
     chats: () => ({ method: "GET", path: `/memory/sessions?limit=200&kind=${KINDS}&remotes=1`, shape: listed }),
-    /** Its chats that a search finds, as the desk lists them. @param {any} p */
+    /**
+     * Its chats that a search finds, as the desk lists them: without their repositories' keys, which a search's rows
+     * never stand by and whose git reads would wait on each keystroke's (the review of s1h). @param {any} p
+     */
     search: (p) => {
       const q = typeof p.q === "string" ? p.q.trim() : "";
       if (!q || q.length > QUERY_MAX) return bad(`q is the search: 1 to ${QUERY_MAX} characters`);
-      return { method: "GET", path: `/memory/sessions?q=${enc(q)}&limit=20&kind=${KINDS}&remotes=1`, shape: listed };
+      return { method: "GET", path: `/memory/sessions?q=${enc(q)}&limit=20&kind=${KINDS}`, shape: listed };
     },
     /** Its chats at work now, and what else runs. */
     holders: () => ({ method: "GET", path: "/sessions/holders" }),

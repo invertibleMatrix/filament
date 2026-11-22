@@ -28,6 +28,7 @@ import { createStatusCapsule, createStatusPanel } from "./conversation/status-pa
 import { waitingOn } from "./conversation/waiting-on.js";
 import { createChargeBand } from "./conversation/in-charge.js";
 import { turnNow } from "./lib/overview.js";
+import { deskRoute } from "./lib/desk.js";
 import { cancelledWords } from "./lib/come-back.js";
 import { setTabTitle, setTitleLead, notifyRunEnded, ensureNotificationPermission } from "./notify.js";
 import { createPopped, followSwitch, followable, mainLine, popBridgeOf, popTabOf } from "./panes/pop-out.js";
@@ -4473,6 +4474,10 @@ const commandCenter = createCommandCenter({
   // A view-only device's page changes no setting: Ctrl+K offers none (p4-view-ui).
   settings: () => (viewOnlyPage() ? null : settingFacts()),
   onSetting: (row) => { void runSetting(row); },
+  // The other machines the left bar lists, searched through the app, a chat of theirs opened there (the remote desk).
+  machines: () => sidebar.deskMachines(),
+  ...(typeof (/** @type {any} */ (globalThis).filamentMachines?.call) === "function" ? { deskCall: (/** @type {any} */ p) => /** @type {any} */ (globalThis).filamentMachines.call(p) } : {}),
+  onOpenThere: (machine, chain) => void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(machine, deskRoute({ chain, thread: null })))?.catch?.(() => {}),
   actions: () => [
     { id: "new", label: WORDS.newChat, icon: "messageCirclePlus", tone: "var(--color-sys-blue)", shortcut: "new-task", when: () => !viewOnlyPage(), run: () => newChat() },
     { id: "next-needs", label: "Open what needs you next", icon: "inbox", tone: "var(--color-sys-orange)", shortcut: "next-needs", run: () => openNextNeeds() },

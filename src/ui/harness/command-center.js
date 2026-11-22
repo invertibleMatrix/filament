@@ -6,8 +6,11 @@
 // wears its kind's tile and an action its shortcut, so the palette also teaches the keys. Since the design pass of
 // 10-24 (UX7) a setting typed — "line 70", "ask", "max", "1m", "sonnet", "mem off", "may product" — is a
 // row under This chat that changes it for this chat (lib/setting-intents.js), saying where it stands now and what the
-// change does; the Settings scope shows what else to type, each example a press that types it.
+// change does; the Settings scope shows what else to type, each example a press that types it. In the desktop app it
+// finds chats on every other machine the left bar lists too (the remote desk of 11-22): one search a machine, through
+// the app (the desk's `search`), each under its machine's name after this computer's own, opened there on Enter.
 import { h } from "../lib/dom.js";
+import { readDeskChats } from "./lib/desk.js";
 import { api } from "./lib/api.js";
 import { store } from "../lib/store.js";
 import { dialog, pills } from "./lib/ui.js";
@@ -44,6 +47,16 @@ const CHANGE_ROWS = 6;
  * list is drawn once, whole, as it was.
  */
 export const SLOW_PARTS_MS = 300;
+/**
+ * How long typing rests before the other machines are searched: each search there is a call over the network that
+ * nothing lets go once sent, and the desk takes eight of a machine's at once. One goes to a machine at a time, the
+ * newest words once it is back (`thereNewest`).
+ */
+export const THERE_WAIT_MS = 250;
+/** The chats listed of each other machine. */
+const THERE_ROWS = 6;
+/** This computer's own parts of a paint — its chats, the task's changes, the files —, before the other machines'. */
+const LOCAL_PARTS = 3;
 
 /** The typed text marked in a row's label (the first match, case-insensitive). @param {string} label @param {string} q */
 function marked(label, q) {
@@ -98,12 +111,52 @@ export function settingsPart(raw, scope, facts, found) {
 
 /**
  * @param {{ actions: () => CcAction[], onOpenTask: (id: string) => void, getFolder?: () => string, onInsert?: (text: string) => void, getChat?: () => any, onOpenChanges?: (path: string) => void,
- *   settings?: () => import("./lib/setting-intents.js").SettingFacts | null, onSetting?: (row: import("./lib/setting-intents.js").SettingRow) => void }} cb
+ *   settings?: () => import("./lib/setting-intents.js").SettingFacts | null, onSetting?: (row: import("./lib/setting-intents.js").SettingRow) => void,
+ *   machines?: () => readonly import("./lib/desk.js").DeskMachine[], deskCall?: (p: any) => Promise<any>, onOpenThere?: (machine: string, chain: string) => void }} cb
  *   `actions`: the list, or what lists them as they are each time it asks (the panes' doors follow what is open);
- *   `settings`: the open chat as Ctrl+K reads it to change its settings; `onSetting`: a setting row run
+ *   `settings`: the open chat as Ctrl+K reads it to change its settings; `onSetting`: a setting row run;
+ *   `machines`: the other machines whose chats the left bar lists (the remote desk), searched through `deskCall` (the
+ *   app's `filamentMachines.call`); `onOpenThere`: one of their chats opened on its machine
  * @returns {{ open: () => void }}
  */
 export function createCommandCenter(cb) {
+  /** Each machine's search under way, by its id: one at a time a machine. @type {Map<string, Promise<unknown>>} */
+  const searching = new Map();
+  /**
+   * A machine's chats that a search finds there, as rows, or the words for why none came. Every word of them is that
+   * machine's, read as the left bar reads its chats (lib/desk.js `readDeskChats`).
+   * @param {import("./lib/desk.js").DeskMachine} m @param {string} query
+   * @returns {Promise<{ rows: CcRow[], why: string }>}
+   */
+  async function there(m, query) {
+    const a = await cb.deskCall?.({ op: "search", machine: m.id, q: query }).catch(() => null);
+    if (!a?.ok) return { rows: [], why: `${m.name} did not answer the search` };
+    return { why: "", rows: readDeskChats(a.json?.chats, m).slice(0, THERE_ROWS).map((c) => ({
+      label: c.title,
+      detail: [c.project, c.when ? sessionAge(new Date(c.when).toISOString()) : ""].filter(Boolean).join(" · "),
+      icon: "messageSquare",
+      tone: `var(--color-sys-${m.color})`,
+      run: () => cb.onOpenThere?.(m.id, c.there.chain),
+    })) };
+  }
+  /**
+   * A machine searched for the newest words alone: one search of it at a time, a paint's waiting for the one before —
+   * and none at all where a newer paint came meanwhile (`current`).
+   * @param {import("./lib/desk.js").DeskMachine} m @param {string} query @param {() => boolean} current
+   * @returns {Promise<{ rows: CcRow[], why: string }>}
+   */
+  async function thereNewest(m, query, current) {
+    for (let before = searching.get(m.id); before; before = searching.get(m.id)) await before.catch(() => {});
+    if (!current()) return { rows: [], why: "" };
+    const p = there(m, query);
+    searching.set(m.id, p);
+    try {
+      return await p;
+    } finally {
+      if (searching.get(m.id) === p) searching.delete(m.id);
+    }
+  }
+
   /** @param {string} query @param {AbortSignal} signal */
   async function tasks(query, signal) {
     try {
@@ -188,7 +241,13 @@ export function createCommandCenter(cb) {
           ? actionsFor(cb.actions(), q).map((a) => ({ label: a.label, run: a.run, icon: a.icon || "arrowRight", tone: a.tone, keys: a.shortcut ? comboOf(a.shortcut) : "" }))
           : [];
         const folder = cb.getFolder?.() || "";
-        // The three reads side by side, each its section's rows; one that fails lists none.
+        // The other machines searched for what is typed, those that answer now: after this computer's own parts, so
+        // none of theirs holds its rows back (a part is drawn below the ones that came), once typing rests.
+        const machines = want("tasks") && raw && cb.deskCall ? (cb.machines?.() || []).filter((m) => m.status === "online" && !m.refused) : [];
+        const rested = machines.length ? new Promise((r) => setTimeout(r, THERE_WAIT_MS)).then(() => mine === seq) : Promise.resolve(false);
+        /** Why a machine's search found nothing, by its id: said under its name. @type {Map<string, string>} */
+        const thereWhy = new Map();
+        // The reads side by side, each its section's rows; one that fails lists none.
         /** @type {Promise<CcRow[]>[]} */
         const parts = [
           (want("tasks") ? tasks(raw, signal) : Promise.resolve([])).then((found) => found.slice(0, 8).map((/** @type {any} */ s) => ({
@@ -211,6 +270,12 @@ export function createCommandCenter(cb) {
             ? api(`/files/search?cwd=${encodeURIComponent(folder)}&q=${encodeURIComponent(raw)}&limit=8`, { signal }).catch(() => null)
             : Promise.resolve(null)
           ).then((fileHits) => (fileHits?.files || []).map((/** @type {any} */ f) => ({ label: String(f.path), icon: "file", tone: "var(--color-sys-blue)", mono: true, run: () => cb.onInsert?.(`${fileTag(String(f.path))} `) }))),
+          ...machines.map((m) => rested.then(async (go) => {
+            if (!go) return [];
+            const got = await thereNewest(m, raw, () => mine === seq);
+            if (got.why) thereWhy.set(m.id, got.why);
+            return got.rows;
+          })),
         ];
         /** Each part's rows once it came. @type {(CcRow[] | null)[]} */
         const came = parts.map(() => null);
@@ -220,7 +285,7 @@ export function createCommandCenter(cb) {
         for (;;) {
           if (mine !== seq) return; // a newer keystroke paints
           const out = came.indexOf(null);
-          draw(raw, actions, came, out < 0 ? came.length : out);
+          draw(raw, actions, came, out < 0 ? came.length : out, machines, thereWhy);
           if (out < 0) return;
           came[out] = await parts[out];
         }
@@ -229,17 +294,24 @@ export function createCommandCenter(cb) {
       /**
        * The list as the parts that came draw it, the first `upto` of them: the empty line, the examples that follow
        * what was found and the history wait for the last.
+       * `machines`: the other machines searched, whose parts follow this computer's three, each in its order; `thereWhy`
+       * why one found nothing. The empty line, the examples and the history wait for this computer's parts alone: a
+       * machine still out is a line saying so.
        * @param {string} raw @param {CcRow[]} actions @param {(CcRow[] | null)[]} came @param {number} upto
+       * @param {readonly import("./lib/desk.js").DeskMachine[]} [machines] @param {ReadonlyMap<string, string>} [thereWhy]
        */
-      const draw = (raw, actions, came, upto) => {
+      const draw = (raw, actions, came, upto, machines = [], thereWhy = new Map()) => {
         const q = raw.toLowerCase();
-        const [taskRows, changeRows, fileRows] = came.map((got, k) => (k < upto && got) || []);
-        const whole = upto === came.length;
-        const set = settingsPart(raw, scope, cb.settings?.() || null, actions.length + taskRows.length + changeRows.length + fileRows.length);
+        const [taskRows, changeRows, fileRows, ...theirs] = came.map((got, k) => (k < upto && got) || []);
+        const whole = upto >= LOCAL_PARTS;
+        const theirRows = theirs.flat();
+        /** The machines whose search is still out. */
+        const out = machines.filter((_, j) => LOCAL_PARTS + j >= upto);
+        const set = settingsPart(raw, scope, cb.settings?.() || null, actions.length + taskRows.length + changeRows.length + fileRows.length + theirRows.length);
         if (!whole) set.examples = [];
         /** @type {CcRow[]} */
         const setRows = set.rows.map((r) => ({ label: r.label, detail: r.now, snippet: r.effect || undefined, icon: r.icon, tone: r.tone, run: () => cb.onSetting?.(r) }));
-        rows = [...actions, ...setRows, ...taskRows, ...changeRows, ...fileRows];
+        rows = [...actions, ...setRows, ...taskRows, ...changeRows, ...fileRows, ...theirRows];
         if (whole && (hi >= rows.length || hi < 0)) hi = 0;
         rowEls = [];
         let i = 0;
@@ -254,8 +326,12 @@ export function createCommandCenter(cb) {
           ...section("Recent chats", taskRows),
           ...section("Recent changes", changeRows),
           ...section("Files", fileRows),
+          // Each other machine's chats under its name, in the order the bar lists the machines; one that did not answer
+          // says so there, and those still out are a line.
+          ...machines.flatMap((m, j) => (theirs[j]?.length || LOCAL_PARTS + j >= upto || !thereWhy.has(m.id) ? section(`On ${m.name}`, theirs[j] || []) : [h("div", { class: "cc-label" }, `On ${m.name}`), h("div", { class: "cc-why" }, thereWhy.get(m.id))])),
+          out.length ? h("div", { class: "cc-why cc-there-wait", role: "status" }, `Searching ${out.map((m) => m.name).join(", ")}…`) : null,
           // Nothing typed in Settings is no search that failed: its examples alone.
-          !whole || rows.length || set.why.length || (set.examples.length && !raw) ? null : h("div", { class: "cc-empty" }, "No related results"),
+          !whole || out.length || rows.length || set.why.length || (set.examples.length && !raw) ? null : h("div", { class: "cc-empty" }, "No related results"),
           set.examples.length
             ? h("div", { class: "cc-also" },
                 h("div", { class: "cc-label" }, "Also type"),

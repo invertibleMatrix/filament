@@ -1,0 +1,198 @@
+// @ts-check
+// Ctrl+K across machines (the remote desk of 11-22, s1h): in the desktop app the command center finds chats on every
+// other machine the left bar lists, beside this computer's own. One search a machine, through the app's bridge (the
+// desk's `search`), once typing rests; each machine's under its name, after this computer's parts so none of its rows
+// waits on another machine; every word read as that machine's (lib/desk.js `readDeskChats`); Enter opens it there.
+import { test, after } from "node:test";
+import assert from "node:assert/strict";
+import { stubDocument } from "./helpers/dom-stub.js";
+
+// The page's API client keeps the `fetch` it finds when it is first imported: the stand-in goes first.
+const g = /** @type {any} */ (globalThis);
+const realFetch = g.fetch;
+/** @param {string} url */
+g.fetch = async (url) => {
+  const body = String(url).startsWith("/api/memory/sessions?") ? { sessions: [{ id: "here-1", title: "Parser refactor here", when: "" }] } : {};
+  return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+};
+const { createCommandCenter, SLOW_PARTS_MS, THERE_WAIT_MS } = await import("../src/ui/harness/command-center.js");
+after(() => {
+  g.fetch = realFetch;
+});
+
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+};
+
+const STUDIO = { id: "m-studio", name: "Studio", color: "teal", icon: "server", status: "online", refused: false };
+const LAB = { id: "m-lab", name: "Lab", color: "orange", icon: "laptop", status: "online", refused: false };
+const AWAY = { id: "m-away", name: "Away", color: "pink", icon: "cloud", status: "offline", refused: false };
+
+/**
+ * The command center opened on a stub page with the desk's machines and its bridge scripted: `answer` says what a
+ * machine's search answers (a promise held lets a test hold it).
+ * @param {import("node:test").TestContext} t
+ * `bridge` false: the page outside the desktop app, no bridge to call.
+ * @param {{ machines?: any[], answer?: (p: any) => any, bridge?: boolean }} o
+ */
+function openOn(t, { machines = [STUDIO, LAB, AWAY], answer = () => ({ ok: true, status: 200, json: { chats: [] } }), bridge = true } = {}) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const doc = stubDocument();
+  const was = { frame: g.requestAnimationFrame, element: g.HTMLElement, local: g.localStorage };
+  g.requestAnimationFrame = (/** @type {() => void} */ fn) => setTimeout(fn, 0);
+  g.HTMLElement = class {};
+  g.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  t.after(() => {
+    g.requestAnimationFrame = was.frame;
+    g.HTMLElement = was.element;
+    g.localStorage = was.local;
+    doc.restore();
+  });
+  /** @type {any[]} */
+  const calls = [];
+  /** @type {[string, string][]} */
+  const opened = [];
+  const d = /** @type {any} */ (globalThis.document);
+  createCommandCenter({
+    actions: () => [],
+    onOpenTask: () => {},
+    machines: () => machines,
+    ...(bridge
+      ? {
+        deskCall: async (/** @type {any} */ p) => {
+          calls.push(p);
+          return answer(p);
+        },
+      }
+      : {}),
+    onOpenThere: (m, chain) => void opened.push([m, chain]),
+  }).open();
+  const input = d.querySelector(".cc-input");
+  return {
+    calls,
+    opened,
+    /** @param {number} ms */
+    wait: async (ms) => {
+      t.mock.timers.tick(ms);
+      await settle();
+    },
+    /** @param {string} v */
+    type: (v) => {
+      input.value = v;
+      input.dispatch("input");
+    },
+    /** @param {string} key */
+    key: (key) => input.dispatch("keydown", { key }),
+    labels: () => /** @type {any[]} */ (d.querySelectorAll(".cc-label")).map((e) => e.textContent),
+    rows: () => /** @type {any[]} */ (d.querySelectorAll(".cc-row")).map((e) => e.querySelector(".cc-name")?.textContent ?? e.textContent),
+    details: () => /** @type {any[]} */ (d.querySelectorAll(".cc-detail")).map((e) => e.textContent),
+    whys: () => /** @type {any[]} */ (d.querySelectorAll(".cc-why")).filter((e) => !String(e.className || "").includes("cc-there-wait")).map((e) => e.textContent),
+    /** @param {string} sel */
+    text: (sel) => d.querySelector(sel)?.textContent ?? null,
+  };
+}
+
+/** A machine's chats as the desk's search answers them (watch.js `deskChats`). @param {string[]} titles */
+const found = (titles) => ({ ok: true, status: 200, json: { chats: titles.map((title, i) => ({ chain: `c${i + 1}`, title, project: "shop", projectId: "p1", cwd: "/w/shop", when: Date.now() - 3 * 3600_000, unread: false, pinned: false, threadOf: null, from: "", kind: "interactive", remoteKey: null })) } });
+
+// (fails before: yes — s1h: Ctrl+K found this computer's chats alone)
+test("typing searches each machine the bar lists that answers now, once typing rests; each machine's chats under its name, after this computer's", async (t) => {
+  const cc = openOn(t, { answer: (p) => (p.machine === "m-studio" ? found(["Parser refactor on Studio", "Parser docs"]) : found(["Parser bench"])) });
+  await settle();
+  assert.deepEqual(cc.calls, [], "nothing typed, nothing asked there");
+  cc.type("par");
+  await settle();
+  cc.type("pars");
+  await settle();
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS);
+  assert.deepEqual(cc.calls, [{ op: "search", machine: "m-studio", q: "parser" }, { op: "search", machine: "m-lab", q: "parser" }], "a word typed fast asks once, for its whole; a machine offline not at all");
+  await cc.wait(SLOW_PARTS_MS);
+  assert.deepEqual(cc.labels(), ["Recent chats", "On Studio", "On Lab"]);
+  assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser refactor on Studio", "Parser docs", "Parser bench"]);
+  assert.deepEqual(cc.details(), ["shop · 3h", "shop · 3h", "shop · 3h"], "theirs say their project and age; this computer's here says none");
+  // Enter on one of theirs opens it there.
+  cc.key("ArrowDown");
+  cc.key("Enter");
+  assert.deepEqual(cc.opened, [["m-studio", "c1"]]);
+});
+
+test("a machine slow to answer holds none of this computer's rows, nor another machine's before it, and says it searches; one that fails says so", async (t) => {
+  /** @type {(v: any) => void} */
+  let studio = () => {};
+  const cc = openOn(t, { machines: [STUDIO, LAB], answer: (p) => (p.machine === "m-studio" ? new Promise((r) => (studio = r)) : { ok: false, status: 0, words: "Lab is not reachable now" }) });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS);
+  await cc.wait(SLOW_PARTS_MS);
+  assert.deepEqual(cc.labels(), ["Recent chats"], "this computer's drawn while Studio has not answered");
+  assert.equal(cc.text(".cc-there-wait"), "Searching Studio, Lab…");
+  studio(found(["Parser on Studio"]));
+  await settle();
+  assert.deepEqual(cc.labels(), ["Recent chats", "On Studio", "On Lab"]);
+  assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser on Studio"]);
+  assert.deepEqual(cc.whys(), ["Lab did not answer the search"]);
+  assert.equal(cc.text(".cc-there-wait"), null, "none out: no line");
+});
+
+// (fails before: yes — the review of s1h: each keystroke's search went at once, held a call of the machine's eight
+// until its answer, and the newest words' was refused)
+test("one search of a machine at a time: words typed while one is out go once it is back, the newest alone", async (t) => {
+  /** @type {((v: any) => void)[]} */
+  const held = [];
+  const cc = openOn(t, { machines: [STUDIO], answer: (p) => new Promise((r) => held.push(() => r(found([`Found ${p.q}`])))) });
+  cc.type("par");
+  await cc.wait(THERE_WAIT_MS);
+  cc.type("pars");
+  await cc.wait(THERE_WAIT_MS);
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS);
+  assert.deepEqual(cc.calls.map((c) => c.q), ["par"], "the rest wait for it");
+  /** @type {any} */ (held.shift())();
+  await settle();
+  assert.deepEqual(cc.calls.map((c) => c.q), ["par", "parser"], "then the newest words alone");
+  /** @type {any} */ (held.shift())();
+  await cc.wait(SLOW_PARTS_MS);
+  assert.deepEqual(cc.rows().slice(1), ["Found parser"]);
+});
+
+test("a machine that refuses this window is not searched", async (t) => {
+  const cc = openOn(t, { machines: [{ ...STUDIO, refused: true }, LAB], answer: () => found(["Parser bench"]) });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.calls.map((c) => c.machine), ["m-lab"]);
+});
+
+test("every word of theirs read as that machine's: a chat whose id is no id is none, its words clipped, six a machine", async (t) => {
+  const many = found(Array.from({ length: 9 }, (_, i) => `Parser ${i}`));
+  many.json.chats[0].chain = "../../remote/devices";
+  many.json.chats[1].title = `Parser\u0007 ${"x".repeat(400)}`;
+  const cc = openOn(t, { machines: [STUDIO], answer: () => many });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS);
+  await cc.wait(SLOW_PARTS_MS);
+  const theirs = cc.rows().slice(1);
+  assert.equal(theirs.length, 6);
+  assert.equal(theirs[0].length, 300, "clipped as the bar clips a title");
+  assert.ok(!theirs[0].includes("\u0007"));
+  assert.ok(!theirs.includes("Parser 0"), "the chat whose id would be a path is none");
+});
+
+test("in the Files scope no machine is asked; outside the desktop app — no bridge — none either", async (t) => {
+  const cc = openOn(t, { machines: [STUDIO], answer: () => found(["Parser bench"]) });
+  for (const k of ["Tab", "Tab", "Tab", "Tab"]) cc.key(k);
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.equal(cc.calls.length, 0, "Files");
+  cc.key("Tab");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.calls.map((c) => c.machine), ["m-studio"], "All again: asked");
+});
+
+test("outside the desktop app no machine is asked", async (t) => {
+  const cc = openOn(t, { machines: [STUDIO], bridge: false });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.calls, []);
+  assert.deepEqual(cc.labels(), ["Recent chats"]);
+  assert.equal(cc.text(".cc-there-wait"), null);
+});

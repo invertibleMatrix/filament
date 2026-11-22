@@ -171,14 +171,14 @@ test("a read: made here, as the window's sign-in there, its list cut to what the
   assert.deepEqual(a, { ok: true, status: 200, json: { chats: [{ chain: "c1", title: "Parser", project: "shop", projectId: "p1", cwd: "/w/shop", when: 5, unread: true, pinned: false, threadOf: null, from: "", remoteKey: "github.com/o/shop", kind: "interactive" }] } });
   const s = await desk.call({ op: "search", machine: "m-mac", q: " parser & co " });
   assert.equal(s.ok, true);
-  assert.equal(there.sent().at(-1)?.path, "/memory/sessions?q=parser%20%26%20co&limit=20&kind=interactive,fork,team&remotes=1");
+  assert.equal(there.sent().at(-1)?.path, "/memory/sessions?q=parser%20%26%20co&limit=20&kind=interactive,fork,team");
   const asks = await desk.call({ op: "asks", machine: "m-mac", chat: "c:1" });
   assert.deepEqual(asks.json, { chainId: "c:1", asks: [{ id: "r1.2", kind: "permission" }] });
   assert.deepEqual(
     there.sent().map((c) => [c.method, c.path]),
     [
       ["GET", "/memory/sessions?limit=200&kind=interactive,fork,team&remotes=1"],
-      ["GET", "/memory/sessions?q=parser%20%26%20co&limit=20&kind=interactive,fork,team&remotes=1"],
+      ["GET", "/memory/sessions?q=parser%20%26%20co&limit=20&kind=interactive,fork,team"],
       ["GET", "/sessions/c%3A1/asks"],
     ],
   );

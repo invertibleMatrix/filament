@@ -2373,6 +2373,8 @@ export function createSidebar(host, cb, rail = null) {
     refreshNow: () => now.refresh(),
     /** A row of Now opened, as the bar opens it: its chat, or its thread. @param {import("./lib/now.js").NowRow} r */
     openNow: (r) => openRow(r),
+    /** The other machines whose chats the bar lists now (the remote desk): Ctrl+K searches them too. */
+    deskMachines: () => (desk && deskOn() ? desk.machines.filter((m) => !hiddenMachines.has(m.id)) : []),
     /** Now's row of a chat, its own before its threads': what a Space's lane says of it. @param {string} chain */
     nowOf: (chain) => now.rowOf(chain),
     /** The Spaces of your own as the bar lists them (E50): where work handed from one may go (A4). */

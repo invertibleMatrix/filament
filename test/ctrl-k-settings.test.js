@@ -181,7 +181,7 @@ describe("Ctrl+K reads a setting in what is typed", () => {
   test("the wiring: the scope, the rows under This chat, the facts and the run in the app, the composer's own paths", () => {
     const cc = readFileSync("src/ui/harness/command-center.js", "utf8");
     assert.match(cc, /\{ id: "actions", label: "Actions" \},\n {2}\{ id: "settings", label: "Settings" \},\n {2}\{ id: "tasks", label: WORDS\.chats \},/);
-    assert.match(cc, /rows = \[\.\.\.actions, \.\.\.setRows, \.\.\.taskRows, \.\.\.changeRows, \.\.\.fileRows\];/);
+    assert.match(cc, /rows = \[\.\.\.actions, \.\.\.setRows, \.\.\.taskRows, \.\.\.changeRows, \.\.\.fileRows, \.\.\.theirRows\];/);
     assert.match(cc, /\.\.\.section\("This chat", setRows\),/);
     // (fails before: yes — seen live) Settings with nothing typed said "No related results" over its examples.
     assert.match(cc, /rows\.length \|\| set\.why\.length \|\| \(set\.examples\.length && !raw\) \? null : h\("div", \{ class: "cc-empty" \}, "No related results"\),/);
