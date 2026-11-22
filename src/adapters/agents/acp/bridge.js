@@ -1279,11 +1279,12 @@ export class AcpBridge extends TurnBridge {
               env: { ...agentLaunchEnv(upstream), ...w.env },
             },
     );
-    if (ways.some((w) => w.kind === "terminal")) return ways;
-    const own = catalogueSignIn(upstream);
     // An account with a folder of its own that the agent's pages can't reach signs in in a terminal alone (Antigravity's
-    // added accounts: `agy acp --login`, its sign-in kept in that folder).
+    // added accounts: `agy acp --login`, its sign-in kept in that folder) — the agent's own terminal way where it names
+    // one (agy 1.5.14's `terminal-login`, its arguments after the account's), else its CLI's.
     const reached = signsInInTerminal(upstream) ? ways.filter((w) => w.kind !== "browser") : ways;
+    if (ways.some((w) => w.kind === "terminal")) return reached;
+    const own = catalogueSignIn(upstream);
     return [...(own ? [{ id: "cli", description: "Its own CLI's sign-in, in a terminal", kind: /** @type {const} */ ("terminal"), ...own }] : []), ...reached];
   }
   /**

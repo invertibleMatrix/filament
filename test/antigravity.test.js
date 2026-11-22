@@ -88,7 +88,7 @@ test("an added account's ways to sign in: agy acp --login in a terminal, its pag
   const home = "C:\\Filament\\accounts\\antigravity-acp-work";
   const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", acp: { command: win, args, env: {} } };
   const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home } };
-  // Its four ways as agy 1.5.14 names them, none with a type: it carries each out itself.
+  // Its four ways it carries out itself, as agy names them to a client that runs no terminal sign-in.
   const ways = ["oauth-personal", "oauth-business", "gemini-api-key", "agent-platform"].map((id) => ({ kind: "agent", id, name: id, description: "" }));
   const bridge = new AcpBridge(/** @type {any} */ ({ log: () => {} }));
   try {
@@ -98,6 +98,32 @@ test("an added account's ways to sign in: agy acp --login in a terminal, its pag
     assert.deepEqual(own.map((w) => [w.id, w.kind]), [["cli", "terminal"]]);
     const cli = /** @type {any} */ (own[0]);
     assert.deepEqual([cli.command, cli.args, cli.env.SSH_CONNECTION], [win, [...args, "--login", "--gemini-dir", home], "127.0.0.1 0 127.0.0.1 0"]);
+  } finally {
+    bridge.shutdown();
+  }
+});
+
+// (fails before: yes — agy 1.5.14 names a terminal way of its own to a client that runs them, and the card then offered
+// an added account every way, Google's pages among them)
+test("agy's own terminal sign-in: an added account's only way, run in its folder; the Default account has it beside Google's page", async () => {
+  const win = "C:\\Filament\\agents\\installed\\antigravity-acp\\1.5.14\\program\\agy.exe";
+  const args = ["acp", "--app-data-dir", "antigravity-acp"];
+  const home = "C:\\Filament\\accounts\\antigravity-acp-work";
+  const base = { id: "antigravity-acp", name: "Antigravity (agent via ACP)", type: "acp", acp: { command: win, args, env: {} } };
+  const work = { ...base, id: "antigravity-acp-work", name: "Antigravity · Work", acp: { ...base.acp, home } };
+  // Its ways as agy 1.5.14 names them to a client that declares `auth.terminal`, Filament's.
+  const pages = ["oauth-personal", "oauth-business", "gemini-api-key", "agent-platform"].map((id) => ({ kind: "agent", id, name: id, description: "" }));
+  const ways = [...pages, { kind: "terminal", id: "terminal-login", name: "Log in from the terminal", description: "", args: ["--login"], env: {} }];
+  const bridge = new AcpBridge(/** @type {any} */ ({ log: () => {} }));
+  try {
+    for (const u of [base, work]) bridge.profiles.put(u.id, /** @type {any} */ ({ ways }));
+    const mine = await bridge.signInWays(base);
+    assert.deepEqual(mine.map((w) => [w.id, w.kind]), [...pages.map((w) => [w.id, "browser"]), ["terminal-login", "terminal"]]);
+    assert.deepEqual([/** @type {any} */ (mine[4]).args, /** @type {any} */ (mine[4]).env.SSH_CONNECTION], [[...args, "--login"], undefined]);
+    const own = await bridge.signInWays(work);
+    assert.deepEqual(own.map((w) => [w.id, w.kind]), [["terminal-login", "terminal"]]);
+    const t = /** @type {any} */ (own[0]);
+    assert.deepEqual([t.command, t.args, t.env.SSH_CONNECTION, t.env.GEMINI_HOME], [win, [...args, "--gemini-dir", home, "--login"], "127.0.0.1 0 127.0.0.1 0", home]);
   } finally {
     bridge.shutdown();
   }
