@@ -29,12 +29,22 @@ const LABEL_MOST = 200;
 const SAID_MOST = 400;
 /** The longest command shown: its machine's own cap (http/admin/sessions.js, adapters/agents/asks.js). One longer is answered in its chat alone. */
 const COMMAND_MOST = 20000;
+/**
+ * The mark its machine ends a command it cut with, within that cap (core/redact.js `redactAndCap`): a command so cut is
+ * a part, however long what is left, and Allow would answer the whole.
+ */
+const CUT_MARK = /…\[truncated \d+ chars\]$/;
 /** The longest answer in words the desk sends (desktop/lib/desk.js `WORDS_MAX`). */
 export const WORDS_MOST = 20000;
 /** How soon a chat's asks are read again after an answer went: its machine has settled it by then. */
 export const AGAIN_MS = 1500;
-/** How long an answered ask stays hidden while its machine still lists it: past this it shows again, for its answer did not land. */
+/**
+ * How long an answered ask stays hidden while its machine still lists it. Past this its card shows again, answered
+ * in its chat alone (`STILL_LISTED`): its answer was taken, so a press here would be refused as answered already.
+ */
 export const ANSWERED_MS = 120_000;
+/** An answered ask its machine still lists past `ANSWERED_MS`, in its card's words. */
+export const STILL_LISTED = "Answered here, still waiting there: open the chat";
 /** The most reads of one machine's asks under way at once: the desk takes 8 calls a machine, and an answer needs one. */
 export const READS_MOST = 3;
 /** A first read that failed goes again after this, `TRIES` times at most; then at the chat's next frame or the desk's next word. */
@@ -84,7 +94,7 @@ export function readAsks(json) {
     const raw = Array.isArray(a.options) ? a.options : [];
     const options = raw.slice(0, OPTIONS_MOST).filter((/** @type {any} */ o) => o && choiceOk(o.id)).map((/** @type {any} */ o) => ({ id: o.id, label: words(o.label, LABEL_MOST) || words(o.id, LABEL_MOST) }));
     const command = typeof a.command === "string" ? a.command : "";
-    const apart = apartOf(a, kind, command.length > COMMAND_MOST);
+    const apart = apartOf(a, kind, command.length > COMMAND_MOST || CUT_MARK.test(command));
     // An answer it says that the desk cannot send, or more than a card holds, leaves it no answers at all here: a card
     // never shows some of them.
     const whole = options.length === raw.length;
@@ -220,6 +230,8 @@ export function createDeskInbox(o) {
     for (const k of [...chats.keys()]) {
       if (wanted.has(k)) continue;
       chats.delete(k);
+      // What its cards kept — answers sent, a refusal's words, an answer half typed — goes with it.
+      for (const m of [answered, said, drafts]) for (const a of [...m.keys()]) if (a.startsWith(`${k}/`)) m.delete(a);
       gone = true;
     }
     /** Each chat once, whatever rows of its threads stand beside its own. */
@@ -250,17 +262,21 @@ export function createDeskInbox(o) {
     }
   }
 
-  /** The asks a row's cards draw: a thread's row its own, the chat's row the rest; those answered here not. @param {DeskRow} r @returns {DeskAsk[]} */
+  /**
+   * The asks a row's cards draw: a thread's row its own, the chat's row the rest; those answered here not while their
+   * machine settles them, and one it lists long after answered in its chat alone. @param {DeskRow} r @returns {DeskAsk[]}
+   */
   function asksOf(r) {
     const k = chatKey(r.machine.id, r.there.chain);
     const c = chats.get(k);
     if (!c) return [];
     const theirs = threadRows.get(k) || new Set();
     const t = now();
-    return c.asks.filter((a) => {
+    return c.asks.flatMap((a) => {
+      if (!(r.there.thread ? a.from === r.there.thread : !theirs.has(a.from))) return [];
       const was = answered.get(`${k}/${a.id}`);
-      if (was != null && t - was < ANSWERED_MS) return false;
-      return r.there.thread ? a.from === r.there.thread : !theirs.has(a.from);
+      if (was == null) return [a];
+      return t - was < ANSWERED_MS ? [] : [{ ...a, options: [], words: false, apart: STILL_LISTED }];
     });
   }
 

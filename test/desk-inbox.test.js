@@ -6,7 +6,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fakeH, fakeDrawIn, textOf, buttonsOf } from "./helpers/fake-dom.js";
-import { AGAIN_MS, READS_MOST, RETRY_MS, createDeskInbox, readAsks } from "../src/ui/harness/desk-inbox.js";
+import { AGAIN_MS, ANSWERED_MS, READS_MOST, RETRY_MS, STILL_LISTED, createDeskInbox, readAsks } from "../src/ui/harness/desk-inbox.js";
 import { createNow } from "../src/ui/harness/now-list.js";
 import { deskGroups, readDesk } from "../src/ui/harness/lib/desk.js";
 
@@ -133,6 +133,16 @@ describe("an ask, read as another machine's words (readAsks)", () => {
     }
     assert.equal(long.command.length, 20000);
     assert.deepEqual([fits.apart, fits.options.length, fits.command.length], ["", 2, 20000], "a command its machine shows whole is answered here");
+    // (fails before: yes — the hunt on s1g: a command its machine cut came within the cap, its mark and all, and Allow showed)
+    const [cut, short, said] = readAsks({
+      asks: [
+        { ...PERMIT, id: "run6", command: `${"x".repeat(19978)}…[truncated 32 chars]` },
+        { ...PERMIT, id: "run5", command: "cat big.log…[truncated 9 chars]" },
+        { ...PERMIT, id: "run4", command: "echo '…[truncated 9 chars]' && ls" },
+      ],
+    });
+    for (const a of [cut, short]) assert.deepEqual([a.apart, a.options], ["Its command is too long to show here", []], a.id);
+    assert.deepEqual([said.apart, said.options.length], ["", 2], "the mark within its words, not at its end: its own words");
     // An edit's permission — its diff its chat's alone —, a tool's with no command, a coding agent's that changes files;
     // and a question of more answers than a card holds.
     const [edit, judgedEdit, left, many] = readAsks({
@@ -239,6 +249,47 @@ describe("the inbox (createDeskInbox)", () => {
     timers[1].fn();
     await settled();
     assert.deepEqual(cards(inbox, r), []);
+  });
+
+  // (fails before: yes — the hunt on s1g: a chat let go kept its cards' answers, words and drafts for the page's life)
+  test("a chat that leaves Needs you takes what its cards kept with it: its refusal's words, an answer half typed", async () => {
+    const { inbox } = inboxOver({ asks: { "m-studio/s1": [{ ...WORKER, from: "chat" }] }, answer: () => ({ ok: false, status: 409, words: "Studio says it was answered already." }) });
+    const r = row();
+    inbox.sync([r], () => []);
+    await settled();
+    const [card] = cards(inbox, r);
+    buttonsOf(card)[0].dispatch("click");
+    every(card, "desk-ask-words")[0].dispatch("input", { target: { value: "use the dev branch" } });
+    await settled();
+    const [kept] = cards(inbox, r);
+    assert.equal(textOf(every(kept, "desk-ask-said")[0]), "Studio says it was answered already.");
+    assert.equal(every(kept, "desk-ask-words")[0].attrs.value, "use the dev branch");
+    inbox.sync([], () => []);
+    // Back in Needs you, its ask still listed: a card as new.
+    inbox.sync([r], () => []);
+    await settled();
+    const [fresh] = cards(inbox, r);
+    assert.deepEqual(every(fresh, "desk-ask-said"), []);
+    assert.equal(every(fresh, "desk-ask-words")[0].attrs.value, "");
+  });
+
+  // (fails before: yes — the hunt on s1g: past two minutes an answered ask came back as a fresh card, Allow and all)
+  test("an answered ask its machine still lists long after: its card shows again, answered in its chat alone", async () => {
+    let t = 1_000_000;
+    const b = bridgeOf({ asks: { "m-studio/s1": [PERMIT] } });
+    const inbox = createDeskInbox({ bridge: b.bridge, onChange: () => {}, later: () => {}, now: () => t });
+    const r = row();
+    inbox.sync([r], () => []);
+    await settled();
+    buttonsOf(cards(inbox, r)[0])[0].dispatch("click");
+    await settled();
+    assert.deepEqual(cards(inbox, r), [], "answered: hidden while its machine settles it");
+    t += ANSWERED_MS - 1;
+    assert.deepEqual(cards(inbox, r), []);
+    t += 2;
+    const [card] = cards(inbox, r);
+    assert.match(textOf(card), new RegExp(STILL_LISTED));
+    assert.deepEqual(buttonsOf(card).map((x) => textOf(x)), ["Open"], "no Allow again: its answer was taken");
   });
 
   // (fails before: yes — the review of s1g: a first read refused, by the desk's cap or a dropped link, was never read again)
