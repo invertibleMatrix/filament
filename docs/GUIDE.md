@@ -286,7 +286,8 @@ takes you to another.
 
 **Every machine in one list.** Once another machine is kept, This computer's left bar lists every machine's chats,
 not its own alone. Now's **Needs you**, **Working** and **Done** hold the other machines' rows among this computer's,
-the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere.
+the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere, in
+the list and on its button while the list is hidden.
 Under **Projects**, a chat on another machine stands with the project here of the same repository — its git remote
 names it, on GitHub, GitLab or any host; two folders that are only paths say nothing across machines — and the rest
 stand in projects of their own, a repository on two machines as one. Each machine tells this computer as a turn begins

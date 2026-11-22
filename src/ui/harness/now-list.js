@@ -74,7 +74,8 @@ const NONE_MORE = { needs: [], works: [], done: [] };
  *   `asked`: the page's chats whose message a card stopped, each needing you in its card's words — or at work, the page
  *   making room for that message or sending it again (lib/now.js); `compacting`: the chats whose compaction is written
  *   between their turns, each under Working while it is (lib/now.js);
- *   `onSeen`: Clear's chains, marked seen; `onCount`: the rail's badge, when the counts move; `current`: the chain of
+ *   `onSeen`: Clear's chains, marked seen; `onCount`: the rail's badge, when the counts move — the other machines' rows
+ *   with this computer's, as Now's head counts them; `current`: the chain of
  *   the chat open now, which stays placed, and whose own row (not its threads') is marked — unless `marked` says
  *   another, or none (a Space on screen: the reviewer of 10-29); `seen`: whether a thread's failure was seen
  *   (lib/failures-seen.js, the page's own); `beside`: a team on the side's chat, drawn as a line under the chat it works
@@ -225,9 +226,13 @@ export function createNow(o) {
     if (k === drawnKey && Date.now() - drawnAt < 60_000) return;
     drawnKey = k;
     draw();
-    if (groups.needs.length !== counted[0] || groups.works.length !== counted[1]) {
-      counted = [groups.needs.length, groups.works.length];
-      o.onCount?.(counted[0], counted[1]);
+    // What needs you and what works anywhere, as Now's head counts it: the other machines' rows too, and told as only
+    // theirs move (the hunt on s1b).
+    const needs = groups.needs.length + more.needs.length;
+    const works = groups.works.length + more.works.length;
+    if (needs !== counted[0] || works !== counted[1]) {
+      counted = [needs, works];
+      o.onCount?.(needs, works);
     }
   }
 

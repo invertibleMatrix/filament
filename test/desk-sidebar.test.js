@@ -196,15 +196,30 @@ describe("Now lists every machine's rows (now-list.js)", () => {
     /** @type {any[]} */
     const seenThere = [];
     let more = /** @type {any} */ (deskGroups(d));
+    /** What the rail's badge was told, each time. @type {[number, number][]} */
+    const counts = [];
     const now = createNow({
       h: mk, drawIn: fakeDrawIn, call: /** @type {any} */ (async () => ({ events: [] })),
       chats: (c) => (c === "c1" ? { title: "Parser refactor", project: "filament", when: t, unread: false } : null),
       unread: () => new Set(), holders: () => new Map(), onOpen: (r) => void opened.push(r.chain), onSeen: () => {},
       more: () => more, onOpenMore: (r) => void openedThere.push([r.machine.id, r.there.chain]), onSeenMore: (rows) => void seenThere.push(rows.map((r) => r.key)),
+      onCount: (n, w) => void counts.push([n, w]),
     });
     await now.update(/** @type {any} */ (runs));
-    return { now, opened, openedThere, seenThere, setMore: (/** @type {any} */ m) => { more = m; now.refresh(); } };
+    return { now, opened, openedThere, seenThere, counts, more: () => more, setMore: (/** @type {any} */ m) => { more = m; now.refresh(); } };
   }
+
+  // (fails before: yes — the hunt on s1b: the rail's badge counted this computer's alone, and heard nothing of theirs moving)
+  test("the rail's badge is told what needs you and what works anywhere, as Now's head counts it — again as only theirs move", async () => {
+    const { counts, more, setMore } = await deskNow();
+    const g = more();
+    assert.ok(g.needs.length > 0 && g.works.length > 0, "the desk has rows of both");
+    assert.deepEqual(counts.at(-1), [g.needs.length, 1 + g.works.length], "this computer's one at work, and theirs");
+    setMore({ ...g, needs: [] });
+    assert.deepEqual(counts.at(-1), [0, 1 + g.works.length], "theirs moved alone: told");
+    setMore(null);
+    assert.deepEqual(counts.at(-1), [0, 1], "the bar on This computer's alone");
+  });
 
   // (fails before: yes — Now listed This computer's rows alone)
   test("their rows among its own, newest first, each with its machine's chip; keyed by machine, no chat id of this computer's; greyed while away", async () => {
