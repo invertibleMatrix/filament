@@ -448,14 +448,18 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
     /**
      * Every machine kept beside this computer looked at once, the tick waiting on none longer than `FLEET_WAIT_MS`: a
      * look landed since the last tick is said, one under way is said as the machine last stood. One removed is forgotten.
-     * @returns {Promise<MachineLook[]>}
+     * `only`: those machines alone looked at — their events stream said something moved there (lib/desk.js) —, every
+     * other said as it last stood, what landed for it kept for the tick that says it (the review of s1e: one busy machine
+     * had every machine looked at each second).
+     * @param {{ only?: ReadonlySet<string> | null }} [o] @returns {Promise<MachineLook[]>}
      */
-    async look() {
+    async look({ only = null } = {}) {
       const list = watchedNow();
       for (const id of [...kept.keys()]) if (!list.some((m) => m.id === id)) kept.delete(id);
       const ks = list.map(keptOf);
+      const asked = only ? ks.filter((k) => only.has(k.machine.id)) : ks;
       // A look starts where none is under way and none landed that no tick has said.
-      for (const k of ks)
+      for (const k of asked)
         if (!k.looking && !k.landed)
           k.looking = lookAt(k)
             .then(
@@ -463,12 +467,13 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
               () => void (k.landed = said(k, { answered: false })),
             )
             .finally(() => void (k.looking = null));
-      await Promise.race([Promise.all(ks.map((k) => k.looking)), wait(FLEET_WAIT_MS)]);
+      await Promise.race([Promise.all(asked.map((k) => k.looking)), wait(FLEET_WAIT_MS)]);
       // One removed while its look was under way is told of nothing (the review of p3-watch).
       const still = watchedNow();
       return ks
         .filter((k) => kept.get(k.machine.id) === k && still.some((m) => m.id === k.machine.id))
         .map((k) => {
+          if (!asked.includes(k)) return standing(k);
           const got = k.landed;
           k.landed = null;
           return got ?? standing(k);

@@ -81,6 +81,10 @@ describe("lib/desk.js: what the app tells, read", () => {
     assert.equal(readDesk({ machines: "x" }), null);
     const bad = readDesk({ machines: [{ id: "m-x", color: "red; background:url(x)", icon: "<svg>", status: "pwned" }] });
     assert.deepEqual([bad?.machines[0].color, bad?.machines[0].icon, bad?.machines[0].status, bad?.machines[0].name], ["blue", "monitor", "reconnecting", "Another machine"], "a colour, an icon and a state this page knows, else its own");
+    // (fails before: yes — the s1e review) A chat whose id is dots alone, which Clear would send up its path there
+    // (/sessions/../settings), is no chat; a machine's no machine.
+    const dots = readDesk({ machines: [{ id: "..", name: "Up" }, { id: "m-y", name: "Y", recent: [{ chain: "..", title: "up", when: 1 }, { chain: "c.1", title: "ok", when: 2 }] }] });
+    assert.deepEqual([dots?.machines.map((m) => m.id), dots?.machines[0].recent.map((c) => c.there.chain)], [["m-y"], ["c.1"]]);
   });
 
   test("mergeKey: a key that names a host; a folder, a relative path, a drive, a home folder, none", () => {

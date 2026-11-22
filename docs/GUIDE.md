@@ -289,8 +289,9 @@ not its own alone. Now's **Needs you**, **Working** and **Done** hold the other 
 the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere.
 Under **Projects**, a chat on another machine stands with the project here of the same repository — its git remote
 names it, on GitHub, GitLab or any host; two folders that are only paths say nothing across machines — and the rest
-stand in projects of their own, a repository on two machines as one. A press on another machine's chat shows that
-machine in the window, at that chat. **Clear** under Done marks theirs seen on their machines too. A machine that does
+stand in projects of their own, a repository on two machines as one. Each machine tells this computer as a turn begins
+or ends there, so its rows move within a few seconds; the app's look every ten seconds catches what a dropped
+connection missed. A press on another machine's chat shows that machine in the window, at that chat. **Clear** under Done marks theirs seen on their machines too. A machine that does
 not answer keeps its rows as they last stood, greyed, its words on hover. The filter menu's **Machines** says whose
 chats the bar lists — This computer's alone, or **All machines**, each one ticked in or out — and **Group by** gains
 **Machine**: This computer's projects first, then each other machine's under its name. Grouped by time, and in the

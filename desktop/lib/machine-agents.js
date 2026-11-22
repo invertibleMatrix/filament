@@ -13,19 +13,11 @@
 // `full` switched there, on top of `agents`: its agents act there as the person (services/devices.js `fullControl`).
 // Forget: the device revoked there, the token let go here. What the page shows is read there: the device list says the grants as they stand. Only an https
 // way is taken: through an SSH tunnel the machine takes this computer for itself, no device there. The new-chat menu's
-// part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login.
-// Plain Node (NA-D13).
+// part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login. The
+// machine is reached as lib/reach.js reaches it. Plain Node (NA-D13).
 import { pickRoute } from "./machines.js";
-import { deskFlagsOf, routeFetch } from "./watch.js";
-import { bodyText } from "../../src/services/machines/client.js";
-
-/** How long one call to the machine waits. */
-const CALL_MS = 5000;
-/**
- * The most one answer of the machine's is read, in bytes: its device list, the largest asked, is a few kilobytes, where
- * whatever answers at its address that means harm would send on without end.
- */
-const ANSWER_MAX = 1024 * 1024;
+import { routeFetch } from "./watch.js";
+import { FOR, createReach } from "./reach.js";
 
 /**
  * One machine as the page shows it. `on`: this Filament's agents may work there — their device's token kept here, its
@@ -41,7 +33,7 @@ const ANSWER_MAX = 1024 * 1024;
  * @typedef {import("./machines.js").Machine} Machine
  * @typedef {import("./machines.js").Route} Route
  * @typedef {Pick<import("../../src/services/machines/index.js").Machines, "list" | "keep" | "forget">} Store
- * @typedef {(path: string, init?: { method?: string, body?: any }) => Promise<{ status: number, json: any }>} Send
+ * @typedef {import("./reach.js").Send} Send
  */
 
 /**
@@ -51,15 +43,6 @@ const ANSWER_MAX = 1024 * 1024;
 const PROJECTS_MAX = 50;
 const WORDS_MAX = 400;
 
-/**
- * What a sign-in there leads to, by who reaches the machine: Settings' switch, which a full device moves over the
- * network alone; the new-chat menu, which reads its projects as a full device, by the person's tailnet login, or
- * through an SSH tunnel, where the machine takes this computer for itself — as its page in the rail would.
- */
-const FOR = Object.freeze({
-  switch: { then: "this switch moves", full: "a full device lets this Filament's agents in", tailnet: false, tunnel: false },
-  picker: { then: "its projects show here", full: "a full device starts chats there", tailnet: true, tunnel: true },
-});
 /** Words said whole up to `WORDS_MAX`, cut past it. @param {unknown} w */
 const capped = (w) => {
   const s = String(w ?? "");
@@ -88,61 +71,16 @@ export function createMachineAgents({ machines, cookieOf, store, pick = pickRout
   /** The agents' device kept here for a machine, or null: one `filament connect` connected is no agents'. @param {Machine} m */
   const keptOf = (m) => store.list().find((x) => x.machine.id.toLowerCase() === m.id && x.device.scope === "agent") ?? null;
 
+  const reachThere = createReach({ cookieOf, pick, fetchOf });
   /**
-   * The machine reached as this window's full device there: a call of its admin API — the answer's status and JSON, a
-   * way that does not answer thrown — and the device this window is there; else the row that says what stands in the way.
-   * @param {Machine} m @param {typeof FOR.switch} [f]  who reaches it: Settings' switch, or the new-chat menu
-   * @returns {Promise<{ send: Send, route: Route, origin: string, me: any, flags: string[] } | { row: AgentsRow }>}
+   * The machine reached as this window's full device there (lib/reach.js), or the row that says what stands in the way.
+   * @param {Machine} m @param {import("./reach.js").For} [f]  who reaches it: Settings' switch, or the new-chat menu
+   * @returns {Promise<import("./reach.js").Reached | { row: AgentsRow }>}
    */
   async function reach(m, f = FOR.switch) {
     const kept = !!keptOf(m);
-    /** @param {string} words @param {"off" | "quiet"} [away]  disconnected in this window, or no way to it answers */
-    const stop = (words, away) => ({ row: rowOf(m, { kept, words, ...(away ? { away } : {}) }) });
-    if (m.off) return stop(`${m.name} is disconnected in this window: connect it again from the machines list, and ${f.then}.`, "off");
-    const ways = f.tunnel ? m.routes : m.routes.filter((r) => String(r.url ?? "").startsWith("https:"));
-    if (!ways.length) return stop(`This app reaches ${m.name} through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows.`);
-    const picked = await pick({ ...m, routes: ways }).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
-    if (!picked.route) return stop(`${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
-    const route = picked.route;
-    const origin = new URL(String(route.url)).origin;
-    /** @type {Send} */
-    const send = async (path, init = {}) => {
-      const cookie = await cookieOf(m.partition, origin).catch(() => "");
-      const r = await fetchOf(route)(`${origin}/api${path}`, {
-        method: init.method || "GET",
-        headers: { "x-filament-ui": "1", ...(cookie ? { cookie } : {}), ...(init.body !== undefined ? { "content-type": "application/json" } : {}) },
-        ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
-        redirect: "manual",
-        signal: AbortSignal.timeout(CALL_MS),
-      });
-      // Past ANSWER_MAX it is read no further, and the call fails in words.
-      const text = await bodyText(r, ANSWER_MAX, "it", `${init.method || "GET"} ${path}`);
-      let json = null;
-      try {
-        json = JSON.parse(text);
-      } catch {}
-      return { status: r.status, json };
-    };
-    /** @type {{ status: number, json: any }} */
-    let me;
-    try {
-      me = await send("/remote/me");
-    } catch (/** @type {any} */ e) {
-      return stop(`${m.name} did not answer: ${e?.message || e}.`, "quiet");
-    }
-    const gone = `This app's sign-in on ${m.name} is gone — revoked there, or signed out: pair it again with Add a machine and a code from its Settings › Remote access.`;
-    if (me.status === 401 || me.status === 403) return stop(gone);
-    if (me.status !== 200) return stop(`${m.name} answered ${refusal(me)}.`);
-    const who = me.json?.who;
-    // Through a tunnel — the app's SSH route, or an address the person forwarded — the machine takes this computer for
-    // itself: the menu reads there as its page in the rail does.
-    // `flags`: what its Filament does for the desk (watch.js `deskFlagsOf`), for its callers to say what one lacks.
-    const flags = deskFlagsOf(me.json);
-    if ((who === "tailnet" && f.tailnet) || (who === "local" && f.tunnel)) return { send, route, origin, me: me.json, flags };
-    if (who === "tailnet") return stop(`This app reaches ${m.name} by your tailnet login, not as a paired device: pair it with a code from its Settings › Remote access, and ${f.then}.`);
-    if (who !== "device") return stop(gone);
-    if (me.json?.device?.scope !== "full") return stop(`This app is paired with ${m.name} view-only: ${f.full}. Pair it again as Full with Add a machine.`);
-    return { send, route, origin, me: me.json, flags };
+    const r = await reachThere(m, f);
+    return "words" in r ? { row: rowOf(m, { kept, words: r.words, ...(r.away ? { away: r.away } : {}) }) } : r;
   }
 
   /**

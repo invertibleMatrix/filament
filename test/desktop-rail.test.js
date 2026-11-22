@@ -1790,7 +1790,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");
-  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["onDesk", "onState", "open", "seen"], "This computer's controls wear its colours through its own bridge");
+  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["call", "onDesk", "onEvent", "onState", "open", "seen"], "This computer's controls wear its colours through its own bridge");
   h.bridge.filamentMachines.open({ x: 1, y: 2, width: 3, height: 4 });
   h.bridge.filamentApp.frameArea({ left: "78", right: 0, top: 9 });
   assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [
@@ -1815,13 +1815,25 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   await d.bridge.filamentMachines.seen("m-box", ["c1", 7, ...Array.from({ length: 60 }, (_, i) => `x${i}`)]);
   const asked = d.invoked.find((x) => x[0] === "filament:desk-seen");
   assert.deepEqual([asked?.[1].id, asked?.[1].chains.length, asked?.[1].chains.slice(0, 2)], ["m-box", 50, ["c1", "7"]]);
+  // (fails before: yes — s1e) The desk's operations through main (desktop/lib/desk.js): its fields alone, as plain
+  // values — no path, no headers, nothing that is not a word, a number or a yes —; and its machines' frames as they come.
+  assert.ok(!("call" in m.bridge.filamentMachines) && !("onEvent" in m.bridge.filamentMachines), "another machine's page has no desk bridge");
+  await d.bridge.filamentMachines.call({ op: "answer", machine: "m-box", chat: "c1", ask: "r1.2", allow: false, choice: 2, words: "no", path: "/remote/devices", headers: { cookie: "x" }, content: { evil: true }, url: "https://elsewhere", mode: null });
+  assert.deepEqual(JSON.parse(JSON.stringify(d.invoked.find((x) => x[0] === "filament:desk-call")?.[1])), { op: "answer", machine: "m-box", chat: "c1", ask: "r1.2", allow: false, choice: "2", words: "no" });
+  /** @type {any[]} */
+  const frames = [];
+  const stopFrames = d.bridge.filamentMachines.onEvent((/** @type {any} */ f) => frames.push(f));
+  d.heard.get("filament:desk-event")?.({}, { machine: "m-box", type: "hello" });
+  stopFrames();
+  assert.equal(d.heard.has("filament:desk-event"), false, "stopped");
+  assert.deepEqual(frames, [{ machine: "m-box", type: "hello" }]);
   // main.js hears each from a harness page of the window alone, as its machine.
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
   // The desk told to Filament's own page in the harness window alone, and asked for by a harness page of Filament's alone.
   assert.match(main, /if \(w && !w\.isDestroyed\(\) && paneHears\(true, w\.webContents\.getURL\(\), origin\)\) w\.webContents\.send\("filament:desk", d\);/);
   assert.match(main, /ipcMain\.handle\("filament:desk", \(e\) => \(paneOf\(e\) \? \(deskNow \?\? deskOf\(\)\) : null\)\);/);
   // Seen there: This computer's page alone, a machine kept and connected, its chats' ids as ids.
-  assert.match(main, /ipcMain\.handle\("filament:desk-seen", async \(e, p\) => \{\n\s+const id = String\(p\?\.id \?\? ""\);\n\s+if \(!paneOf\(e\) \|\| !readKept\(machinesFile\)\.some\(\(k\) => k\.id === id && !k\.off\)\) return false;\n\s+const chains = [^\n]+\.filter\(\(c\) => \/\^\[A-Za-z0-9_\.:-\]\{1,100\}\$\/\.test\(c\)\)\.slice\(0, 50\);\n\s+await Promise\.all\(chains\.map\(\(c\) => fleet\.markSeen\(id, c\)\)\);/);
+  assert.match(main, /ipcMain\.handle\("filament:desk-seen", async \(e, p\) => \{\n\s+const id = String\(p\?\.id \?\? ""\);\n\s+if \(!paneOf\(e\) \|\| !readKept\(machinesFile\)\.some\(\(k\) => k\.id === id && !k\.off\)\) return false;\n\s+const chains = [^\n]+\.filter\(\(c\) => \/\^\[A-Za-z0-9\]\[A-Za-z0-9_\.:-\]\{0,99\}\$\/\.test\(c\)\)\.slice\(0, 50\);\n\s+await Promise\.all\(chains\.map\(\(c\) => fleet\.markSeen\(id, c\)\)\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-open", \(e, rect\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.openPop\(id, rect\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-title-bar", \(e, c\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.tintFrom\(id, c\);/);
   assert.match(main, /ipcMain\.on\("filament:frame-area", \(e, r\) => void \(rail\?\.hearsPage\(e\.sender, e\.senderFrame\) === LOCAL_ID && rail\.frameArea\(r\)\)\);/);

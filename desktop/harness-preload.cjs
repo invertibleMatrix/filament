@@ -7,6 +7,9 @@
 // preload is no module.
 const { contextBridge, ipcRenderer } = require("electron");
 
+/** The fields a desk operation may carry (desktop/lib/desk.js `OPS`, which checks each again). */
+const DESK_FIELDS = ["op", "machine", "chat", "q", "after", "cwd", "title", "model", "mode", "content", "ask", "allow", "choice", "words"];
+
 contextBridge.exposeInMainWorld("filamentBrowser", {
   /**
    * The tab's page over the pane: true once it is there, false where the app has no such tab.
@@ -175,6 +178,31 @@ contextBridge.exposeInMainWorld("filamentMachines", {
    * mark goes, and nothing else. @param {string} id  the machine @param {string[]} chains  its chats' ids there
    */
   seen: (id, chains) => ipcRenderer.invoke("filament:desk-seen", { id: String(id), chains: Array.isArray(chains) ? chains.slice(0, 50).map(String) : [] }),
+  /**
+   * One of the desk's operations on another machine, made by the app as its sign-in there (desktop/lib/desk.js `OPS`):
+   * `{ op, machine, … }` — its chats, a search, its holders, a chat's asks or live state; a new chat, a turn, an answer,
+   * a stop, a mode. → what came of it (desk.js `DeskAnswer`). Its fields alone go, as plain values.
+   * @param {any} p @returns {Promise<any>}
+   */
+  call: (p) => {
+    /** @type {Record<string, string | boolean>} */
+    const q = {};
+    for (const k of DESK_FIELDS) {
+      const v = p?.[k];
+      if (typeof v === "string" || typeof v === "boolean") q[k] = v;
+      else if (typeof v === "number" && Number.isFinite(v)) q[k] = String(v);
+    }
+    return ipcRenderer.invoke("filament:desk-call", q);
+  },
+  /**
+   * Each frame of the other machines' events streams the desk reads, as it comes (desk.js `DeskFrame`): a stream joined
+   * or lost, a turn's start or end, a chat's writer, an ask. @param {(frame: any) => void} fn @returns {() => void}  stops hearing it
+   */
+  onEvent: (fn) => {
+    const heard = (/** @type {any} */ _e, /** @type {any} */ f) => fn(f);
+    ipcRenderer.on("filament:desk-event", heard);
+    return () => ipcRenderer.removeListener("filament:desk-event", heard);
+  },
 });
 
 // Pop out (HarnessV4_BrowserSize_Plan BS4): a tile's pane in a window of its own — the harness page showing that one

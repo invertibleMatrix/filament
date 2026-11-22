@@ -53,8 +53,11 @@ const NAME_MOST = 80;
 
 /** Words as kept: a string, its control characters gone, `most` characters at most. @param {unknown} v @param {number} [most] */
 const words = (v, most = WORDS_MOST) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, most) : "");
-/** An id as kept: what a machine's or a chat's id is made of, else "". @param {unknown} v */
-const idOf = (v) => (typeof v === "string" && /^[A-Za-z0-9_.:-]{1,100}$/.test(v) ? v : "");
+/**
+ * An id as kept: what a machine's or a chat's id is made of, a letter or a digit first — one of dots alone would be a
+ * step up a path it goes into —, else "". @param {unknown} v
+ */
+const idOf = (v) => (typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(v) ? v : "");
 /** A moment (ms) a Date holds, else 0: one past it threw where a row's age is written (the review of s1b). @param {unknown} v */
 const moment = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 8.64e15 ? Number(v) : 0);
 /** One of `allowed`, else `or`. @template {string} T @param {unknown} v @param {readonly T[]} allowed @param {T} or @returns {T} */

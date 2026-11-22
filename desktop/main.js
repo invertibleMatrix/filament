@@ -45,6 +45,7 @@ import { createRail, zoomRows } from "./lib/rail.js";
 import { checkMachine } from "./lib/add-machine.js";
 import { createTunnels } from "./lib/ssh-route.js";
 import { createMachineAgents } from "./lib/machine-agents.js";
+import { createDesk } from "./lib/desk.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { mergedPath, readShellPath } from "./lib/shell-path.js";
 
@@ -87,6 +88,11 @@ const tunnels = createTunnels({ log: (line) => log.line(line), kept: () => readK
 const pickHeld = (m) => pickRoute(m, { hold: (route) => tunnels.hold(route) });
 /** How often the app looks at Filament for alerts — and, attached to one started elsewhere, whether it still answers. */
 const LOOK_MS = 5000;
+/**
+ * How soon a machine is looked at again once its events stream says something moved there (lib/desk.js): at most once
+ * each that long, however busy it is.
+ */
+const SOON_MS = 2000;
 
 /** What later launches asked before this one was ready — a double-click while it starts, a `--quit` —, done once it is. @type {string[][]} */
 const early = [];
@@ -1481,10 +1487,46 @@ async function run() {
   ipcMain.handle("filament:desk-seen", async (e, p) => {
     const id = String(p?.id ?? "");
     if (!paneOf(e) || !readKept(machinesFile).some((k) => k.id === id && !k.off)) return false;
-    const chains = (Array.isArray(p?.chains) ? p.chains : []).map(String).filter((c) => /^[A-Za-z0-9_.:-]{1,100}$/.test(c)).slice(0, 50);
+    const chains = (Array.isArray(p?.chains) ? p.chains : []).map(String).filter((c) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(c)).slice(0, 50);
     await Promise.all(chains.map((c) => fleet.markSeen(id, c)));
     return true;
   });
+  // The desk's bridge (lib/desk.js): This computer's page acts on the other machines by the desk's operations alone, made
+  // here as this window's sign-in there — never a path, never a token. Each machine's events stream says what moved
+  // there, to that page alone, and a turn, an ask or a stream (re)joined has that machine looked at again soon.
+  const desk = createDesk({
+    machines: () => readKept(machinesFile),
+    pick: pickHeld,
+    cookieOf,
+    tell: (f) => {
+      const w = windows.get("harness");
+      if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk-event", f);
+      if (f.type === "turn" || f.type === "ask" || f.type === "hello") lookSoon(f.machine);
+    },
+  });
+  ipcMain.handle("filament:desk-call", (e, p) => (paneOf(e) ? desk.call(p) : null));
+  /** @type {NodeJS.Timeout | null} */
+  let soon = null;
+  /** The machines whose events stream said something moved there since the last look of theirs. @type {Set<string>} */
+  const soonFor = new Set();
+  /**
+   * Those machines alone looked at again within `SOON_MS` — this computer's own Filament and the rest wait for the tick
+   * —, at most once each `SOON_MS` however busy they are; one under way, the next after it.
+   * @param {string} id
+   */
+  const lookSoon = (id) => {
+    if (quitting) return;
+    soonFor.add(id);
+    if (soon) return;
+    soon = setTimeout(() => {
+      soon = null;
+      if (watching) return void lookSoon(id);
+      const only = new Set(soonFor);
+      soonFor.clear();
+      void watchLook({ only });
+    }, SOON_MS);
+    soon.unref?.();
+  };
   /** A machine's colour now, as the tray's row wears it. @param {string} id */
   const colorNow = (id) => (id === LOCAL_ID ? hereLook().color : colorOf(readKept(machinesFile).find((k) => k.id === id) ?? { id }));
   /** A machine's colour or icon chosen: the tray and the desk dressed anew at once. */
@@ -1495,7 +1537,11 @@ async function run() {
   };
 
   let watching = false;
-  async function watchLook() {
+  /**
+   * The tick's look at every machine; `only`: those machines alone, as their events stream asked (`lookSoon`) — this
+   * computer's own Filament not read, every other machine as it last stood. @param {{ only?: ReadonlySet<string> | null }} [o]
+   */
+  async function watchLook({ only = null } = {}) {
     if (watching || quitting) return;
     watching = true;
     try {
@@ -1504,10 +1550,11 @@ async function run() {
       const kept = readKept(machinesFile);
       tunnels.only(kept.filter((m) => !m.off).flatMap((m) => m.routes.filter((r) => r.kind === "ssh").map((r) => String(r.url))));
       machineBrowsers.sync();
+      desk.sync();
       // This computer's while its Filament answers; every other machine's, whatever this one's does — each read on its
       // own, so neither one's failure costs the other's notes (the review of p3-watch).
       const up = !gone && !(owned && sup.now().state !== "up");
-      const [w, others] = await Promise.all([up ? watch.look().catch(() => null) : null, fleet.look().catch(() => [])]);
+      const [w, others] = await Promise.all([up && !only ? watch.look().catch(() => null) : null, fleet.look({ only }).catch(() => [])]);
       if (quitting) return;
       if (w) needsCount = w.needs;
       // Each machine in the window's order, in its colour; one disconnected says so and counts nothing — the fleet watches it not.
@@ -1738,9 +1785,11 @@ async function run() {
     clearInterval(sampling);
     clearInterval(looks);
     clearInterval(watches);
+    if (soon) clearTimeout(soon);
     link.stop();
     pages.destroy();
     machineBrowsers.destroy();
+    desk.close();
     card?.destroy();
     tray.destroy();
     // A Mac's Restart to update ends the app by Squirrel.Mac, which installs the new one and starts it; where Squirrel

@@ -646,6 +646,15 @@ describe("every machine, watched", () => {
     assert.deepEqual(third.map((m) => [m.id, m.needs, m.look?.needsNew.map((r) => r.chain)]), [["m-box", 2, ["c2"]], ["m-mac", 0, []]]);
     // (fails before: yes — the remote desk of 11-22) Each machine's own rows and chats, for the desk.
     assert.deepEqual(third.map((m) => [m.id, m.look?.rows.needs.map((r) => r.chain), m.look?.recent.map((c) => [c.chain, c.project])]), [["m-box", ["c2", "c1"], [["c1", "shop-api"]]], ["m-mac", [], [["c1", "shop-api"]]]]);
+    // (fails before: yes — the review of s1e) A look at those machines alone, as their events stream asks: the others
+    // asked nothing and said as they last stood, what landed for them kept for the tick.
+    const askedBefore = x.asked.length;
+    x.at["https://192.168.0.9:20343"].runs = [turn({ id: "r3", chain: "c3", status: "running", events: 1 }), ...x.at["https://192.168.0.9:20343"].runs];
+    x.at["https://192.168.0.9:20343"].events.r3 = [ask("a3")];
+    t += 1000;
+    const onlyBox = await fleet.look({ only: new Set(["m-box"]) });
+    assert.ok(x.asked.slice(askedBefore).every((a) => a.kind === "lan"), "the Mac asked nothing");
+    assert.deepEqual(onlyBox.map((m) => [m.id, m.status, m.look ? m.look.needsNew.map((r) => r.chain) : null]), [["m-box", "online", ["c3"]], ["m-mac", "online", null]]);
     // A chat's unread mark goes to its own machine, with its sign-in; a refusal there (a view-only device's) is all.
     await fleet.markUnread("m-mac", "c 9");
     assert.deepEqual(x.asked.at(-1), { kind: "url", url: "/api/sessions/c%209/settings", cookie: "__Host-filament_device=persist:machine-m-mac.1@mac.tail1234.ts.net", method: "PATCH", body: JSON.stringify({ patch: { display: { unread: true } } }) });
@@ -935,7 +944,8 @@ describe("every machine, watched", () => {
     assert.match(main, /const cookieOf = async \(partition, url\) => \(await session\.fromPartition\(partition\)\.cookies\.get\(\{ url \}\)\)\.map\(\(c\) => `\$\{c\.name\}=\$\{c\.value\}`\)\.join\("; "\);/);
     assert.match(main, /const fleet = createFleet\(\{ machines: \(\) => readKept\(machinesFile\), pick: pickHeld, cookieOf \}\);/);
     // (fails before: yes — the review of p3-watch: one machine's look that threw threw out this computer's with it)
-    assert.match(main, /const \[w, others\] = await Promise\.all\(\[up \? watch\.look\(\)\.catch\(\(\) => null\) : null, fleet\.look\(\)\.catch\(\(\) => \[\]\)\]\);/, "every other machine watched whatever this computer's Filament does, each read on its own");
+    // A look some machines' events stream asked (`only`) reads those alone, this computer's own not (the review of s1e).
+    assert.match(main, /const \[w, others\] = await Promise\.all\(\[up && !only \? watch\.look\(\)\.catch\(\(\) => null\) : null, fleet\.look\(\{ only \}\)\.catch\(\(\) => \[\]\)\]\);/, "every other machine watched whatever this computer's Filament does, each read on its own");
     // (fails before: yes — the review of p3-watch: this computer's watch went quiet after a restart)
     assert.match(main, /const watch = createWatch\(\{ call: [^\n]+, outageMs: Infinity \}\);/, "this computer's tells after a restart what the restart cut");
     assert.match(main, /for \(const m of others\) if \(m\.look && !holdsHarness\(m\.partition\)\) for \(const e of m\.look\.ended\) void fleet\.markUnread\(m\.id, e\.chain\);/);
@@ -1017,7 +1027,7 @@ describe("every machine, watched", () => {
     assert.match(main, /recent: had\?\.recent \?\? \[\], flags: had\?\.flags \?\? \[\] \};/, "its desk flags: none until a look read them");
     assert.match(main, /const said = JSON\.stringify\(d\);\n\s+if \(said === deskSaid\) return;/, "told only what moved");
     // Before the tick's notification, which may end the tick early.
-    const tickAt = main.indexOf("async function watchLook()");
+    const tickAt = main.indexOf("async function watchLook({ only = null } = {})");
     assert.ok(tickAt > 0 && main.indexOf("tellDesk();", tickAt) < main.indexOf("const tick = tickNote(", tickAt), "told every tick, a note or none");
   });
 

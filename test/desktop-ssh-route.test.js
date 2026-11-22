@@ -531,7 +531,7 @@ test("the app holds the tunnels: the rail's pick, the tray's watch and the Add s
   assert.match(main, /createRail\(\{[\s\S]*?pick: pickHeld,\s+check: \(input\) => checkMachine\(input, \{ ssh: tunnels \}\),[\s\S]*?\}\);/);
   assert.match(main, /createFleet\(\{\s+machines: \(\) => readKept\(machinesFile\),\s+pick: pickHeld,/);
   // A disconnected machine's tunnel let go too (the owner's of 11-08).
-  assert.match(main, /async function watchLook\(\) \{[\s\S]{0,300}const kept = readKept\(machinesFile\);\n\s+tunnels\.only\(kept\.filter\(\(m\) => !m\.off\)\.flatMap\(\(m\) => m\.routes\.filter\(\(r\) => r\.kind === "ssh"\)\.map\(\(r\) => String\(r\.url\)\)\)\);/);
+  assert.match(main, /async function watchLook\(\{ only = null \} = \{\}\) \{[\s\S]{0,300}const kept = readKept\(machinesFile\);\n\s+tunnels\.only\(kept\.filter\(\(m\) => !m\.off\)\.flatMap\(\(m\) => m\.routes\.filter\(\(r\) => r\.kind === "ssh"\)\.map\(\(r\) => String\(r\.url\)\)\)\);/);
   assert.match(main, /quitting = true;\s+tunnels\.close\(\);/);
   assert.match(main, /app\.on\("will-quit", \(\) => tunnels\.close\(\)\);/);
 });
