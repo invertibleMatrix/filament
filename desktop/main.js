@@ -1236,7 +1236,7 @@ async function run() {
   /** Filament's logo, as each notification wears it. */
   const logo = nativeImage.createFromPath(join(ROOT, "src", "ui", "filament-icon.png"));
   /**
-   * @param {import("./lib/notes.js").Note | null} note @param {string | null} [route]  the chat it names, on this computer
+   * @param {import("./lib/notes.js").Note | null} note @param {string | null} [route]  the chat it names, on its machine
    * @param {string | null} [machine]  whose it is: this computer's, another machine's (shown in the window), null for several
    */
   function say(note, route = null, machine = LOCAL_ID) {
@@ -1254,15 +1254,19 @@ async function run() {
     }
   }
   /**
-   * A notification pressed: this computer's chat it names, or its card; another machine's, that machine shown in the window;
-   * several machines', the harness window. @param {string | null} route @param {string | null} machine
+   * A notification pressed: this computer's chat it names, or its card; another machine's, that machine shown in the window
+   * at the chat it names; several machines', the harness window. @param {string | null} route @param {string | null} machine
    */
-  const openSaid = (route, machine) => (machine === null ? void openWindow("harness") : machine !== LOCAL_ID ? showMachine(machine) : route ? void openWindow("harness", route) : openCard());
+  const openSaid = (route, machine) => (machine === null ? void openWindow("harness") : machine !== LOCAL_ID ? showMachine(machine, route) : route ? void openWindow("harness", route) : openCard());
   tray.on("balloon-click", () => openSaid(saidOf.route, saidOf.machine));
-  /** A machine shown in the harness window — its row in the tray, a notification of its —, the window opened first. @param {string} id */
-  const showMachine = (id) => {
+  /**
+   * A machine shown in the harness window — its row in the tray, a notification of its —, the window opened first; at
+   * `route`, the chat a notification names, where its page opens there (rail.js `openOn`), else as it shows.
+   * @param {string} id @param {string | null} [route]
+   */
+  const showMachine = (id, route = null) => {
     openWindow("harness");
-    rail?.select(id);
+    if (!route || !rail?.openOn(id, route)) rail?.select(id);
   };
 
   // ---- start at logon ------------------------------------------------------------------------------------------------
@@ -1440,8 +1444,9 @@ async function run() {
         showing,
       );
       if (!tick) return;
-      // A press opens the chat it names, or what came to Your Space (S5b) — this computer's —, or the machine it is of.
-      const route = tick.machine !== LOCAL_ID ? null : tick.chat?.chain ? chatRoute({ chain: tick.chat.chain, thread: tick.chat.thread }) : tick.home ? "#/your-space" : null;
+      // A press opens the chat it names, or what came to Your Space (S5b), on the machine it is of — another's in its page
+      // in the window —; a note of several machines', the window.
+      const route = tick.chat?.chain ? chatRoute({ chain: tick.chat.chain, thread: tick.chat.thread }) : tick.home ? "#/your-space" : null;
       say(tick.note, route, tick.machine);
     } finally {
       watching = false;

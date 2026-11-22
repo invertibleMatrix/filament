@@ -14,6 +14,7 @@ import { LOOK_EVERY_MS, MAC_LEFT, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 import { PEER_BYTES, PEER_MS, PEERS_MAX, cappedJson, tailnetFilaments } from "../desktop/lib/tailnet-peers.js";
+import { chatRoute } from "../desktop/lib/watch.js";
 
 const ORIGIN = "http://127.0.0.1:20300";
 const T0 = Date.UTC(2026, 10, 6, 12, 0);
@@ -469,6 +470,12 @@ describe("the rail, run", () => {
     assert.equal(t.r.openOn("m-box", "#/new/%2FUsers%2Fkai%2Fnotes"), true);
     await t.settle();
     assert.deepEqual(v.webContents.loads.at(-1), "https://box.tail1234.ts.net/ui/harness.html#/new/%2FUsers%2Fkai%2Fnotes", "its page moved to it");
+    assert.equal(t.r.active(), "m-box");
+    // A notification's chat there (main.js `showMachine`), its thread's too, whatever its id holds.
+    t.r.select(LOCAL_ID);
+    assert.equal(t.r.openOn("m-box", chatRoute({ chain: "chat 7/#x", thread: "s2" })), true);
+    await t.settle();
+    assert.equal(v.webContents.loads.at(-1), "https://box.tail1234.ts.net/ui/harness.html#/task/chat%207%2F%23x/side", "its chat opened in its page");
     assert.equal(t.r.active(), "m-box");
     const n = v.webContents.loads.length;
     for (const bad of ["javascript:alert(1)", "https://elsewhere.example/#/", "#/new/a b", "", "#/x#/y"]) assert.equal(t.r.openOn("m-box", bad), false, bad);

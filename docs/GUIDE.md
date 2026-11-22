@@ -1676,7 +1676,8 @@ yes for a command, a question, a plan — never the question's own words), when 
 turn that ran two minutes or more, or a lead's, finishes; how many rows a project's dashboards brought to Home
 ("3 new need you — app 2, api 1", never a row's words; a click opens Home); and an alert of Filament's (a
 failover once in 15 minutes, memory's not at all), a Restart and Filament's return. Of the chats and Home it says
-nothing while you work in the harness's window; a click on one opens the chat it names. A turn that ended while no harness window was open is marked unread there. In the app's
+nothing while you work in the harness's window; a click on one opens the chat it names, another machine's in that
+machine's page in the window. A turn that ended while no harness window was open is marked unread there. In the app's
 window the harness's own notifications stand down, so nothing is told twice: there **Settings › General** holds the
 app's own **Notifications** switch, the same choice as **Notifications** in the tray menu.
 

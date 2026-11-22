@@ -842,10 +842,18 @@ describe("every machine, watched", () => {
     const failed = /** @type {any} */ (tickNote([{ machine: "local", needs: [], ended: [{ title: "A", chain: "a", failed: true, ms: 1 }, { title: "B", chain: "b", failed: false, ms: LONG_MS }], space: [{ project: "app", count: 1 }] }], null));
     assert.equal(failed.note.title, "2 chats ended, 1 on an error, 1 new in Home");
     assert.ok(tickNote([{ machine: "local", needs: Array.from({ length: 40 }, (_, i) => row(`Chat ${"x".repeat(60)} ${i}`, `c${i}`)), ended: [{ title: "y".repeat(90), chain: "e", failed: true, ms: 1 }], space: [] }], null)?.note.text.length === 240, "long words are cut");
-    // main.js: each machine's part, the one showing left out, and a press that opens its machine (pinned in the source).
+    // (fails before: yes — the remote desk of 11-22: a press on another machine's chat showed its machine, not the chat)
+    // Another machine's one chat: the note says which, its chain and its thread with it, as this computer's does.
+    const there = /** @type {any} */ (tickNote([{ ...studio, needs: [{ ...studio.needs[0], thread: "s2" }], ended: [], space: [] }], null));
+    assert.deepEqual([there.machine, there.chat?.chain, there.chat?.thread, there.home], ["m-box", "c7", "s2", false]);
+    assert.equal(tickNote([{ ...studio, needs: [], ended: [] }], null)?.home, true, "its Home's alone: a press opens its Home");
+    // main.js: each machine's part, the one showing left out, and a press that opens the chat it names on its machine —
+    // another's at that chat in its page in the window (rail.js `openOn`), else that machine shown (pinned in the source).
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     assert.match(main, /\.\.\.others\.flatMap\(\(m\) => \(m\.look \? \[\{ machine: m\.id, name: m\.name, needs: m\.look\.needsNew, ended: m\.look\.ended\.filter\(\(e\) => e\.told\), space: m\.look\.spaceNew \}\] : \[\]\)\),\n\s+\],\n\s+showing,/);
-    assert.match(main, /const openSaid = \(route, machine\) => \(machine === null \? void openWindow\("harness"\) : machine !== LOCAL_ID \? showMachine\(machine\) : route \? void openWindow\("harness", route\) : openCard\(\)\);/);
+    assert.match(main, /const route = tick\.chat\?\.chain \? chatRoute\(\{ chain: tick\.chat\.chain, thread: tick\.chat\.thread \}\) : tick\.home \? "#\/your-space" : null;/, "every machine's chat, not this computer's alone");
+    assert.match(main, /const openSaid = \(route, machine\) => \(machine === null \? void openWindow\("harness"\) : machine !== LOCAL_ID \? showMachine\(machine, route\) : route \? void openWindow\("harness", route\) : openCard\(\)\);/);
+    assert.match(main, /const showMachine = \(id, route = null\) => \{\n\s+openWindow\("harness"\);\n\s+if \(!route \|\| !rail\?\.openOn\(id, route\)\) rail\?\.select\(id\);\n\s+\};/);
     assert.match(main, /tray\.on\("balloon-click", \(\) => openSaid\(saidOf\.route, saidOf\.machine\)\);/);
   });
 
@@ -899,7 +907,7 @@ describe("every machine, watched", () => {
     // main.js: a machine's row shows it in the harness window.
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     assert.match(main, /if \(id\.startsWith\("machine:"\)\) return void showMachine\(id\.slice\("machine:"\.length\)\);/);
-    assert.match(main, /const showMachine = \(id\) => \{\n\s+openWindow\("harness"\);\n\s+rail\?\.select\(id\);\n\s+\};/);
+    assert.match(main, /const showMachine = \(id, route = null\) => \{\n\s+openWindow\("harness"\);\n\s+if \(!route \|\| !rail\?\.openOn\(id, route\)\) rail\?\.select\(id\);\n\s+\};/);
   });
 
   // (fails before: yes — the owner's of 11-08: the counts were a stylesheet put into the rail's page)
