@@ -35,6 +35,7 @@ export function codexProfile(version) {
       subagents: CODEX_SCHEMA.items.includes("collabAgentToolCall"),
     },
     steering: has("turn/steer"),
+    promptSteers: false,
     cancelKeepsWork: false,
     cachedInInput: false,
     promptQueueing: false,

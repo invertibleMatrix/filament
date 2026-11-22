@@ -182,6 +182,27 @@ describe("a plain agent's calls (AC2-3)", () => {
     assert.deepEqual([call.name, call.input], ["mcp__github__list_issues", { state: "open" }]);
   });
 
+  // (fails before: yes — read live on agy 1.5.14: its call to an MCP server's tool, named `mcp_<server>_<tool>` with
+  // no `_meta.mcp`, read as its title on the generic card, agy's toolSummary in its input, Filament's own not routed)
+  test("agy 1.5's call to an MCP server's tool is the loop's MCP call: named, its arguments its input, Filament's own routed", async () => {
+    const t = make({ root: ROOT });
+    /** @type {{ tools: any[] }} */
+    const out = { tools: [] };
+    const conv = { opened: { mcpServers: [{ type: "http", name: "filament", url: "http://127.0.0.1:1/mcp", headers: [] }, { type: "stdio", name: "my_docs", command: "docs" }] } };
+    const read = createUpdateReader({ out, conv, turn: { bridgePlan: () => null }, onEvent: (/** @type {any} */ e) => t.run.take(e), notes: [] });
+    read({ sessionUpdate: "tool_call", toolCallId: "a1", name: "mcp_my_docs_search", args: { q: "tabs", toolSummary: "Search the docs" }, status: "in_progress", kind: "other", title: "Run mcp_my_docs_search", rawInput: { q: "tabs", toolSummary: "Search the docs" } });
+    read({ sessionUpdate: "tool_call_update", toolCallId: "a1", status: "completed", kind: "other", title: "Run mcp_my_docs_search", content: said("2 pages") });
+    read({ sessionUpdate: "tool_call", toolCallId: "a2", name: "mcp_filament_tasks", args: { toolSummary: "Read the task graph" }, status: "in_progress", kind: "other", title: "Run mcp_filament_tasks", rawInput: { toolSummary: "Read the task graph" } });
+    assert.deepEqual(t.of("tool-start").map((e) => [e.id, e.name, e.args]), [
+      ["a1", "mcp__my_docs__search", '{"q":"tabs"}'],
+      ["a2", "tasks", ""],
+    ]);
+    assert.deepEqual(out.tools.map((r) => [r.id, !!r.routed]), [["a1", false], ["a2", true]]);
+    await t.run.close({ status: "done" });
+    const [call] = t.run.archive().work[0].content.filter((/** @type {any} */ b) => b.type === "tool_use");
+    assert.deepEqual([call.name, call.input], ["mcp__my_docs__search", { q: "tabs" }]);
+  });
+
   // (fails before: yes — an agent's MCP call carried its name as its arguments: its card showed no parameters, and
   // the name under Parameters)
   test("an MCP call's card carries its input as the loop's does: its JSON, never its name", () => {

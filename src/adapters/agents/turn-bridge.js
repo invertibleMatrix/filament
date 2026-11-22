@@ -523,15 +523,17 @@ const TITLE_KEPT = 200;
  * @param {string} [platform]  where the agent runs its commands: this machine's
  * @param {{ has: (tool: string) => boolean } | null} [own]  the tools Filament's own server listed at the session's
  *   address (acp/bridge.js `ownListed`); none where it listed nothing
+ * @param {readonly string[]} [servers]  the MCP servers the session was opened with (acp/updates.js `serverNames`),
+ *   which agy 1.5 runs together with a tool's name
  * @returns {LoopCall[] | "plan" | "hand"}
  */
-export function loopCalls(tc, agent, platform = process.platform, own = null) {
+export function loopCalls(tc, agent, platform = process.platform, own = null, servers = []) {
   const kind = String(tc?.kind || "").toLowerCase();
   const raw = tc?.rawInput && typeof tc.rawInput === "object" ? tc.rawInput : {};
   const tool = String([tc?.name, tc?._meta?.claudeCode?.toolName, tc?._meta?.qoder?.toolName, raw._toolName].find((n) => typeof n === "string" && n) || "");
   const title = String(tc?.title || "").trim();
   if (kind === "switch_mode") return "plan";
-  const mcp = mcpCallOf(tc, tool);
+  const mcp = mcpCallOf(tc, tool, servers);
   if (mcp?.server === "filament" && own?.has(mcp.tool)) return "hand";
   if (mcp) return [{ name: `mcp__${mcp.server}__${mcp.tool}`, input: mcp.input && typeof mcp.input === "object" ? mcp.input : {}, ...(kind === "read" ? { reads: true } : {}) }];
   if (tool === "SandboxNetworkAccess") return [{ name: "web_fetch", input: { url: `https://${String(raw.host ?? title)}` } }];

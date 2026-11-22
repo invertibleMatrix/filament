@@ -16,6 +16,7 @@ import { versionFrom } from "../../../core/util.js";
  *   sessions: { load: boolean, list: boolean, resume: boolean, fork: boolean, close: boolean, delete: boolean,
  *     additionalDirectories: boolean, subagents: boolean },
  *   steering: boolean,
+ *   promptSteers: boolean,
  *   cancelKeepsWork: boolean,
  *   cachedInInput: boolean,
  *   promptQueueing: boolean,
@@ -113,10 +114,12 @@ function ownWay(m) {
  * comes from what a drive saw (`confirmed`, the catalogue's `confirmedOf`): that a turn it cancels keeps what it did (AC3's drive C6), and the
  * version of Claude's adapter from which its Claude Code takes how it shows its thinking (`thinkingDisplay`, AC-R2) —
  * an earlier one's may not know it —, and that the input it reports for a prompt holds what it read from its cache
- * (`cachedInInput`: updates.js `readUsage` takes it out). `compactWindow`: its sessions take the chat's compaction line as Claude Code's
+ * (`cachedInInput`: updates.js `readUsage` takes it out), and the version from which a prompt sent while its turn runs
+ * takes the turn over, the running prompt answered at once and its work going on under the new one (`promptSteers`,
+ * read live on agy 1.5.14). `compactWindow`: its sessions take the chat's compaction line as Claude Code's
  * auto-compact window (`COMPACT_WINDOW_FROM`); `sessionEnv`: its sessions take variables of their own (`SESSION_ENV_FROM`).
  * @param {any} init
- * @param {{ cancelKeepsWork?: boolean, thinkingDisplayFrom?: string | null, cachedInInput?: boolean }} [confirmed]
+ * @param {{ cancelKeepsWork?: boolean, thinkingDisplayFrom?: string | null, cachedInInput?: boolean, promptSteersFrom?: string | null }} [confirmed]
  * @returns {AgentProfile}
  */
 /**
@@ -172,6 +175,7 @@ export function readProfile(init, confirmed = {}) {
       subagents: present(sc.subagents),
     },
     steering: init?._meta?.steering?.supported === true,
+    promptSteers: versionFrom(info?.version, confirmed.promptSteersFrom),
     cancelKeepsWork: confirmed.cancelKeepsWork === true,
     cachedInInput: confirmed.cachedInInput === true,
     promptQueueing: caps._meta?.claudeCode?.promptQueueing === true || caps._meta?.qoder?.promptQueueing === true,

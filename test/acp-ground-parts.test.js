@@ -47,6 +47,7 @@ describe("an agent's profile (AC0-1)", () => {
       mcp: { http: true, sse: true, declared: true },
       sessions: { load: true, list: true, resume: true, fork: true, close: true, delete: true, additionalDirectories: true, subagents: true },
       steering: true,
+      promptSteers: false,
       cancelKeepsWork: false,
       cachedInInput: false,
       promptQueueing: true,
@@ -213,6 +214,20 @@ describe("an agent's profile (AC0-1)", () => {
     assert.match(String(at?.means), /^It takes a message at its next step: once its current call is done, Filament stops the turn there/);
     const both = supportsRows(readProfile(CLAUDE_INIT, { cancelKeepsWork: true })).find((r) => r.key === "steering");
     assert.match(String(both?.means), /goes into its running turn/, "live steering first, where the agent declares it");
+  });
+
+  // (fails before: yes — read live on agy 1.5.14: a prompt sent while its turn runs takes the turn over, which nothing
+  // said, so what was typed while it worked waited for the turn's end)
+  test("Antigravity's agy takes a prompt sent while its turn runs, from 1.5.0, as a drive saw: its card says it takes a message mid-turn", () => {
+    const agy = { id: "antigravity-acp", acp: { command: "agy" } };
+    const init = (/** @type {string} */ version) => ({ agentInfo: { name: "Antigravity ACP Server", version }, agentCapabilities: { _meta: { antigravity: { tier: true, systemPrompt: { append: true } } } } });
+    assert.equal(confirmedOf(agy).promptSteersFrom, "1.5.0");
+    assert.equal(confirmedOf({ acp: { command: "agy_acp_server" } }).promptSteersFrom, null, "the older server it ran until its card's Update: never seen taking a turn over");
+    assert.deepEqual(["1.5.14", "1.5.0", "1.4.5", ""].map((v) => readProfile(init(v), confirmedOf(agy)).promptSteers), [true, true, false, false]);
+    assert.equal(readProfile(init("1.5.14")).promptSteers, false, "nothing seen of it: not taken");
+    assert.equal(readProfile(init("1.5.14"), confirmedOf({ acp: { command: "gemini" } })).promptSteers, false);
+    const at = supportsRows(readProfile(init("1.5.14"), confirmedOf(agy))).find((r) => r.key === "steering");
+    assert.deepEqual([at?.has, at?.means], [true, "It takes a message in the middle of a turn: what is typed while it works goes into its running turn."]);
   });
 
   test("Claude Code is asked to show its thinking, summarized, from the adapter version seen taking the option (AC-R2)", () => {

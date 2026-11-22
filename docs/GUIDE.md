@@ -908,7 +908,9 @@ Google releases arrives with the release that lists it: Update on its card, then
 says on its card to update: below that version it showed Filament only some of your plan's models. Moving from the
 older server, Antigravity asks you to sign in once more. An account of its own is a folder of its own (`--gemini-dir`),
 which keeps its Google sign-in in that folder; such an account signs in with Google in a terminal, where agy shows
-Google's page's address and takes the code it gives, or with a Gemini API key or Agent Platform. Its modes are Default, where it asks, Auto Edit and YOLO. Filament's context reaches
+Google's page's address and takes the code it gives, or with a Gemini API key or Agent Platform. Its modes are Default, where it asks, Accept edits, Plan and, where your
+account offers it, Auto. Filament's own tools reach it over HTTP, and what you type while it works goes in at once
+(Steering, under A coding agent in the harness). Filament's context reaches
 it through its own system prompt channel. On Windows it runs its commands in Windows PowerShell, and Filament judges
 them as PowerShell, in the folder it names. A Gemini CLI connection
 you turned on keeps running as it is set up; its card says Google retired it, and what turning it off does. One that is
@@ -5077,7 +5079,10 @@ What differs is how an agent takes your words while it works, and what it does n
   - Claude Code queues it, as it queues what you type while it works: it goes in at the agent's next step. Nothing
     is interrupted.
   - Codex takes it into its running turn.
-  - For both, Filament holds the message until the agent's next tool call starts, and its bubble has **Edit** and
+  - Antigravity (agy 1.5 and later) takes it as a prompt of its own, which takes its running turn over: the turn goes
+    on with your message and ends when agy answers it. While agy waits on a question it asked, your message waits for
+    your answer, as agy refuses one sent then.
+  - For all three, Filament holds the message until the agent's next tool call starts, and its bubble has **Edit** and
     **Delete** until then. A turn that ends before that call sends it as your next message.
   - An agent whose reply has ended while its turn waits for Filament's sub-agents makes no tool call until one
     reports: your message wakes it at once instead, as its next prompt in the same turn, and the report wakes it
@@ -5088,7 +5093,7 @@ What differs is how an agent takes your words while it works, and what it does n
     report, say) go the same way, said as Filament's, never as yours.
   - An agent that takes none while it works (Qoder) keeps it in the queue, and it goes out when the turn ends.
 
-  Pictures go in with the words to Claude Code and Codex. While a message waits, its bubble says how the agent has
+  Pictures go in with the words to Claude Code, Codex and Antigravity. While a message waits, its bubble says how the agent has
   it: waiting for its next tool call, queued at the agent, taken, read. Where the agent
   can be interrupted, the chevron beside Send has **Interrupt and send**: the message goes into the running turn at
   once, and what the agent was doing is cut short. Enter never does that. A message that starts with `/` may be

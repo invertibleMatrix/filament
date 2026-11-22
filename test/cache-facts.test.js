@@ -124,6 +124,22 @@ describe("what each engine's usage carries, read where it is read", () => {
     assert.equal(spent([{ usage: { inputTokens: 10, outputTokens: 46, cachedReadTokens: 100, cachedWriteTokens: 2000 } }])?.input, 10);
   });
 
+  // (fails before: yes — read live on agy 1.5.14: its input is beside its cached reads, and its total says so; read as
+  // the older server counted, 2,275 input with 7,482 cached went as none)
+  test("Antigravity as agy 1.5 sends it: a total that adds the cache beside the input says so, whatever its card; one that adds it within says that", () => {
+    const agy = KNOWN_AGENTS.find((a) => a.id === "antigravity-acp");
+    const profile = readProfile({ protocolVersion: 1, agentCapabilities: {} }, confirmedOf({ type: "acp", acp: { command: agy?.command } }));
+    const live = { stopReason: "end_turn", usage: { inputTokens: 2275, outputTokens: 261, cachedReadTokens: 7482, cachedWriteTokens: 0, thoughtTokens: 206, totalTokens: 10018 } };
+    assert.deepEqual([readUsage(live, profile)?.input, readUsage(live, profile)?.cacheRead, readUsage(live, profile)?.total], [2275, 7482, 10018]);
+    assert.equal(Math.round(/** @type {number} */ (hitOf(spent([live], profile))) * 100), 77, "7,482 of 9,757");
+    // A total that holds the cache within the input, as the older server's would: taken out, card or not.
+    const within = { usage: { inputTokens: 35769, outputTokens: 21, cachedReadTokens: 33184, totalTokens: 35790 } };
+    assert.equal(readUsage(within)?.input, 2585);
+    // A total that adds up neither way leaves it to the card.
+    const odd = { usage: { inputTokens: 1000, outputTokens: 10, cachedReadTokens: 500, totalTokens: 5 } };
+    assert.deepEqual([readUsage(odd, profile)?.input, readUsage(odd)?.input], [500, 1000]);
+  });
+
   test("Codex: its token counts carry what it read from the cache; a report without the field says none", () => {
     const reading = () => {
       /** @type {any[]} */

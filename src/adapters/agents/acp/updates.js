@@ -45,16 +45,41 @@ const wordsAsInput = (content) => {
 };
 
 /**
+ * The server and tool an agy 1.5 call to an MCP server's tool names, run together as `<server>_<tool>`: the longest of
+ * the session's servers it begins with, each as agy may write its name (anything but letters, digits, `_` and `-` as
+ * `_`), else up to its first `_`. Null where it names no tool.
+ * @param {string} joined @param {readonly string[]} servers
+ * @returns {{ server: string, tool: string } | null}
+ */
+function agyServerOf(joined, servers) {
+  /** @type {{ server: string, at: number } | null} */
+  let best = null;
+  for (const s of servers)
+    for (const as of new Set([s, s.replace(/[^A-Za-z0-9_-]/g, "_"), s.replace(/[^A-Za-z0-9_]/g, "_")]))
+      if (as && joined.length > as.length + 1 && joined.startsWith(`${as}_`) && (!best || as.length > best.at)) best = { server: s, at: as.length };
+  if (best) return { server: best.server, tool: joined.slice(best.at + 1) };
+  const i = joined.indexOf("_");
+  return i > 0 && i < joined.length - 1 ? { server: joined.slice(0, i), tool: joined.slice(i + 1) } : null;
+}
+
+/** The MCP servers a session was opened with, by name, Filament's own among them where it was. @param {any} conv @returns {string[]} */
+export const serverNames = (conv) => (Array.isArray(conv?.opened?.mcpServers) ? conv.opened.mcpServers.map((/** @type {any} */ s) => String(s?.name || "")).filter(Boolean) : []);
+
+/**
  * A call to an MCP server's tool, as each agent says one (HarnessV3-ACP, AC4's drive D2): Cursor by its input for it;
  * Claude by the tool's own name, `mcp__<server>__<tool>`; Antigravity by its `_meta.mcp` (read in 1.4.5, signed in: its
  * title runs server and tool together with `_`, and its input holds the arguments under `arguments` and again beside
- * them); Gemini CLI by the call's title, Cursor's question before the tool runs by its own — a title names one only on
+ * them), and from 1.5 by its name alone (read live on 1.5.14: `mcp_<server>_<tool>`, titled "Run mcp_<server>_<tool>",
+ * of no kind of its own, its input the arguments with agy's own `toolSummary` beside them, which the server never
+ * gets; an update of the call that carries no name, by that title); Gemini CLI by the call's title, Cursor's question before the tool runs by its own — a title names one only on
  * a call of no kind of its own. Its input is its arguments, as this update or question says them; null for any other call.
  * @param {any} tc  an ACP tool call, an update of one, or the call a permission's question is for
  * @param {string} name  the tool's own name, where the agent says it
+ * @param {readonly string[]} [servers]  the MCP servers the session was opened with (`serverNames`), which agy's name
+ *   runs together with the tool's; Filament's own where none is said
  * @returns {{ server: string, tool: string, input: any } | null}
  */
-export function mcpCallOf(tc, name) {
+export function mcpCallOf(tc, name, servers = []) {
   const raw = tc?.rawInput;
   if (raw && typeof raw === "object" && typeof raw.providerIdentifier === "string" && typeof raw.toolName === "string" && Object.keys(raw).every((k) => CURSOR_MCP_INPUT.has(k)))
     return { server: raw.providerIdentifier, tool: raw.toolName, input: raw.args };
@@ -63,7 +88,12 @@ export function mcpCallOf(tc, name) {
   const agy = tc?._meta?.is_mcp_tool_call === true ? tc._meta.mcp : null;
   if (agy && typeof agy.server === "string" && agy.server && typeof agy.tool === "string" && agy.tool)
     return { server: agy.server, tool: agy.tool, input: raw && typeof raw === "object" && raw.arguments && typeof raw.arguments === "object" ? raw.arguments : raw };
-  if (name || (tc?.kind && String(tc.kind).toLowerCase() !== "other")) return null;
+  const ofKind = !tc?.kind || String(tc.kind).toLowerCase() === "other";
+  // Its title alone only on an update of the call: a question names the call, and no other agent's is taken for one.
+  const joined = typeof tc?.name === "string" ? /^mcp_(.+)$/.exec(tc.name)?.[1] : tc?.sessionUpdate === "tool_call_update" ? /^Run mcp_(.+)$/.exec(String(tc?.title || "").trim())?.[1] : undefined;
+  const at = ofKind && joined ? agyServerOf(joined, servers.length ? servers : ["filament"]) : null;
+  if (at) return { ...at, input: raw && typeof raw === "object" && "toolSummary" in raw ? Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "toolSummary")) : raw };
+  if (name || !ofKind) return null;
   const title = String(tc?.title || "");
   const gemini = GEMINI_MCP_TITLE.exec(title);
   // Gemini's words on an update of the call are its result.
@@ -540,7 +570,7 @@ export function createUpdateReader({ out, conv, turn, onEvent, notes, keepRaw = 
       if (said) toolNames.set(u.toolCallId, said);
       // A call to an MCP server's tool, however the agent says it, is named as Claude names one, its arguments its
       // input; one to Filament's own server is routed, as Claude's is.
-      const mcp = mcpCallOf(u, said);
+      const mcp = mcpCallOf(u, said, serverNames(conv));
       if (mcp) toolNames.set(u.toolCallId, `mcp__${mcp.server}__${mcp.tool}`);
       if (mcp?.server === "filament") rec.routed = true;
       const input = mcp ? mcp.input : u.rawInput;
@@ -977,7 +1007,9 @@ function unlistedOf(message, model) {
 // (Claude's adapter, Qoder), else the total on the prompt result's `_meta.quota` (Gemini CLI's, in snake_case). A
 // usage that carried a cache count is marked (`cacheSeen`, core/cache-facts.js): ACP's are optional, and `_meta.quota`
 // has none. `cachedInInput`: the agent's `inputTokens` is its whole prompt, what it read from its cache among them
-// (its card, as a drive saw: `readProfile`), so the input beside the cache is what is left of it.
+// (its card, as a drive saw: `readProfile`), so the input beside the cache is what is left of it. A total that adds up
+// says which it is, whatever the card: Antigravity's older server counted its cache within its input, agy 1.5 counts it
+// beside (read live on 1.5.14: 2,275 input, 7,482 read from its cache, 261 output, 10,018 in all).
 /** @param {any} res @param {{ cachedInInput?: boolean } | null} [how] */
 export function readUsage(res, how = null) {
   const ru = res?.usage;
@@ -987,8 +1019,11 @@ export function readUsage(res, how = null) {
     (typeof ru.inputTokens === "number" || typeof ru.outputTokens === "number")
   ) {
     const cacheRead = ru.cachedReadTokens || ru.cachedInputTokens || 0;
+    const [input, output, write] = [ru.inputTokens || 0, ru.outputTokens || 0, ru.cachedWriteTokens || 0];
+    const total = typeof ru.totalTokens === "number" && cacheRead > 0 ? ru.totalTokens : null;
+    const within = total == null ? null : total === input + output || total === input + output + write ? true : total === input + output + cacheRead || total === input + output + cacheRead + write ? false : null;
     return {
-      input: how?.cachedInInput ? Math.max(0, (ru.inputTokens || 0) - cacheRead) : ru.inputTokens || 0,
+      input: (within ?? how?.cachedInInput) ? Math.max(0, input - cacheRead) : input,
       output: ru.outputTokens || 0,
       cacheRead,
       cacheWrite: ru.cachedWriteTokens || 0,

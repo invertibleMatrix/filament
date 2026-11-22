@@ -5,7 +5,9 @@
 // (`turn/steer`, fixtures/fake-codex-app-server.mjs) — read on the run once the agent took it, and kept in the turn's
 // archive where it did. Words a turn that has just ended hands back go as the next message: the run's end says them
 // unread. Cursor's CLI, which keeps a turn it cancels, takes them at its next step
-// (AC-D6): the fake, through a program named as Cursor's. An agent that takes none mid-turn says so on its run.
+// (AC-D6): the fake, through a program named as Cursor's. Antigravity's agy, whose turn a prompt sent while it works
+// takes over, takes them as a prompt of their own, never while it waits on its question: the fake, through a program
+// named agy. An agent that takes none mid-turn says so on its run.
 import { test, describe, before, after } from "node:test";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
@@ -39,25 +41,28 @@ describe("a coding agent's turn takes what is typed while it works (HarnessV3-AC
   let shim;
   const root = mkdtempSync(join(tmpdir(), "filament-acp-steer-"));
   const projDir = join(root, "project");
-  const logs = { steers: join(root, "steers-calls.jsonl"), steerPrompts: join(root, "steers-prompts.jsonl"), codex: join(root, "codex-calls.jsonl"), cursor: join(root, "cursor-prompts.jsonl") };
+  /** The file a `~askslow` turn of agy's waits for before it announces its command. */
+  const agyAskGate = join(root, "agy-ask-gate");
+  const logs = { steers: join(root, "steers-calls.jsonl"), steerPrompts: join(root, "steers-prompts.jsonl"), codex: join(root, "codex-calls.jsonl"), cursor: join(root, "cursor-prompts.jsonl"), agy: join(root, "agy-calls.jsonl") };
   /** The file a `~steps` turn's first step waits for: until it is written, the step runs. */
   const stepGate = join(root, "step-gate");
   /**
-   * Cursor's CLI as the catalogue knows it, by its program's name (`cursor-agent`): the fake beside a shim of npm's
+   * An agent as the catalogue knows it, by its program's name (`cursor-agent`, `agy`): the fake beside a shim of npm's
    * kind on Windows, whose script Filament runs with its own Node; elsewhere a script.
+   * @param {string} name
    */
-  const cursorProgram = () => {
-    const dir = join(root, "cursor");
+  const programNamed = (name) => {
+    const dir = join(root, name);
     mkdirSync(dir);
     if (process.platform === "win32") {
       copyFileSync(FAKE_ACP, join(dir, "fake-acp-agent.mjs"));
       copyFileSync(join(FIXTURES, "person-words.mjs"), join(dir, "person-words.mjs"));
-      writeFileSync(join(dir, "cursor-agent.cmd"), `@"%~dp0\\node.exe" "%dp0%\\fake-acp-agent.mjs" %*\r\n`);
-      return join(dir, "cursor-agent.cmd");
+      writeFileSync(join(dir, `${name}.cmd`), `@"%~dp0\\node.exe" "%dp0%\\fake-acp-agent.mjs" %*\r\n`);
+      return join(dir, `${name}.cmd`);
     }
-    writeFileSync(join(dir, "cursor-agent"), `#!/bin/sh\nexec "${process.execPath}" "${FAKE_ACP}" "$@"\n`);
-    chmodSync(join(dir, "cursor-agent"), 0o755);
-    return join(dir, "cursor-agent");
+    writeFileSync(join(dir, name), `#!/bin/sh\nexec "${process.execPath}" "${FAKE_ACP}" "$@"\n`);
+    chmodSync(join(dir, name), 0o755);
+    return join(dir, name);
   };
   /** The file a `slowstop` turn's cancel waits for: until it is written, the turn is stopping. */
   const stopGate = join(root, "stop-gate");
@@ -85,10 +90,11 @@ describe("a coding agent's turn takes what is typed while it works (HarnessV3-AC
           { id: "latecmds", name: "latecmds", type: "acp", acp: acp({ FAKE_ACP_STEERING: "1", FAKE_ACP_CALLS: logs.steers, FAKE_ACP_COMMANDS_GATE: commandsGate }) },
           { id: "nocmds", name: "nocmds", type: "acp", acp: acp({ FAKE_ACP_STEERING: "1", FAKE_ACP_CALLS: logs.steers, FAKE_ACP_COMMANDS_GATE: answersGate, FAKE_ACP_NO_COMMANDS: "1" }) },
           { id: "plainacp", name: "plainacp", type: "acp", acp: { command: process.execPath, args: [FAKE_ACP], env: {}, cwdDefault: projDir, permissions: "allow-all", hints: false } },
-          { id: "cursorcli", name: "Cursor", type: "acp", acp: { command: cursorProgram(), args: [], env: { FAKE_ACP_STEP_GATE: stepGate, FAKE_ACP_LOG: logs.cursor, FAKE_ACP_SLOW_MS: "1500" }, cwdDefault: projDir, permissions: "allow-all", hints: false } },
+          { id: "cursorcli", name: "Cursor", type: "acp", acp: { command: programNamed("cursor-agent"), args: [], env: { FAKE_ACP_STEP_GATE: stepGate, FAKE_ACP_LOG: logs.cursor, FAKE_ACP_SLOW_MS: "1500" }, cwdDefault: projDir, permissions: "allow-all", hints: false } },
+          { id: "agycli", name: "Antigravity", type: "acp", acp: { command: programNamed("agy"), args: [], env: { FAKE_ACP_AGY: "1", FAKE_ACP_AGY_STEER: "1", FAKE_ACP_TICK_DIR: ticks, FAKE_ACP_CALLS: logs.agy, FAKE_ACP_AGY_ASK_GATE: agyAskGate }, cwdDefault: projDir, permissions: "allow-all", hints: false } },
           { id: "codex", name: "Codex", type: "codex", acp: { command: process.execPath, args: [FAKE_CODEX], env: { FAKE_CODEX_CALLS: logs.codex, FAKE_CODEX_TICK_DIR: ticks }, cwdDefault: projDir, permissions: "allow-all" } },
         ];
-        cfg.routes = ["steers", "slowstop", "heldsteer", "latecmds", "nocmds", "plainacp", "cursorcli", "codex"].map((u) => ({ match: `${u}/*`, upstream: u, upstreamModel: "{1}", enabled: true }));
+        cfg.routes = ["steers", "slowstop", "heldsteer", "latecmds", "nocmds", "plainacp", "cursorcli", "agycli", "codex"].map((u) => ({ match: `${u}/*`, upstream: u, upstreamModel: "{1}", enabled: true }));
         cfg.agentLoop = { enabled: true, permissions: "auto", roots: [root], readerModel: "" };
         cfg.memory.engine = { ...(cfg.memory.engine || {}), autoInstall: false };
       },
@@ -628,6 +634,80 @@ describe("a coding agent's turn takes what is typed while it works (HarnessV3-AC
     await note(liveRun, "that's all");
     await tick();
     await liveBody;
+  });
+
+  // (fails before: yes — read live on agy 1.5.14: a prompt sent while its turn runs takes the turn over, but Filament
+  // took agy for an agent that takes no words mid-turn, so what was typed while it worked waited for the turn's end)
+  test("Antigravity: each note goes as a prompt of its own, which takes its running turn over; the turn ends with the last one's answer, every prompt's tokens counted", async () => {
+    const id = await session("agycli/gemini-3.8-flash-high");
+    const res = await turn(id, "~agysteer");
+    const runId = String(res.headers.get("x-filament-request-id"));
+    const body = res.text();
+    await working(runId);
+    assert.equal((await runOf(runId)).meta.steer, "live", "the composer reads it off the run");
+    const first = await note(runId, "use the notes file ~again");
+    await tick();
+    await until(async () => (await runEvents(runId)).some((e) => e.type === "steer-read" && e.ids.includes(first)), "agy to take the first");
+    await until(() => lines(logs.agy).some((c) => c.method === "agy prompt" && c.words === "use the notes file ~again") || null, "the first prompt");
+    const second = await note(runId, "then stop");
+    await tick();
+    assert.equal(wordsOf(parseSse(await body)), "working… heard:use the notes file ~again heard:then stop ");
+    const evs = await runEvents(runId);
+    assert.deepEqual(evs.filter((e) => e.type === "steer-read").flatMap((e) => e.ids), [first, second]);
+    assert.equal(evs.at(-1).status, "done", "the turn waited for the last prompt's answer");
+    assert.deepEqual(lines(logs.agy).filter((c) => c.method.includes("prompt")).map((c) => [c.method, c.words]), [["agy prompt", "use the notes file ~again"], ["agy prompt", "then stop"]], "the words as typed, each a prompt");
+    // The archive keeps the person's words where agy took them.
+    const t = await archived(id);
+    assert.deepEqual(t.work.map(said).filter((/** @type {string} */ w) => w.startsWith("user:") && w !== "user:"), ["user:use the notes file ~again", "user:then stop"]);
+    const rec = await recordOf(runId);
+    assert.ok(rec.changes.includes("acp: a message sent while Antigravity worked went into its running turn"), rec.changes.join("\n"));
+    assert.deepEqual([rec.status, rec.tokens.input, rec.tokens.output], ["ok", 400, 40], "the two prompts it answered at once and the last");
+  });
+
+  // (fails before: yes — agy refuses a prompt sent while its question waits, and its session stalls)
+  test("Antigravity: a note typed while it waits on its question goes once the question is answered, never before", async () => {
+    const id = await session("agycli/gemini-3.8-flash-high", { loop: { permissions: "ask" } });
+    const res = await turn(id, "~agysteer ~ask");
+    const runId = String(res.headers.get("x-filament-request-id"));
+    const body = res.text();
+    await until(async () => (await runEvents(runId)).find((e) => e.type === "ask") || null, "its question");
+    const sent = await note(runId, "and keep the build");
+    await tick();
+    // The note is on its way, and waits for the question's answer.
+    await until(async () => (await runEvents(runId)).some((e) => e.type === "steer-sent" && e.ids.includes(sent)) || null, "the note handed over");
+    await new Promise((r) => setTimeout(r, 300));
+    assert.deepEqual(lines(logs.agy).filter((c) => c.method === "prompt while asking" || (c.method === "agy prompt" && c.words === "and keep the build")), [], "nothing sent while it asks");
+    const r = await shim.api(`/api/runs/${encodeURIComponent(runId)}/answer`, { method: "POST", body: { ask: "q1", outcome: "answered", answers: { permission: { chosen: ["allow"] } } } });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(wordsOf(parseSse(await body)), "working… heard:and keep the build ");
+    const order = lines(logs.agy).filter((c) => ["agy answered", "agy prompt", "prompt while asking"].includes(c.method)).slice(-2).map((c) => [c.method, c.optionId ?? c.words]);
+    assert.deepEqual(order, [["agy answered", "allow"], ["agy prompt", "and keep the build"]]);
+    assert.equal((await runEvents(runId)).at(-1).status, "done");
+  });
+
+  // (fails before: yes — the review of the change: words that go as a call starts could reach agy after it chose to ask
+  // and before its question came; refused, they failed the turn, and were said taken)
+  test("Antigravity: words it refuses, its question having come first, go again once the question is answered; the turn ends well", async () => {
+    rmSync(agyAskGate, { force: true });
+    const id = await session("agycli/gemini-3.8-flash-high", { loop: { permissions: "ask" } });
+    const res = await turn(id, "~agysteer ~askslow");
+    const runId = String(res.headers.get("x-filament-request-id"));
+    const body = res.text();
+    await working(runId);
+    const sent = await note(runId, "and skip the docs");
+    // The words wait for its next call: the command it announces, its question a moment later.
+    writeFileSync(agyAskGate, "");
+    await until(() => lines(logs.agy).some((c) => c.method === "prompt while asking" && c.words === "and skip the docs") || null, "agy to refuse the words");
+    await until(async () => (await runEvents(runId)).find((e) => e.type === "ask") || null, "its question");
+    const r = await shim.api(`/api/runs/${encodeURIComponent(runId)}/answer`, { method: "POST", body: { ask: "q1", outcome: "answered", answers: { permission: { chosen: ["allow"] } } } });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(wordsOf(parseSse(await body)), "working… heard:and skip the docs ");
+    const mine = lines(logs.agy).filter((c) => (c.method.includes("prompt") && c.words === "and skip the docs") || c.method === "agy answered").slice(-3);
+    assert.deepEqual(mine.map((c) => [c.method, c.optionId ?? c.words]), [["prompt while asking", "and skip the docs"], ["agy answered", "allow"], ["agy prompt", "and skip the docs"]]);
+    const evs = await runEvents(runId);
+    assert.ok(evs.some((e) => e.type === "steer-read" && e.ids.includes(sent)), "read once agy took them");
+    assert.equal(evs.at(-1).status, "done");
+    assert.equal((await recordOf(runId)).status, "ok");
   });
 
   test("Codex: each note goes into its running turn, naming it (turn/steer), read once Codex took it, archived where it did", async () => {

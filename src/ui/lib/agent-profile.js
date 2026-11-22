@@ -11,6 +11,7 @@
  *   prompt: { image: boolean, audio: boolean, embeddedContext: boolean },
  *   mcp: { http: boolean },
  *   steering: boolean,
+ *   promptSteers?: boolean,
  *   cancelKeepsWork?: boolean,
  *   promptQueueing: boolean,
  *   rawMessages: boolean,
@@ -50,9 +51,9 @@ const ROWS = [
   [
     "steering",
     "mid-turn messages",
-    (p) => p.steering || !!p.cancelKeepsWork,
+    (p) => p.steering || !!p.promptSteers || !!p.cancelKeepsWork,
     (p) =>
-      p.steering
+      p.steering || p.promptSteers
         ? "It takes a message in the middle of a turn: what is typed while it works goes into its running turn."
         : "It takes a message at its next step: once its current call is done, Filament stops the turn there and it carries on with what you typed, keeping what it did.",
     "It takes messages between turns only: what is typed while it works waits for the turn's end.",

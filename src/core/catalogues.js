@@ -48,6 +48,9 @@
  *   thinking (`--thinking-display`, HarnessV3-ACP AC-R2): that version and later ones are asked to show it, as recent
  *   models leave it out unless asked; an earlier one's Claude Code may not know the option, and would refuse the
  *   session
+ * @property {string} [promptSteersFrom]  the version from which a prompt sent while its turn runs takes the turn over
+ *   (`promptSteers`): its running prompt is answered at once and the work goes on under the new one, which it answers
+ *   once done, as read live on agy 1.5.14
  * @property {boolean} [cachedInInput]  the input tokens it reports for a prompt are the whole prompt, what it read
  *   from its cache among them, as its records showed (the owner's chat of 11-11: a second prompt twenty seconds after
  *   a first of 17,096 said 17,273 input and 15,217 cached): its input beside the cache is what is left of them
@@ -206,7 +209,10 @@ export const KNOWN_AGENTS = [
     folderPages: ["oauth-personal", "oauth-business"],
     ownEnv: { AGY_CLI_DISABLE_AUTO_UPDATE: "1" },
     minVersion: { version: "1.5.1", why: "before 1.5.1 it shows Filament only some of your plan's models, and none Google released since" },
+    // The older server's counting, where an answer's total doesn't say (agy 1.5 counts its cache beside its input, and
+    // its total says so: updates.js `readUsage`).
     cachedInInput: true,
+    promptSteersFrom: "1.5.0",
     account: "Your Google account (or a Gemini API key)",
     guide: {
       context: "Fixed per model, as Antigravity says it.",
@@ -527,14 +533,16 @@ function folderVars(u) {
 /**
  * What drives saw of an upstream's agent beyond what it declares (HarnessV3-ACP AC-D5): whether a turn it cancels
  * keeps what it did (`cancelKeepsWork`, AC3's drive C6), the adapter version from which its Claude Code takes how
- * it shows its thinking (`thinkingDisplayFrom`, AC-R2), and whether the input it reports holds what it read from its
- * cache (`cachedInInput`) — an agent over ACP that the catalogue knows, by its command.
+ * it shows its thinking (`thinkingDisplayFrom`, AC-R2), whether the input it reports holds what it read from its
+ * cache (`cachedInInput`), and the version from which a prompt sent while its turn runs takes the turn over
+ * (`promptSteersFrom`, the program it runs now's: never the one it ran until an update) — an agent over ACP that the
+ * catalogue knows, by its command.
  * @param {{ type?: string, acp?: { command?: string } } | null | undefined} u
- * @returns {{ cancelKeepsWork: boolean, thinkingDisplayFrom: string | null, cachedInInput: boolean }}
+ * @returns {{ cancelKeepsWork: boolean, thinkingDisplayFrom: string | null, cachedInInput: boolean, promptSteersFrom: string | null }}
  */
 export function confirmedOf(u) {
   const known = (u?.type || "acp") === "acp" ? KNOWN_AGENTS.find((a) => a.id === agentKey(u)) : null;
-  return { cancelKeepsWork: known?.cancelKeepsWork === true, thinkingDisplayFrom: known?.thinkingDisplayFrom || null, cachedInInput: known?.cachedInInput === true };
+  return { cancelKeepsWork: known?.cancelKeepsWork === true, thinkingDisplayFrom: known?.thinkingDisplayFrom || null, cachedInInput: known?.cachedInInput === true, promptSteersFrom: (known && currentAgent(u)?.promptSteersFrom) || null };
 }
 /**
  * The variable an upstream's agent reads its folder from (HarnessV3-ACP AC3-7): `CLAUDE_CONFIG_DIR` for Claude Code,

@@ -315,6 +315,19 @@ const signedOutHere = () => (!!process.env.FAKE_ACP_SIGNED_IN && !existsSync(pro
 // opens), its modes, and that model at each level in the classic list. FAKE_ACP_CALLS records each option a session is
 // set to (`session/set_config_option`, with its `configId` and `value`) and its `logout`.
 const agy = !!process.env.FAKE_ACP_AGY;
+// FAKE_ACP_AGY_STEER: agy 1.5 as read live on 1.5.14 (its name and version at its start): in a `~agysteer` turn a prompt
+// sent while it works takes the turn over — the running prompt is answered at once (`end_turn`, what it spent so far)
+// and the work goes on as the new one's, which says the words back (`heard:<words>`) and ends, unless they say
+// `~again`. With `~ask` the turn first asks before a command (`run_command`, as agy asks): a prompt sent while that
+// question waits is refused, as agy refuses one. With `~askslow` it announces the command once FAKE_ACP_AGY_ASK_GATE (a
+// file) is there and asks 150 ms later, refusing a prompt meanwhile too, as one that comes after it chose to ask.
+// FAKE_ACP_CALLS records each such prompt (`agy prompt`, or `prompt while asking`) and the question's answer (`agy
+// answered`).
+const agySteers = !!process.env.FAKE_ACP_AGY_STEER;
+/** What agy 1.5 says a prompt spent: its input beside what it read from its cache, and their total. @param {number} input @param {number} output */
+const agySpent = (input, output) => ({ inputTokens: input, outputTokens: output, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 0, totalTokens: input + output });
+/** One of agy's words. @param {string} sessionId @param {string} words */
+const agySays = (sessionId, words) => notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: words } });
 const AGY_WAYS = [
   { id: "oauth-personal", name: "Log in with Google", description: "Log in with your Google account" },
   { id: "oauth-business", name: "Log in with Gemini Enterprise", description: "Log in with your Gemini Enterprise account" },
@@ -506,7 +519,7 @@ async function handle(m) {
   if (m.id != null && (m.result !== undefined || m.error !== undefined) && !m.method) { const r = pendingPerm.get(m.id); if (r) { pendingPerm.delete(m.id); r(m.error ? { __error: m.error } : m.result); } return; }
   const reply = (result, out) => write({ jsonrpc: "2.0", id: m.id, result }, out);
   if (m.method === "initialize" && process.env.FAKE_ACP_INIT_GATE) while (!existsSync(process.env.FAKE_ACP_INIT_GATE)) await new Promise((r) => setTimeout(r, 20));
-  if (m.method === "initialize") { paramPicker = !!m.params?.clientCapabilities?._meta?.parameterizedModelPicker; clientCaps = m.params?.clientCapabilities || {}; reply({ protocolVersion: 1, agentCapabilities: { loadSession: !process.env.FAKE_ACP_NO_LOAD, promptCapabilities: { image: true, embeddedContext: !!process.env.FAKE_ACP_EMBED }, ...(process.env.FAKE_ACP_MCP_CAPS ? { mcpCapabilities: { http: process.env.FAKE_ACP_MCP_CAPS === "http", sse: false } } : {}), ...(process.env.FAKE_ACP_SESSION_CAPS ? { sessionCapabilities: Object.fromEntries(process.env.FAKE_ACP_SESSION_CAPS.split(",").map((c) => [c, {}])) } : {}), ...(process.env.FAKE_ACP_QODER_QUEUE ? { _meta: { qoder: { promptQueueing: true } } } : {}), ...(process.env.FAKE_ACP_AGY_PROMPT || agy ? { _meta: { antigravity: { tier: true, systemPrompt: { append: true } } } } : {}), ...(process.env.FAKE_ACP_CLAUDE || authStatus ? { _meta: { ...(process.env.FAKE_ACP_CLAUDE ? { claudeCode: { promptQueueing: true } } : {}), ...(authStatus ? { authStatus: {} } : {}) } } : {}), ...(homeLogin || agy ? { auth: { logout: {} } } : {}) }, authMethods: ownWays ? ownWays.filter((w) => !w?._meta?.["terminal-auth"] || clientCaps._meta?.["terminal-auth"] === true) : agy ? AGY_WAYS : homeLogin ? (clientCaps.auth?.terminal ? TERMINAL_WAYS : []) : [{ id: "fake_login", name: "Fake" }], agentInfo: { name: "fake-acp", version: "1.0" }, ...(process.env.FAKE_ACP_STEERING ? { _meta: { steering: { supported: true } } } : {}) }); if (authStatus) setTimeout(() => saysWho(), Number(process.env.FAKE_ACP_AUTH_DELAY_MS || 5)); if (process.env.FAKE_ACP_INIT_EXIT_MS) setTimeout(() => process.stderr.write("fake agent: gone at its start.\n", () => die(3)), Number(process.env.FAKE_ACP_INIT_EXIT_MS)); return; }
+  if (m.method === "initialize") { paramPicker = !!m.params?.clientCapabilities?._meta?.parameterizedModelPicker; clientCaps = m.params?.clientCapabilities || {}; reply({ protocolVersion: 1, agentCapabilities: { loadSession: !process.env.FAKE_ACP_NO_LOAD, promptCapabilities: { image: true, embeddedContext: !!process.env.FAKE_ACP_EMBED }, ...(process.env.FAKE_ACP_MCP_CAPS ? { mcpCapabilities: { http: process.env.FAKE_ACP_MCP_CAPS === "http", sse: false } } : {}), ...(process.env.FAKE_ACP_SESSION_CAPS ? { sessionCapabilities: Object.fromEntries(process.env.FAKE_ACP_SESSION_CAPS.split(",").map((c) => [c, {}])) } : {}), ...(process.env.FAKE_ACP_QODER_QUEUE ? { _meta: { qoder: { promptQueueing: true } } } : {}), ...(process.env.FAKE_ACP_AGY_PROMPT || agy ? { _meta: { antigravity: { tier: true, systemPrompt: { append: true } } } } : {}), ...(process.env.FAKE_ACP_CLAUDE || authStatus ? { _meta: { ...(process.env.FAKE_ACP_CLAUDE ? { claudeCode: { promptQueueing: true } } : {}), ...(authStatus ? { authStatus: {} } : {}) } } : {}), ...(homeLogin || agy ? { auth: { logout: {} } } : {}) }, authMethods: ownWays ? ownWays.filter((w) => !w?._meta?.["terminal-auth"] || clientCaps._meta?.["terminal-auth"] === true) : agy ? AGY_WAYS : homeLogin ? (clientCaps.auth?.terminal ? TERMINAL_WAYS : []) : [{ id: "fake_login", name: "Fake" }], agentInfo: agySteers ? { name: "Antigravity ACP Server", version: "1.5.14" } : { name: "fake-acp", version: "1.0" }, ...(process.env.FAKE_ACP_STEERING ? { _meta: { steering: { supported: true } } } : {}) }); if (authStatus) setTimeout(() => saysWho(), Number(process.env.FAKE_ACP_AUTH_DELAY_MS || 5)); if (process.env.FAKE_ACP_INIT_EXIT_MS) setTimeout(() => process.stderr.write("fake agent: gone at its start.\n", () => die(3)), Number(process.env.FAKE_ACP_INIT_EXIT_MS)); return; }
   if (m.method === "authenticate") {
     call("authenticate", null, { methodId: m.params?.methodId ?? null });
     if (process.env.FAKE_ACP_AUTHENTICATE === "wait") return;
@@ -595,6 +608,16 @@ async function handle(m) {
     // <gate>/refusequeue exists, the next one is refused at once, unechoed and unrecorded, and the file goes.
     const refusing = s.queueing && process.env.FAKE_ACP_QUEUE_GATE ? join(process.env.FAKE_ACP_QUEUE_GATE, "refusequeue") : "";
     if (refusing && existsSync(refusing)) { rmSync(refusing, { force: true }); return write({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: "Internal error", data: { details: "the prompt was refused as sent" } } }); }
+    if (s.agyAt != null) {
+      const words = prompt.map((p) => p.text || "").join("");
+      if (s.agyAsking) { call("prompt while asking", sessionId, { words }); return write({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: "Internal error", data: { details: "a prompt is already running" } } }); }
+      call("agy prompt", sessionId, { words });
+      write({ jsonrpc: "2.0", id: s.agyAt, result: { stopReason: "end_turn", usage: agySpent(100, 10) } });
+      s.agyAt = m.id;
+      const last = !/~again\b/.test(words);
+      setTimeout(() => { agySays(sessionId, `heard:${words} `); if (last) { s.agyAt = null; write({ jsonrpc: "2.0", id: m.id, result: { stopReason: "end_turn", usage: agySpent(200, 20) } }); } }, 20);
+      return;
+    }
     if (s.queueing) { const words = prompt.map((p) => p.text || "").join(""); const pictures = prompt.filter((p) => p.type === "image"); call("queued prompt", sessionId, { words, ...(pictures.length ? { images: pictures.length } : {}) }); s.open?.add(m.id); s.queueing.push({ id: m.id, words, pictures }); s.onQueued?.(); return; }
     // One sent while another runs that no turn folds in waits for the session's prompts to be answered (Claude's queue).
     if (process.env.FAKE_ACP_CLAUDE && s.open?.size && !m.dequeued) { const pictures = prompt.filter((p) => p.type === "image").length; call("queued prompt", sessionId, { words: prompt.map((p) => p.text || "").join(""), ...(pictures ? { images: pictures } : {}) }); (s.waiting ||= []).push(m); return; }
@@ -1901,6 +1924,26 @@ async function handle(m) {
       notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId: callId, status: r.error || r.result?.isError ? "failed" : "completed" });
       notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `${answer} ` } });
       if (rawCall) asst(`m_${callId}_said`, [{ type: "text", text: `${answer} ` }]);
+    }
+    if (agySteers && /~agysteer\b/i.test(text)) {
+      agySays(sessionId, "working… ");
+      s.agyAt = m.id;
+      tickWhile(sessionId, () => s.agyAt != null);
+      if (/~ask(slow)?\b/.test(text)) {
+        const slow = /~askslow\b/.test(text);
+        const gate = process.env.FAKE_ACP_AGY_ASK_GATE;
+        if (slow && gate) while (!existsSync(gate)) await new Promise((r) => setTimeout(r, 20));
+        s.agyAsking = true;
+        const command = { CommandLine: "rm -rf build", toolSummary: "Remove the build" };
+        const tc = { sessionUpdate: "tool_call", toolCallId: "call_agy1", name: "run_command", args: command, status: "pending", kind: "execute", title: "rm -rf build", rawInput: command };
+        notify(sessionId, tc);
+        if (slow) await new Promise((r) => setTimeout(r, 150));
+        const r = await askClient("session/request_permission", { sessionId, toolCall: tc, options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }, { optionId: "deny", name: "Deny", kind: "reject_once" }] });
+        s.agyAsking = false;
+        call("agy answered", sessionId, { optionId: r?.outcome?.optionId || r?.outcome?.outcome || "" });
+        notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "call_agy1", status: r?.outcome?.optionId === "allow" ? "completed" : "failed" });
+      }
+      return;
     }
     if (/~steerable\b/i.test(text)) {
       let n = 0; const speak = (words) => { const msg = `m_st${++n}`; say(sessionId, "agent_message_chunk", words, msg); asst(msg, [{ type: "text", text: words }]); };

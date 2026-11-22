@@ -1454,6 +1454,28 @@ describe("the switch's parts, one at a time (HarnessV3-ACP AC3-2)", () => {
     assert.deepEqual(mcpCallOf({ ...agy("my_probe", "echo_words", { text: "x" }), sessionUpdate: "tool_call_update", status: "in_progress" }, ""), { server: "my_probe", tool: "echo_words", input: { text: "x" } });
   });
 
+  // (fails before: yes — read live on agy 1.5.14, signed in: its call to Filament's own tool carries no `_meta.mcp`,
+  // only its name `mcp_filament_echo`, so it was judged as an unknown call of its own and the person asked)
+  test("agy 1.5's call to an MCP server's tool, by its name: Filament's own is its hand, its toolSummary no argument, a server's name with `_` found among the session's", () => {
+    /** The question agy 1.5.14 asks before the tool runs, as read live. @param {string} joined @param {any} args */
+    const agy = (joined, args) => ({ sessionUpdate: "tool_call", toolCallId: "call_7279242881347837135", name: `mcp_${joined}`, args: { ...args, toolSummary: "Echo ping text" }, status: "pending", kind: "other", title: `Run mcp_${joined}`, rawInput: { ...args, toolSummary: "Echo ping text" } });
+    const own = new Set(["echo", "filament_memory_search"]);
+    assert.equal(loopCalls(agy("filament_echo", { text: "ping" }), "antigravity-acp", "win32", own, ["filament"]), "hand");
+    assert.equal(loopCalls(agy("filament_filament_memory_search", { query: "x" }), "antigravity-acp", "win32", own), "hand", "Filament's own server where the session names none");
+    assert.deepEqual(loopCalls(agy("filament_delete_tree", { path: "/" }), "antigravity-acp", "win32", own, ["filament"]), [{ name: "mcp__filament__delete_tree", input: { path: "/" } }], "a tool its server never listed");
+    assert.deepEqual(loopCalls(agy("my_probe_echo_words", { text: "hi" }), "antigravity-acp", "linux", own, ["filament", "my_probe", "my"]), [{ name: "mcp__my_probe__echo_words", input: { text: "hi" } }], "the longest of the session's servers it begins with");
+    assert.deepEqual(loopCalls(agy("my_docs_search", { q: "x" }), "antigravity-acp", "linux", own, ["my.docs"]), [{ name: "mcp__my.docs__search", input: { q: "x" } }], "a server's name as agy writes it");
+    assert.deepEqual(loopCalls(agy("github_list_issues", {}), "antigravity-acp", "linux", own, ["filament"]), [{ name: "mcp__github__list_issues", input: {} }], "a server the session never named: up to its first `_`");
+    // Its card names it so on every update, its title alone where the update carries no name.
+    assert.deepEqual(mcpCallOf({ sessionUpdate: "tool_call_update", toolCallId: "c1", status: "completed", kind: "other", title: "Run mcp_filament_echo", rawInput: { text: "ping", toolSummary: "Echo ping text" } }, "", ["filament"]), { server: "filament", tool: "echo", input: { text: "ping" } });
+    // Its own tools, and a call of a kind of its own, are none.
+    assert.equal(mcpCallOf({ name: "run_command", kind: "execute", title: "ping -n 10 127.0.0.1", rawInput: { CommandLine: "ping -n 10 127.0.0.1", toolSummary: "Ping" } }, ""), null);
+    assert.equal(mcpCallOf({ name: "mcp_filament_echo", kind: "execute", title: "Run mcp_filament_echo", rawInput: {} }, ""), null);
+    assert.equal(mcpCallOf({ name: "mcp_filament", kind: "other", title: "Run mcp_filament", rawInput: {} }, "", ["filament"]), null, "a server's name with no tool after it");
+    // A question titled so but naming no call is no one's MCP call: another agent's is never taken for Filament's own.
+    assert.deepEqual(loopCalls({ toolCallId: "c9", kind: "other", status: "pending", title: "Run mcp_filament_echo", rawInput: { text: "x" } }, "claude", "linux", own, ["filament"]), [{ name: "mcp__claude__other", input: { text: "x" } }]);
+  });
+
   // (fails before: yes — the re-read of 11-11: Filament's own hand was known by its server's name alone, so any server
   // named "filament" in the agent's own config — a repository's — had its tools taken for Filament's, unjudged)
   test("Filament's own hand is a tool its own server listed at the session's address; one of a server that only goes by its name is judged as itself", () => {

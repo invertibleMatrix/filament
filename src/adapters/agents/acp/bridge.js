@@ -32,7 +32,7 @@ import { ownAgentsOff, ownOffAtStart } from "./own-agents.js";
 import { chatKeyOf } from "../chat-servers.js";
 import { applySessionSettings, askingMode } from "./configure.js";
 import { composePrompt, countTaken, DEFAULT_STEERING_PROMPT, steerPrompt, told, unheard } from "./prompt.js";
-import { createTextReader, createUpdateReader, turnUsage, diffLineCounts, CURSOR_ANSWERS, isProgressFrame, ledgerSpend, readingOf, growth } from "./updates.js";
+import { createTextReader, createUpdateReader, turnUsage, diffLineCounts, CURSOR_ANSWERS, isProgressFrame, ledgerSpend, readingOf, growth, serverNames } from "./updates.js";
 import { createNextStep, nextStepPrompt } from "./next-step.js";
 import { createQueued } from "./queued.js";
 import { createOpenEnd } from "./open-end.js";
@@ -452,6 +452,12 @@ export function findSession(sessions, query) {
  * @param {{ promptQueueing: boolean, rawMessages: boolean }} profile
  */
 const queuesWords = (profile) => profile.promptQueueing && profile.rawMessages;
+/**
+ * How long words that take an agent's turn over wait after a call starts for the question it may ask before the call
+ * (agy sends it a moment after it announced the call, read live on 1.5.14): one sent while its question waits it
+ * refuses.
+ */
+const ASK_SETTLE_MS = 60;
 
 /**
  * Where the agent's session makes room by itself, for a turn's result (HarnessV4_Tasks U3-2): the line it was opened
@@ -1712,7 +1718,7 @@ export class AcpBridge extends TurnBridge {
        *  @type {{ how: "declined" | "refused" | "stopped", why: string } | null} */
       let kept = null;
       // Filament's own hand is what its server listed at the session's own address, never a server's name alone.
-      const calls = turn?.permits && !turn.done ? loopCalls(tc, upstream.id, process.platform, this.ownListed.get(String(turn.conv?.mcpToken || ""))) : null;
+      const calls = turn?.permits && !turn.done ? loopCalls(tc, upstream.id, process.platform, this.ownListed.get(String(turn.conv?.mcpToken || "")), serverNames(turn.conv)) : null;
       if (writing) {
         // Its reject for this once: an "always" would stay in a session the summary leaves behind.
         d = pick(options.find((o) => String(o?.kind || "").toLowerCase() === "reject_once"));
@@ -1977,8 +1983,41 @@ export class AcpBridge extends TurnBridge {
     } finally {
       const n = (this.#asking.get(root) || 1) - 1;
       if (n > 0) this.#asking.set(root, n);
-      else this.#asking.delete(root);
+      else {
+        this.#asking.delete(root);
+        const calm = this.#calm.get(root) || [];
+        this.#calm.delete(root);
+        for (const r of calm) r();
+      }
       this.#listeners.get(root)?.touch();
+    }
+  }
+  /** Who waits for the agent to wait on none of a session's requests (`#unasked`), by its root session. @type {Map<string, (() => void)[]>} */
+  #calm = new Map();
+  /**
+   * Settles once the agent waits on none of the session's requests and Filament's answer to the last is on its way
+   * (written as the request's handler settles, before the next turn of the event loop): what is sent then follows it.
+   * `settleMs`: and none came for that long, for a request the agent sends just after what it said. A stop ends the
+   * wait.
+   * @param {string} sessionId @param {{ settleMs?: number, signal?: AbortSignal | null }} [o] @returns {Promise<void>}
+   */
+  async #unasked(sessionId, { settleMs = 0, signal = null } = {}) {
+    const root = this.#rootOf(String(sessionId || ""));
+    /** @type {Promise<void>} */
+    const stopped = new Promise((r) => (signal?.aborted ? r() : signal?.addEventListener("abort", () => r(), { once: true })));
+    for (;;) {
+      while (this.#asking.has(root) && !signal?.aborted)
+        await Promise.race([
+          stopped,
+          new Promise((r) => {
+            const calm = this.#calm.get(root) || [];
+            calm.push(() => setImmediate(r));
+            this.#calm.set(root, calm);
+          }),
+        ]);
+      if (!settleMs || signal?.aborted) return;
+      await Promise.race([stopped, new Promise((r) => setTimeout(r, settleMs))]);
+      if (!this.#asking.has(root)) return;
     }
   }
   /**
@@ -4394,6 +4433,15 @@ export class AcpBridge extends TurnBridge {
         upstream,
       );
     const queued = queuesWords(profile) ? createQueued((text, images) => prompted(steerPrompt(text, images))) : null;
+    /**
+     * The prompts the person's words went in while the turn ran, where a prompt sent then takes the agent's turn over
+     * (`promptSteers`, agy): answered in order, the last the turn's — null for one the agent refused —; `read` of them
+     * answered so far; `running` the prompt the agent works under now; `one` the take-over under way, so they go one
+     * at a time. `closed` once the turn takes no more: words sent then go as the next message.
+     */
+    const overtaken = !queued && !profile.steering && profile.promptSteers
+      ? { sent: /** @type {Promise<any>[]} */ ([]), read: 0, closed: false, running: /** @type {Promise<any> | null} */ (null), one: /** @type {Promise<unknown>} */ (Promise.resolve()) }
+      : null;
     /** Settles once: whether the turn's prompt went out (true), or the turn ended before it did (false). */
     let promptWent = /** @type {(out: boolean) => void} */ (() => {});
     const promptOut = new Promise((r) => (promptWent = r));
@@ -4493,13 +4541,56 @@ export class AcpBridge extends TurnBridge {
             return r?.outcome === "injected";
           }))
         : null;
+      // Where a prompt sent while the turn runs takes it over (agy, read live on 1.5.14: the running prompt is answered at
+      // once and its work goes on under the new one), the words go as a prompt of their own — never while the agent
+      // waits on a question of its session's, which agy refuses, its session stalling: they wait for its answer.
+      /**
+       * The words as a prompt that takes the turn over: agy takes them by answering the prompt it worked under at once,
+       * and refuses them, failing the new prompt first, where a question of its own came before them — the words go
+       * again once it is answered. → whether it took them; false once the turn takes no more.
+       * @param {string} text @param {import("./prompt.js").SteerImage[]} images @returns {Promise<boolean>}
+       */
+      const overtake = async (text, images) => {
+        if (!overtaken) return false;
+        for (;;) {
+          // The words go as a call starts, and agy asks before one a moment after it announced it: they wait a beat for
+          // its question, then for its answer.
+          await this.#unasked(conv.sessionId, { settleMs: ASK_SETTLE_MS, signal });
+          const was = overtaken.running;
+          if (overtaken.closed || signal?.aborted || !was) return false;
+          let ran = false;
+          was.then(() => (ran = true), () => (ran = true));
+          const answer = prompted(steerPrompt(text, images)).then(
+            (a) => a,
+            (e) => {
+              if (ran) throw e;
+              return null;
+            },
+          );
+          // Read in order below; one the turn let go of is no failure of its own.
+          answer.catch(() => {});
+          overtaken.sent.push(answer);
+          overtaken.running = answer;
+          if (await Promise.race([was.then(() => true, () => true), answer.then((a) => a !== null, () => true)])) return true;
+          overtaken.running = was;
+        }
+      };
+      const takeOver = overtaken
+        ? countTaken(conv, userTurns, afterPrompt((text, images = []) => {
+            const took = overtaken.one.then(() => overtake(text, images));
+            overtaken.one = took.catch(() => {});
+            return took;
+          }))
+        : null;
       const pictures = proc.initResult?.agentCapabilities?.promptCapabilities?.image === true ? { images: true } : {};
       /** @type {import("../turn-bridge.js").Steer | null} */
       const steer = queued
         ? { at: "queued", send: countTaken(conv, userTurns, afterPrompt(queued.send)), ...(interrupt ? { interrupt } : {}), ...pictures }
         : interrupt
           ? { at: "live", send: interrupt, ...pictures }
-          : next
+          : takeOver
+            ? { at: "live", send: takeOver, ...pictures }
+            : next
             ? { at: "next", send: countTaken(conv, userTurns, afterPrompt((text, _images, by) => next.send(text, by))) }
             : null;
       // Who the agent runs as and its plan's windows, as they stand now and again at the end (AC3-6).
@@ -4546,6 +4637,7 @@ export class AcpBridge extends TurnBridge {
       // next tells it again (the bug report's L21).
       told(conv, { userTurns, command, skipped });
       const first = ask([{ type: "text", text: promptText }, ...att.blocks]);
+      if (overtaken) overtaken.running = first;
       promptWent(true);
       // The prompt is out: the turn says so until the agent's first word (HarnessV3-FailurePoints §5.1 item 2).
       onEvent({ type: "step", step: "sent" });
@@ -4561,6 +4653,15 @@ export class AcpBridge extends TurnBridge {
         results.push(carried);
         resultsAt = heardAt(carried);
       }
+      // The prompts the person's words took the turn over with: it goes on until the last is answered.
+      while (overtaken && overtaken.read < overtaken.sent.length) {
+        const taken = await overtaken.sent[overtaken.read++];
+        if (taken === null) continue;
+        const r = await andFollowup(taken);
+        results.push(r);
+        resultsAt = heardAt(r);
+      }
+      if (overtaken) overtaken.closed = true;
       // The person's words queued at the agent meanwhile: the turn reads on until each is answered, those it took in
       // its work or after it (HarnessV3-FailurePoints §7.2), and words sent later go as the next message. Words it never
       // took may have failed for a session it lost after the turn's own prompt was answered.
@@ -4597,6 +4698,8 @@ export class AcpBridge extends TurnBridge {
       this.#used(conv);
       return out;
     } catch (e) {
+      // The turn takes no more words: they go as the next message.
+      if (overtaken) overtaken.closed = true;
       this.#used(conv);
       this.#lostUnder(conv, e);
       // What the agent reported the turn spent before it failed: what the prompts it answered spent, the cycles of
@@ -4625,11 +4728,20 @@ export class AcpBridge extends TurnBridge {
       // The agent's answer is in — unless a Force stop let go of it, and its agent works on: the stop's cancel
       // still goes then. Else it would reach the session's next prompt.
       ended = !force?.aborted;
+      if (overtaken) overtaken.closed = true;
       // Words that waited for a prompt that never went out are handed back (`afterPrompt`).
       promptWent(false);
       // A turn that failed with words still queued at the agent lets them go: they never ran, and go as the next
       // message.
       await queued?.letGo(cancel);
+      // So does one that failed while a prompt the words took it over with still runs at the agent: it is stopped.
+      if (overtaken) {
+        const open = overtaken.sent.slice(overtaken.read);
+        if (open.length) {
+          cancel();
+          await Promise.allSettled(open);
+        }
+      }
       reader.flush();
       next?.end();
       if (stopped) await this.#leftRunning({ stopped, upstream, notes, onEvent });
