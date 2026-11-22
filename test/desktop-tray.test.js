@@ -673,6 +673,63 @@ describe("every machine, watched", () => {
     await fleet.markUnread("m-gone", "c9");
   });
 
+  // (fails before: yes — the hunt on s1a: Done cleared on the desk for a machine that did not answer was marked nowhere,
+  // and came back once the page was opened again)
+  test("a chat marked while its machine does not answer is marked there at its next look that answers, once; a refusal there is all; a machine removed is owed nothing", async () => {
+    let t = 3_000_000;
+    const x = fleetOf();
+    let list = MACHINES;
+    const fleet = createFleet({ machines: () => list, cookieOf, pick: x.pick, fetchOf: x.fetchOf, now: () => t });
+    const box = x.at["https://192.168.0.9:20343"];
+    const settled = async () => {
+      for (let i = 0; i < 6; i++) await settle();
+    };
+    const tick = async () => {
+      t += WATCH_MS;
+      await fleet.look();
+      await settled();
+    };
+    await fleet.look();
+    await settled();
+    await tick();
+    const marks = () => x.asked.filter((a) => a.method === "PATCH" && a.kind === "lan").map((a) => [a.url, a.body]);
+    const seen = (/** @type {string} */ c) => [`/api/sessions/${c}/settings`, JSON.stringify({ patch: { display: { unread: false } } })];
+    // Its way still kept, and nothing answers there: tried, and owed.
+    box.down = true;
+    await fleet.markSeen("m-box", "c2");
+    assert.deepEqual(marks(), [seen("c2")]);
+    // Its look finds no way to it: a mark made now is owed without a call; the same chat's again, once.
+    x.answers["m-box"] = false;
+    await tick();
+    await fleet.markSeen("m-box", "c3");
+    await fleet.markSeen("m-box", "c2");
+    assert.deepEqual(marks(), [seen("c2")], "nothing sent while no way answers");
+    // Back: at its first look that answers, each owed mark goes, the newest last, and its chats are read again.
+    box.down = false;
+    x.answers["m-box"] = true;
+    await tick();
+    await tick();
+    assert.deepEqual(marks(), [seen("c2"), seen("c3"), seen("c2")]);
+    await tick();
+    assert.equal(marks().length, 3, "once");
+    // A refusal there (a view-only device's) is all: nothing owed.
+    box.marks = 403;
+    await fleet.markSeen("m-box", "c4");
+    box.marks = 0;
+    await tick();
+    assert.deepEqual(marks().slice(3), [seen("c4")]);
+    // One owed, then removed: forgotten with it, nothing sent when it is kept again.
+    box.down = true;
+    await fleet.markSeen("m-box", "c5");
+    list = MACHINES.filter((m) => m.id !== "m-box");
+    await tick();
+    list = MACHINES;
+    box.down = false;
+    await tick();
+    await tick();
+    assert.deepEqual(marks().slice(4), [seen("c5")], "tried once while it was kept, never again");
+  });
+
   test("a machine that stops answering as itself: nothing more goes there, its way is picked anew, and it is back without a flood; one that refuses the sign-in says so; one removed is forgotten", async () => {
     let t = 2_000_000;
     const x = fleetOf();

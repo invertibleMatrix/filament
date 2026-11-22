@@ -313,7 +313,8 @@ card in its chat. What a card could show only a part of — a plan, a form, a li
 too long or cut by its machine — it answers with **Open** alone, and so does one you answered that its machine still
 lists two minutes later. An answer goes as that machine's own press, so a machine this window reaches through a tunnel or
 your tailnet login, or a device paired as View, refuses it, in words that say to pair it as Full; its card stays and
-says them. **Clear** under Done marks theirs seen on their machines too. A machine that does
+says them. **Clear** under Done marks theirs seen on their machines too — one that does not answer then is told once
+it answers again, while the app runs. A machine that does
 not answer keeps its rows as they last stood, greyed, its words on hover. The filter menu's **Machines** says whose
 chats the bar lists — This computer's alone, or **All machines**, each one ticked in or out — and **Group by** gains
 **Machine**: This computer's projects first, then each other machine's under its name. Grouped by time, and in the

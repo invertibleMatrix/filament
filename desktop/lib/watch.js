@@ -273,6 +273,8 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
 
 /** How long one call to another machine waits. */
 const CALL_MS = 5000;
+/** The most chats' marks owed a machine that does not answer: as many as the desk clears at once. */
+const OWED_MOST = 50;
 /**
  * How long a tick waits on the machines' looks: one not done by then is said at the tick after it lands, so a slow
  * machine — a tunnel, a busy Filament, a way that no longer answers — holds up no other's notes, this computer's
@@ -305,10 +307,12 @@ const sameRoute = (a, b) => a.kind === b.kind && a.url === b.url && (/** @type {
 export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = routeFetch, now = Date.now, wait = (ms) => new Promise((r) => void setTimeout(r, ms).unref?.()) }) {
   /**
    * id → the machine as last read, the way it is reached (null: none answered as it yet), its pick on its way, its
-   * watch, its state and what it said last, its look under way and one landed that no tick has said yet, and how the
-   * last call of its look failed (its status; 0: nothing answered).
+   * watch, its state and what it said last, its look under way and one landed that no tick has said yet, how the last
+   * call of its look failed (its status; 0: nothing answered), and the chats' marks owed it while it did not answer
+   * (chain → unread).
    * @typedef {{ machine: Machine, route: Route | null, picking: Promise<void> | null, why: string | null, watch: ReturnType<typeof createWatch>,
-   *   watched: import("./machines.js").Watched | null, last: MachineLook | null, looking: Promise<void> | null, landed: MachineLook | null, failed: number | null }} Kept
+   *   watched: import("./machines.js").Watched | null, last: MachineLook | null, looking: Promise<void> | null, landed: MachineLook | null, failed: number | null,
+   *   owed: Map<string, boolean> }} Kept
    * @type {Map<string, Kept>}
    */
   const kept = new Map();
@@ -347,7 +351,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       return had;
     }
     /** @type {Kept} */
-    const k = /** @type {any} */ ({ machine: m, route: null, picking: null, why: null, watched: null, last: null, looking: null, landed: null, failed: null });
+    const k = /** @type {any} */ ({ machine: m, route: null, picking: null, why: null, watched: null, last: null, looking: null, landed: null, failed: null, owed: new Map() });
     // Its watch's calls say how the last of them failed, for its look to read; a chat's unread mark says nothing there
     // — a refusal of it, a view-only device's, is no refusal of the look under way (the review of p3-watch).
     k.watch = createWatch({
@@ -419,7 +423,10 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       // Rows it does not read: no answer this app can tell of.
       threw = true;
     }
-    if (look) return said(k, { answered: true, look });
+    if (look) {
+      pay(k);
+      return said(k, { answered: true, look });
+    }
     // It answers as itself and refuses this window's sign-in: revoked there, or never paired.
     const refused = !threw && (k.failed === 401 || k.failed === 403);
     if (!refused) {
@@ -431,16 +438,41 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
   }
 
   /**
+   * A chat's mark owed a machine that did not answer, for its next look that answers (`pay`): the newest for each chat,
+   * the oldest let go past `OWED_MOST`. @param {Kept} k @param {string} chain @param {boolean} unread
+   */
+  const owe = (k, chain, unread) => {
+    k.owed.delete(chain);
+    k.owed.set(chain, unread);
+    for (const c of k.owed.keys()) {
+      if (k.owed.size <= OWED_MOST) break;
+      k.owed.delete(c);
+    }
+  };
+  /** What a machine was owed, sent now it answers: once each, held again where it stops answering meanwhile. @param {Kept} k */
+  const pay = (k) => {
+    if (!k.owed.size) return;
+    const owed = [...k.owed];
+    k.owed.clear();
+    for (const [chain, unread] of owed) void mark(k.machine.id, chain, unread);
+  };
+
+  /**
    * A chat's unread mark there, set or taken off: nothing else. A view-only device's is refused there, and that is all;
-   * one removed or disconnected is written nothing. A mark taken off has the chats read again at its next look.
+   * one removed or disconnected is written nothing. One the machine could not take — no way to it answers now, or its
+   * call got no answer — is owed it, sent at its next look that answers (the hunt on s1a: Done cleared on the desk for a
+   * machine away came back once the page was opened again). A mark taken off has the chats read again at its next look.
    * @param {string} id @param {string} chain @param {boolean} unread @returns {Promise<void>}
    */
   function mark(id, chain, unread) {
-    const k = kept.get(id);
-    if (!k?.route || !watchedNow().some((m) => m.id === id)) return Promise.resolve();
+    const m = watchedNow().find((x) => x.id === id);
+    if (!m) return Promise.resolve();
+    const k = keptOf(m);
+    if (!k.route) return Promise.resolve(owe(k, chain, unread));
     return send(k, `/sessions/${encodeURIComponent(chain)}/settings`, { method: "PATCH", body: JSON.stringify({ patch: { display: { unread } } }) }).then(
       () => void (unread || k.watch.reread()),
-      () => {},
+      // A refusal there is all; no answer at all is owed, unless the machine has gone meanwhile.
+      (/** @type {any} */ e) => void (!e?.status && kept.get(id) === k && owe(k, chain, unread)),
     );
   }
 
