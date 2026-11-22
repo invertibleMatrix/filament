@@ -16,7 +16,8 @@ import { X509Certificate } from "node:crypto";
 import { samePrint } from "../../src/core/x509.js";
 import { esc, markTile } from "./card.js";
 import { BAR_H, overlayColors } from "./frame.js";
-import { LOCAL_ID, LOCAL_NAME, MAX_MACHINES, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, slotOfInput } from "./machines.js";
+import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_ICONS, MAX_MACHINES, colorOf, iconOf, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, slotOfInput } from "./machines.js";
+import { glyphOf } from "../../src/ui/harness/lib/icons.js";
 import { CLAIM_FROM, checkMachine, claimOutcome, claimScript, deviceNameHere } from "./add-machine.js";
 import { cleanName } from "../../src/services/machine.js";
 import { aliasOf } from "./ssh-route.js";
@@ -88,12 +89,14 @@ export const zoomRows = ({ page, zoomed }) => {
 };
 
 /**
- * @typedef {{ id: string, name: string, status: import("./machines.js").MachineStatus, why: string | null, active: boolean, slot: number | null, local: boolean, waiting: number }} RailRow
+ * @typedef {{ id: string, name: string, status: import("./machines.js").MachineStatus, why: string | null, active: boolean, slot: number | null, local: boolean, waiting: number, color: string, icon: string }} RailRow
+ * @typedef {{ label: string, click?: () => void, type?: "radio", checked?: boolean, swatch?: string, submenu?: MenuRow[] } | { type: "separator" }} MenuRow
+ *   a row of a machine's own menu, as Electron's menu takes it; `swatch`: a colour's dot beside it (#rrggbb), which the app draws
  */
 
 /**
  * The machines as the switcher has them: each in its order, its state, the one showing, the key that shows it
- * (Ctrl+1..9), and how many of its chats wait on you. A machine not asked yet is reconnecting.
+ * (Ctrl+1..9), how many of its chats wait on you, and its colour and icon. A machine not asked yet is reconnecting.
  * @param {readonly Machine[]} machines
  * @param {(id: string) => Watched | null} watched  each machine's state; This computer's is the app's own
  * @param {string} active
@@ -104,7 +107,7 @@ export function railRows(machines, watched, active, waiting = () => 0) {
   return machines.map((m, i) => {
     const w = watched(m.id);
     const n = Math.max(0, Math.floor(Number(waiting(m.id)) || 0));
-    return { id: m.id, name: m.name, status: w?.status ?? "reconnecting", why: w?.why ?? null, active: m.id === active, slot: i < 9 ? i + 1 : null, local: !!m.local, waiting: n };
+    return { id: m.id, name: m.name, status: w?.status ?? "reconnecting", why: w?.why ?? null, active: m.id === active, slot: i < 9 ? i + 1 : null, local: !!m.local, waiting: n, color: colorOf(m), icon: iconOf(m) };
   });
 }
 
@@ -120,9 +123,10 @@ const MORE_SVG = `<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="t
 export const countWords = (n) => (n > 99 ? "99+" : String(n));
 
 /**
- * The app's page's state: the popover's rows — each machine a menu item with its state's dot, its name, why where it is
- * not connected — a disconnected one, that a pick connects it —, its count of chats that wait on you, a tick on the one
- * showing and its key; another machine's own More (Disconnect or Connect, Remove) beside it — and Add a machine; where the chip pressed stands (`at`, in the page's pixels); and whether
+ * The app's page's state: the popover's rows — each machine a menu item with its state's dot, its icon in its colour,
+ * its name, why where it is not connected — a disconnected one, that a pick connects it —, its count of chats that wait
+ * on you, a tick on the one showing and its key; its own More beside it (its Colour and Icon; another machine's
+ * Disconnect or Connect, and Remove too) — and Add a machine; where the chip pressed stands (`at`, in the page's pixels); and whether
  * the Add sheet is open. Everything a machine names is escaped: a name is the person's, a why may hold what a network
  * answered.
  * @param {readonly RailRow[]} rows
@@ -141,10 +145,10 @@ export function railState(rows, { dark, colors = null, mod = "Ctrl+", bar = 0, a
         return (
           `<div class="row s-${r.status}${r.active ? " on" : ""}" role="none">` +
           `<button type="button" class="pick" role="menuitemradio" aria-checked="${r.active}" data-machine="${esc(r.id)}" title="${esc(tip)}" aria-label="${esc(label)}">` +
-          `<i class="dot"></i><span class="nm"><b>${esc(r.name)}</b>${why ? `<small>${esc(why)}</small>` : ""}</span>` +
+          `<i class="dot"></i><span class="mi c-${esc(r.color)}">${glyphOf(r.icon)}</span><span class="nm"><b>${esc(r.name)}</b>${why ? `<small>${esc(why)}</small>` : ""}</span>` +
           (r.waiting ? `<span class="ct">${countWords(r.waiting)}</span>` : "") +
           `<span class="tick">${r.active ? TICK_SVG : ""}</span>${r.slot ? `<kbd>${esc(`${mod}${r.slot}`)}</kbd>` : "<kbd></kbd>"}</button>` +
-          (r.local ? "" : `<button type="button" class="more" data-more="${esc(r.id)}" title="${esc(`${r.name}: ${off ? "Connect" : "Disconnect"}, Remove…`)}" aria-label="${esc(`More for ${r.name}`)}">${MORE_SVG}</button>`) +
+          `<button type="button" class="more" data-more="${esc(r.id)}" title="${esc(`${r.name}: Colour, Icon${r.local ? "" : `, ${off ? "Connect" : "Disconnect"}, Remove…`}`)}" aria-label="${esc(`More for ${r.name}`)}">${MORE_SVG}</button>` +
           `</div>`
         );
       })
@@ -155,16 +159,17 @@ export function railState(rows, { dark, colors = null, mod = "Ctrl+", bar = 0, a
 }
 
 /**
- * What a harness page of the window hears for its chip: shown once another machine is kept, the machine the page is,
- * its state, how many chats wait on you on the others, whether its popover is open, and — another machine's page —
- * the room the window's controls take over its top row (`lentFrame`). Nothing of any other machine but that count.
+ * What a harness page of the window hears for its chip: shown once another machine is kept, the machine the page is —
+ * its name, its state, its colour and icon —, how many chats wait on you on the others, whether its popover is open,
+ * and — another machine's page — the room the window's controls take over its top row (`lentFrame`). Nothing of any
+ * other machine but that count.
  * @param {readonly RailRow[]} rows @param {string} id  the page's machine
  * @param {{ open?: boolean, frame?: { left: number, right: number } | null }} [o]
  */
 export function pageState(rows, id, { open = false, frame = null } = {}) {
   const me = rows.find((r) => r.id === id);
   const waiting = rows.reduce((n, r) => n + (r.id === id ? 0 : r.waiting), 0);
-  return { shown: rows.length > 1, name: me?.name ?? "", status: me?.status ?? "reconnecting", waiting, open: !!open, frame };
+  return { shown: rows.length > 1, name: me?.name ?? "", status: me?.status ?? "reconnecting", color: me?.color ?? "", icon: me?.icon ?? "", waiting, open: !!open, frame };
 }
 
 /**
@@ -302,13 +307,14 @@ export const WANTED_MS = 60_000;
  *   machines: () => Machine[], localWatched: () => Watched, look: () => { dark: boolean, colors: { color: string, symbolColor: string } | null },
  *   guard: (contents: any, o: { originOf: () => string | null, prefs: object, onChild: (child: any) => void }) => void, grants: (ses: any, originOf: () => string | null) => void,
  *   pick?: typeof pickRoute, log?: (line: string) => void, now?: () => number, every?: typeof setInterval, stopEvery?: typeof clearInterval, platform?: string,
- *   keep?: { add: (m: { id: string, name: string, routes: import("./machines.js").Route[], partition?: string }) => Machine, remove: (id: string) => boolean, off?: (id: string, off: boolean) => Machine | null, rename?: (id: string, name: string) => Machine | null },
- *   check?: typeof checkMachine, deviceName?: () => string, claimMs?: number, menu?: (rows: ({ label: string, click: () => void } | { type: "separator" })[]) => void, confirm?: (q: { title: string, detail: string, yes: string }) => Promise<boolean>,
+ *   keep?: { add: (m: { id: string, name: string, routes: import("./machines.js").Route[], partition?: string }) => Machine, remove: (id: string) => boolean, off?: (id: string, off: boolean) => Machine | null, rename?: (id: string, name: string) => Machine | null,
+ *     look?: (id: string, look: { color?: string | null, icon?: string | null }) => unknown },
+ *   check?: typeof checkMachine, deviceName?: () => string, claimMs?: number, menu?: (rows: MenuRow[]) => void, confirm?: (q: { title: string, detail: string, yes: string }) => Promise<boolean>,
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
  *   waiting?: (id: string) => number, tint?: (colors: { color: string, symbolColor: string } | null) => void,
  *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null }} o
- *   `keep`: the machines kept, added, removed, disconnected and connected again (lib/machines.js over the app's file); `menu`: a machine's own menu, at
- *   the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
+ *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
+ *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
  *   machine's chats that wait on you, as the app's watch last saw them; `tint`: the window's controls dressed in the
  *   colours of the machine's page that shows — null, This computer's; `browserOf`: a machine's chats' pages this app
@@ -939,15 +945,30 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   };
 
   /**
-   * A machine's own menu (its ⋯ in the popover, or a right-click on it): Disconnect — or Connect, where it is — and
-   * Remove from this window — asked first —, its view and the windows its pages opened closed, and its partition's
-   * cookie and storage cleared, so pairing it again starts anew.
+   * A machine's own menu (its ⋯ in the popover, or a right-click on it): its Colour and its Icon, This computer's too
+   * (the remote desk of 11-22); another machine's Disconnect — or Connect, where it is — and Remove from this window —
+   * asked first —, its view and the windows its pages opened closed, and its partition's cookie and storage cleared, so
+   * pairing it again starts anew.
    * @param {string} id
    */
   function machineMenu(id) {
     const m = list.find((x) => x.id === id);
-    if (!m || m.local || gone) return;
+    if (!m || gone) return;
+    /** Its colour or its icon kept, and every chip, row and the popover drawn again. @param {{ color?: string, icon?: string }} look */
+    const dress = (look) => {
+      if (gone || !keep.look?.(id, look)) return;
+      log(`rail: machine ${id} wears ${look.color ? `colour ${look.color}` : `icon ${look.icon}`}`);
+      refresh();
+    };
+    /** @type {MenuRow[]} */
+    const looks = [
+      { label: "Colour", submenu: MACHINE_COLORS.map((c) => ({ label: `${c[0].toUpperCase()}${c.slice(1)}`, type: /** @type {const} */ ("radio"), checked: colorOf(m) === c, swatch: COLOR_HEX[/** @type {keyof typeof COLOR_HEX} */ (c)], click: () => dress({ color: c }) })) },
+      { label: "Icon", submenu: MACHINE_ICONS.map((i) => ({ label: ICON_WORDS[/** @type {keyof typeof ICON_WORDS} */ (i)], type: /** @type {const} */ ("radio"), checked: iconOf(m) === i, click: () => dress({ icon: i }) })) },
+    ];
+    if (m.local) return menu(looks);
     menu([
+      ...looks,
+      { type: "separator" },
       m.off ? { label: `Connect ${m.name}`, click: () => void select(id) } : { label: `Disconnect ${m.name}`, click: () => disconnect(id) },
       { type: "separator" },
       {

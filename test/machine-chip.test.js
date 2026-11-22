@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { stubDocument } from "./helpers/dom-stub.js";
 import { machineChip } from "../src/ui/harness/lib/machine-chip.js";
+import { ICONS } from "../src/ui/harness/lib/icons.js";
 
 /** @type {ReturnType<typeof stubDocument>} */
 let doc;
@@ -55,7 +56,8 @@ test("hidden until another machine is kept; then its dot, its name, the others' 
   f.tell({ shown: true, name: "DESKTOP-1", status: "online", waiting: 0, open: false, frame: null });
   assert.ok(!el.classList.contains("hidden"));
   assert.ok(el.classList.contains("pbtn") && el.classList.contains("hdr-machine"), "as Changes beside it looks");
-  const [dot, name, chev, count] = el.childNodes;
+  const [dot, face, name, chev, count] = el.childNodes;
+  assert.equal(face.hidden, true, "an app that says no icon: none");
   assert.equal(dot.className, "mc-dot s-online");
   assert.equal(name.textContent, "DESKTOP-1");
   assert.ok(name.classList.contains("pbtn-label"), "its name gives way as the pane buttons' names do, narrow");
@@ -77,6 +79,23 @@ test("hidden until another machine is kept; then its dot, its name, the others' 
   assert.equal(tips[0][1].title(), "Studio — reconnecting · 1 chat waits on you on another machine. Switch machine");
   chip.stop();
   assert.equal(f.stopped(), 1);
+});
+
+// (fails before: yes — the remote desk of 11-22: every machine's chip looked the same but for its name)
+test("its icon in its colour, right of its state's dot, as the app says them; one it does not know is none, never written in", () => {
+  const f = fakeBridge();
+  const chip = /** @type {NonNullable<ReturnType<typeof machineChip>>} */ (machineChip({ bridge: f.bridge }));
+  const el = /** @type {any} */ (chip.el);
+  const face = el.childNodes[1];
+  f.tell({ shown: true, name: "Studio", status: "online", color: "teal", icon: "server", waiting: 0 });
+  assert.deepEqual([face.hidden, face.className, face.innerHTML], [false, "mc-ic c-teal", ICONS.server]);
+  f.tell({ shown: true, name: "Studio", status: "online", color: "evil\" x", icon: "laptop", waiting: 0 });
+  assert.deepEqual([face.hidden, face.className, face.innerHTML], [false, "mc-ic", ICONS.laptop], "a colour it does not know: the icon's own");
+  f.tell({ shown: true, name: "Studio", status: "online", color: "teal", icon: "<img src=x>", waiting: 0 });
+  assert.deepEqual([face.hidden, face.innerHTML], [true, ""]);
+  const css = readFileSync(new URL("../src/ui/harness.css", import.meta.url), "utf8");
+  assert.match(css, /\.mc-ic\.c-teal \{ color: var\(--color-sys-teal-text\); \}/);
+  assert.match(css, /\.mc-ic\[hidden\] \{ display: none; \}/);
 });
 
 test("pressed: the app's popover at its rectangle, the press its alone", () => {

@@ -10,7 +10,8 @@ import https from "node:https";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, RECONNECT_MS, addMachine, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, readKept, readMachines, removeMachine, renameMachine, routeOf, setMachineBrowser, setMachineOff, slotOfInput } from "../desktop/lib/machines.js";
+import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINES_FILE, MACHINE_COLORS, MACHINE_ICONS, RECONNECT_MS, addMachine, colorOf, iconOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, readHere, readKept, readMachines, removeMachine, renameMachine, routeOf, setMachineBrowser, setMachineLook, setMachineOff, slotOfInput } from "../desktop/lib/machines.js";
+import { ICONS } from "../src/ui/harness/lib/icons.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 
 /** @type {string[]} */
@@ -97,6 +98,63 @@ describe("the list", () => {
     assert.equal(setMachineBrowser(file, LOCAL_ID, true), null, "This computer's browser is this app's already");
     writeFileSync(file, JSON.stringify({ machines: [{ id: "m-a", name: "A", routes: [{ kind: "url", url: "https://a.ts.net" }], browser: "yes" }] }));
     assert.equal(readKept(file)[0].browser, undefined, "a hand edit's browser that is not true is none");
+  });
+
+  // (fails before: yes — the remote desk of 11-22: every machine looked the same but for its name)
+  test("a machine's colour and icon: one its id picks and a desktop's until chosen; kept through a rename, a disconnect and a pairing again; put back; This computer's kept beside the list", () => {
+    const file = fresh();
+    addMachine(file, { id: "m-box", name: "Studio", routes: [{ kind: "url", url: "https://box.ts.net" }] }, { now: T0 });
+    addMachine(file, { id: "m-mac", name: "Mac", routes: [{ kind: "url", url: "https://mac.ts.net" }] }, { now: T0 });
+    // None chosen: the same in every window — the id's, never the name's.
+    assert.deepEqual([colorOf({ id: LOCAL_ID }), colorOf({ id: "m-box" }), colorOf({ id: "m-mac" })], ["purple", "purple", "yellow"]);
+    const named = { id: "m-box", name: "Anything" };
+    assert.equal(colorOf(named), colorOf({ id: "m-box" }));
+    assert.equal(iconOf({}), "monitor");
+    assert.ok(MACHINE_COLORS.every((c) => /^#[0-9a-f]{6}$/.test(COLOR_HEX[/** @type {keyof typeof COLOR_HEX} */ (c)])), "each colour drawn outside a page too");
+    assert.ok(MACHINE_ICONS.every((i) => !!ICONS[/** @type {keyof typeof ICONS} */ (i)] && !!ICON_WORDS[/** @type {keyof typeof ICON_WORDS} */ (i)]), "each icon the harness draws, each with its words");
+    // Chosen, and kept.
+    assert.deepEqual(setMachineLook(file, "M-BOX", { color: "teal" }), { ...readKept(file)[0], color: "teal" });
+    assert.equal(setMachineLook(file, "m-box", { icon: "server" })?.color, "teal", "an icon chosen keeps its colour");
+    assert.deepEqual([colorOf(readKept(file)[0]), iconOf(readKept(file)[0])], ["teal", "server"]);
+    const inFile = JSON.parse(readFileSync(file, "utf8")).machines[0];
+    assert.deepEqual([inFile.color, inFile.icon], ["teal", "server"], "in the file: a restart keeps them");
+    assert.equal(renameMachine(file, "m-box", "Workstation")?.color, "teal", "a rename keeps them");
+    assert.equal(setMachineOff(file, "m-box", true)?.icon, "server", "a disconnect too");
+    setMachineOff(file, "m-box", false);
+    assert.equal(addMachine(file, { id: "m-box", routes: [{ kind: "url", url: "https://box2.ts.net" }] }).color, "teal", "paired again: kept");
+    // Refused: what is none of the app's, or no machine kept.
+    assert.equal(setMachineLook(file, "m-box", { color: "#ff0000" }), null);
+    assert.equal(setMachineLook(file, "m-box", { icon: "<img src=x>" }), null);
+    assert.equal(setMachineLook(file, "m-none", { color: "blue" }), null);
+    assert.equal(readKept(file)[0].color, "teal", "a refusal writes nothing");
+    // Put back: the one its id picks.
+    assert.equal(setMachineLook(file, "m-box", { color: null })?.color, undefined);
+    assert.equal("color" in JSON.parse(readFileSync(file, "utf8")).machines[0], false, "no mark left");
+    assert.equal(readKept(file)[0].icon, "server", "its icon stays");
+    // This computer: never kept as a machine, its look kept beside the list — through any write of the list.
+    assert.deepEqual(setMachineLook(file, LOCAL_ID, { color: "orange", icon: "laptop" }), { color: "orange", icon: "laptop" });
+    assert.deepEqual(readHere(file), { color: "orange", icon: "laptop" });
+    renameMachine(file, "m-mac", "Mac mini");
+    removeMachine(file, "m-box");
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).here, { color: "orange", icon: "laptop" }, "kept through the list's writes");
+    assert.deepEqual(readMachines(file, ORIGIN)[0], { id: LOCAL_ID, name: LOCAL_NAME, routes: [{ kind: "url", url: ORIGIN }], partition: "", addedAt: null, local: true, color: "orange", icon: "laptop" });
+    assert.ok(readKept(file).every((m) => m.id !== LOCAL_ID), "This computer is never kept as a machine");
+    assert.deepEqual(setMachineLook(file, LOCAL_ID, { color: null, icon: null }), {});
+    assert.equal("here" in JSON.parse(readFileSync(file, "utf8")), false, "put back: no mark left");
+    // A hand edit's colour or icon that is none of the app's is none.
+    writeFileSync(file, JSON.stringify({ here: { color: "red", icon: "cloud" }, machines: [{ id: "m-a", name: "A", routes: [{ kind: "url", url: "https://a.ts.net" }], color: "<b>", icon: "laptop" }] }));
+    assert.deepEqual([readKept(file)[0].color, readKept(file)[0].icon, readHere(file)], [undefined, "laptop", { icon: "cloud" }]);
+    // (fails before: yes — the review of s1a) …and a newer app's, which this one does not read, stays as written through
+    // this one's writes: a rename, a disconnect, an icon chosen; This computer's through its icon chosen.
+    writeFileSync(file, JSON.stringify({ here: { color: "mint" }, machines: [{ id: "m-a", name: "A", routes: [{ kind: "url", url: "https://a.ts.net" }], color: "mint", icon: "rack" }] }));
+    renameMachine(file, "m-a", "Alpha");
+    setMachineOff(file, "m-a", true);
+    setMachineLook(file, "m-a", { icon: "laptop" });
+    setMachineLook(file, LOCAL_ID, { icon: "server" });
+    const after = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual([after.machines[0].color, after.machines[0].icon, after.here], ["mint", "laptop", { color: "mint", icon: "server" }]);
+    assert.equal(setMachineLook(file, "m-a", { color: null })?.color, undefined);
+    assert.equal("color" in JSON.parse(readFileSync(file, "utf8")).machines[0], false, "put back: gone, whoever chose it");
   });
 
   // (fails before: yes — a machine's partition was its first alone, whatever the file said)

@@ -629,6 +629,18 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .mc-dot.s-online { background: var(--color-sys-green); }
 .mc-dot.s-reconnecting { background: var(--color-sys-orange); }
 .mc-dot.s-offline { background: var(--color-sys-red); }
+/* The machine's icon in its colour (desktop/lib/machines.js colorOf, iconOf), right of its state's dot. */
+.mc-ic { flex: none; display: grid; place-items: center; width: 14px; height: 14px; margin-left: -2px; color: var(--color-foreground-subtle); }
+.mc-ic[hidden] { display: none; }
+.mc-ic svg { width: 14px; height: 14px; }
+.mc-ic.c-blue { color: var(--color-sys-blue-text); }
+.mc-ic.c-orange { color: var(--color-sys-orange-text); }
+.mc-ic.c-green { color: var(--color-sys-green-text); }
+.mc-ic.c-purple { color: var(--color-sys-purple-text); }
+.mc-ic.c-teal { color: var(--color-sys-teal-text); }
+.mc-ic.c-pink { color: var(--color-sys-pink-text); }
+.mc-ic.c-indigo { color: var(--color-sys-indigo-text); }
+.mc-ic.c-yellow { color: var(--color-sys-yellow-text); }
 .hdr-machine .pbtn-chev { margin-left: -3px; }
 .mc-count { flex: none; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; display: grid; place-items: center;
   font-size: var(--text-ui-xs); font-weight: 700; color: var(--color-on-accent); background: var(--color-sys-orange-text); }

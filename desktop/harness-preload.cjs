@@ -139,9 +139,10 @@ contextBridge.exposeInMainWorld("filamentApp", {
 });
 
 // The machine chip left of Changes (the owner's of 11-08, in the rail's place): what it hears — shown once another
-// machine is kept, This computer's name and state, how many chats wait on you on the others, whether its popover is
-// open — and its press, the app's popover under it (lib/rail.js). Another machine's page has the same, alone
-// (machine-preload.cjs).
+// machine is kept, This computer's name, state, colour and icon, how many chats wait on you on the others, whether its
+// popover is open — and its press, the app's popover under it (lib/rail.js). Another machine's page has the same, alone
+// (machine-preload.cjs). And the desk (the remote desk of 11-22), This computer's page's alone: every other machine's
+// Now and chats, which another machine's page never hears.
 contextBridge.exposeInMainWorld("filamentMachines", {
   /** The popover opened under the chip, at its rectangle in the page's pixels. @param {{ x: number, y: number, width: number, height: number }} rect */
   open: (rect) =>
@@ -152,6 +153,22 @@ contextBridge.exposeInMainWorld("filamentMachines", {
     ipcRenderer.on("filament:machines", heard);
     ipcRenderer.send("filament:machines-ready");
     return () => ipcRenderer.removeListener("filament:machines", heard);
+  },
+  /**
+   * The desk as it moves, and once now: This computer as it wears itself (`here`: its colour and icon), and each other
+   * machine kept — its id, name, state, whether it signed this window out, its colour and icon, its Now's rows
+   * (`rows`: needs, works, done) and its chats, the newest first (`recent`) — as the app's watch last found them
+   * (desktop/lib/watch.js). @param {(desk: any) => void} fn @returns {() => void}  stops hearing it
+   */
+  onDesk: (fn) => {
+    let live = true;
+    const heard = (/** @type {any} */ _e, /** @type {any} */ d) => fn(d);
+    ipcRenderer.on("filament:desk", heard);
+    void ipcRenderer.invoke("filament:desk").then((d) => void (live && d && fn(d)), () => {});
+    return () => {
+      live = false;
+      ipcRenderer.removeListener("filament:desk", heard);
+    };
   },
 });
 

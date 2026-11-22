@@ -72,12 +72,12 @@ function hearRail(doc, bridge) {
     if (b) return bridge.select(String(b.getAttribute("data-machine")));
     if (t?.id === "scrim" && doc.body.classList.contains("pop")) bridge.close?.();
   });
-  // A machine's own menu: Remove. This computer has none.
+  // A machine's own menu: its Colour and Icon, another machine's Remove too.
   doc.addEventListener("contextmenu", (/** @type {any} */ e) => {
     const b = e.target?.closest?.("[data-machine]");
     const id = b ? String(b.getAttribute("data-machine")) : "";
     e.preventDefault?.();
-    if (id && id !== "local") bridge.menu?.(id);
+    if (id) bridge.menu?.(id);
   });
   // The popover's keys, as a menu's: the arrows, Home and End move between its items, Escape closes it.
   doc.addEventListener("keydown", (/** @type {any} */ e) => {

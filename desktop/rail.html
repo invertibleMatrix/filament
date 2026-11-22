@@ -36,6 +36,13 @@
   /* Disconnected: a ring, never asked — not a state it is in, but one it was put in. */
   .s-disconnected .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #8e8e93; }
   .s-disconnected .nm b { opacity: .72; }
+  /* The machine's icon in its colour (lib/machines.js colorOf, iconOf): the light page's darker shades, the dark's own. */
+  .mi { flex: none; width: 16px; height: 16px; display: grid; place-items: center; margin-left: -4px; }
+  .mi svg { width: 16px; height: 16px; }
+  .c-blue { color: #0056cc; } .c-orange { color: #a04f00; } .c-green { color: #0b7531; } .c-purple { color: #7f3cc4; }
+  .c-teal { color: #0a6f80; } .c-pink { color: #b8143a; } .c-indigo { color: #4744c4; } .c-yellow { color: #805c00; }
+  :root.dark .c-blue { color: #0a84ff; } :root.dark .c-orange { color: #ff9f0a; } :root.dark .c-green { color: #30d158; } :root.dark .c-purple { color: #bf5af2; }
+  :root.dark .c-teal { color: #40c8e0; } :root.dark .c-pink { color: #ff375f; } :root.dark .c-indigo { color: #5e5ce6; } :root.dark .c-yellow { color: #ffd60a; }
   .nm { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .nm b { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nm small { font-size: 11.5px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -44,7 +51,7 @@
     font-size: 10.5px; font-weight: 700; line-height: 18px; text-align: center; }
   .tick { flex: none; width: 14px; height: 14px; color: #0a84ff; display: grid; place-items: center; }
   kbd { flex: none; min-width: 34px; font: 11px/1 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--quiet); text-align: right; }
-  /* Another machine's own menu (Remove), over its key while the pointer is on its row or the keys on it. */
+  /* A machine's own menu (Colour, Icon; another's Remove), over its key while the pointer is on its row or the keys on it. */
   .more { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 28px; height: 26px; border: 0; border-radius: 6px; padding: 0;
     display: grid; place-items: center; background: transparent; color: var(--quiet); cursor: pointer; opacity: 0; }
   .row:hover .more, .more:focus-visible, .row:focus-within .more { opacity: 1; }

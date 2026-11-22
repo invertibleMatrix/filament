@@ -9,7 +9,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
-import { LOCAL_ID, localMachine, partitionOf } from "../desktop/lib/machines.js";
+import { LOCAL_ID, colorOf, localMachine, partitionOf } from "../desktop/lib/machines.js";
+import { ICONS } from "../src/ui/harness/lib/icons.js";
 import { LOOK_EVERY_MS, MAC_LEFT, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, switchLayout, unreachablePage, zoomRows } from "../desktop/lib/rail.js";
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
@@ -54,40 +55,40 @@ describe("where each part stands", () => {
 });
 
 describe("what the switcher draws", () => {
-  test("each machine in its order, its state — one not asked yet reconnecting —, the one showing, its key, its chats that wait on you", () => {
-    const list = [localMachine(ORIGIN), BOX, MAC, ...Array.from({ length: 8 }, (_, i) => machine(`m-${i}`, `Box ${i}`, []))];
+  test("each machine in its order, its state — one not asked yet reconnecting —, the one showing, its key, its chats that wait on you, its colour and icon", () => {
+    const list = [localMachine(ORIGIN), BOX, { ...MAC, color: "teal", icon: "laptop" }, ...Array.from({ length: 8 }, (_, i) => machine(`m-${i}`, `Box ${i}`, []))];
     const rows = railRows(list, (id) => (id === LOCAL_ID ? { status: "online", silentSince: null, why: null } : id === "m-mac" ? { status: "offline", silentSince: T0, why: "nothing listens" } : null), "m-mac", (id) => (id === "m-box" ? 4 : id === "m-mac" ? -2 : 0));
-    assert.deepEqual(rows[0], { id: LOCAL_ID, name: "This computer", status: "online", why: null, active: false, slot: 1, local: true, waiting: 0 });
-    assert.deepEqual(rows[1], { id: "m-box", name: "Workstation", status: "reconnecting", why: null, active: false, slot: 2, local: false, waiting: 4 });
-    assert.deepEqual(rows[2], { id: "m-mac", name: "Mac mini", status: "offline", why: "nothing listens", active: true, slot: 3, local: false, waiting: 0 });
+    assert.deepEqual(rows[0], { id: LOCAL_ID, name: "This computer", status: "online", why: null, active: false, slot: 1, local: true, waiting: 0, color: "purple", icon: "monitor" });
+    assert.deepEqual(rows[1], { id: "m-box", name: "Workstation", status: "reconnecting", why: null, active: false, slot: 2, local: false, waiting: 4, color: colorOf(BOX), icon: "monitor" });
+    assert.deepEqual(rows[2], { id: "m-mac", name: "Mac mini", status: "offline", why: "nothing listens", active: true, slot: 3, local: false, waiting: 0, color: "teal", icon: "laptop" }, "the ones chosen for it");
     assert.equal(rows[8].slot, 9);
     assert.equal(rows[9].slot, null, "past the ninth no key");
     assert.equal(railRows([BOX], () => null, LOCAL_ID)[0].waiting, 0, "no count said: none");
   });
   // (fails before: yes — the owner's of 11-08: a popover of machines in the rail's place)
-  test("the popover's rows: names and whys escaped, a menu item each, the one showing ticked, its key, its count; another machine's ⋯, This computer none; Add a machine last", () => {
-    const rows = railRows([localMachine(ORIGIN), machine("m-x", `<img src=x onerror=alert(1)>`, [])], (id) => (id === "m-x" ? { status: "offline", silentSince: T0, why: `"evil" <b>` } : { status: "online", silentSince: null, why: null }), "m-x", (id) => (id === "m-x" ? 120 : 0));
+  test("the popover's rows: names and whys escaped, a menu item each, its icon in its colour, the one showing ticked, its key, its count; each machine's ⋯ — This computer's its Colour and Icon alone; Add a machine last", () => {
+    const rows = railRows([localMachine(ORIGIN), { ...machine("m-x", `<img src=x onerror=alert(1)>`, []), color: "pink", icon: "server" }], (id) => (id === "m-x" ? { status: "offline", silentSince: T0, why: `"evil" <b>` } : { status: "online", silentSince: null, why: null }), "m-x", (id) => (id === "m-x" ? 120 : 0));
     const at = { x: 900, y: 10, width: 120, height: 28 };
     const s = railState(rows, { dark: true, colors: { color: "#101010", symbolColor: "#eeeeee" }, bar: BAR_H, at });
     assert.deepEqual([s.bg, s.fg, s.bar, s.dark, s.adding, s.at], ["#101010", "#eeeeee", BAR_H, true, false, at]);
     assert.ok(!s.list.includes("<img") && !s.list.includes("<b>&quot;"), s.list);
     assert.match(s.list, /<div class="row s-offline on" role="none"><button type="button" class="pick" role="menuitemradio" aria-checked="true" data-machine="m-x" title="&lt;img src=x onerror=alert\(1\)&gt; — offline · Ctrl\+2\n&quot;evil&quot; &lt;b&gt;" aria-label="&lt;img src=x onerror=alert\(1\)&gt;, offline, 120 waiting on you">/);
-    assert.match(s.list, /<b>&lt;img src=x onerror=alert\(1\)&gt;<\/b><small>offline — &quot;evil&quot; &lt;b&gt;<\/small><\/span><span class="ct">99\+<\/span><span class="tick"><svg/);
-    assert.match(s.list, /<kbd>Ctrl\+2<\/kbd><\/button><button type="button" class="more" data-more="m-x" title="&lt;img src=x onerror=alert\(1\)&gt;: Disconnect, Remove…" aria-label="More for &lt;img/);
-    assert.match(s.list, /<div class="row s-online" role="none"><button [^>]*aria-checked="false" data-machine="local"[^>]*><i class="dot"><\/i><span class="nm"><b>This computer<\/b><\/span><span class="tick"><\/span><kbd>Ctrl\+1<\/kbd><\/button><\/div>/, "connected: no line under its name; no count, no tick; no ⋯");
-    assert.ok(!s.list.includes('data-more="local"'));
+    assert.match(s.list, /<i class="dot"><\/i><span class="mi c-pink"><svg [^>]+>(?:(?!<\/svg>).)*<\/svg><\/span><span class="nm"><b>&lt;img src=x onerror=alert\(1\)&gt;<\/b><small>offline — &quot;evil&quot; &lt;b&gt;<\/small><\/span><span class="ct">99\+<\/span><span class="tick"><svg/);
+    assert.ok(s.list.includes(`<span class="mi c-pink">${ICONS.server}</span>`), "its icon, in its colour");
+    assert.match(s.list, /<kbd>Ctrl\+2<\/kbd><\/button><button type="button" class="more" data-more="m-x" title="&lt;img src=x onerror=alert\(1\)&gt;: Colour, Icon, Disconnect, Remove…" aria-label="More for &lt;img/);
+    assert.match(s.list, /<div class="row s-online" role="none"><button [^>]*aria-checked="false" data-machine="local"[^>]*><i class="dot"><\/i><span class="mi c-purple"><svg [^>]+>(?:(?!<\/svg>).)*<\/svg><\/span><span class="nm"><b>This computer<\/b><\/span><span class="tick"><\/span><kbd>Ctrl\+1<\/kbd><\/button><button type="button" class="more" data-more="local" title="This computer: Colour, Icon"/, "connected: no line under its name; no count, no tick; its ⋯ its Colour and Icon");
     assert.match(s.list, /<div class="sep" role="separator"><\/div><button type="button" class="pick add" role="menuitem" data-add=""><svg[^]*<b>Add a machine…<\/b><\/span><\/button>$/);
     const here = railState(railRows([localMachine(ORIGIN), MAC], () => ({ status: "online", silentSince: null, why: null }), LOCAL_ID), { dark: false, mod: "⌘" });
     assert.match(here.list, /title="Mac mini — connected · ⌘2"/);
     assert.deepEqual([here.bg, here.fg, here.at, here.dark], ["#f3f3f3", "#1a1a1a", null, false], "no colours said yet: the theme's; no chip pressed");
   });
   // (fails before: yes — the owner's of 11-08: no page had a chip to hear)
-  test("what a harness page hears for its chip: shown once another is kept, the machine it is, its state, the others' count, open, its lent frame — nothing of another machine's name", () => {
-    const rows = railRows([localMachine(ORIGIN), BOX, MAC], (id) => (id === "m-mac" ? { status: "offline", silentSince: T0, why: "secret why" } : { status: "online", silentSince: null, why: null }), "m-box", (id) => (/** @type {Record<string, number>} */ ({ local: 2, "m-box": 5, "m-mac": 1 }))[id] ?? 0);
-    assert.deepEqual(pageState(rows, LOCAL_ID), { shown: true, name: "This computer", status: "online", waiting: 6, open: false, frame: null });
-    assert.deepEqual(pageState(rows, "m-box", { open: true, frame: { left: 0, right: 138 } }), { shown: true, name: "Workstation", status: "online", waiting: 3, open: true, frame: { left: 0, right: 138 } });
+  test("what a harness page hears for its chip: shown once another is kept, the machine it is — its state, colour and icon —, the others' count, open, its lent frame — nothing of another machine's name", () => {
+    const rows = railRows([localMachine(ORIGIN), { ...BOX, color: "green", icon: "server" }, MAC], (id) => (id === "m-mac" ? { status: "offline", silentSince: T0, why: "secret why" } : { status: "online", silentSince: null, why: null }), "m-box", (id) => (/** @type {Record<string, number>} */ ({ local: 2, "m-box": 5, "m-mac": 1 }))[id] ?? 0);
+    assert.deepEqual(pageState(rows, LOCAL_ID), { shown: true, name: "This computer", status: "online", color: "purple", icon: "monitor", waiting: 6, open: false, frame: null });
+    assert.deepEqual(pageState(rows, "m-box", { open: true, frame: { left: 0, right: 138 } }), { shown: true, name: "Workstation", status: "online", color: "green", icon: "server", waiting: 3, open: true, frame: { left: 0, right: 138 } });
     assert.ok(!/Mac mini|secret/.test(JSON.stringify(pageState(rows, "m-box"))), "another machine's name and why stay the app's");
-    assert.deepEqual(pageState(railRows([localMachine(ORIGIN)], () => null, LOCAL_ID), LOCAL_ID), { shown: false, name: "This computer", status: "reconnecting", waiting: 0, open: false, frame: null });
+    assert.deepEqual(pageState(railRows([localMachine(ORIGIN)], () => null, LOCAL_ID), LOCAL_ID), { shown: false, name: "This computer", status: "reconnecting", color: "purple", icon: "monitor", waiting: 0, open: false, frame: null });
   });
 });
 
@@ -399,7 +400,7 @@ describe("the rail, run", () => {
     await t.settle();
     assert.equal(t.views.length, 0);
     assert.deepEqual(t.win.webContents.css, []);
-    assert.deepEqual(stateOf(t.win.webContents), { shown: false, name: "This computer", status: "online", waiting: 0, open: false, frame: null });
+    assert.deepEqual(stateOf(t.win.webContents), { shown: false, name: "This computer", status: "online", color: "purple", icon: "monitor", waiting: 0, open: false, frame: null });
     assert.equal(t.r.select(LOCAL_ID), false);
     assert.equal(t.r.openPop(LOCAL_ID, { x: 1, y: 1, width: 1, height: 1 }), false, "no popover with nothing to switch to");
     assert.equal(t.ticks.length, 0, "no looks");
@@ -412,7 +413,7 @@ describe("the rail, run", () => {
     assert.equal(t.railView(), undefined, "no app page until the popover or the sheet");
     assert.deepEqual(t.win.webContents.css, []);
     assert.equal(t.win.children.length, 0, "nothing over this computer's page");
-    assert.deepEqual(stateOf(t.win.webContents), { shown: true, name: "This computer", status: "online", waiting: 2, open: false, frame: null });
+    assert.deepEqual(stateOf(t.win.webContents), { shown: true, name: "This computer", status: "online", color: "purple", icon: "monitor", waiting: 2, open: false, frame: null });
     const n = t.win.webContents.sent.length;
     t.r.refresh();
     await t.tick();
@@ -441,7 +442,7 @@ describe("the rail, run", () => {
     assert.equal(t.railView(), undefined, "no app page under it: no title row of the app's");
     assert.equal(t.win.children.at(-1), v, "on top");
     assert.ok(v.webContents.focused > 0, "the keys go to it");
-    assert.deepEqual(stateOf(v.webContents), { shown: true, name: "Workstation", status: "online", waiting: 0, open: false, frame: { left: 0, right: WIN_RIGHT } });
+    assert.deepEqual(stateOf(v.webContents), { shown: true, name: "Workstation", status: "online", color: colorOf(BOX), icon: "monitor", waiting: 0, open: false, frame: { left: 0, right: WIN_RIGHT } });
     // Back to this computer: its view hidden, kept live.
     t.r.select(LOCAL_ID);
     assert.equal(v.visible, false);
@@ -1447,7 +1448,7 @@ describe("adding a machine", () => {
     assert.equal(box.webContents.loads.at(-1), "https://192.168.0.9:20343/ui/harness.html", "its harness opens where it was paired");
   });
 
-  test("a machine's menu: Remove, asked first — its view and storage gone, the window as it is now; This computer has none", async () => {
+  test("a machine's menu: Remove, asked first — its view and storage gone, the window as it is now; This computer's its Colour and Icon alone", async () => {
     /** @type {string[]} */
     const removed = [];
     /** @type {any[]} */
@@ -1458,10 +1459,10 @@ describe("adding a machine", () => {
     t.r.select("m-box");
     await t.settle();
     t.r.machineMenu("local");
-    assert.equal(rows.length, 0, "This computer has no menu");
+    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Colour", "Icon"], "This computer: its Colour and Icon alone");
     t.r.machineMenu("m-box");
-    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Disconnect Workstation", "-", "Remove Workstation from this window…"]);
-    rows[2].click();
+    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Colour", "Icon", "-", "Disconnect Workstation", "-", "Remove Workstation from this window…"]);
+    rows[5].click();
     await t.settle();
     assert.deepEqual(removed, [], "asked first: no");
     yes = true;
@@ -1474,7 +1475,7 @@ describe("adding a machine", () => {
       closedFirst = t.viewOf("persist:machine-m-box").webContents.closed;
       return Promise.resolve();
     };
-    rows[2].click();
+    rows[5].click();
     await t.settle();
     assert.deepEqual(removed, ["m-box"]);
     assert.equal(t.sessions["persist:machine-m-box"].cleared, 1, "its cookie and storage cleared");
@@ -1508,8 +1509,8 @@ describe("adding a machine", () => {
     const popup = { destroyed: false, isDestroyed() { return this.destroyed; }, destroy() { this.destroyed = true; } };
     t.guarded.find((/** @type {any} */ g) => g.contents === v.webContents).o.onChild(popup);
     t.r.machineMenu("m-box");
-    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Disconnect Workstation", "-", "Remove Workstation from this window…"]);
-    rows[0].click();
+    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Colour", "Icon", "-", "Disconnect Workstation", "-", "Remove Workstation from this window…"]);
+    rows[3].click();
     await t.settle();
     assert.deepEqual(said, ["m-box off"]);
     assert.ok(v.webContents.closed, "its page closed: no notification of its own");
@@ -1523,8 +1524,8 @@ describe("adding a machine", () => {
     assert.equal(stateOf(t.win.webContents).shown, true, "still kept: the chip stays");
     t.r.openPop(LOCAL_ID, { x: 10, y: 10, width: 100, height: 28 });
     const list1 = String(t.railView().webContents.sent.at(-1)[1].list);
-    assert.match(list1, /<div class="row s-disconnected" role="none"><button [^>]*data-machine="m-box" title="Workstation — disconnected · Ctrl\+2\nPick it to connect again\." aria-label="Workstation, disconnected"><i class="dot"><\/i><span class="nm"><b>Workstation<\/b><small>disconnected — pick it to connect again<\/small>/);
-    assert.match(list1, /data-more="m-box" title="Workstation: Connect, Remove…"/);
+    assert.match(list1, /<div class="row s-disconnected" role="none"><button [^>]*data-machine="m-box" title="Workstation — disconnected · Ctrl\+2\nPick it to connect again\." aria-label="Workstation, disconnected"><i class="dot"><\/i><span class="mi c-[a-z]+"><svg [^>]+>(?:(?!<\/svg>).)*<\/svg><\/span><span class="nm"><b>Workstation<\/b><small>disconnected — pick it to connect again<\/small>/);
+    assert.match(list1, /data-more="m-box" title="Workstation: Colour, Icon, Connect, Remove…"/);
     // Picked: connected again, its page opened anew.
     assert.equal(t.r.pick("m-box"), true);
     await t.settle();
@@ -1535,23 +1536,61 @@ describe("adding a machine", () => {
     assert.ok(asked.length > before);
     // Off again; its menu says Connect, which shows it.
     t.r.machineMenu("m-box");
-    rows[0].click();
+    rows[3].click();
     await t.settle();
     t.r.machineMenu("m-box");
-    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Connect Workstation", "-", "Remove Workstation from this window…"]);
-    rows[0].click();
+    assert.deepEqual(rows.map((r) => r.label ?? "-"), ["Colour", "Icon", "-", "Connect Workstation", "-", "Remove Workstation from this window…"]);
+    rows[3].click();
     await t.settle();
     assert.deepEqual(said.slice(2), ["m-box off", "m-box on"]);
     assert.equal(t.r.active(), "m-box");
     // Another machine disconnected while this one shows: nothing moves here.
     t.r.machineMenu("m-mac");
-    rows[0].click();
+    rows[3].click();
     assert.equal(t.r.active(), "m-box");
     // The app's side: kept in its file; its tunnel let go; the tray says it, counting nothing; the fleet's watch skips it (lib/watch.js).
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     assert.match(main, /off: \(id, off\) => \{\n\s+const got = setMachineOff\(machinesFile, id, off, [^\n]+\n\s+machineBrowsers\.sync\(\);\n\s+return got;/);
     assert.match(main, /const kept = readKept\(machinesFile\);\n\s+tunnels\.only\(kept\.filter\(\(m\) => !m\.off\)/);
-    assert.match(main, /if \(k\.off\) return \[\{ id: k\.id, name: k\.name, status: \/\*\* @type \{const\} \*\/ \("disconnected"\), refused: false, needs: 0 \}\];/);
+    assert.match(main, /if \(k\.off\) return \[\{ id: k\.id, name: k\.name, status: \/\*\* @type \{const\} \*\/ \("disconnected"\), refused: false, needs: 0, color: colorOf\(k\) \}\];/);
+  });
+
+  // (fails before: yes — the remote desk of 11-22: every machine looked the same but for its name)
+  test("a machine's menu: its Colour and Icon, the one it wears checked; a pick kept and every chip told at once — This computer's too", async () => {
+    /** @type {any[]} */
+    let rows = [];
+    let list = [localMachine(ORIGIN), BOX, MAC];
+    /** @type {any[]} */
+    const looks = [];
+    /** @type {any} */
+    let t = null;
+    const look = (/** @type {string} */ id, /** @type {any} */ l) => {
+      looks.push([id, l]);
+      list = list.map((m) => (m.id === id ? { ...m, ...l } : m));
+      t.setList(list);
+      return list.find((m) => m.id === id) ?? null;
+    };
+    t = rig({ keep: { add: (m) => m, remove: () => false, look }, menu: (r) => void (rows = r) });
+    await t.settle();
+    t.r.machineMenu("m-box");
+    const [colour, icon] = rows;
+    assert.deepEqual(colour.submenu.map((/** @type {any} */ r) => r.label), ["Blue", "Orange", "Green", "Purple", "Teal", "Pink", "Indigo", "Yellow"]);
+    assert.deepEqual(colour.submenu.filter((/** @type {any} */ r) => r.checked).map((/** @type {any} */ r) => r.label.toLowerCase()), [colorOf(BOX)], "the one it wears");
+    assert.ok(colour.submenu.every((/** @type {any} */ r) => r.type === "radio" && /^#[0-9a-f]{6}$/.test(r.swatch)), "each with its swatch");
+    assert.deepEqual(icon.submenu.map((/** @type {any} */ r) => [r.label, !!r.checked]), [["Desktop", true], ["Laptop", false], ["Server", false], ["Cloud", false], ["Home", false], ["Terminal", false]]);
+    colour.submenu[4].click();
+    await t.settle();
+    assert.deepEqual(looks, [["m-box", { color: "teal" }]]);
+    assert.equal(stateOf(t.win.webContents).shown, true);
+    t.r.machineMenu("local");
+    rows[1].submenu[1].click();
+    await t.settle();
+    assert.deepEqual(looks.at(-1), ["local", { icon: "laptop" }]);
+    assert.equal(stateOf(t.win.webContents).icon, "laptop", "This computer's chip told at once");
+    // The app's side: kept in its file, the tray and the desk dressed anew at once.
+    const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.match(main, /look: \(id, l\) => \{\n\s+const got = setMachineLook\(machinesFile, id, l, [^\n]+\n\s+if \(got\) dressedAnew\(\);\n\s+return got;/);
+    assert.match(main, /menu: \(rows\) => Menu\.buildFromTemplate\(dressRows\(rows\)\)\.popup\(\{ window: w \}\),/, "each swatch drawn as its dot");
   });
 });
 
@@ -1708,8 +1747,8 @@ test("the app's page's bridge hands the app every step's fields, Pair's machine 
 });
 
 // (fails before: yes — the owner's of 11-08: another machine's page had no bridge, so no chip and no title bar)
-test("a machine's page's bridges: its chip's state, its press, its colours, and its Browser pane's — nothing else of the app's; This computer's page has the same chip's", () => {
-  const loadPreload = (/** @type {string} */ file) => {
+test("a machine's page's bridges: its chip's state, its press, its colours, and its Browser pane's — nothing else of the app's; This computer's page has the same chip's, and the desk", async () => {
+  const loadPreload = (/** @type {string} */ file, /** @type {Record<string, any>} */ answers = {}) => {
     const src = readFileSync(new URL(`../desktop/${file}`, import.meta.url), "utf8");
     /** @type {Record<string, any>} */
     const bridge = {};
@@ -1721,7 +1760,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
       contextBridge: { exposeInMainWorld: (/** @type {string} */ k, /** @type {any} */ v) => void (bridge[k] = v) },
       ipcRenderer: {
         send: (/** @type {string} */ ch, /** @type {any} */ arg) => void sent.push([ch, arg ?? null]),
-        invoke: async () => null,
+        invoke: async (/** @type {string} */ ch) => answers[ch] ?? null,
         on: (/** @type {string} */ ch, /** @type {Function} */ fn) => void heard.set(ch, fn),
         removeListener: (/** @type {string} */ ch) => void heard.delete(ch),
       },
@@ -1749,15 +1788,31 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");
-  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["onState", "open"], "This computer's controls wear its colours through its own bridge");
+  assert.deepEqual(Object.keys(h.bridge.filamentMachines).sort(), ["onDesk", "onState", "open"], "This computer's controls wear its colours through its own bridge");
   h.bridge.filamentMachines.open({ x: 1, y: 2, width: 3, height: 4 });
   h.bridge.filamentApp.frameArea({ left: "78", right: 0, top: 9 });
   assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [
     ["filament:machines-open", { x: 1, y: 2, width: 3, height: 4 }],
     ["filament:frame-area", { left: 78, right: 0 }],
   ]);
+  // (fails before: yes — the remote desk of 11-22) The desk: every other machine's rows, This computer's page's alone —
+  // as it stands when the page starts to listen, then as it moves.
+  assert.ok(!("onDesk" in m.bridge.filamentMachines), "another machine's page hears no other machine's rows");
+  const first = { here: { id: "local", name: "This computer", color: "purple", icon: "monitor" }, machines: [] };
+  const d = loadPreload("harness-preload.cjs", { "filament:desk": first });
+  /** @type {any[]} */
+  const desks = [];
+  const stopDesk = d.bridge.filamentMachines.onDesk((/** @type {any} */ x) => desks.push(x));
+  await new Promise((r) => setImmediate(r));
+  d.heard.get("filament:desk")?.({}, { ...first, machines: [{ id: "m-box" }] });
+  stopDesk();
+  assert.equal(d.heard.has("filament:desk"), false, "stopped");
+  assert.deepEqual(desks, [first, { ...first, machines: [{ id: "m-box" }] }]);
   // main.js hears each from a harness page of the window alone, as its machine.
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+  // The desk told to Filament's own page in the harness window alone, and asked for by a harness page of Filament's alone.
+  assert.match(main, /if \(w && !w\.isDestroyed\(\) && paneHears\(true, w\.webContents\.getURL\(\), origin\)\) w\.webContents\.send\("filament:desk", d\);/);
+  assert.match(main, /ipcMain\.handle\("filament:desk", \(e\) => \(paneOf\(e\) \? \(deskNow \?\? deskOf\(\)\) : null\)\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-open", \(e, rect\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.openPop\(id, rect\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-title-bar", \(e, c\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.tintFrom\(id, c\);/);
   assert.match(main, /ipcMain\.on\("filament:frame-area", \(e, r\) => void \(rail\?\.hearsPage\(e\.sender, e\.senderFrame\) === LOCAL_ID && rail\.frameArea\(r\)\)\);/);
@@ -2013,7 +2068,7 @@ describe("the app's page", () => {
     assert.deepEqual(went, [true, false], "Enter in a field said apart; on the button itself, a press");
   });
 
-  test("Add a machine opens the sheet; a right-click on a machine opens its menu, This computer none", () => {
+  test("Add a machine opens the sheet; a right-click on a machine opens its menu, This computer's too (its Colour and Icon)", () => {
     const { hearRail } = load();
     /** @type {Record<string, Function>} */
     const on = {};
@@ -2025,7 +2080,7 @@ describe("the app's page", () => {
     let stopped = 0;
     on.contextmenu({ target: { closest: (/** @type {string} */ q) => (q === "[data-machine]" ? box : null) }, preventDefault: () => stopped++ });
     on.contextmenu({ target: { closest: (/** @type {string} */ q) => (q === "[data-machine]" ? { getAttribute: () => "local" } : null) }, preventDefault: () => stopped++ });
-    assert.deepEqual(said, ["add", "menu m-box"]);
+    assert.deepEqual(said, ["add", "menu m-box", "menu local"]);
     assert.equal(stopped, 2, "no browser menu over the popover's items");
   });
 

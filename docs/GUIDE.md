@@ -270,12 +270,15 @@ fingerprint, which pins it; an address of a `tailscale serve` machine needs none
 link shows the certificate's fingerprint for you to compare with the one that machine shows — **Not the same** sends
 nothing. **Pair** then claims the code, and the machine shows in the window — its page fills it, its own top row the
 window's title bar, as this computer's is. Once another machine is kept, the top bar shows the machine you are looking
-at left of **Changes**: its dot (connected, reconnecting or offline), its name, and a count of the chats that wait on
-you on the others. Press it for the machines menu: each machine with its state and its key (Ctrl+1…9, ⌘ on a Mac),
-the one showing ticked; pick one to show it, or **Add a machine…**. This window is listed on the other machine as
+at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of
+the chats that wait on you on the others. Press it for the machines menu: each machine with its state, its icon and
+its key (Ctrl+1…9, ⌘ on a Mac), the one showing ticked; pick one to show it, or **Add a machine…**. This window is listed on the other machine as
 *Filament app on* this computer's name, and Revoke there signs it out. A machine whose certificate was made anew is
-paired again the same way, from a new link: its old sign-in there is signed out as the new one is made. A machine's
-**⋯** in the menu (or a right-click on it) holds **Disconnect**: the machine stays in the menu, marked disconnected,
+paired again the same way, from a new link: its old sign-in there is signed out as the new one is made. Every
+machine's **⋯** in the menu (or a right-click on it), This computer's too, holds **Colour** and **Icon** (Desktop,
+Laptop, Server, Cloud, Home or Terminal): until you choose, a machine wears a colour its id picks — the same in every
+window — and a desktop's icon. Its colour is its icon's in the top bar and the menu, and its dot beside its row in
+the tray's menu. Another machine's **⋯** also holds **Disconnect**: the machine stays in the menu, marked disconnected,
 its pairing and its sign-in kept, but this window asks nothing of it — no notifications of its chats, no page of it
 open, no SSH tunnel — until you pick it again (or **Connect** in its **⋯**), after a restart too. **Remove** there takes
 it out of the window and forgets its sign-in here. A machine that cannot be reached shows why, and **Switch machine**

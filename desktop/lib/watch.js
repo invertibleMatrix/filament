@@ -6,8 +6,10 @@
 // the chats whose agents run, the chats' names. And the rows a project's dashboards bring to Your Space (S5b): read
 // every 30 s, counted by project. What was there at the first look is not told, as an alert older than the app is not;
 // nor what came while Filament went unseen (`OUTAGE_MS`). Every machine the window keeps beside this computer is watched
-// the same, each its own watch (`createFleet`, the owner's remote Filament of 11-06, Part 3). Nothing here answers,
-// starts or sends but a chat's unread mark on another machine. Plain Node (NA-D13); main.js asks it every 10 s.
+// the same, each its own watch (`createFleet`, the owner's remote Filament of 11-06, Part 3); each look gives its Now's
+// rows and its chats too, which the desk — this computer's page — lists every machine's from (the remote desk of
+// 11-22). Nothing here answers, starts or sends but a chat's unread mark on another machine. Plain Node (NA-D13);
+// main.js asks it every 10 s.
 import { FOLD_TAIL, blankFold, chainsWithThreads, foldEvents, nowRows, runsToFold } from "../../src/ui/harness/lib/now.js";
 import { readAgents } from "../../src/ui/harness/lib/agents-since.js";
 import { pinnedFetch } from "../../src/cli/pinned.js";
@@ -41,7 +43,13 @@ const SPACE_PATH = "/your-space?glance=0";
  * @typedef {import("../../src/ui/harness/lib/now.js").NowRow} NowRow
  * @typedef {{ project: string, count: number }} SpaceNew  how many rows came to Your Space since the last read, of one
  *   project, by its name
- * @typedef {{ needs: number, works: number, needsNew: NowRow[], ended: Ended[], spaceNew: SpaceNew[] }} Look
+ * @typedef {{ chain: string, title: string, project: string, projectId: string, cwd: string, when: number, unread: boolean, pinned: boolean, threadOf: string | null, from: string }} DeskChat
+ *   a chat of the machine's as the desk lists it (the remote desk of 11-22): its title, its project's name and id, its
+ *   folder, its newest moment (ms), its marks, the chat a thread of it is under, and whose agents started it (another
+ *   machine's, by name)
+ * @typedef {{ needs: NowRow[], works: NowRow[], done: NowRow[] }} NowGroups  Now's three groups, as the harness's left bar has them
+ * @typedef {{ needs: number, works: number, needsNew: NowRow[], ended: Ended[], spaceNew: SpaceNew[], rows: NowGroups, recent: DeskChat[] }} Look
+ *   `rows`: its Now, Done's chats among them (the unread marks its list says); `recent`: its chats, the newest first
  */
 
 /** A chat's own turn, not a sub-agent's run nor a replay. @param {any} r */
@@ -58,6 +66,30 @@ const placeName = (p) => String(p).replace(/[\\/]+$/, "").split(/[\\/]/).pop() |
 /** Where a chat opens in the harness: its chat, a thread's on its Sub Agents view. @param {{ chain: string, thread?: string | null }} r */
 export const chatRoute = (r) => `#/task/${encodeURIComponent(r.chain)}${r.thread ? "/side" : ""}`;
 
+/** A list row's newest moment: its whole one (`lastAt`), else its day. @param {any} s */
+const whenOf = (s) => Number(s.lastAt) || Date.parse(String(s.when || "")) || 0;
+
+/**
+ * The chats as the desk lists them, the newest first: what a row of the sidebar names, nothing more — another
+ * machine's Filament, of another version, answers what it likes. @param {Iterable<any>} sessions @returns {DeskChat[]}
+ */
+export const deskChats = (sessions) =>
+  [...sessions]
+    .filter((s) => typeof s.id === "string" && s.id && !s.archived)
+    .map((s) => ({
+      chain: s.id,
+      title: String(s.title || s.preview || "untitled"),
+      project: placeName(String(s.projectName || s.cwd || "")) || "",
+      projectId: typeof s.project === "string" ? s.project : "",
+      cwd: typeof s.cwd === "string" ? s.cwd : "",
+      when: whenOf(s),
+      unread: !!s.unread,
+      pinned: !!s.pinned,
+      threadOf: typeof s.threadOf === "string" && s.threadOf ? s.threadOf : null,
+      from: typeof s.fromAgents?.name === "string" ? s.fromAgents.name : "",
+    }))
+    .sort((a, b) => b.when - a.when);
+
 /**
  * @param {{ call: (path: string, init?: any) => Promise<any>, now?: () => number, outageMs?: number }} o
  *   `call`: Filament's admin API by its path under `/api`, its answer read (a failure rejects); `outageMs`: how long
@@ -73,6 +105,8 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
   /** @type {Map<string, any>} */
   let chats = new Map();
   let chatsAt = -Infinity;
+  /** The chats as the desk lists them, made anew as the list is read again (`deskChats`). @type {DeskChat[]} */
+  let recent = [];
   /** chain → its newest turn as the last look saw it. @type {Map<string, { id: string, status: string, lead: boolean }>} */
   const turns = new Map();
   /** What needs you, as the last look saw it: a row and what it waits on. @type {Set<string>} */
@@ -113,7 +147,7 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
   /** @param {string} chain @returns {import("../../src/ui/harness/lib/now.js").ChatFacts | null} */
   const facts = (chain) => {
     const s = chats.get(chain);
-    return s ? { title: String(s.title || s.preview || "untitled"), project: placeName(String(s.projectName || s.cwd || "")) || "", when: Date.parse(String(s.when || "")) || 0, unread: !!s.unread } : null;
+    return s ? { title: String(s.title || s.preview || "untitled"), project: placeName(String(s.projectName || s.cwd || "")) || "", when: whenOf(s), unread: !!s.unread } : null;
   };
   /** @param {any} r */
   async function readFold(r) {
@@ -146,7 +180,10 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     const unknown = runs.some((/** @type {any} */ r) => isTurn(r) && r.meta?.chain && !chats.has(String(r.meta.chain)));
     if (t - chatsAt >= CHATS_MS || unknown) {
       const c = await call(CHATS_PATH).catch(() => null);
-      if (c) [chats, chatsAt] = [new Map(rowsOf(c.sessions).map((s) => [String(s.id), s])), t];
+      if (c) {
+        [chats, chatsAt] = [new Map(rowsOf(c.sessions).map((s) => [String(s.id), s])), t];
+        recent = deskChats(chats.values());
+      }
     }
     const follow = runsToFold(runs);
     for (const id of [...folds.keys()]) if (!follow.some((r) => r.id === id)) folds.delete(id);
@@ -154,7 +191,9 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     for (const c of [...threads.keys()]) if (!crews.includes(c)) [threads.delete(c), threadsAt.delete(c)];
     const due = (/** @type {string} */ chain) => !threads.has(chain) || runs.some((/** @type {any} */ r) => r.kind === "subagent" && r.endedAt == null && String(r.meta?.chain || "") === chain) || t - (threadsAt.get(chain) || 0) >= THREADS_QUIET_MS;
     const [spaceNew] = await Promise.all([readSpace(t), ...follow.map(readFold), ...crews.filter(due).map(readThreads)]);
-    const g = nowRows({ runs, folds, threads, chats: facts, unread: new Set(), holders: new Map(), now: t });
+    // Done's chats as the list marks them unread, as the harness's own Now has them: the desk draws every group.
+    const unread = new Set([...chats].filter(([, s]) => s.unread).map(([chain]) => chain));
+    const g = nowRows({ runs, folds, threads, chats: facts, unread, holders: new Map(), now: t });
 
     // What needs you: each row once for what it waits on; a new question in the same chat is told again.
     const asks = g.needs.filter((r) => r.tone === "asks");
@@ -167,6 +206,7 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
     /** @type {Ended[]} */
     const ended = [];
     const seen = new Set();
+    let marked = false;
     for (const r of runs) {
       const chain = String(r.meta?.chain || "");
       if (!isTurn(r) || !chain || seen.has(chain)) continue;
@@ -175,15 +215,20 @@ export function createWatch({ call, now = () => Date.now(), outageMs = OUTAGE_MS
       const lead = g.works.some((w) => w.chain === chain && !w.thread && !!w.team) || (before?.id === r.id && !!before?.lead);
       turns.set(chain, { id: r.id, status: String(r.status), lead });
       if (!primed || !before || before.id !== r.id || before.status !== "running") continue;
-      if (r.status === "running" || r.status === "paused" || r.status === "stopped" || r.status === "aborted") continue;
+      if (r.status === "running" || r.status === "paused") continue;
+      // Its end marks it unread there in a moment — its page, or this app's `markUnread` —: the chats are read again at
+      // the next look, so the desk's Done has it then, not at the list's next minute (the review of s1a).
+      marked = true;
+      if (r.status === "stopped" || r.status === "aborted") continue;
       const failed = r.status === "error" || r.status === "failed";
       const ms = Math.max(0, (Number(r.endedAt) || t) - (Number(r.startedAt) || t));
       const f = facts(chain);
       ended.push({ chain, title: f?.title || "a chat", project: f?.project || "", failed, ms, told: !quiet && (failed || ms >= LONG_MS || lead) });
     }
+    if (marked) chatsAt = -Infinity;
     primed = true;
     seenAt = now();
-    return { needs: asks.length, works: g.works.length, needsNew, ended, spaceNew: quiet ? [] : /** @type {SpaceNew[]} */ (spaceNew) };
+    return { needs: asks.length, works: g.works.length, needsNew, ended, spaceNew: quiet ? [] : /** @type {SpaceNew[]} */ (spaceNew), rows: g, recent };
   }
   return { look };
 }

@@ -14,8 +14,9 @@
 // maps Ctrl+1..9 (⌘ on a Mac) to the machines' slots. A machine may be kept disconnected (`off`, the owner's of 11-08):
 // listed, its ways and its sign-in kept, but nothing asked of it — no look, no page, no notification — until it is
 // connected again (`setMachineOff`). A machine may use this app's browser (`browser`, b-remote): the agent's pages for
-// the person's chats there open in this app (lib/machine-browser.js), off until switched on (`setMachineBrowser`).
-// Plain Node (NA-D13).
+// the person's chats there open in this app (lib/machine-browser.js), off until switched on (`setMachineBrowser`). Each
+// machine, This computer too, wears a colour and an icon (`colorOf`, `iconOf`, the remote desk of 11-22): chosen in its
+// ⋯ (`setMachineLook`), else a colour its id picks and a desktop's icon. Plain Node (NA-D13).
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pinnedFetch } from "../../src/cli/pinned.js";
@@ -42,9 +43,35 @@ export const ASK_MS = 5000;
  * @typedef {{ kind: "lan", url: string, fingerprint: string }} LanRoute  the network listener's https, its certificate pinned
  * @typedef {import("./ssh-route.js").SshRoute} SshRoute  a tunnel this computer holds: its end here, the alias, Filament's port there
  * @typedef {UrlRoute | LanRoute | SshRoute | { kind: string, [k: string]: unknown }} Route  any other kind: a newer app's, kept and passed over
- * @typedef {{ id: string, name: string, routes: Route[], partition: string, addedAt: number | null, local?: true, off?: true, browser?: true }} Machine
- *   `off`: kept disconnected; `browser`: it may use this app's browser
+ * @typedef {{ id: string, name: string, routes: Route[], partition: string, addedAt: number | null, local?: true, off?: true, browser?: true, color?: string, icon?: string }} Machine
+ *   `off`: kept disconnected; `browser`: it may use this app's browser; `color`, `icon`: the ones the person chose for it
  */
+
+/**
+ * The colours a machine may wear (the remote desk of 11-22) — the harness's project chips' tones
+ * (src/ui/harness/now-list.js) —: its icon's tint in the popover, the chips, the tray and the desk's rows.
+ */
+export const MACHINE_COLORS = Object.freeze(["blue", "orange", "green", "purple", "teal", "pink", "indigo", "yellow"]);
+/** Each colour as the app draws it outside a page (the tray's and a menu's swatch): the dark palette's, which reads on either. */
+export const COLOR_HEX = Object.freeze({ blue: "#0a84ff", orange: "#ff9f0a", green: "#30d158", purple: "#bf5af2", teal: "#40c8e0", pink: "#ff375f", indigo: "#5e5ce6", yellow: "#ffd60a" });
+/** The icons a machine may wear, by their names in the harness's set (src/ui/harness/lib/icons.js), and each one's words. */
+export const MACHINE_ICONS = Object.freeze(["monitor", "laptop", "server", "cloud", "house", "terminal"]);
+export const ICON_WORDS = Object.freeze({ monitor: "Desktop", laptop: "Laptop", server: "Server", cloud: "Cloud", house: "Home", terminal: "Terminal" });
+/** A colour's or an icon's name where it is one of `list`'s, else "". @param {unknown} v @param {readonly string[]} list */
+const oneOf = (v, list) => (typeof v === "string" && list.includes(v) ? v : "");
+/**
+ * A machine's colour: the one chosen for it, else one its id picks — the same in every window, and none of the person's
+ * words. @param {{ id: string, color?: string }} m
+ */
+export const colorOf = (m) => {
+  const own = oneOf(m.color, MACHINE_COLORS);
+  if (own) return own;
+  let n = 0;
+  for (const c of String(m.id)) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  return MACHINE_COLORS[n % MACHINE_COLORS.length];
+};
+/** A machine's icon: the one chosen for it, else a desktop's. @param {{ icon?: string }} m */
+export const iconOf = (m) => oneOf(m.icon, MACHINE_ICONS) || "monitor";
 
 /**
  * A Filament's id as kept: /.well-known/filament's (services/machine.js, a UUID), in lower case — a partition's folder on
@@ -120,23 +147,39 @@ function keptOf(m) {
   if (!id) return null;
   const routes = (Array.isArray(m.routes) ? m.routes : []).map(routeOf).filter((r) => r !== null);
   const name = String(m.name ?? "").trim().slice(0, 64) || id;
-  return { id, name, routes: /** @type {Route[]} */ (routes), partition: keptPartition(id, m.partition), addedAt: Number.isFinite(m.addedAt) ? Number(m.addedAt) : null, ...(m.off === true ? { off: /** @type {const} */ (true) } : {}), ...(m.browser === true ? { browser: /** @type {const} */ (true) } : {}) };
+  const color = oneOf(m.color, MACHINE_COLORS);
+  const icon = oneOf(m.icon, MACHINE_ICONS);
+  return { id, name, routes: /** @type {Route[]} */ (routes), partition: keptPartition(id, m.partition), addedAt: Number.isFinite(m.addedAt) ? Number(m.addedAt) : null, ...(m.off === true ? { off: /** @type {const} */ (true) } : {}), ...(m.browser === true ? { browser: /** @type {const} */ (true) } : {}), ...(color ? { color } : {}), ...(icon ? { icon } : {}) };
 }
 
 /**
- * The file's entries as written, or `null` where a file is there and does not read as a list of machines — a hand
- * edit's stray comma, a newer app's shape: never taken for none, so a write sets it aside first (`keep`).
- * @param {string} file @returns {any[] | null}
+ * The file as written, or `null` where a file is there and does not read as a list of machines — a hand edit's stray
+ * comma, a newer app's shape: never taken for none, so a write sets it aside first (`keep`). None there: no machine.
+ * @param {string} file @returns {{ machines: any[], [k: string]: unknown } | null}
  */
-function entriesOf(file) {
-  if (!existsSync(file)) return [];
+function fileOf(file) {
+  if (!existsSync(file)) return { machines: [] };
   try {
     const v = JSON.parse(readFileSync(file, "utf8"));
-    return Array.isArray(v?.machines) ? v.machines : null;
+    return Array.isArray(v?.machines) ? v : null;
   } catch {
     return null;
   }
 }
+/** The file's entries as written, or `null` where it does not read (`fileOf`). @param {string} file @returns {any[] | null} */
+const entriesOf = (file) => fileOf(file)?.machines ?? null;
+
+/**
+ * This computer's colour and icon, kept beside the machines (`here`) — it is never kept as one —: those chosen, none
+ * where none was. @param {string} file @returns {{ color?: string, icon?: string }}
+ */
+export const readHere = (file) => lookOf(fileOf(file)?.here);
+/** A look as written, as this app reads it: the colour and icon that are its own. @param {any} h @returns {{ color?: string, icon?: string }} */
+const lookOf = (h) => {
+  const color = oneOf(h?.color, MACHINE_COLORS);
+  const icon = oneOf(h?.icon, MACHINE_ICONS);
+  return { ...(color ? { color } : {}), ...(icon ? { icon } : {}) };
+};
 
 /**
  * This computer's slot: its Filament at `origin`, in the app's own session (no partition).
@@ -166,7 +209,7 @@ export function readKept(file) {
  * @param {string} file @param {string} origin
  * @returns {Machine[]}
  */
-export const readMachines = (file, origin) => [localMachine(origin), ...readKept(file)];
+export const readMachines = (file, origin) => [{ ...localMachine(origin), ...readHere(file) }, ...readKept(file)];
 
 /**
  * @typedef {{ now?: number, log?: (line: string) => void }} KeepOpts  `log`: where a file set aside is said
@@ -175,19 +218,20 @@ export const readMachines = (file, origin) => [localMachine(origin), ...readKept
 /**
  * Keep the list whole, through a temporary file. A file there that does not read is set aside first — beside it, named
  * for when — never written over (the review of p3-machines); what each machine's entry holds beyond what this app reads
- * is kept with it.
- * @param {string} file @param {readonly Machine[]} list @param {KeepOpts} [o]
+ * is kept with it, and what the file holds beside the list — This computer's colour and icon (`here`, given anew where
+ * `here` is) among it.
+ * @param {string} file @param {readonly Machine[]} list @param {KeepOpts} [o] @param {{ color?: string, icon?: string }} [here]
  */
-function keep(file, list, { now = Date.now(), log = () => {} } = {}) {
-  const had = entriesOf(file);
-  if (had === null) {
+function keep(file, list, { now = Date.now(), log = () => {} } = {}, here) {
+  const top = fileOf(file);
+  if (top === null) {
     const aside = `${file}.unread-${now}`;
     renameSync(file, aside);
     log(`machines: ${file} did not read; set aside as ${aside}`);
   }
   /** @type {Map<string, any>} */
   const raw = new Map();
-  for (const e of had || []) {
+  for (const e of top?.machines || []) {
     const id = e && typeof e === "object" ? idOf(e.id) : "";
     if (id && !raw.has(id)) raw.set(id, e);
   }
@@ -200,10 +244,18 @@ function keep(file, list, { now = Date.now(), log = () => {} } = {}) {
       else delete e.off;
       if (m.browser) e.browser = true;
       else delete e.browser;
+      // A colour or icon goes where it was put back alone (`setMachineLook`, its key there and empty): one a newer app
+      // chose, which this one does not read, stays as written (the review of s1a).
+      for (const k of /** @type {const} */ (["color", "icon"])) {
+        if (m[k]) e[k] = m[k];
+        else if (k in m) delete e[k];
+      }
       return e;
     });
+  const { machines: _list, here: wasHere, ...beside } = top || { machines: [] };
+  const h = here === undefined ? wasHere : here;
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(`${file}.tmp`, JSON.stringify({ machines }, null, 2));
+  writeFileSync(`${file}.tmp`, JSON.stringify({ ...beside, machines, ...(h && typeof h === "object" && Object.keys(h).length ? { here: h } : {}) }, null, 2));
   renameSync(`${file}.tmp`, file);
 }
 
@@ -224,7 +276,7 @@ export function addMachine(file, m, o = {}) {
   const had = all.find((x) => x.id === id);
   const same = (/** @type {Route} */ a, /** @type {Route} */ b) => a.kind === b.kind && a.url === b.url;
   const merged = [...routes, ...(had?.routes || []).filter((r) => !routes.some((n) => same(n, /** @type {Route} */ (r))))];
-  const got = /** @type {Machine} */ (keptOf({ id, name: m.name || had?.name || id, routes: merged, partition: m.partition || had?.partition, addedAt: had?.addedAt ?? o.now ?? Date.now(), browser: had?.browser }));
+  const got = /** @type {Machine} */ (keptOf({ id, name: m.name || had?.name || id, routes: merged, partition: m.partition || had?.partition, addedAt: had?.addedAt ?? o.now ?? Date.now(), browser: had?.browser, color: had?.color, icon: had?.icon }));
   if (!had && all.length >= MAX_MACHINES - 1) throw new Error(`this window holds ${MAX_MACHINES} machines at most: remove one first`);
   keep(file, had ? all.map((x) => (x.id === id ? got : x)) : [...all, got], o);
   return got;
@@ -282,6 +334,36 @@ export function renameMachine(file, id, name, o = {}) {
   const got = { ...had, name: n };
   keep(file, all.map((x) => (x.id === had.id ? got : x)), o);
   return got;
+}
+
+/**
+ * A machine's colour or its icon chosen (its ⋯ in the popover), kept so; null puts back the one it would have
+ * (`colorOf`, `iconOf`). This computer's is kept beside the machines (`readHere`). The machine as it is now, or null
+ * where none has that id or the colour or icon is none of the app's.
+ * @param {string} file @param {string} id @param {{ color?: string | null, icon?: string | null }} look @param {KeepOpts} [o]
+ * @returns {Machine | { color?: string, icon?: string } | null}
+ */
+export function setMachineLook(file, id, look, o = {}) {
+  /** @param {unknown} v @param {readonly string[]} list @returns {string | null | undefined}  undefined: none of the app's */
+  const chosen = (v, list) => (v === null ? null : oneOf(v, list) || undefined);
+  const color = "color" in look ? chosen(look.color, MACHINE_COLORS) : null;
+  const icon = "icon" in look ? chosen(look.icon, MACHINE_ICONS) : null;
+  if (color === undefined || icon === undefined) return null;
+  // What the look names, its key there either way: empty, put back (`keep`).
+  const named = { ...("color" in look ? { color: color || undefined } : {}), ...("icon" in look ? { icon: icon || undefined } : {}) };
+  const all = readKept(file);
+  if (id === LOCAL_ID) {
+    // This computer's as written, a newer app's colour or icon in it kept where this look names none.
+    const raw = fileOf(file)?.here;
+    const here = /** @type {Record<string, unknown>} */ ({ ...(raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}), ...named });
+    for (const k of Object.keys(here)) if (here[k] === undefined) delete here[k];
+    keep(file, all, o, here);
+    return lookOf(here);
+  }
+  const had = all.find((x) => x.id === idOf(id));
+  if (!had) return null;
+  keep(file, all.map((x) => (x.id === had.id ? /** @type {Machine} */ ({ ...had, ...named }) : x)), o);
+  return readKept(file).find((x) => x.id === had.id) ?? null;
 }
 
 /** A host as a URL names it, unbracketed and in lower case. @param {string} h */

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { BLUR_CLICK_MS, CARD_ACTS, CARD_SIZE, cardHears, cardPlace, downPage, downWords, harnessRoute, trayClick } from "../desktop/lib/card.js";
 import { alertNote, backNote, balloonOf, endedNote, FAILOVER_QUIET_MS, needsNote, noteLine, restartingNote, spaceNote, tickNote } from "../desktop/lib/notes.js";
 import { chatRoute, createFleet, createWatch, LONG_MS, OUTAGE_MS, SPACE_MS, WATCH_MS } from "../desktop/lib/watch.js";
-import { trayRows, trayTip } from "../desktop/lib/tray.js";
+import { swatchBitmap, trayRows, trayTip } from "../desktop/lib/tray.js";
 import { railRows, railState } from "../desktop/lib/rail.js";
 import { RECONNECT_MS } from "../desktop/lib/machines.js";
 import http from "node:http";
@@ -323,6 +323,62 @@ describe("the harness, watched", () => {
     assert.deepEqual((/** @type {any} */ (await w.look())).ended, [], "an end is told once");
   });
 
+  // (fails before: yes — the remote desk of 11-22: a look gave counts alone, its rows and the chats it read thrown away)
+  test("a look gives its Now's rows — Done's chats among them, as the list marks them unread — and its chats, the newest first, as the desk lists them", async () => {
+    let t = 50_000_000;
+    const { f, call } = fake();
+    f.chats = /** @type {any} */ ([
+      { id: "c1", title: "Parser refactor", cwd: "H:\\work\\shop-api", project: "p1", lastAt: t - 5000, when: "2026-11-22", pinned: true },
+      { id: "c2", title: "Release notes", projectName: "site", project: "p2", lastAt: t - 1000, unread: true },
+      { id: "c3", preview: "fix the build", cwd: "/home/kai/app", lastAt: t - 9000, threadOf: "c1", fromAgents: { name: "Laptop" } },
+      { id: "c4", title: "Old", archived: true, lastAt: t },
+      { title: "no id" },
+    ]);
+    const w = createWatch({ call, now: () => t });
+    f.runs = [turn({ id: "r1", chain: "c1", status: "running", startedAt: t - 3000 }), turn({ id: "r2", chain: "c2", status: "done", startedAt: t - 9000, endedAt: t - 1000 })];
+    const l = /** @type {any} */ (await w.look());
+    assert.deepEqual(l.rows.works.map((/** @type {any} */ r) => [r.key, r.chain, r.title, r.project]), [["chat:c1", "c1", "Parser refactor", "shop-api"]]);
+    assert.deepEqual(l.rows.done.map((/** @type {any} */ r) => [r.key, r.fact]), [["chat:c2", "finished"]], "its unread mark: under Done, as the harness has it");
+    assert.deepEqual(l.rows.needs, []);
+    assert.deepEqual(l.recent, [
+      { chain: "c2", title: "Release notes", project: "site", projectId: "p2", cwd: "", when: t - 1000, unread: true, pinned: false, threadOf: null, from: "" },
+      { chain: "c1", title: "Parser refactor", project: "shop-api", projectId: "p1", cwd: "H:\\work\\shop-api", when: t - 5000, unread: false, pinned: true, threadOf: null, from: "" },
+      { chain: "c3", title: "fix the build", project: "app", projectId: "", cwd: "/home/kai/app", when: t - 9000, unread: false, pinned: false, threadOf: "c1", from: "Laptop" },
+    ], "the newest first; an archived chat and a row with no id none");
+    assert.equal(l.needs, 0, "the tray's count: what asks you, nothing more");
+    // (fails before: yes — the review of s1a) A Done row whose run the list no longer holds: at its chat's whole moment,
+    // not the start of its day.
+    f.runs = [turn({ id: "r1", chain: "c1", status: "running", startedAt: t - 3000 })];
+    t += WATCH_MS;
+    const later = /** @type {any} */ (await w.look());
+    assert.deepEqual(later.rows.done.map((/** @type {any} */ r) => [r.chain, r.at]), [["c2", t - WATCH_MS - 1000]]);
+  });
+
+  // (fails before: yes — the review of s1a: its unread mark reached the desk's Done at the list's next minute)
+  test("a turn that ends has its chats read again at the next look, its unread mark with them; else once a minute", async () => {
+    let t = 60_000_000;
+    const { f, call } = fake();
+    const w = createWatch({ call, now: () => t });
+    const reads = () => f.asked.filter((p) => p.startsWith("/memory/sessions")).length;
+    f.runs = [turn({ id: "r1", chain: "c1", status: "running", startedAt: t })];
+    await w.look();
+    t += WATCH_MS;
+    await w.look();
+    assert.equal(reads(), 1, "nothing ended: the list as it was");
+    f.runs = [turn({ id: "r1", chain: "c1", status: "done", startedAt: t - WATCH_MS, endedAt: t })];
+    t += WATCH_MS;
+    await w.look();
+    assert.equal(reads(), 1, "the look that sees it end reads nothing more");
+    f.chats = /** @type {any} */ ([{ id: "c1", title: "Parser refactor", cwd: "H:\\work\\shop-api", unread: true, lastAt: t }, f.chats[1]]);
+    t += WATCH_MS;
+    const l = /** @type {any} */ (await w.look());
+    assert.equal(reads(), 2, "the next one reads the chats again");
+    assert.deepEqual(l.rows.done.map((/** @type {any} */ r) => r.chain), ["c1"], "its unread mark: under Done");
+    t += WATCH_MS;
+    await w.look();
+    assert.equal(reads(), 2, "then once a minute again");
+  });
+
   test("the chats' names read at once for a chat the list does not hold, else once a minute; Filament down: no look", async () => {
     let t = 0;
     const { f, call } = fake();
@@ -584,6 +640,8 @@ describe("every machine, watched", () => {
     t += WATCH_MS;
     const third = await fleet.look();
     assert.deepEqual(third.map((m) => [m.id, m.needs, m.look?.needsNew.map((r) => r.chain)]), [["m-box", 2, ["c2"]], ["m-mac", 0, []]]);
+    // (fails before: yes — the remote desk of 11-22) Each machine's own rows and chats, for the desk.
+    assert.deepEqual(third.map((m) => [m.id, m.look?.rows.needs.map((r) => r.chain), m.look?.recent.map((c) => [c.chain, c.project])]), [["m-box", ["c2", "c1"], [["c1", "shop-api"]]], ["m-mac", [], [["c1", "shop-api"]]]]);
     // A chat's unread mark goes to its own machine, with its sign-in; a refusal there (a view-only device's) is all.
     await fleet.markUnread("m-mac", "c 9");
     assert.deepEqual(x.asked.at(-1), { kind: "url", url: "/api/sessions/c%209/settings", cookie: "__Host-filament_device=persist:machine-m-mac.1@mac.tail1234.ts.net", method: "PATCH", body: JSON.stringify({ patch: { display: { unread: true } } }) });
@@ -908,6 +966,44 @@ describe("every machine, watched", () => {
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     assert.match(main, /if \(id\.startsWith\("machine:"\)\) return void showMachine\(id\.slice\("machine:"\.length\)\);/);
     assert.match(main, /const showMachine = \(id, route = null\) => \{\n\s+openWindow\("harness"\);\n\s+if \(!route \|\| !rail\?\.openOn\(id, route\)\) rail\?\.select\(id\);\n\s+\};/);
+  });
+
+  // (fails before: yes — the remote desk of 11-22: every machine's row looked the same but for its name)
+  test("a machine's row in the tray wears its colour's dot: drawn as a bitmap the app makes an image of, its edge smoothed", () => {
+    const rows = /** @type {any[]} */ (trayRows({ owned: true, state: "up", port: 20300, machines: [{ id: "local", name: "This computer", local: true, status: "online", needs: 0, color: "purple" }, { id: "m-box", name: "Studio", status: "online", needs: 0, color: "teal" }, { id: "m-x", name: "X", status: "online", needs: 0, color: "<b>" }] }));
+    assert.deepEqual(rows.filter((r) => String(r.id).startsWith("machine:")).map((r) => r.swatch ?? null), ["#bf5af2", "#40c8e0", null], "a colour it does not know: no dot");
+    const s = swatchBitmap("#40c8e0");
+    assert.deepEqual([s.width, s.height, s.scaleFactor, s.buffer.length], [32, 32, 2, 32 * 32 * 4], "16 points square, crisp at twice the pixels");
+    const px = (/** @type {number} */ x, /** @type {number} */ y) => [...s.buffer.subarray((y * 32 + x) * 4, (y * 32 + x) * 4 + 4)];
+    assert.deepEqual(px(16, 16), [0xe0, 0xc8, 0x40, 255], "its middle the colour, BGRA");
+    assert.deepEqual(px(0, 0), [0, 0, 0, 0], "its corner clear");
+    const edge = px(16, 6);
+    assert.ok(edge[3] > 0 && edge[3] < 255 && edge[0] <= edge[3], "its edge smoothed, its alpha premultiplied");
+    assert.deepEqual(px(16, 16), [...swatchBitmap("#40C8E0").buffer.subarray((16 * 32 + 16) * 4, (16 * 32 + 16) * 4 + 4)], "either case");
+    assert.deepEqual([...swatchBitmap("nonsense").buffer.subarray((16 * 32 + 16) * 4, (16 * 32 + 16) * 4 + 4)], [147, 142, 142, 255], "one it does not read: grey");
+    // main.js: the tray's row and a machine's menu draw it; each machine's row in its colour.
+    const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.match(main, /\.\.\.\(row\.swatch \? \{ icon: swatchOf\(row\.swatch\) \} : \{\}\), click: \(\) => void act\(row\.id\)/);
+    assert.match(main, /img = nativeImage\.createFromBitmap\(s\.buffer, \{ width: s\.width, height: s\.height, scaleFactor: s\.scaleFactor \}\);/);
+    assert.match(main, /\{ id: LOCAL_ID, name: LOCAL_NAME, local: true, status: localWatched\(\)\.status, needs: up \? needsCount : 0, color: colorNow\(LOCAL_ID\) \},/);
+    // (fails before: yes — the review of s1a: This computer was purple in every window of its own) Its colour until one is
+    // chosen is the one its own Filament's id picks, as every other window that keeps it gives it.
+    assert.match(main, /id = String\(JSON\.parse\(readFileSync\(join\(dataDir, "machine\.json"\), "utf8"\)\)\?\.id \|\| ""\)\.toLowerCase\(\);[^]{0,40}return \{ color: h\.color \|\| colorOf\(\{ id: id \|\| LOCAL_ID \}\), icon: iconOf\(h\) \};/);
+    assert.match(main, /machines: \(\) => readMachines\(machinesFile, origin\)\.map\(\(m\) => \(m\.local \? \{ \.\.\.m, \.\.\.hereLook\(\) \} : m\)\),/);
+    assert.match(main, /here: \{ id: LOCAL_ID, name: LOCAL_NAME, \.\.\.hereLook\(\) \},/);
+    assert.match(main, /const colorNow = \(id\) => \(id === LOCAL_ID \? hereLook\(\)\.color :/);
+  });
+
+  // (fails before: yes — the remote desk of 11-22: the watch's rows never left main.js)
+  test("the desk: each other machine's rows as its last look found them — kept while it is away, none once it signs this window out, is disconnected or removed — told to this computer's page where they moved", () => {
+    const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.match(main, /for \(const m of others\) \{\n\s+if \(m\.refused\) deskLooks\.delete\(m\.id\);\n\s+else if \(m\.look\) deskLooks\.set\(m\.id, \{ rows: m\.look\.rows, recent: m\.look\.recent \}\);\n\s+\}/, "one that did not look this tick keeps its last");
+    assert.match(main, /for \(const id of \[\.\.\.deskLooks\.keys\(\)\]\) if \(!kept\.some\(\(k\) => k\.id === id && !k\.off\)\) deskLooks\.delete\(id\);\n\s+tellDesk\(\);/);
+    assert.match(main, /const had = k\.off \|\| refused \? null : deskLooks\.get\(k\.id\);/);
+    assert.match(main, /const said = JSON\.stringify\(d\);\n\s+if \(said === deskSaid\) return;/, "told only what moved");
+    // Before the tick's notification, which may end the tick early.
+    const tickAt = main.indexOf("async function watchLook()");
+    assert.ok(tickAt > 0 && main.indexOf("tellDesk();", tickAt) < main.indexOf("const tick = tickNote(", tickAt), "told every tick, a note or none");
   });
 
   // (fails before: yes — the owner's of 11-08: the counts were a stylesheet put into the rail's page)

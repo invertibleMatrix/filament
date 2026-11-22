@@ -21,7 +21,7 @@ import { attachWatch, followPort, foundAt, hostOf, portOf, refusedWords } from "
 import { createSupervisor } from "./lib/supervisor.js";
 import { askedByPerson, isPress, mayGrant, routeOf, serverArgs, serverEnv } from "./lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "./lib/window-state.js";
-import { trayRows, trayTip } from "./lib/tray.js";
+import { swatchBitmap, trayRows, trayTip } from "./lib/tray.js";
 import { createLog, serverTail } from "./lib/log.js";
 import { watchRenderer, RELOAD_AFTER_MS, stoppedWords } from "./lib/renderer-watch.js";
 import { SAMPLE_EVERY_MS, createMemorySampler } from "./lib/metrics.js";
@@ -39,7 +39,7 @@ import { POP_SIZE, popPlaceName, popTab, popUrl } from "./lib/pop-out.js";
 import { frameOf, overlayColors } from "./lib/frame.js";
 import { appVersion, buildWords, readBuild } from "./lib/build-info.js";
 import { underWay, waitPage, waitWords } from "./lib/waiting.js";
-import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, pickRoute, readKept, readMachines, removeMachine, renameMachine, setMachineBrowser, setMachineOff } from "./lib/machines.js";
+import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickRoute, readHere, readKept, readMachines, removeMachine, renameMachine, setMachineBrowser, setMachineLook, setMachineOff } from "./lib/machines.js";
 import { createMachineBrowsers, machineGuards, partitionFor, placeOnMachine } from "./lib/machine-browser.js";
 import { createRail, zoomRows } from "./lib/rail.js";
 import { checkMachine } from "./lib/add-machine.js";
@@ -394,6 +394,42 @@ async function run() {
     if (r) r.pages.handOff(r.w);
   });
 
+  /**
+   * This computer as it wears itself: its colour and icon chosen, else the colour its own Filament's id picks
+   * (<dataDir>/machine.json) — the one every other window that keeps it gives it — and a desktop's icon.
+   * @returns {{ color: string, icon: string }}
+   */
+  const hereLook = () => {
+    const h = readHere(machinesFile);
+    let id = "";
+    try {
+      id = String(JSON.parse(readFileSync(join(dataDir, "machine.json"), "utf8"))?.id || "").toLowerCase();
+    } catch {}
+    return { color: h.color || colorOf({ id: id || LOCAL_ID }), icon: iconOf(h) };
+  };
+  /** A colour's dot for a menu's row (lib/tray.js `swatchBitmap`), made once each. @type {Map<string, Electron.NativeImage>} */
+  const swatches = new Map();
+  /** @param {string} hex */
+  const swatchOf = (hex) => {
+    let img = swatches.get(hex);
+    if (!img) {
+      const s = swatchBitmap(hex);
+      img = nativeImage.createFromBitmap(s.buffer, { width: s.width, height: s.height, scaleFactor: s.scaleFactor });
+      swatches.set(hex, img);
+    }
+    return img;
+  };
+  /**
+   * A menu's rows as Electron takes them: each `swatch` drawn as its dot, its submenus' too (a machine's Colour).
+   * @param {readonly any[]} rows @returns {any[]}
+   */
+  const dressRows = (rows) =>
+    rows.map((r) => {
+      if (!r || r.type === "separator") return r;
+      const { swatch, submenu, ...rest } = r;
+      return { ...rest, ...(swatch ? { icon: swatchOf(swatch) } : {}), ...(submenu ? { submenu: dressRows(submenu) } : {}) };
+    });
+
   /** @type {Map<"harness" | "dashboard", BrowserWindow>} */
   const windows = new Map();
   /** The harness window's machines (lib/rail.js): its chips' popover, its Add sheet, the other machines' views. @type {ReturnType<typeof createRail> | null} */
@@ -619,7 +655,8 @@ async function run() {
         railPage: pathToFileURL(join(ROOT, "desktop", "rail.html")).href,
         railPreload: join(ROOT, "desktop", "rail-preload.cjs"),
         machinePreload: join(ROOT, "desktop", "machine-preload.cjs"),
-        machines: () => readMachines(machinesFile, origin),
+        // This computer in the colour its own Filament's id picks until one is chosen, as other windows show it.
+        machines: () => readMachines(machinesFile, origin).map((m) => (m.local ? { ...m, ...hereLook() } : m)),
         localWatched,
         waiting: waitingOn,
         // The window's controls dressed as the page showing's top row: another machine's as it asked, else This computer's.
@@ -663,10 +700,16 @@ async function run() {
             machineBrowsers.sync();
             return got;
           },
+          // Its colour or icon: the tray's rows and the desk wear it at once, not at the watch's next tick.
+          look: (id, l) => {
+            const got = setMachineLook(machinesFile, id, l, { log: (line) => log.line(line) });
+            if (got) dressedAnew();
+            return got;
+          },
         },
         // A machine's chats' pages this app holds, drawn over its view's Browser pane.
         browserOf: (id) => machineBrowsers.pagesOf(id),
-        menu: (rows) => Menu.buildFromTemplate(rows).popup({ window: w }),
+        menu: (rows) => Menu.buildFromTemplate(dressRows(rows)).popup({ window: w }),
         confirm: async (q) =>
           (await dialog.showMessageBox(w, { type: "question", message: q.title, detail: q.detail, buttons: [q.yes, "Cancel"], defaultId: 1, cancelId: 1, noLink: true })).response === 0,
         // This computer's own Filament, asked as a machine is added: never added beside itself.
@@ -1111,7 +1154,7 @@ async function run() {
   function paintTray() {
     if (tray.isDestroyed()) return;
     tray.setToolTip(trayTip(facts()));
-    trayMenu = Menu.buildFromTemplate(trayRows(facts()).map((row) => ("type" in row ? row : { label: row.label, enabled: row.enabled !== false, ...(row.checked === undefined ? {} : { type: /** @type {const} */ ("checkbox"), checked: row.checked }), click: () => void act(row.id) })));
+    trayMenu = Menu.buildFromTemplate(trayRows(facts()).map((row) => ("type" in row ? row : { label: row.label, enabled: row.enabled !== false, ...(row.checked === undefined ? {} : { type: /** @type {const} */ ("checkbox"), checked: row.checked }), ...(row.swatch ? { icon: swatchOf(row.swatch) } : {}), click: () => void act(row.id) })));
     // A Mac's menu bar opens a tray's menu at any click, over the card the click opened (the owner's of 11-08): there it
     // opens at a right-click alone.
     if (process.platform !== "darwin") tray.setContextMenu(trayMenu);
@@ -1396,6 +1439,51 @@ async function run() {
     },
   });
   machineBrowsers.sync();
+
+  // ---- the desk (the remote desk of 11-22) -----------------------------------------------------------------------------
+  /**
+   * Each other machine's Now and chats as its last look found them, by its id: kept while it is away, so the desk greys
+   * its rows rather than losing them; none for one signed out here, disconnected or removed.
+   * @type {Map<string, { rows: import("./lib/watch.js").NowGroups, recent: import("./lib/watch.js").DeskChat[] }>}
+   */
+  const deskLooks = new Map();
+  /** The desk as this computer's page last heard it, and as sent. @type {any} */
+  let deskNow = null;
+  let deskSaid = "";
+  /**
+   * What this computer's page lists every machine's chats from: This computer as it wears itself, and each other machine
+   * kept — its state, its colour and icon, its Now's rows and its chats. Another machine's page hears none of it: no
+   * page there hears another machine's names (lib/rail.js).
+   */
+  const deskOf = () => ({
+    here: { id: LOCAL_ID, name: LOCAL_NAME, ...hereLook() },
+    machines: readKept(machinesFile).map((k) => {
+      const row = machineRows.find((r) => r.id === k.id);
+      const refused = !k.off && !!row?.refused;
+      const had = k.off || refused ? null : deskLooks.get(k.id);
+      return { id: k.id, name: k.name, status: k.off ? "disconnected" : (row?.status ?? "reconnecting"), refused, color: colorOf(k), icon: iconOf(k), rows: had?.rows ?? { needs: [], works: [], done: [] }, recent: had?.recent ?? [] };
+    }),
+  });
+  /** The desk told to this computer's page — Filament's own page in the harness window — where it moved. */
+  const tellDesk = () => {
+    const d = deskOf();
+    const said = JSON.stringify(d);
+    if (said === deskSaid) return;
+    [deskNow, deskSaid] = [d, said];
+    const w = windows.get("harness");
+    if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk", d);
+  };
+  // This computer's page asks for it as it starts listening (harness-preload.cjs `onDesk`), Filament's own page alone.
+  ipcMain.handle("filament:desk", (e) => (paneOf(e) ? (deskNow ?? deskOf()) : null));
+  /** A machine's colour now, as the tray's row wears it. @param {string} id */
+  const colorNow = (id) => (id === LOCAL_ID ? hereLook().color : colorOf(readKept(machinesFile).find((k) => k.id === id) ?? { id }));
+  /** A machine's colour or icon chosen: the tray and the desk dressed anew at once. */
+  const dressedAnew = () => {
+    machineRows = machineRows.map((r) => ({ ...r, color: colorNow(r.id) }));
+    paintTray();
+    tellDesk();
+  };
+
   let watching = false;
   async function watchLook() {
     if (watching || quitting) return;
@@ -1412,13 +1500,13 @@ async function run() {
       const [w, others] = await Promise.all([up ? watch.look().catch(() => null) : null, fleet.look().catch(() => [])]);
       if (quitting) return;
       if (w) needsCount = w.needs;
-      // Each machine in the window's order; one disconnected says so and counts nothing — the fleet watches it not.
+      // Each machine in the window's order, in its colour; one disconnected says so and counts nothing — the fleet watches it not.
       const rows = [
-        { id: LOCAL_ID, name: LOCAL_NAME, local: true, status: localWatched().status, needs: up ? needsCount : 0 },
+        { id: LOCAL_ID, name: LOCAL_NAME, local: true, status: localWatched().status, needs: up ? needsCount : 0, color: colorNow(LOCAL_ID) },
         ...kept.flatMap((k) => {
-          if (k.off) return [{ id: k.id, name: k.name, status: /** @type {const} */ ("disconnected"), refused: false, needs: 0 }];
+          if (k.off) return [{ id: k.id, name: k.name, status: /** @type {const} */ ("disconnected"), refused: false, needs: 0, color: colorOf(k) }];
           const m = others.find((o) => o.id === k.id);
-          return m ? [{ id: m.id, name: m.name, status: m.status, refused: m.refused, needs: m.needs }] : [];
+          return m ? [{ id: m.id, name: m.name, status: m.status, refused: m.refused, needs: m.needs, color: colorOf(k) }] : [];
         }),
       ];
       if (JSON.stringify(rows) !== JSON.stringify(machineRows)) {
@@ -1426,6 +1514,13 @@ async function run() {
         paintTray();
         rail?.paint();
       }
+      // The desk: each machine's rows as its look found them — one that did not look this tick keeps its last.
+      for (const m of others) {
+        if (m.refused) deskLooks.delete(m.id);
+        else if (m.look) deskLooks.set(m.id, { rows: m.look.rows, recent: m.look.recent });
+      }
+      for (const id of [...deskLooks.keys()]) if (!kept.some((k) => k.id === id && !k.off)) deskLooks.delete(id);
+      tellDesk();
       // A turn that ended where no page of its machine's harness is open here takes its chat's unread mark there, as the
       // harness's page gives it where one is: the card's Done and the harness's then say it.
       const harness = windows.get("harness");

@@ -3,14 +3,15 @@
 // in — the card, the windows, each machine of the harness window, Restart, an update to restart into, start at logon, the
 // notifications, updating itself, Quit; the tooltip also how many chats need you
 // (NA3b), on every machine. Plain Node (NA-D13); main.js turns the
-// rows into Electron's menu.
+// rows into Electron's menu, a machine's with a dot in its colour (`swatchBitmap`).
+import { COLOR_HEX } from "./machines.js";
 
 /**
- * @typedef {{ id: string, label: string, enabled?: boolean, checked?: boolean } | { type: "separator" }} TrayRow
- *   `checked`: a row that is on or off
- * @typedef {{ id: string, name: string, local?: boolean, status: import("./machines.js").MachineStatus, refused?: boolean, needs: number }} MachineRow
+ * @typedef {{ id: string, label: string, enabled?: boolean, checked?: boolean, swatch?: string } | { type: "separator" }} TrayRow
+ *   `checked`: a row that is on or off; `swatch`: a colour's dot beside it (#rrggbb)
+ * @typedef {{ id: string, name: string, local?: boolean, status: import("./machines.js").MachineStatus, refused?: boolean, needs: number, color?: string }} MachineRow
  *   a machine of the harness window as the watch last saw it (lib/watch.js): This computer (`local`) or another, its state, whether
- *   it refuses this window's sign-in, and how many of its chats wait on you
+ *   it refuses this window's sign-in, how many of its chats wait on you, and its colour (lib/machines.js `colorOf`)
  * @typedef {{ owned: boolean, state: import("./supervisor.js").State | "attached", port: number, gone?: boolean, logonOn?: boolean | null, notify?: boolean, needs?: number, machines?: readonly MachineRow[], updates?: boolean | null, update?: import("./updates.js").UpdateState | null }} TrayFacts
  *   `owned`: the app started this Filament (else it attached to one already running); `gone`: attached, and that Filament
  *   does not answer; `logonOn`: the app starts at logon (null: the system has no login item to set); `notify`: it shows notifications; `needs`: the harness's chats
@@ -31,15 +32,37 @@ const needWords = (n) => `${n} chat${n === 1 ? " needs" : "s need"} you`;
 const count = (n) => Math.max(0, Math.floor(Number(n) || 0));
 
 /**
- * A machine's row in the tray: its name, and how many of its chats wait on you, or why it is not watched. Pressed, the
- * harness window shows it.
+ * A machine's row in the tray: its colour's dot, its name, and how many of its chats wait on you, or why it is not
+ * watched. Pressed, the harness window shows it.
  * @param {MachineRow} m @returns {TrayRow}
  */
 const machineRow = (m) => {
   const n = count(m.needs);
   const how = m.status === "disconnected" ? "disconnected" : m.refused ? "signed out here" : m.status === "offline" ? "offline" : m.status === "reconnecting" ? "reconnecting" : n ? needWords(n) : "";
-  return { id: `machine:${m.id}`, label: `${cut(m.name, 40)}${how ? ` — ${how}` : ""}` };
+  const swatch = Object.hasOwn(COLOR_HEX, String(m.color)) ? COLOR_HEX[/** @type {keyof typeof COLOR_HEX} */ (m.color)] : "";
+  return { id: `machine:${m.id}`, label: `${cut(m.name, 40)}${how ? ` — ${how}` : ""}`, ...(swatch ? { swatch } : {}) };
 };
+
+/**
+ * A colour's dot as a bitmap, for a row of the tray's or a machine's menu (Electron's `nativeImage.createFromBitmap`):
+ * BGRA, its alpha premultiplied, its edge smoothed; `size` square at `scale` (crisp on a screen at twice the pixels).
+ * Grey for a colour it does not read. @param {string} hex  #rrggbb @param {number} [size] @param {number} [scale]
+ */
+export function swatchBitmap(hex, size = 16, scale = 2) {
+  const n = size * scale;
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex));
+  const [r, g, b] = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [142, 142, 147];
+  const buffer = Buffer.alloc(n * n * 4);
+  const c = n / 2;
+  const radius = n * 0.3;
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const a = Math.min(1, Math.max(0, radius + 0.5 - Math.hypot(x + 0.5 - c, y + 0.5 - c)));
+      const i = (y * n + x) * 4;
+      [buffer[i], buffer[i + 1], buffer[i + 2], buffer[i + 3]] = [b * a, g * a, r * a, 255 * a].map(Math.round);
+    }
+  return { buffer, width: n, height: n, scaleFactor: scale };
+}
 
 /** What a store's build updates from, by its kind. @type {Record<string, string>} */
 const STORES = { "mac-store": "the App Store", "windows-store": "the Microsoft Store" };

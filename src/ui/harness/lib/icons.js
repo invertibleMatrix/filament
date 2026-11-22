@@ -185,6 +185,11 @@ export const ICONS = {
   rows2: svg('<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 12h18" />'),
   panelRight: svg('<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M15 3v18" />'),
   layoutPanelLeft: svg('<rect width="7" height="18" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" />'),
+  // A machine's icons (desktop/lib/machines.js MACHINE_ICONS), house and terminal above among them.
+  monitor: svg('<rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" />'),
+  laptop: svg('<path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z" /><path d="M20.054 15.987H3.946" />'),
+  server: svg('<rect width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect width="20" height="8" x="2" y="14" rx="2" ry="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" />'),
+  cloud: svg('<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />'),
 };
 
 /**
