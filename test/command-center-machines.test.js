@@ -5,6 +5,7 @@
 // waits on another machine; every word read as that machine's (lib/desk.js `readDeskChats`); Enter opens it there.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { stubDocument } from "./helpers/dom-stub.js";
 
 // The page's API client keeps the `fetch` it finds when it is first imported: the stand-in goes first.
@@ -130,8 +131,54 @@ test("a machine slow to answer holds none of this computer's rows, nor another m
   await settle();
   assert.deepEqual(cc.labels(), ["Recent chats", "On Studio", "On Lab"]);
   assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser on Studio"]);
-  assert.deepEqual(cc.whys(), ["Lab did not answer the search"]);
+  // (fails before: yes — the hunt on s1h: every failure said the machine did not answer, whatever the app said)
+  assert.deepEqual(cc.whys(), ["Lab is not reachable now"], "why, in the app's words");
   assert.equal(cc.text(".cc-there-wait"), null, "none out: no line");
+});
+
+test("a failure the app gives no words for, or a call that threw, says the machine did not answer; its words are kept to a line", async (t) => {
+  const cc = openOn(t, { machines: [STUDIO, LAB], answer: (p) => (p.machine === "m-studio" ? Promise.reject(new Error("gone")) : { ok: false, status: 502, words: `Lab answered:\u0007 ${"x".repeat(500)}` }) });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS);
+  await cc.wait(SLOW_PARTS_MS);
+  const [studio, lab] = cc.whys();
+  assert.equal(studio, "Studio did not answer the search");
+  assert.equal(lab.length, 300);
+  assert.ok(lab.startsWith("Lab answered:") && !lab.includes("\u0007"), "no control characters");
+});
+
+// (fails before: yes — the hunt on s1h: a search longer than the desk's cap was refused there, and said the machine did not answer)
+test("words longer than the desk takes search for their first 200, trimmed", async (t) => {
+  const cc = openOn(t, { machines: [STUDIO], answer: () => found(["Parser bench"]) });
+  cc.type(`  ${"p".repeat(260)}`);
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.calls.map((c) => c.q), ["p".repeat(200)]);
+});
+
+// (fails before: yes — the hunt on s1h: a thread, or a team on a chat's side, came up though the left bar lists none of them)
+test("a thread or a team on a chat's side is none of theirs listed: its chat is", async (t) => {
+  const some = /** @type {any} */ (found(["Parser chat", "Parser thread", "Parser team"]));
+  some.json.chats[1].threadOf = "c1";
+  some.json.chats[2].kind = "team";
+  const cc = openOn(t, { machines: [STUDIO], answer: () => some });
+  cc.type("parser");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.rows().slice(1), ["Parser chat"]);
+});
+
+// (fails before: yes — the hunt on s1h: Enter on a chat of a machine gone from the window closed Ctrl+K onto nothing)
+test("app.js: a chat opened on another machine's whole page that the app would not open says so", () => {
+  const app = readFileSync("src/ui/harness/app.js", "utf8");
+  for (const said of [
+    "function openWholeOn(machine, route, name = \"That machine\") {",
+    "(ok) => void (ok === false && toast(`${name} is not in this window now: its chat did not open`, \"err\")),",
+    "    else openWholeOn(m.id, route, m.name);",
+    "    openWhole: (machine, route, name) => openWholeOn(machine, route, name),",
+  ])
+    assert.ok(app.includes(said), said);
+  assert.equal(app.split("filamentApp?.openOn?.(").length - 1, 0, "no open of a whole page passes it by");
+  const guest = readFileSync("src/ui/harness/lib/desk-guest.js", "utf8");
+  assert.equal(guest.split("o.openWhole(m.id, route, m.name);").length - 1, 2, "the guest's name the press read");
 });
 
 // (fails before: yes — the review of s1h: each keystroke's search went at once, held a call of the machine's eight

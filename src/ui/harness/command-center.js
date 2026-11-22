@@ -55,6 +55,8 @@ export const SLOW_PARTS_MS = 300;
 export const THERE_WAIT_MS = 250;
 /** The chats listed of each other machine. */
 const THERE_ROWS = 6;
+/** The longest words another machine is searched for: the desk's own cap (desktop/lib/desk.js `QUERY_MAX`). */
+const THERE_QUERY_MOST = 200;
 /** This computer's own parts of a paint — its chats, the task's changes, the files —, before the other machines'. */
 const LOCAL_PARTS = 3;
 
@@ -129,9 +131,12 @@ export function createCommandCenter(cb) {
    * @returns {Promise<{ rows: CcRow[], why: string }>}
    */
   async function there(m, query) {
-    const a = await cb.deskCall?.({ op: "search", machine: m.id, q: query }).catch(() => null);
-    if (!a?.ok) return { rows: [], why: `${m.name} did not answer the search` };
-    return { why: "", rows: readDeskChats(a.json?.chats, m).slice(0, THERE_ROWS).map((c) => ({
+    const a = await cb.deskCall?.({ op: "search", machine: m.id, q: query.trim().slice(0, THERE_QUERY_MOST) }).catch(() => null);
+    // Why none came, in the app's words — a call refused here, an error there, no answer in time —, else as it stands.
+    const said = typeof a?.words === "string" ? a.words.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 300) : "";
+    if (!a?.ok) return { rows: [], why: said || `${m.name} did not answer the search` };
+    // A thread, or a team's on a chat's side, is none the left bar lists: its chat is (`aside`).
+    return { why: "", rows: readDeskChats(a.json?.chats, m).filter((c) => !c.aside).slice(0, THERE_ROWS).map((c) => ({
       label: c.title,
       detail: [c.project, c.when ? sessionAge(new Date(c.when).toISOString()) : ""].filter(Boolean).join(" · "),
       icon: "messageSquare",

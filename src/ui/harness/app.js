@@ -4848,6 +4848,19 @@ function openNextNeeds() {
 
 /** Another machine's chat shown in place beside the left bar, through the desktop app (lib/desk-guest.js): made once the bar is. @type {ReturnType<typeof createDeskGuest> | null} */
 let deskGuest = null;
+/**
+ * A chat of another machine's opened on its whole page (the app's `openOn`); one the app would not open — that machine
+ * gone from the window since the list was drawn — said, not left a press that did nothing.
+ * @param {string} machine @param {string} route @param {string} [name]  its name as the press read it
+ */
+function openWholeOn(machine, route, name = "That machine") {
+  const app = /** @type {any} */ (globalThis).filamentApp;
+  if (typeof app?.openOn !== "function") return;
+  void Promise.resolve(app.openOn(machine, route)).then(
+    (ok) => void (ok === false && toast(`${name} is not in this window now: its chat did not open`, "err")),
+    () => {},
+  );
+}
 const sidebar = createSidebar(shell.sidebarHost, {
   // Another machine's chat opened from the bar: shown in place beside it where the app and that machine can, else on
   // that machine's whole page.
@@ -4855,7 +4868,7 @@ const sidebar = createSidebar(shell.sidebarHost, {
     // A full-frame screen goes for it, as for a chat of this computer's (`onSelectChat`).
     leaveScreen();
     if (deskGuest) void deskGuest.open(m, route);
-    else void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(m.id, route))?.catch?.(() => {});
+    else openWholeOn(m.id, route, m.name);
   },
   // A click here that opens a task leaves a full-frame screen (Settings, a control room) for it — and opens on its Chat,
   // whatever tab it was left on (the owner's words of 10-29: "every click should open the chat tab"); an address that
@@ -4947,7 +4960,7 @@ if (!CHAT_ONLY && !POPPED) {
   deskGuest = createDeskGuest({
     bridge: machines,
     stage: shell.contentCol,
-    openWhole: (machine, route) => void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(machine, route))?.catch?.(() => {}),
+    openWhole: (machine, route, name) => openWholeOn(machine, route, name),
     onMoved: (g) => sidebar.showingThere(g),
     onShown: (s) => shell.setGuest(s),
     say: (words) => toast(words),

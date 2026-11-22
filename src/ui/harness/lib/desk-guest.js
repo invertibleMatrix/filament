@@ -31,7 +31,7 @@ const rectOf = (r) => ({ x: Number(r?.left ?? r?.x) || 0, y: Number(r?.top ?? r?
 const lies = (col, over) => over.some((r) => r.width > 0 && r.height > 0 && r.x < col.x + col.width && r.x + r.width > col.x && r.y < col.y + col.height && r.y + r.height > col.y);
 
 /**
- * @param {{ bridge: any, stage: HTMLElement, openWhole: (machine: string, route: string) => void,
+ * @param {{ bridge: any, stage: HTMLElement, openWhole: (machine: string, route: string, name: string) => void,
  *   onMoved: (at: { machine: string, chain: string | null } | null) => void, onShown?: (s: "in" | "out" | null) => void,
  *   say?: (words: string) => void, doc?: any, win?: any, every?: (fn: () => void, ms: number) => any, stopEvery?: (t: any) => void }} o
  *   `bridge`: the app's (harness-preload.cjs `filamentMachines`); `stage`: the column (shell.js `contentCol`);
@@ -193,7 +193,7 @@ export function createDeskGuest(o) {
         owe(`${m.name}'s Filament shows its chats beside this list once it is updated: its whole page opened`);
       }
       close();
-      o.openWhole(m.id, route);
+      o.openWhole(m.id, route, m.name);
       return false;
     }
     theme = themeNow();
@@ -206,7 +206,7 @@ export function createDeskGuest(o) {
     if (n !== asks) return false;
     if (!ok) {
       close();
-      o.openWhole(m.id, route);
+      o.openWhole(m.id, route, m.name);
       return false;
     }
     at = { machine: m.id, route };
