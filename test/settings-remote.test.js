@@ -1,7 +1,7 @@
 // @ts-check
 // Settings › Remote access and the pairing page (the owner's remote Filament of 11-06, Part 1): this machine's name; a
-// pairing started here — a code, counted down, a link for each address another machine reaches it at (no QR), Full or
-// View-only — closed by the device that claims it or by its time; the devices paired, with when each was last seen,
+// pairing started here — a code, counted down, a link for each address another machine reaches it at, the tailnet's
+// first, each with its QR code for a phone, Full or View-only — closed by the device that claims it or by its time; the devices paired, with when each was last seen,
 // Revoke and Forget; read from another machine, pairing is this machine's and the device it is signs itself out. The
 // pairing page's words and link; and the harness, opened by a browser no one paired, sends it to the pairing page.
 // DOM-free: the fake `h`, a scripted `api`, a clock and a timer the test turns.
@@ -9,7 +9,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { fakeH, textOf, buttonsOf } from "./helpers/fake-dom.js";
-import { renderRemote, leftWords, deviceWords, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS } from "../src/ui/harness/settings/remote.js";
+import { renderRemote, leftWords, deviceWords, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS, onTailnet, qrSvg, QR_MODULE, QR_TAILNET_WORDS, QR_LAN_WORDS } from "../src/ui/harness/settings/remote.js";
+import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
 import { codeOf, deviceName, claimWords, clearWords, inTheClear, mountPair, printOf, printWords } from "../src/ui/pair.js";
@@ -72,8 +73,8 @@ const button = (el, name) => {
  * promise the list's answer, made as it is asked, waits for before it lands (none: at once); `pairHold`, a code's.
  * @param {{ state?: Record<string, any>, devices?: any[], devicesRefused?: boolean, devicesFail?: () => boolean, devicesHold?: () => Promise<unknown> | null, pairHold?: () => Promise<unknown> | null, links?: string[], confirm?: boolean, skew?: number, codes?: { id: string, scope: string, leftMs: number }[],
  *   lan?: { enabled?: boolean, state: (cfg: { enabled: boolean, port: number }, fresh: boolean) => any, allow?: () => any },
- *   tailnet?: { serve?: boolean, trustOwnLogin?: boolean, state: (cfg: { serve: boolean, trustOwnLogin: boolean, port: number }, fresh: boolean) => any, retry?: (cfg: any) => any }, app?: any }} [o]
- *   `app`: the desktop app's bridge, where the page runs in it
+ *   tailnet?: { serve?: boolean, trustOwnLogin?: boolean, state: (cfg: { serve: boolean, trustOwnLogin: boolean, port: number }, fresh: boolean) => any, retry?: (cfg: any) => any }, app?: any, qr?: () => Promise<any> }} [o]
+ *   `app`: the desktop app's bridge, where the page runs in it. `qr`: the QR encoder's load (none: the vendored one, at once)
  */
 async function open(o = {}) {
   /** server.lan as kept. */
@@ -188,6 +189,7 @@ async function open(o = {}) {
     },
     go: (/** @type {string} */ p) => void went.push(p),
     app: o.app ?? null,
+    qr: o.qr ?? (async () => qrcode),
   };
   renderRemote(body, { onToast: (/** @type {string} */ msg, /** @type {string | undefined} */ kind) => void toasts.push([msg, kind]) }, io);
   await settle();
@@ -631,6 +633,83 @@ test("On my tailnet: off, the switch names the address to be; on, its address wi
   assert.ok(!labels(p.body).includes("Links"), labels(p.body).join(", "));
   assert.match(textOf(p.body), /turn on Reach this machine on my network or Share on my tailnet above/);
   await p.pass(1000);
+});
+
+// (fails before: yes — a pairing link was words alone: a phone typed it, or had it sent)
+test("a link's QR code: every dark module the encoder made, inside a quiet zone of four, dark on white; none with no encoder or words no code holds", () => {
+  const svg = qrSvg(qrcode, LINK);
+  const size = Number(/viewBox="0 0 (\d+) \1"/.exec(svg)?.[1]);
+  const q = qrcode(0, "M");
+  q.addData(LINK, "Byte");
+  q.make();
+  const n = q.getModuleCount();
+  assert.equal(size, n + 8, "four modules of quiet zone round it");
+  assert.match(svg, new RegExp(`<rect width="${size}" height="${size}" fill="#fff"/><path d="[^"]+" fill="#000"/></svg>$`), "dark on white, whatever the page's look");
+  assert.ok(!/<script|on\w+=/i.test(svg), "numbers alone");
+  // The path's runs, read back, are the encoder's dark modules, each once.
+  const d = /<path d="([^"]+)"/.exec(svg)?.[1] || "";
+  const runs = [...d.matchAll(/M(\d+) (\d+)h(\d+)v1h-\3z/g)];
+  assert.equal(runs.map((r) => r[0]).join(""), d, "the path is runs alone");
+  const dark = new Set();
+  for (const [, x, y, w] of runs)
+    for (let i = 0; i < Number(w); i++) {
+      const at = `${Number(y) - 4},${Number(x) - 4 + i}`;
+      assert.ok(!dark.has(at), `${at} drawn once`);
+      dark.add(at);
+    }
+  let want = 0;
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      if (q.isDark(r, c)) {
+        want++;
+        assert.ok(dark.has(`${r},${c}`), `module ${r},${c} drawn`);
+      }
+  assert.equal(dark.size, want, "no module drawn the encoder left light");
+  assert.equal(qrSvg(null, LINK), "", "no encoder: no code");
+  assert.equal(qrSvg(() => { throw new Error("broken"); }, LINK), "");
+  assert.equal(qrSvg(qrcode, "x".repeat(4000)), "", "words no code holds: no code, nothing thrown");
+  assert.equal(onTailnet(LINK), false, "a link on the network carries its fingerprint");
+  assert.equal(onTailnet(`https://${TS_NAME}/ui/pair.html#code=ABCD-EFGH`), true);
+});
+
+// (fails before: yes — the same)
+test("a code's links: the tailnet's first, each with its QR code and what a phone says of it; an encoder that will not load leaves them words", async () => {
+  // The page loads the vendored encoder by its own address, as the served page does.
+  const loaded = await import(new URL(QR_MODULE, new URL("../src/ui/harness/settings/remote.js", import.meta.url)).href);
+  assert.equal(loaded.qrcode, qrcode);
+  const tail = `https://${TS_NAME}/ui/pair.html#code=ABCD-EFGH`;
+  /** @type {(() => void)[]} */
+  const comes = [];
+  const p = await open({ tailnet: { serve: true, state: (cfg) => tsState(cfg) }, links: [LINK], qr: () => new Promise((r) => comes.push(() => r(qrcode))) });
+  button(rowOf(p.body, "New code"), "Make a code").attrs.onclick();
+  await settle();
+  const blocks = () => all(rowOf(p.body, "Links"), "rset-link");
+  assert.deepEqual(blocks().map((b) => textOf(b)), [tail, LINK], "the tailnet's first: a phone opens it with no warning");
+  assert.ok(textOf(p.body).includes(`Or in its terminal: filament connect ${tail}`));
+  assert.equal(all(p.body, "rset-qr").length, 0, "words alone while the encoder loads");
+  assert.equal(comes.length, 1, "the encoder asked for once");
+  comes[0]();
+  await settle();
+  const codes = all(p.body, "rset-qr");
+  assert.deepEqual(codes.map((c) => c.attrs["aria-label"]), ["QR code of the link on your tailnet", "QR code of the link on your network"]);
+  assert.deepEqual(codes.map((c) => c.attrs.html), [qrSvg(qrcode, tail), qrSvg(qrcode, LINK)], "each link's own code");
+  assert.deepEqual(all(p.body, "rset-qr-said").map((s) => textOf(s)), [QR_TAILNET_WORDS, QR_LAN_WORDS]);
+  // Cancelled and made again: the encoder already here, the codes drawn at once, not asked for again.
+  button(rowOf(p.body, "Good for"), "Cancel").attrs.onclick();
+  await settle();
+  button(rowOf(p.body, "New code"), "Make a code").attrs.onclick();
+  await settle();
+  assert.equal(all(p.body, "rset-qr").length, 2);
+  assert.equal(comes.length, 1);
+  await p.pass(1000);
+
+  const broken = await open({ links: [LINK], qr: async () => { throw new Error("no module"); } });
+  button(rowOf(broken.body, "New code"), "Make a code").attrs.onclick();
+  await settle();
+  assert.deepEqual(all(rowOf(broken.body, "Links"), "rset-link").map((b) => textOf(b)), [LINK], "the link still there to copy");
+  assert.equal(all(broken.body, "rset-qr").length, 0);
+  assert.equal(broken.toasts.length, 0, "nothing said: the link's words are enough");
+  await broken.pass(1000);
 });
 
 // (fails before: yes — the same)

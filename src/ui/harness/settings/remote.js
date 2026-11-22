@@ -3,7 +3,8 @@
 // name —; reaching it on the network (Part 2): the https listener turned on, its port, its addresses, its certificate's
 // fingerprint and what Windows Firewall lets through, with Allow; sharing it on the tailnet: tailscale serve turned on,
 // its https address, what Tailscale asks for, and trusting your own tailnet login; a pairing started here: a code good for five minutes
-// and one claim, counted down, and a link for each address another machine reaches this Filament at (no QR), for a full
+// and one claim, counted down, and a link for each address another machine reaches this Filament at — the tailnet's
+// first —, each with its QR code for a phone's camera (vendor/qr, loaded once a code is made), for a full
 // device or a view-only one; and the devices paired, each with when it was last seen, Revoke and, once revoked, Forget —
 // another machine's agents' device under the full device that minted it, with a switch for each thing they may do here
 // (the remote-agents plan's f-ui). Read from another machine, pairing is this machine's alone, the device list is a full
@@ -94,6 +95,54 @@ export const TAILSCALE_HTTPS = "https://login.tailscale.com/admin/dns";
  * no fingerprint. @param {any} ts  GET /remote/tailscale's answer @param {string} code
  */
 export const tailnetLinkOf = (ts, code) => (ts?.address ? `${ts.address}${PAIR_PAGE}#code=${encodeURIComponent(code)}` : null);
+
+/**
+ * Whether a code's link is the tailnet's: the one with no fingerprint, an authority signing its certificate — a link on
+ * the network's address always carries its own (admin/remote.js `pairLinks`). @param {string} link
+ */
+export const onTailnet = (link) => !/[#&]fp=/.test(String(link));
+/** What a phone says of a link's QR code on the tailnet: nothing, an authority signs its certificate. */
+export const QR_TAILNET_WORDS = "Scan it with a phone signed in to your tailnet: no warning, an authority signs this address's certificate.";
+/** And of one on the network's address: its own certificate warned of first, its fingerprint the one to compare. */
+export const QR_LAN_WORDS = "Scan it with a phone on the same network. Its browser warns about this machine's own certificate first: the fingerprint in its details is Certificate's above, then go on.";
+/** Where the QR encoder is (vendor/qr, qrcode-generator, MIT), loaded once a code's links are drawn. */
+export const QR_MODULE = "../vendor/qr/qrcode.mjs";
+/** The quiet zone round a QR code, in its modules: the four the standard asks, so a camera finds its edge. */
+const QR_QUIET = 4;
+
+/**
+ * A link's QR code as an SVG's markup, for a phone's camera to open the link by: its dark modules one path, each row's
+ * runs joined, inside its quiet zone, dark on white whatever the page's look. Built from numbers alone; "" where the
+ * words fit no code or no encoder is given. @param {any} encoder  qrcode-generator's `qrcode` @param {string} text
+ * @returns {string}
+ */
+export function qrSvg(encoder, text) {
+  if (typeof encoder !== "function") return "";
+  /** @type {any} */
+  let q;
+  try {
+    // The smallest version the words fit, at level M: a phone's screen shot of it still reads.
+    q = encoder(0, "M");
+    q.addData(String(text), "Byte");
+    q.make();
+  } catch {
+    return "";
+  }
+  const n = Number(q.getModuleCount());
+  if (!Number.isInteger(n) || n < 21) return "";
+  const size = n + QR_QUIET * 2;
+  let d = "";
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!q.isDark(r, c)) continue;
+      let run = 1;
+      while (c + run < n && q.isDark(r, c + run)) run++;
+      d += `M${c + QR_QUIET} ${r + QR_QUIET}h${run}v1h-${run}z`;
+      c += run - 1;
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" aria-hidden="true"><rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
 
 /**
  * What another machine's agents' device may do here, a switch each (services/devices.js GRANTS), and what each lets
@@ -226,11 +275,12 @@ const scopeWords = (scope) => (scope === "view" ? "view-only: it reads" : "full:
  * @param {HTMLElement} body
  * @param {{ onToast?: (msg: string, kind?: string) => void }} [cb]
  * @param {{ h?: typeof h, api?: (path: string, o?: any) => Promise<any>, copy?: (text: string) => Promise<void>, confirm?: (q: any) => Promise<boolean>,
- *   now?: () => number, every?: (fn: () => void, ms: number) => () => void, go?: (path: string) => void,
+ *   now?: () => number, every?: (fn: () => void, ms: number) => () => void, go?: (path: string) => void, qr?: () => Promise<any>,
  *   app?: { addMachine?: () => void, agentMachines?: () => Promise<any>, agentsOn?: (id: string, on: boolean) => Promise<any>, agentsModels?: (id: string, on: boolean) => Promise<any>, agentsFull?: (id: string, on: boolean) => Promise<any>, agentsForget?: (id: string) => Promise<any>,
  *     browserOn?: (id: string, on: boolean) => Promise<any>, onBrowserLink?: (fn: (row: any) => void) => () => void } | null }} [io]
  *   `every`: a timer that runs `fn` each `ms` until stopped (the countdown, the look for a claim); `go`: where a device
- *   that signed itself out goes (the pairing page); `app`: the desktop app's bridge (harness-preload.cjs `filamentApp`)
+ *   that signed itself out goes (the pairing page); `qr`: the QR encoder loaded (`QR_MODULE`); `app`: the desktop app's
+ *   bridge (harness-preload.cjs `filamentApp`)
  */
 export function renderRemote(body, cb = {}, io = {}) {
   const m = io.h || h;
@@ -310,6 +360,10 @@ export function renderRemote(body, cb = {}, io = {}) {
   /** This machine as the page last said it: "this machine" on its own page, its name on another machine's. */
   let hereNow = "this machine";
   const hereName = () => hereNow;
+  /** The QR encoder once loaded, asked for once a code's links are drawn; null till then, and where it would not load. @type {any} */
+  let qrEncoder = null;
+  let qrAsked = false;
+  const loadQr = io.qr || (() => import(QR_MODULE).then((mod) => mod.qrcode || mod.default));
 
   const page = mountConfigPage(body, cb, { ...io, api: call }, { rows: (kit) => rows(kit) });
   const redraw = () => void page.redraw();
@@ -442,6 +496,36 @@ export function renderRemote(body, cb = {}, io = {}) {
     m("div", { class: "cset-copy" },
       m("code", { class: "cset-code" }, text),
       m("button", { class: "mset-act", type: "button", title: `Copy ${what}`, "aria-label": `Copy ${what}`, html: ICONS.copy, onclick: () => copy(text).then(() => toast(`Copied ${what}`), () => toast("Copy failed: select it instead", "err")) }));
+
+  /** The QR encoder asked for, once: the page drawn again as it comes; one that would not load leaves the links as words. */
+  const wantQr = () => {
+    if (qrAsked) return;
+    qrAsked = true;
+    void Promise.resolve()
+      .then(loadQr)
+      .then(
+        (e) => {
+          qrEncoder = typeof e === "function" ? e : null;
+          if (qrEncoder) redraw();
+        },
+        () => {},
+      );
+  };
+  /**
+   * A pairing link: its words with Copy, and under them its QR code for a phone's camera, with what that phone says of
+   * it — on the tailnet nothing, an authority signs its certificate; on the network's address, a warning first.
+   * @param {string} link @param {boolean} tailnet
+   */
+  const linkBlock = (link, tailnet) => {
+    const svg = qrSvg(qrEncoder, link);
+    return m("div", { class: "rset-link" },
+      copyable(link, "the link"),
+      svg
+        ? m("div", { class: "rset-qr-wrap" },
+          m("div", { class: "rset-qr", role: "img", "aria-label": tailnet ? "QR code of the link on your tailnet" : "QR code of the link on your network", html: svg }),
+          m("p", { class: "rset-qr-said" }, tailnet ? QR_TAILNET_WORDS : QR_LAN_WORDS))
+        : null);
+  };
 
   const start = async () => {
     if (starting) return;
@@ -883,7 +967,8 @@ export function renderRemote(body, cb = {}, io = {}) {
       // And the tailnet's, where Filament is served there as read now; the code's own carries it until Tailscale is read.
       const tail = tsNow && !tsNow.unread ? tailnetLinkOf(tsNow, String(pairing.code)) : null;
       const onTail = (/** @type {string} */ l) => !!tsNow?.name && l.startsWith(`https://${tsNow.name}/`);
-      const links = [...new Set([...(tsNow && !tsNow.unread ? lanLinks.filter((l) => !onTail(l)) : lanLinks), ...(tail ? [tail] : [])])];
+      // The tailnet's first — a phone opens it with no certificate warning —, the code's own as read until Tailscale is.
+      const links = [...new Set([...(tsNow && !tsNow.unread ? lanLinks.filter((l) => !onTail(l)) : lanLinks), ...(tail ? [tail] : [])])].sort((a, b) => Number(onTailnet(b)) - Number(onTailnet(a)));
       const left = m("span", { class: "rset-left" }, leftWords(deadline - now()));
       tick(left);
       const forWhat = pairing.scope === "view" ? "a view-only device: it reads" : "a full device: it drives this Filament as you do";
@@ -893,7 +978,9 @@ export function renderRemote(body, cb = {}, io = {}) {
           m("button", { class: "mset-act", type: "button", title: "Copy the code", "aria-label": "Copy the code", html: ICONS.copy, onclick: () => copy(String(pairing.code)).then(() => toast("Copied the code"), () => toast("Copy failed: select it instead", "err")) }))));
       out.push(kit.row("Good for", "Once, by one device: a new code for the next.", m("div", { class: "rset-start" }, left, m("button", { class: "ghost sm", type: "button", onclick: () => void cancel() }, "Cancel"))));
       if (links.length) {
-        out.push(kit.row("Links", "Open one on the other machine: the one its network reaches this machine by. It carries the certificate's fingerprint, which the pairing page shows to compare.", m("div", { class: "rset-links" }, ...links.map((l) => copyable(l, "the link"))), { wide: true }));
+        wantQr();
+        out.push(kit.row("Links", "Open one on the other machine — the one its network reaches this machine by —, or scan its code with a phone's camera. A link on your network carries the certificate's fingerprint, which the pairing page shows to compare.",
+          m("div", { class: "rset-links" }, ...links.map((l) => linkBlock(l, onTailnet(l)))), { wide: true }));
         out.push(kit.note(`Or in its terminal: filament connect ${links[0]}`));
       } else
         out.push(kit.note("No other machine reaches Filament on the network yet: turn on Reach this machine on my network or Share on my tailnet above, and a link for each address appears here. Through an SSH tunnel, the code works on that address.", "warn"));

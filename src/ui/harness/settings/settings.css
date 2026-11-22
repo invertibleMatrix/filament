@@ -819,6 +819,14 @@
 }
 .rset-left { font-family: var(--mono); font-size: var(--text-ui-sm); color: var(--aq-label); font-variant-numeric: tabular-nums; }
 .rset-links { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+/* A link's QR code under its words: dark on white in either look (its SVG paints its own white), square, big enough
+   for a phone across a desk. */
+.rset-link { display: flex; flex-direction: column; gap: 8px; }
+.rset-link + .rset-link { margin-top: 6px; }
+.rset-qr-wrap { display: flex; align-items: flex-start; gap: 12px; }
+.rset-qr { flex: none; width: 168px; height: 168px; border-radius: 6px; overflow: hidden; border: 1px solid var(--aq-hairline); }
+.rset-qr svg { display: block; width: 100%; height: 100%; }
+.rset-qr-said { margin: 0; max-width: 34ch; font-size: var(--text-ui-sm); color: var(--aq-label); line-height: 1.45; }
 /* Machines, a card each (the owner's redesign of 11-09): its name and state - a dot and words - over a line for each
    way, who acts on which machine as its title, set in under the head; and the browsers and command lines, a line each
    in one list. A line has its name, quiet lines under it, and a pill for each thing it may do - pressed while on, a

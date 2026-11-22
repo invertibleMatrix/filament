@@ -12,7 +12,8 @@ Where a licence cannot be determined from this repository, its entry says "licen
 
 Each folder keeps its licences beside its code, in `LICENSE` (and `NOTICE`, where a package has one).
 `scripts/vendor-render-deps.mjs` rewrites those of `shiki/`, `pierre/`, `katex/` and `mermaid/` whenever it rebuilds them,
-from the packages esbuild put in each bundle; `shelf/` keeps its own, written by `scripts/vendor-shelf.mjs`.
+from the packages esbuild put in each bundle; `shelf/` keeps its own, written by `scripts/vendor-shelf.mjs`, and `qr/`
+its own, written by `scripts/vendor-qr.mjs`.
 
 ### xterm.js: `xterm/`
 
@@ -173,6 +174,15 @@ Code of others inside those dists, under the notices they carry, which the bundl
 | Embeddable Minimum Strictly-Compliant Promises/A+ 1.1.1 Thenable | as embedded | src/ui/harness/vendor/mermaid/mermaid.mjs (inside cytoscape's dist) | MIT | Copyright (c) 2013-2014 Ralf S. Engelschall (http://engelschall.com); Licensed under The MIT License |  |
 | regenerator-runtime | as embedded | src/ui/harness/vendor/mermaid/mermaid.mjs (inside DOMPurify's dist) | MIT | Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE |  |
 | Runge-Kutta spring physics function generator (adapted from Framer.js) | as embedded | src/ui/harness/vendor/mermaid/mermaid.mjs (inside cytoscape's dist) | MIT | copyright Koen Bok. MIT License |  |
+
+### QR codes: `qr/qrcode.mjs`
+
+The package's ES module, copied verbatim. Its MIT notice stands in the module's head; the package ships no LICENSE file,
+so `qr/LICENSE` is that licence's text under the module's copyright line.
+
+| Component | Version | Where | Licence | Copyright | Link |
+|---|---|---|---|---|---|
+| qrcode-generator | 2.0.4 | src/ui/harness/vendor/qr/qrcode.mjs | MIT | Copyright (c) 2009 Kazuhiko Arase | <https://github.com/kazuhikoarase/qrcode-generator> |
 
 ### The shelf: `shelf/`
 
@@ -1729,6 +1739,34 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### MIT: qrcode-generator 2.0.4
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2009 Kazuhiko Arase
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+The word 'QR Code' is a registered trademark of DENSO WAVE INCORPORATED.
 ```
 
 ### MIT: roughjs 4.6.6

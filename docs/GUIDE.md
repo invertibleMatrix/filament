@@ -217,8 +217,11 @@ the chats, the agents and the terminal run where Filament runs, and the other ma
 **Pairing.** Every other caller gets in by pairing once. On this machine, open Settings › Remote access, choose Full or
 View-only under Pair with a code and press Make a code (or run `filament pair`, `--view` for view-only, where the desktop
 app is not running: while it runs, its window makes the code). The code is good for
-five minutes and one claim, and comes with a link for each network address, which carries the code and the
-certificate's fingerprint. On the other machine, open a link in a browser — or open Filament's address, which sends a
+five minutes and one claim, and comes with a link for each address another machine reaches it at, each carrying the
+code: the tailnet's first, where Share on my tailnet is on, then one for each network address, which carries the
+certificate's fingerprint too. Under each link is its QR code, for a phone's camera: a phone on your tailnet opens its
+link with no warning, while one on the network's address shows its browser's certificate warning first, the fingerprint
+in its details the one to compare. On the other machine, open a link in a browser — or open Filament's address, which sends a
 browser it does not know to the pairing page, and type the code there. Over https the pairing page asks you to compare
 the browser's certificate details with the fingerprint (the link's, where you opened one). The browser is paired: it
 keeps a cookie of its own (HttpOnly, SameSite=Strict, and Secure over https) for 400 days, until the device is revoked.
