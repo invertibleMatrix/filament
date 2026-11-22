@@ -25,10 +25,15 @@ const WIDE_WINDOW = 2200;
 
 /**
  * @param {HTMLElement} root  the element the shell replaces the children of (#app)
- * @param {{ onSidebarReveal?: () => void, onHeader?: any }} [cb]
+ * @param {{ onSidebarReveal?: () => void, onHeader?: any, chatOnly?: boolean, onFullPage?: () => void }} [cb]
+ *   `chatOnly`: the chat alone, as another machine's desk shows it (lib/chat-only.js) — no sidebar nor its rail, the
+ *   crumb in the header, and no sidebar choice of this page's kept: this machine's own pages keep theirs;
+ *   `onFullPage`: there, Open full page beside the header's layout menu — this machine's whole page at this chat
  */
 export function createShell(root, cb = {}) {
   root.classList.add("app-shell");
+  const chatOnly = cb.chatOnly === true;
+  if (chatOnly) root.classList.add("chat-only");
 
   // --- the frames ---
   const sidebarHost = h("aside", { class: "side-frame", id: "sessions" });
@@ -48,6 +53,12 @@ export function createShell(root, cb = {}) {
 
   const header = createHeader(cb.onHeader || {});
   const { folderIn, folderLeaf, foldersDatalist, titleEl } = header;
+  if (chatOnly && cb.onFullPage) {
+    const onFull = cb.onFullPage;
+    const fullBtn = h("button", { class: "ghost icon hdr-full", type: "button", "aria-label": "Open full page", html: icon("maximize2"), onclick: () => onFull() });
+    tooltip(fullBtn, { title: "Open this machine's full page at this chat" });
+    header.layoutSlot.after(fullBtn);
+  }
 
   // The chat's column: the transcript, the views and the dock mount here (app.js appends them).
   const convFrame = h("section", { class: "conv-frame frame" });
@@ -79,7 +90,7 @@ export function createShell(root, cb = {}) {
    * here, never fight them in CSS. Floating panes keep their width closed (the slide-out needs it) and hide
    * off-transform instead. */
   const paintLayout = () => {
-    const sideHidden = !userOpen || autoCollapsed;
+    const sideHidden = chatOnly || !userOpen || autoCollapsed;
     root.classList.toggle("sidebar-off", !userOpen);
     root.classList.toggle("auto-side-off", autoCollapsed && userOpen);
     root.classList.toggle("pane-off", !panes.shown);
@@ -94,7 +105,7 @@ export function createShell(root, cb = {}) {
     // letter of each name (the owner's of 11-08), and a window stands under the menu bar, its notch above it.
     header.crumbIn(sideHidden || lightsAtLeft() ? null : crumbSlot);
     sideGutter.style.display = sideHidden ? "none" : "";
-    collapsedRail.style.width = sideHidden ? `${COLLAPSED_W}px` : "0px";
+    collapsedRail.style.width = sideHidden && !chatOnly ? `${COLLAPSED_W}px` : "0px";
     paneHost.style.width = panes.shown || panes.float ? `${panes.width}px` : "0px";
     // The panes' width: docked, the header's buttons over them take it; floating, the chat's parts step aside by it (the
     // transcript, the dock, the views), so nothing of theirs sits under the pane.
@@ -132,6 +143,8 @@ export function createShell(root, cb = {}) {
 
   /** @param {boolean} on */
   const setSidebar = (on) => {
+    // The chat alone has no sidebar to show, and keeps no choice of it.
+    if (chatOnly) return;
     userOpen = on;
     autoCollapsed = false;
     rememberSidebar(on);
@@ -226,6 +239,6 @@ export function createShell(root, cb = {}) {
     /** Asked on every window resize, before the sidebar's rule. @param {() => void} f */
     onRoom: (f) => { roomers.push(f); },
     dragging,
-    get sidebarOpen() { return userOpen; },
+    get sidebarOpen() { return userOpen && !chatOnly; },
   };
 }

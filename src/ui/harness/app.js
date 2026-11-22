@@ -19,7 +19,8 @@ import { createWaitingQueue, waitingStore, waitingOwes, holderFromView, waitingT
 import { settingsFollower } from "./live-topic.js";
 import { state, chatOf, putChat, newChatId, recentFolders, rememberFolder, forgetFolder, lastModel, rememberModel, newChatModelPref, startModel, applySessionView, onSessionView, draftFor, saveDraft, draftFilesFor, saveDraftFiles, startKept, atWork } from "./state.js";
 import { settingsRead, viewSettingsOf } from "./view-settings.js";
-import { watchTheme, setThemePref } from "./theme.js";
+import { watchTheme, setThemePref, hintTheme, themeHinted } from "./theme.js";
+import { chatOnlyOf, fullPageOf, themeHintOf } from "./lib/chat-only.js";
 import { createShell } from "./shell.js";
 import { createTimeline, LIVE_LOST_WORDS } from "./conversation/timeline.js";
 import { fileWords, rewindButton, turnsWords } from "./conversation/rewound.js";
@@ -241,6 +242,20 @@ const POPPED = popTabOf();
 const popBridge = popBridgeOf();
 const windowsLine = mainLine();
 const follows = POPPED ? followSwitch() : null;
+/**
+ * The chat alone (`?only=chat`, lib/chat-only.js): another machine's desk shows this page's chat beside its own left
+ * bar — no sidebar, no full-frame screen (one asked for opens this machine's whole page there, where the desk can), its
+ * look the desk's (`?theme=`), kept nowhere. It is a tab of its own: it writes its chat as any page does.
+ */
+const CHAT_ONLY = !POPPED && chatOnlyOf();
+const fullPage = CHAT_ONLY ? fullPageOf() : null;
+if (CHAT_ONLY) hintTheme(themeHintOf());
+/**
+ * What the chat alone neither offers in Ctrl+K nor runs by its key, by id: what goes through the sidebar it hides (the
+ * chats before and after, what needs you next, the sidebar itself) or leaves the chat for a new one (New chat, Open
+ * Workspace, the tour that starts one) — the desk showing it picks its chat — and the tips.
+ */
+const CHAT_ONLY_OFF = new Set(["new", "new-task", "next-needs", "task-prev", "task-next", "sidebar", "open-workspace", "welcome", "tips"]);
 
 // A view-only device (the owner's remote Filament of 11-06, p4-view-ui): its page reads this Filament and offers nothing
 // the server would refuse it — no Send, New chat, Start or terminal (`paintViewOnly`).
@@ -256,6 +271,8 @@ const VIEW_ONLY_KEYS_OFF = new Set(["model", "mode", "effort", "fork", "subagent
 // The shell and the regions
 // ---------------------------------------------------------------------------------------------------
 const shell = createShell(must("app"), {
+  chatOnly: CHAT_ONLY,
+  ...(fullPage ? { onFullPage: () => fullPage(location.hash || backTo()) } : {}),
   onSidebarReveal: () => shell.setSidebar(true),
   onHeader: {
     onFork: () => {
@@ -4495,14 +4512,14 @@ const commandCenter = createCommandCenter({
     { id: "view-side", label: "Show Agents", icon: "users", tone: "var(--color-sys-indigo)", shortcut: "view-side", when: () => !!chatOf(state.currentId)?.chainId, run: () => views.show("side") },
     { id: "side-new", label: "Ask on the side", icon: "plus", tone: "var(--color-sys-indigo)", shortcut: "subagent", when: () => !viewOnlyPage() && !!chatOf(state.currentId)?.chainId, run: () => views.side.fresh() },
     { id: "catch-up", label: "Catch me up…", icon: "history", tone: "var(--color-sys-indigo)", when: () => !viewOnlyPage() && !!chatOf(state.currentId)?.chainId, run: () => catchUp() },
-    { id: "theme", label: "Switch theme to dark/light", icon: "moon", tone: "var(--color-sys-purple)", shortcut: "theme", run: () => setThemePref(document.documentElement.classList.contains("theme-zai-dark") ? "light" : "dark") },
+    { id: "theme", label: "Switch theme to dark/light", icon: "moon", tone: "var(--color-sys-purple)", shortcut: "theme", when: () => !themeHinted(), run: () => setThemePref(document.documentElement.classList.contains("theme-zai-dark") ? "light" : "dark") },
     { id: "task-prev", label: WORDS.previousChat, icon: "chevronUp", tone: "var(--color-sys-gray)", shortcut: "task-prev", run: () => sidebar.cycleTask(-1) },
     { id: "task-next", label: WORDS.nextChat, icon: "chevronDown", tone: "var(--color-sys-gray)", shortcut: "task-next", run: () => sidebar.cycleTask(1) },
     { id: "console", label: "Open Filament console", icon: "externalLink", tone: "var(--color-sys-teal)", run: () => window.open("/ui/", CONSOLE_WINDOW) },
     { id: "welcome", label: "Welcome tour", icon: "sparkles", tone: "var(--color-sys-blue)", when: () => !viewOnlyPage(), run: () => openTour() },
     // The first-run tips once more (Product's review of 11-09): each shows again as its moment comes.
     { id: "tips", label: "Show tips again", icon: "sparkles", tone: "var(--color-sys-blue)", when: () => !viewOnlyPage() && !POPPED, run: () => void coach.reset().then(() => toast("Tips show again, each as its moment comes"), (e) => toast(e?.message || String(e), "err")) },
-  ],
+  ].filter((a) => !CHAT_ONLY || !CHAT_ONLY_OFF.has(a.id)),
   onOpenTask: (id) => openSession({ id, title: "", cwd: "" }, { push: true }),
   getFolder: () => chatOf(state.currentId)?.cwd || folderIn.value.trim(),
   getChat: () => chatOf(state.currentId),
@@ -4555,7 +4572,7 @@ function onShortcutKey(e) {
     // in the sidebar.
     "close-context": () => {
       if (rail.closeFocused()) return;
-      if (viewOnlyPage()) return;
+      if (viewOnlyPage() || CHAT_ONLY) return;
       pushNextAddress = true;
       newChat();
     },
@@ -4570,6 +4587,7 @@ function onShortcutKey(e) {
   e.preventDefault();
   // A view-only device's page: no model, mode or effort to pick, no fork, no question on the side (p4-view-ui).
   if (viewOnlyPage() && VIEW_ONLY_KEYS_OFF.has(id)) return;
+  if (CHAT_ONLY && CHAT_ONLY_OFF.has(id)) return;
   // One dialog at a time, as the command center opens no second over itself: a dialog open holds the keys until it
   // closes, so a shortcut that opens a dialog opens none over it. A sheet is no dialog: one opens over it, as ever.
   if (OPENS_DIALOG.has(id) && document.querySelector('.zc-dialog[aria-modal="true"]')) return;
@@ -5868,7 +5886,7 @@ function afterFeedGap() {
   }
   if (drawing?.chainId && !drawing.live) followElsewhere(drawing);
   // Filament may have started again: the tips' file is read anew, and replays where it says so.
-  if (!POPPED && !viewOnlyPage()) void coach.reload().then(coachRead);
+  if (!POPPED && !CHAT_ONLY && !viewOnlyPage()) void coach.reload().then(coachRead);
 }
 onBus((msg) => {
   if (msg?.type === "hello") {
@@ -9114,6 +9132,14 @@ function applyRoute(route) {
     location.replace(backTo());
     return;
   }
+  // The chat alone shows no screen either: this machine's whole page opens at it where the desk can open one, else it
+  // says where one is, and the chat stays as it was. The Context page is the chat's own Overview there, as ever.
+  if (CHAT_ONLY && isScreen(route.kind)) {
+    if (fullPage) fullPage(routeFor(route));
+    else toast("This page shows one chat alone: open Filament's full page for that");
+    location.replace(backTo());
+    return;
+  }
   // The room tears itself down when its element goes, but only if it was removed from the parent it was mounted in.
   // Settings renders into the same frame, so the room must go first or it stays mounted over the settings page.
   const frame = shell.mainFrame;
@@ -9479,8 +9505,9 @@ async function boot() {
   }
   loadTerminals(); // the status panel's Terminals section is true from boot, not only after a turn
   // General's Auto-archive old chats sweeps from here, at the start and once an hour, Settings open or not (the owner's
-  // settings cleanup of 11-09) — not in a pane's own window, nor on a view-only device's page, which may archive nothing.
-  if (!POPPED && !viewOnlyPage()) startHourlySweep({ onToast: toast });
+  // settings cleanup of 11-09) — not in a pane's own window, nor on a view-only device's page, which may archive nothing,
+  // nor on the chat alone another machine's desk shows (this machine's own pages sweep).
+  if (!POPPED && !CHAT_ONLY && !viewOnlyPage()) startHourlySweep({ onToast: toast });
   // A chat exists before any route runs, so a settings overlay always has a conversation underneath it. The route is
   // read first: newChat rewrites the address, and a bookmarked task would be lost if it were read after.
   const initial = parseRoute(location.hash);
@@ -9494,8 +9521,8 @@ async function boot() {
   // The welcome tour opens by itself while nothing can answer — no coding agent connected, no model listed (the owner's
   // of 11-08) — and once on a data folder with no chat yet, archived ones counted, where the chats were read (the
   // owner's FTUE of 11-05): `tourOpensItself`. A pane's own window and a view-only device's page never open it — nor a
-  // page whose state never read, which can't tell it is one.
-  if (!POPPED && !viewOnlyPage() && state.config) {
+  // page whose state never read, which can't tell it is one; nor the chat alone another machine's desk shows.
+  if (!POPPED && !CHAT_ONLY && !viewOnlyPage() && state.config) {
     const toured = state.config?.ui?.welcome?.seen !== false;
     const listed = !toured && state.sessionsLoadedAt && !(state.sessions || []).length;
     tourAsked = Promise.all([
@@ -9507,7 +9534,7 @@ async function boot() {
   // The first-run tips: on a full page that may write, never a pane's own window — read once the tour has opened or
   // not, so no tip flashes by before it. A tip waits while the tour, or any sheet, covers its control: the Start
   // board's show as the tour hands over to it.
-  if (!POPPED && !viewOnlyPage()) void tourAsked.catch(() => {}).then(() => coach.start()).then(coachRead);
+  if (!POPPED && !CHAT_ONLY && !viewOnlyPage()) void tourAsked.catch(() => {}).then(() => coach.start()).then(coachRead);
   // The resync also corrects the open chat's view where the feed dropped a holder change (`resyncHolder`).
   const resyncHolders = () =>
     sidebar.loadHolders().then((r) => {

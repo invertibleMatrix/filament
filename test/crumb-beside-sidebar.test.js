@@ -105,7 +105,7 @@ test("the sidebar's top row: Hide, the room for the crumb, Settings; the page ha
   // The shell moves it whenever it paints the sidebar's state: the folded rail and a hidden bar are one there.
   // A Mac's window buttons at that row's left end keep it in the header (the owner's of 11-08), painted again as they show.
   const shell = readFileSync("src/ui/harness/shell.js", "utf8");
-  assert.match(shell, /const sideHidden = !userOpen \|\| autoCollapsed;[\s\S]*?header\.crumbIn\(sideHidden \|\| lightsAtLeft\(\) \? null : crumbSlot\);/);
+  assert.match(shell, /const sideHidden = chatOnly \|\| !userOpen \|\| autoCollapsed;[\s\S]*?header\.crumbIn\(sideHidden \|\| lightsAtLeft\(\) \? null : crumbSlot\);/);
   assert.match(shell, /function lightsAtLeft\(\) \{\n\s*return document\.documentElement\.classList\.contains\("app-frame-left"\);/);
   assert.match(shell, /onShown: \(\) => \{\n(?:\s*\/\/[^\n]*\n)?\s*paintLayout\(\);\n\s*if \(titleBar\) return;/);
 });

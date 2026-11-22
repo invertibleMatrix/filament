@@ -307,6 +307,16 @@ is folded. Ctrl+Shift+[ and ] move through This computer's chats alone. Another 
 its own chats alone. A machine whose Filament is older than the one that brought this list says no repository for its
 chats: they stand in projects of their own until it is updated.
 
+**A chat alone.** A Filament's page opened with `?only=chat` in its address (`http://127.0.0.1:20300/ui/harness.html?only=chat#/task/<chat>`)
+shows that chat alone — its header, its transcript, its box and its panes, no left bar — as another machine's window
+shows it beside its own list; `&theme=light` or `&theme=dark` gives it a look without changing the one you chose there.
+It writes its chat as any page does. Settings, the Library, a Space or the artifacts asked for there open that
+machine's whole page in the app, at that screen (**Open full page** in its header opens it at the chat), and the chat
+stays as it was; in a browser, a note says to open the full page for them. What goes through the left bar it hides —
+the chats before and after (Ctrl+Shift+[ and ]), what needs you next — and what leaves the chat for a new one (New
+chat, Open Workspace, the welcome tour) are not there; nor the tips, the Auto-archive sweep, or the theme's switch
+while it wears the look it was given.
+
 **Another machine's agents.** A Filament can let another Filament's agents work on it: start chats in its projects,
 send them turns and follow them. They come in by a device of their own, apart from yours, named for the machine whose
 agents they are, as its Settings › Remote access › This machine names it (else for your device that made it):

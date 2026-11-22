@@ -617,8 +617,11 @@ describe("the page's shortcuts where you type", () => {
     const at = { currentId: "c1", chats: new Map([["c1", { id: "c1", turns: [{ n: 1, past: false }] }]]) };
     const { onShortcutKey } = lift(["OPENS_DIALOG?", "VIEW_ONLY_KEYS_OFF?", "onShortcutKey"], {
       matchShortcut, state: at, chatOf: (/** @type {string} */ id) => at.chats.get(id) || null,
-      // This computer's page: a view-only device's opens no fork (remote-view-ui.test.js).
+      // This computer's page: a view-only device's opens no fork (remote-view-ui.test.js); a whole page, not the chat
+      // alone (chat-only-mode.test.js).
       viewOnlyPage: () => false,
+      CHAT_ONLY: false,
+      CHAT_ONLY_OFF: new Set(),
       document: { querySelector: (/** @type {string} */ s) => (s === '.zc-dialog[aria-modal="true"]' ? modal : s === '[aria-modal="true"]' && sheet ? {} : null) },
       commandCenter: { open: () => opened.push("command center") },
       forkModal: () => opened.push("fork"),

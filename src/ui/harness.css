@@ -718,6 +718,9 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .collapsed-mark:hover, .sess-top-btn:hover { color: var(--color-foreground); background: var(--color-surface-hover); }
 .collapsed-mark svg, .sess-top-btn svg { width: 16px; height: 16px; }
 .app-shell:not(.sidebar-off):not(.auto-side-off) .collapsed-rail { border-right-width: 0; visibility: hidden; }
+/* The chat alone, as another machine's desk shows it beside its own left bar (lib/chat-only.js): no sidebar, its
+   gutter nor its rail — the desk's bar is the one. */
+.app-shell.chat-only > :is(.side-frame, .side-gutter, .collapsed-rail) { display: none; }
 .sess-top { height: var(--bar-h); flex: none; display: flex; align-items: center; gap: 4px; padding: 0 10px; }
 /* The chat's crumb in the sidebar's top row while the sidebar shows (the owner's of 11-01): the room between Hide and
    Settings, cut as it needs; the header's tabs then stand at its left, clear of a MacBook's notch at the screen's top
@@ -1056,6 +1059,8 @@ html.app-frame-left .collapsed-strip { height: calc(var(--bar-h) * 2); align-ite
 html.app-frame-left .collapsed-rail { position: relative; border-right-color: transparent; }
 html.app-frame-left .collapsed-rail::after { content: ""; position: absolute; top: var(--bar-h); bottom: 0; right: 0; width: 1px; background: var(--color-border); pointer-events: none; }
 html.app-frame-left .app-shell:is(.sidebar-off, .auto-side-off) .c-left { padding-left: max(10px, calc(var(--wco-l) - 48px + 10px)); }
+/* The chat alone has no rail under them, whatever sidebar this machine's pages keep: its crumb starts past them. */
+html.app-frame-left .app-shell.chat-only .c-left { padding-left: calc(var(--wco-l) + 10px); }
 html.app-frame .app-shell { background: var(--app-chrome, var(--color-sidebar)); }
 html.app-frame .c-bar { background: transparent; border-bottom: 0; }
 html.app-frame .c-right { padding-right: calc(var(--wco-r) + 4px); }

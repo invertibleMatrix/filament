@@ -4,11 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- The theme's class before the first paint, by theme.js's rule: the one chosen, else the system's (the owner's of
-       11-09), so a light system's page never opens dark until app.js runs. -->
+       11-09), so a light system's page never opens dark until app.js runs; the chat alone another machine's desk shows
+       wears the desk's look (lib/chat-only.js). -->
   <script>
     (function () {
       var t = null;
-      try { t = localStorage.getItem("filament.harness.theme"); } catch (e) {}
+      try { var q = new URLSearchParams(location.search); if (q.get("only") === "chat" && !q.get("pane")) t = q.get("theme"); } catch (e) {}
+      if (t !== "light" && t !== "dark") try { t = localStorage.getItem("filament.harness.theme"); } catch (e) {}
       var dark = t === "dark" || (t !== "light" && !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches));
       document.documentElement.classList.toggle("theme-zai-dark", dark);
       document.documentElement.classList.toggle("theme-zai-light", !dark);

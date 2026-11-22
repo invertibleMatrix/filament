@@ -451,7 +451,7 @@ test("the page: /api/state's device makes it view-only — the box, the left bar
   assert.match(paint, /document\.documentElement\.classList\.toggle\("view-only", on\);/, "the page's class, which hides a reply's Fork and Retry");
   // The welcome tour: every step writes a setting — it opens by itself on none, and from nowhere on a view-only page.
   assert.match(app, /function openTour\(\) \{\n(?:  \/\/[^\n]*\n)+  if \(viewOnlyPage\(\) \|\| document\.querySelector\("\.wel-sheet"\)\) return;/);
-  assert.match(app, /if \(!POPPED && !viewOnlyPage\(\) && state\.config\) \{\n    const toured = state\.config\?\.ui\?\.welcome\?\.seen !== false;/, "and only where the state read, which says whether it is one");
+  assert.match(app, /if \(!POPPED && !CHAT_ONLY && !viewOnlyPage\(\) && state\.config\) \{\n    const toured = state\.config\?\.ui\?\.welcome\?\.seen !== false;/, "and only where the state read, which says whether it is one");
   assert.match(app, /\{ id: "welcome", label: "Welcome tour", [^\n]*when: \(\) => !viewOnlyPage\(\), run: \(\) => openTour\(\) \}/);
   // The review of p4-view-ui: the doors the hidden controls still had.
   assert.match(app, /const VIEW_ONLY_KEYS_OFF = new Set\(\["model", "mode", "effort", "fork", "subagent"\]\);/);
@@ -515,7 +515,7 @@ test("the page's client asks the server no write on a view-only page and says wh
   assert.match(app, /function stopAndCompact\(\) \{\n  if \(viewOnlyPage\(\)\) return void toast\(VIEW_ONLY_REFUSED, "err"\);/, "Stop and compact");
   assert.match(app, /onRetry: \(chat, turn\) => \{\n    if \(viewOnlyPage\(\)\) \{\n      toast\(VIEW_ONLY_WORDS, "err"\);\n      return false;\n    \}/, "a failure's Retry");
   assert.match(app, /refusalAgain = true;\n[^\n]*\n  if \(viewOnlyPage\(\)\) return refuse\(VIEW_ONLY_WORDS, !away\);\n(?:  \/\/[^\n]*\n)*  if \(queued\) keepQueues\(\);\n  const typed = text;/, "a send from any door");
-  assert.match(app, /"close-context": \(\) => \{\n      if \(rail\.closeFocused\(\)\) return;\n      if \(viewOnlyPage\(\)\) return;\n      pushNextAddress = true;/, "Alt+W starts no chat");
+  assert.match(app, /"close-context": \(\) => \{\n      if \(rail\.closeFocused\(\)\) return;\n      if \(viewOnlyPage\(\) \|\| CHAT_ONLY\) return;\n      pushNextAddress = true;/, "Alt+W starts no chat");
   assert.match(app, /if \(!viewOnlyPage\(\) && \(\(row \? row\.unread : s\.unread\) \|\| state\.unreadChains\.has\(chainId\)\)\) api\(/, "an unread mark is left to a page that may write it");
   // A failure's Retry and Sign in carry the classes the page's rule hides.
   const interaction = readFileSync(new URL("../src/ui/harness/conversation/interaction.js", import.meta.url), "utf8");

@@ -507,9 +507,11 @@ export const PAGES = Object.freeze(["new"]);
  * lists a repository's on every machine as one. `ask-events`: its events feed says each ask the chat's asks list
  * (http/admin/sessions.js `asksIn`) that waits in a running turn as it opens and closes (`turns`, `{ type: "ask",
  * chainId, id, open }`: a coding agent's, a sub-agent's; the chat's own ask ends its turn and its answer begins one,
- * which `turn` says). `events-only`: its events feed takes `?only=` and sends those topics alone.
+ * which `turn` says). `events-only`: its events feed takes `?only=` and sends those topics alone. `chat-only`: its page
+ * shows a chat alone at `?only=chat` (ui/harness/lib/chat-only.js), the desk's look at `&theme=`, beside the desk's own
+ * left bar.
  */
-export const DESK = Object.freeze(["remote-key", "ask-events", "events-only"]);
+export const DESK = Object.freeze(["remote-key", "ask-events", "events-only", "chat-only"]);
 
 /** The claim's path, answered before any caller is known (index.js). */
 export const CLAIM_PATH = "/remote/claim";

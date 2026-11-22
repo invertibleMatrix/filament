@@ -556,10 +556,10 @@ test("a file gone wrong is said once in a toast, and nothing looks; Show tips ag
 test("the page starts the tips once the tour was asked, on a full page that writes; each condition the file names is the page's", () => {
   const app = readFileSync(new URL("../src/ui/harness/app.js", import.meta.url), "utf8");
   assert.match(app, /import \{ createCoach \} from "\.\/coach\/coach\.js";/);
-  assert.match(app, /if \(!POPPED && !viewOnlyPage\(\)\) void tourAsked\.catch\(\(\) => \{\}\)\.then\(\(\) => coach\.start\(\)\)\.then\(coachRead\);/);
+  assert.match(app, /if \(!POPPED && !CHAT_ONLY && !viewOnlyPage\(\)\) void tourAsked\.catch\(\(\) => \{\}\)\.then\(\(\) => coach\.start\(\)\)\.then\(coachRead\);/);
   assert.match(app, /tourAsked = Promise\.all\(\[/, "the tour's own opening is what the tips wait for");
   // A restart heard as the events feed comes back: the file read again, and its replay with it.
-  assert.match(app, /function afterFeedGap\(\) \{[\s\S]*?\n  if \(!POPPED && !viewOnlyPage\(\)\) void coach\.reload\(\)\.then\(coachRead\);\n\}/);
+  assert.match(app, /function afterFeedGap\(\) \{[\s\S]*?\n  if \(!POPPED && !CHAT_ONLY && !viewOnlyPage\(\)\) void coach\.reload\(\)\.then\(coachRead\);\n\}/);
   // The replay opens the tour from its first step, once.
   assert.match(app, /function coachRead\(a\) \{\n\s*if \(!a\?\.replayed \|\| !a\.replayWelcomeTour\) return;[\s\S]*?prefs\.set\("welcomeStep", 0\);\n\s*openTour\(\);/);
   assert.match(app, /\{ id: "tips", label: "Show tips again", [^\n]*run: \(\) => void coach\.reset\(\)/, "the command center's way back");

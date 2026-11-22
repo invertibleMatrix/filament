@@ -16,6 +16,18 @@ const FONTS = [12, 13, 14, 15, 16, 17, 18, 19, 20];
 /** A size inside the 12–20 fence. @param {number} n */
 const fenced = (n) => Math.max(MIN_FONT, Math.min(MAX_FONT, Math.round(Number(n) || 14)));
 
+/** The look a page wears without keeping it — another machine's desk's, over its chat alone (lib/chat-only.js). @type {"light" | "dark" | null} */
+let hint = null;
+
+/** The page wears `v` until it is told another, its kept theme untouched; null wears the kept one again. @param {"light" | "dark" | null} v */
+export function hintTheme(v) {
+  hint = v === "light" || v === "dark" ? v : null;
+  applyTheme();
+}
+
+/** Whether the page wears a look it was given: its theme's switch then keeps nothing, and is not offered. */
+export const themeHinted = () => hint !== null;
+
 /** The theme chosen, else the system's (the owner's of 11-09). @returns {"system"|"light"|"dark"} */
 export function themePref() {
   const v = String(prefs.get("theme") || "system");
@@ -63,7 +75,7 @@ export function setMotionPref(v) {
 }
 
 export function applyTheme() {
-  const pref = themePref();
+  const pref = hint || themePref();
   const dark = pref === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : pref === "dark";
   const html = document.documentElement;
   html.classList.toggle("theme-zai-dark", dark);
@@ -77,7 +89,7 @@ export function watchTheme() {
   applyTheme();
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   mq.addEventListener("change", () => {
-    if (themePref() !== "system") return;
+    if (hint || themePref() !== "system") return;
     applyTheme();
     // The fences coloured for the theme before restyle with it, as a switch in Settings does (the bug round of 10-23).
     repaintFences();
@@ -85,6 +97,8 @@ export function watchTheme() {
   window.addEventListener("keydown", (e) => {
     const id = matchShortcut(e);
     if (id === "theme") {
+      // A look given (`hintTheme`) is the desk's: the switch would keep a theme the page does not wear.
+      if (hint) return;
       e.preventDefault();
       const i = THEMES.indexOf(themePref());
       setThemePref(/** @type {"system"|"light"|"dark"} */ (THEMES[(i + 1) % THEMES.length]));

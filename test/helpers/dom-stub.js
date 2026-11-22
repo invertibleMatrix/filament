@@ -229,6 +229,15 @@ class StubElement {
   remove() {
     this.parentNode?.removeChild(this);
   }
+  /** Nodes set right after this one in its parent, as the page's. @param {...unknown} nodes */
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    const fresh = nodes.map((n) => (n instanceof StubElement || n instanceof StubText ? n : new StubText(String(n))));
+    for (const n of fresh) if (n.parentNode) n.parentNode.removeChild(n);
+    parent.childNodes.splice(parent.childNodes.indexOf(this) + 1, 0, ...fresh);
+    for (const n of fresh) n.parentNode = parent;
+  }
   /**
    * Markup added at the end, as the page adds a markdown block: kept as given in one node of its own (`html`), not
    * parsed — the node a block makes. @param {string} where @param {string} html
