@@ -914,6 +914,24 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 /* An agent you started, among the lines under its chat: the Projects list's "side" tag, in its word. */
 .now-under-tag { flex: none; padding: 0 5px; border-radius: 4px; font-size: var(--text-ui-2xs); font-weight: 600; line-height: 16px;
   background: color-mix(in oklab, var(--color-sys-blue) 15%, transparent); color: color-mix(in oklab, var(--color-sys-blue-text) 72%, var(--color-foreground)); }
+/* Another machine's waiting ask, under its row in Needs you, answered here (desk-inbox.js). */
+.desk-ask { display: grid; gap: 6px; min-width: 0; margin: 0 8px 6px 37px; padding: 8px 9px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-card); }
+.desk-ask.is-busy { opacity: .65; }
+.desk-ask-q { font-size: var(--text-ui-sm); color: var(--color-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* Its command whole, wrapped, scrolled where long: a card's Allow never answers a part of it. */
+.desk-ask-cmd { margin: 0; max-height: 9.5em; padding: 3px 6px; border-radius: 5px; font-family: var(--mono); font-size: var(--text-ui-xs); background: var(--color-surface-hover); color: var(--color-foreground); white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+.desk-ask-cmd:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: 1px; }
+.desk-ask-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.desk-ask-btn { height: 24px; max-width: 100%; padding: 0 9px; border: 1px solid var(--color-border); border-radius: 6px; background: none; font: inherit; font-size: var(--text-ui-xs); color: var(--color-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.desk-ask-btn:hover:not(:disabled) { background: var(--color-surface-hover); }
+.desk-ask-btn:focus-visible, .desk-ask-words:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: 1px; }
+.desk-ask-btn.is-go { border-color: transparent; background: var(--color-sys-blue); color: var(--color-on-accent); }
+.desk-ask-btn.is-go:hover:not(:disabled) { background: color-mix(in oklab, var(--color-sys-blue) 88%, var(--color-foreground)); }
+.desk-ask-btn:disabled, .desk-ask-btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+.desk-ask-open { margin-left: auto; color: var(--color-foreground-subtle); }
+.desk-ask-none { font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); }
+.desk-ask-words { width: 100%; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); font: inherit; font-size: var(--text-ui-xs); color: var(--color-foreground); }
+.desk-ask-said { font-size: var(--text-ui-xs); color: var(--color-sys-red-text); overflow-wrap: anywhere; }
 .now-earlier { display: block; margin: 2px 0 0 37px; padding: 2px 4px; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); cursor: pointer; border-radius: 4px; }
 .now-earlier:hover { color: var(--color-foreground); }
 @media (prefers-reduced-motion: reduce) { .now-gspin svg, .now-under-spin svg { animation: none; } }

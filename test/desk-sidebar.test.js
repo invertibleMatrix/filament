@@ -286,7 +286,10 @@ describe("the left bar's desk (sidebar.js, pinned in the source)", () => {
 
   // (fails before: yes — the bar heard no desk)
   test("it hears the desk from the app alone, lists theirs while All machines is on, and leaves out a machine unticked", () => {
-    assert.match(bar, /if \(typeof bridge\?\.onDesk === "function"\)\n\s+bridge\.onDesk\(\(\/\*\* @type \{unknown\} \*\/ d\) => \{\n\s+desk = readDesk\(d\);\n\s+now\.refresh\(\);/);
+    assert.match(bar, /if \(typeof bridge\?\.onDesk === "function"\) \{\n\s+inbox = createDeskInbox\(\{\n\s+bridge,\n\s+onChange: \(\) => now\.refresh\(\),[\s\S]{0,400}?\}\);\n\s+bridge\.onDesk\(\(\/\*\* @type \{unknown\} \*\/ d\) => \{\n\s+desk = readDesk\(d\);\n\s+syncInbox\(\);\n\s+now\.refresh\(\);/);
+    // Its inbox told which of their chats need you as the desk moves, and as Machines moves (desk-inbox.js).
+    assert.match(bar, /const syncInbox = \(\) => inbox\?\.sync\(deskNow\(\)\?\.needs \|\| \[\], /);
+    assert.equal(bar.match(/syncInbox\(\);\n\s+now\.refresh\(\);/g)?.length, 3, "at the desk's word, All machines or one machine's, and a machine ticked in or out");
     // The list drawn again where what it shows of theirs moved alone, Now at every word (the review of s1b).
     assert.match(bar, /if \(deskDrawn !== deskListNow\(\)\) draw\(\);\n\s+\}\);/);
     assert.match(bar, /const deskListNow = \(\) => \(deskListed\(\) \? deskListKey\(desk, now\.theirsShown\(\), deskMarks\(deskNow\(\)\)\) : ""\);/);

@@ -30,6 +30,7 @@ import { ICONS, glyphOf, icon } from "./lib/icons.js";
 import { menu, confirmDialog, dialog, tooltip, popover, toast } from "./lib/ui.js";
 import { chipTone, createNow } from "./now-list.js";
 import { awayWords, deskGroups, deskListKey, deskMarks, deskProjects, deskRoute, ownKeysOf, readDesk } from "./lib/desk.js";
+import { createDeskInbox } from "./desk-inbox.js";
 import { holdersWhileSent, teamLine } from "./lib/now.js";
 import { barHold, notePlaces, playMoves } from "./bar-flight.js";
 import { WORDS } from "./lib/words.js";
@@ -285,6 +286,8 @@ export function createSidebar(host, cb, rail = null) {
     if (since >= NAMED_HOLD_MS) justNamed.delete(String(chain));
     return since < NAMED_MS && n.title === title ? since : null;
   };
+  /** The desk's inbox — another machine's asks answered under its row in Needs you (desk-inbox.js) —, made with the desk below. @type {ReturnType<typeof createDeskInbox> | null} */
+  let inbox = null;
   const now = createNow({
     chats: chatFacts,
     unread: () => new Set([...state.unreadChains, ...(state.sessions || []).filter((s) => s.unread).map((s) => String(s.id))]),
@@ -320,6 +323,8 @@ export function createSidebar(host, cb, rail = null) {
     more: () => deskNow(),
     onOpenMore: (r) => { railPop?.close(); openThere(r); },
     onSeenMore: (rows) => { seenThere(rows); now.refresh(); },
+    askCards: (r, mk, w) => inbox?.cardsOf(r, mk, w) || [],
+    asksKey: () => inbox?.key() || "",
     named: namedSince,
   });
 
@@ -379,16 +384,27 @@ export function createSidebar(host, cb, rail = null) {
     const bridge = /** @type {any} */ (globalThis).filamentMachines;
     for (const [id, chains] of by) void bridge?.seen?.(id, chains)?.catch?.(() => {});
   }
+  /** The inbox told which of the other machines' chats need you, as the bar shows them. */
+  const syncInbox = () => inbox?.sync(deskNow()?.needs || [], (id) => desk?.machines.find((m) => m.id === id)?.flags || []);
   {
     const bridge = /** @type {any} */ (globalThis).filamentMachines;
-    if (typeof bridge?.onDesk === "function")
+    if (typeof bridge?.onDesk === "function") {
+      inbox = createDeskInbox({
+        bridge,
+        onChange: () => now.refresh(),
+        // An answered card's focus goes to its row, as Now draws it.
+        focusIn: () => /** @type {any} */ (document.activeElement)?.closest?.(".desk-ask")?.getAttribute("data-key") || null,
+        focusRow: (r) => /** @type {HTMLElement | null} */ (now.el.querySelector(`.now-row[data-key="${CSS.escape(r.key)}"]`))?.focus(),
+      });
       bridge.onDesk((/** @type {unknown} */ d) => {
         desk = readDesk(d);
+        syncInbox();
         now.refresh();
         // Their chats stand under the projects too: the list drawn again where what it shows of them moved — not at each
         // word their agents say, which Now alone draws (the review of s1b).
         if (deskDrawn !== deskListNow()) draw();
       });
+    }
   }
 
   /**
@@ -494,6 +510,7 @@ export function createSidebar(host, cb, rail = null) {
     const scope = (/** @type {boolean} */ all) => () => {
       allMachines = all;
       keep(MACHINES_KEY, all ? "all" : "here");
+      syncInbox();
       now.refresh();
       draw();
     };
@@ -509,6 +526,7 @@ export function createSidebar(host, cb, rail = null) {
             if (hiddenMachines.has(m.id)) hiddenMachines.delete(m.id);
             else hiddenMachines.add(m.id);
             keep(MACHINES_HIDDEN_KEY, JSON.stringify([...hiddenMachines]));
+            syncInbox();
             now.refresh();
             draw();
           },

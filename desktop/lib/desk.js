@@ -41,6 +41,13 @@ const SAID_MAX = 300;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/;
 /** An ask's id (http/admin/sessions.js `asksIn`): its request's, or its run's or sub-agent's, a dot and its own. */
 const ASK_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/;
+/**
+ * The longest id of an ask's answer (`choice`). It goes in the answer's body, never its path, so any words but control
+ * characters are one: a coding agent's question names its answers by their labels ("Use Postgres").
+ */
+export const CHOICE_MAX = 500;
+/** Whether `v` is an answer's id the desk sends. @param {unknown} v */
+export const choiceOk = (v) => typeof v === "string" && v.length > 0 && v.length <= CHOICE_MAX && !/[\u0000-\u001f\u007f]/.test(v);
 /** The permission modes a chat takes (src/ui/harness/composer/mode.js `MODES`). */
 export const DESK_MODES = Object.freeze(["read-only", "edit", "ask", "auto"]);
 /** The kinds of chat the desk lists, as the watch reads them (watch.js `CHATS_PATH`). */
@@ -160,7 +167,7 @@ const OPS = Object.freeze(
         const ask = String(p.ask ?? "");
         if (!ASK_ID.test(ask)) return bad("ask is the id of an ask waiting in the chat");
         if (p.allow != null && typeof p.allow !== "boolean") return bad("allow is true or false");
-        if (p.choice != null && !(typeof p.choice === "string" && ID.test(p.choice))) return bad("choice is the id of one of its options");
+        if (p.choice != null && !choiceOk(p.choice)) return bad(`choice is the id of one of its options: words, at most ${CHOICE_MAX} characters`);
         if (p.words != null && (typeof p.words !== "string" || p.words.length > WORDS_MAX)) return bad(`words are the answer's own: at most ${WORDS_MAX} characters`);
         if (p.allow == null && p.choice == null && !String(p.words ?? "").trim()) return bad("an answer is allow, a choice or words");
         const body = { ...(p.allow != null ? { allow: p.allow } : {}), ...(p.choice != null ? { choice: p.choice } : {}), ...(p.words != null ? { words: p.words } : {}), stream: true, runEvents: true };

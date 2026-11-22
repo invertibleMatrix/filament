@@ -60,10 +60,12 @@ const NONE_MORE = { needs: [], works: [], done: [] };
  *   place?: boolean, held?: () => number, onMoved?: () => void, paint?: (draw: () => void) => void,
  *   onMenu?: (row: NowRow, anchor: HTMLElement) => void, onDelete?: (row: NowRow) => void,
  *   named?: (chain: string, title: string) => number | null,
- *   more?: () => import("./lib/desk.js").DeskGroups | null, onOpenMore?: (row: DeskRow) => void, onSeenMore?: (rows: DeskRow[]) => void }} o
+ *   more?: () => import("./lib/desk.js").DeskGroups | null, onOpenMore?: (row: DeskRow) => void, onSeenMore?: (rows: DeskRow[]) => void,
+ *   askCards?: (row: DeskRow, mk: any, w: { away: string, onOpen: () => void }) => any[], asksKey?: () => string }} o
  *   `more`: the other machines' Now (the remote desk of 11-22, lib/desk.js `deskGroups`), drawn among its own rows, each
  *   with its machine's chip and greyed while that machine does not answer — never placed, never this Now's count to the
- *   rail —; `onOpenMore`: one of them pressed; `onSeenMore`: Done's Clear, theirs;
+ *   rail —; `onOpenMore`: one of them pressed; `onSeenMore`: Done's Clear, theirs; `askCards`: the cards of one of
+ *   theirs' waiting asks, under its row (desk-inbox.js), and `asksKey` what they would draw, in a word;
  *   `named`: how far a name the side model just gave a chat has written itself in, in ms — null once it is written
  *   (Settings › Experimental): its row's title writes it in, a draw meanwhile patching it in place;
  *   `comeBacks`: each chat's come-back while it waits (lib/now.js), its row's age slot saying how long until it;
@@ -219,7 +221,7 @@ export function createNow(o) {
     const theirs = [...more.needs, ...more.works, ...more.done];
     const ages = [...view.needs, ...view.works, ...view.done, ...theirs].map((r) => (r.due ? "" : ageOf(r.at, t))).join(",");
     // Earlier pressed too: the other machines' Done past their newest three moves nothing else (the review of s1b).
-    const k = `${nowKey(view)}\0${nowKey(more)}\0${theirs.map((r) => `${r.machine.status}:${r.machine.name}:${r.machine.color}:${r.machine.icon}`).join(",")}\0${ages}\0${marked() || ""}\0${open}\0${earlier}`;
+    const k = `${nowKey(view)}\0${nowKey(more)}\0${theirs.map((r) => `${r.machine.status}:${r.machine.name}:${r.machine.color}:${r.machine.icon}`).join(",")}\0${ages}\0${marked() || ""}\0${open}\0${earlier}\0${o.asksKey?.() ?? ""}`;
     if (k === drawnKey && Date.now() - drawnAt < 60_000) return;
     drawnKey = k;
     draw();
@@ -303,8 +305,12 @@ export function createNow(o) {
     const since = r.thread || r.space ? null : o.named?.(r.chain, r.title) ?? null;
     return mk("span", { class: `now-title${since != null ? " is-named" : ""}` }, r.title);
   };
-  /** A row: its tile, its title, its project and its fact, its age; workers folded under a lead. @param {NowRow} r @param {number} now @param {boolean} placing */
-  function rowEl(r, now, placing) {
+  /**
+   * A row: its tile, its title, its project and its fact, its age; workers folded under a lead; in the bar's own Now,
+   * another machine's asks' cards under its row (`bar`: the rail's popover is drawn once, and a card's press moves it).
+   * @param {NowRow} r @param {number} now @param {boolean} placing @param {boolean} [bar]
+   */
+  function rowEl(r, now, placing, bar = false) {
     // Another machine's row (lib/desk.js): its machine's chip leads its line, it is greyed while that machine does not
     // answer, and a press opens it there — no menu, no Delete, no mark of this computer's.
     const there = /** @type {any} */ (r).machine ? /** @type {DeskRow} */ (r) : null;
@@ -368,6 +374,9 @@ export function createNow(o) {
         o.onMenu?.(r, /** @type {HTMLElement} */ (e.currentTarget || row));
       });
     }
+    // Another machine's asks under its row in Needs you, answered here (desk-inbox.js): the row and its cards one.
+    const cards = there && bar && o.askCards ? o.askCards(there, mk, { away, onOpen: go }) : [];
+    if (cards.length) return mk("div", { class: "now-crew now-asks", "data-key": `crew:${flip}` }, row, ...cards);
     if (!r.under.length) return row;
     return mk("div", { class: "now-crew", "data-key": `crew:${flip}` }, row, ...r.under.map((u) => {
       /** Its own thread, in its chat; a team on the side's own chat. */
@@ -413,7 +422,7 @@ export function createNow(o) {
     const works = both(g.works, more.works);
     /** @type {HTMLElement[]} */
     const nodes = [];
-    if (needs.length) nodes.push(groupHead("needs"), ...needs.map((r) => rowEl(r, now, placing)));
+    if (needs.length) nodes.push(groupHead("needs"), ...needs.map((r) => rowEl(r, now, placing, !!w.bar)));
     if (works.length) nodes.push(groupHead("works"), ...works.map((r) => rowEl(r, now, placing)));
     const shown = both(placing || earlier ? g.done : g.done.slice(0, DONE_SHOWN), theirDone);
     if (shown.length) {

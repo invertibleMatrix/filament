@@ -291,7 +291,13 @@ Under **Projects**, a chat on another machine stands with the project here of th
 names it, on GitHub, GitLab or any host; two folders that are only paths say nothing across machines — and the rest
 stand in projects of their own, a repository on two machines as one. Each machine tells this computer as a turn begins
 or ends there, and as its agents' questions start or stop waiting for you, so its rows move within a few seconds; the
-app's look every ten seconds catches what a dropped connection missed. A press on another machine's chat shows that machine in the window, at that chat. **Clear** under Done marks theirs seen on their machines too. A machine that does
+app's look every ten seconds catches what a dropped connection missed. A press on another machine's chat shows that machine in the window, at that chat. What one of
+theirs asks you waits under its row in **Needs you**, answered there without the window going to it: its question and
+the command it would run, a button for each of its answers, a box where words answer it, and **Open** for its whole
+card in its chat. What a card could show only a part of — a plan, a form, a link, a secret, an edit's changes, a command
+too long — it answers with **Open** alone. An answer goes as that machine's own press, so a machine this window reaches through a tunnel or
+your tailnet login, or a device paired as View, refuses it, in words that say to pair it as Full; its card stays and
+says them. **Clear** under Done marks theirs seen on their machines too. A machine that does
 not answer keeps its rows as they last stood, greyed, its words on hover. The filter menu's **Machines** says whose
 chats the bar lists — This computer's alone, or **All machines**, each one ticked in or out — and **Group by** gains
 **Machine**: This computer's projects first, then each other machine's under its name. Grouped by time, and in the

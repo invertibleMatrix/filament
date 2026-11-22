@@ -134,7 +134,11 @@ test("the table alone: an operation not in it, a path, a name off the prototype,
     [{ op: "answer", chat: "c1", ask: "..", allow: true }, /ask is the id of an ask/],
     [{ op: "answer", chat: "c1", ask: ".hidden", allow: true }, /ask is the id of an ask/],
     [{ op: "live-state", chat: "c1", after: ".." }, /after is the id of a run/],
-    [{ op: "answer", chat: "c1", ask: "r1.2", choice: ".." }, /choice is the id of one of its options/],
+    // A choice goes in the answer's body, never its path: words its machine names it by, not control characters.
+    [{ op: "answer", chat: "c1", ask: "r1.2", choice: "" }, /choice is the id of one of its options/],
+    [{ op: "answer", chat: "c1", ask: "r1.2", choice: "x".repeat(501) }, /choice is the id of one of its options: words, at most 500 characters/],
+    [{ op: "answer", chat: "c1", ask: "r1.2", choice: "yes\nno" }, /choice is the id/],
+    [{ op: "answer", chat: "c1", ask: "r1.2", choice: 2 }, /choice is the id/],
     [{ op: "live-state", chat: "c1", after: "r 1" }, /after is the id of a run/],
     [{ op: "search", q: "   " }, /q is the search/],
     [{ op: "search", q: "x".repeat(201) }, /q is the search/],
@@ -142,7 +146,6 @@ test("the table alone: an operation not in it, a path, a name off the prototype,
     [{ op: "turn", chat: "c1", content: { type: "text" } }, /content is the message/],
     [{ op: "answer", chat: "c1", ask: "a 1", allow: true }, /ask is the id of an ask/],
     [{ op: "answer", chat: "c1", ask: "r1.2", allow: "yes" }, /allow is true or false/],
-    [{ op: "answer", chat: "c1", ask: "r1.2", choice: "1; rm" }, /choice is the id of one of its options/],
     [{ op: "answer", chat: "c1", ask: "r1.2" }, /an answer is allow, a choice or words/],
     [{ op: "mode", chat: "c1", mode: "yolo" }, /mode is one of read-only, edit, ask, auto/],
     [{ op: "create", cwd: "" }, /cwd is the folder/],
@@ -293,6 +296,7 @@ test("an answer: always a press, as a Full device; a chat's own ask goes on in i
       }
       if (path === "/sessions/c1/asks/sa_1.2/answer") return answer(200, { ok: true, id: "sa_1.2", from: "sa_1" });
       if (path === "/sessions/c1/asks/gone.1/answer") return answer(409, { error: "it was answered already" });
+      if (path === "/sessions/c1/asks/r3.q1/answer") return answer(200, { ok: true, id: "r3.q1", from: "coding-agent" });
       return null;
     },
   });
@@ -303,12 +307,16 @@ test("an answer: always a press, as a Full device; a chat's own ask goes on in i
   assert.deepEqual(theirs, { ok: true, status: 200, json: { ok: true, id: "sa_1.2", from: "sa_1" } });
   const late = await desk.call({ op: "answer", machine: "m-mac", chat: "c1", ask: "gone.1", words: "no" });
   assert.deepEqual([late.ok, late.status, late.words], [false, 409, "Mac mini answered: it was answered already"]);
+  // A coding agent's question names its answers by their labels: one goes as said, in the body.
+  const labelled = await desk.call({ op: "answer", machine: "m-mac", chat: "c1", ask: "r3.q1", choice: "Use Postgres (v16)" });
+  assert.equal(labelled.ok, true);
   assert.deepEqual(
     there.sent().map((c) => c.body),
     [
       { allow: true, stream: true, runEvents: true },
       { choice: "2", words: "the second", stream: true, runEvents: true },
       { words: "no", stream: true, runEvents: true },
+      { choice: "Use Postgres (v16)", stream: true, runEvents: true },
     ],
   );
   assert.ok(there.sent().every((c) => c.headers["x-filament-take"] === "c1"));
