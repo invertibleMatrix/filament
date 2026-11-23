@@ -70,13 +70,15 @@ import { BROWSER } from "./app/agent/browser-tool.js";
 import { filamentsOwn } from "./core/browser.js";
 import { ruleFor, rulesFrom } from "./app/agent/rules.js";
 import { Assistant } from "./app/assistant.js";
-import { addedFoldersOf, createAgentLoopTurn, exposedWords, folderVerdict, newFolderRefusal, parseAgentModel, plainModelProblem, shareKeptOut } from "./app/agent/turn.js";
+import { addedFoldersOf, createAgentLoopTurn, exposedWords, folderVerdict, newFolderRefusal, outsideRootsWords, parseAgentModel, plainModelProblem, shareKeptOut } from "./app/agent/turn.js";
 import { agentTitle } from "./core/catalogues.js";
 import { leadingTeams, teamsOn } from "./core/teams-on.js";
 import { forksOf, forkHeldBack, heldBack, leftBehind, ownWorktree, readWorktree, takeBack, worktreesOf } from "./adapters/git/places.js";
 import { bringUncommitted } from "./adapters/git/carry.js";
 import { taskFolders } from "./adapters/git/changes.js";
 import { createSubagentRegistry } from "./app/agent/subagents.js";
+import { createRemoteAgents } from "./app/agent/remote-agents.js";
+import { createRemoteWork } from "./app/remote-work.js";
 import { copiesOf, setCopiesHome, sweepTaskWorktrees, unsavedCopies } from "./adapters/git/worktree.js";
 import { routineBranches } from "./adapters/git/footprint.js";
 import { createFootprint, deletedChatsWork } from "./app/git-footprint.js";
@@ -292,6 +294,20 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     log("warn", `[copies] FILAMENT_COPIES_DIR names a drive's root or a home folder, which a Clear would empty: copies are kept in ${remoteCopies.root}`);
   // The machines it is paired with as a device, where its agents send work (services/machines, the remote-agents plan).
   const machines = createMachines({ dataDir });
+  // Run on (the remote desk's s2b): a folder of the person's sent to one of those machines for a chat of theirs, and
+  // what it changed brought back (app/remote-work.js), over this Filament's agents' device there. Its whole repository
+  // goes and comes back, so that is judged as a chat's folder is; and a bring back writes in the repository's turn,
+  // beside no sub-agent's Apply.
+  const remoteWork = createRemoteWork({
+    dataDir,
+    remote: createRemoteAgents({ machines }),
+    may: (repo) => {
+      const v = folderVerdict(config.get(), repo, { person: true });
+      return v.ok ? "" : v.why === "outside" ? outsideRootsWords(repo) : `${repo} is no folder a chat may work in here`;
+    },
+    inRepo: (repo, fn) => subagents.inRepoAhead(repo, fn),
+    log,
+  });
   // Every call to a provider goes without Node's two hidden 300 s limits (adapters/providers/fetch.js); a Node that
   // keeps its fetch's dispatcher out of reach keeps them, said once here (HarnessV3-FailurePoints §4 A).
   if (!fetchLimitsLifted())
@@ -3292,6 +3308,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     owner,
     remoteCopies,
     transfers,
+    remoteWork,
     cfgForModels,
     discover,
     catalogue: catalogueNow,

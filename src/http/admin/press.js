@@ -689,6 +689,13 @@ export const PRESS_TABLE = [
   ["POST /star/seen", SETTING],
   // owner.js: the call proves the owner key itself.
   ["POST /owner/session", PROOF],
+  // remote-work.js: Run on. A send carries the person's project to another machine, and a bring back writes into
+  // their folder what a chat there changed: presses both. Naming the chat started there allows no call.
+  ["GET /remote-work", READS],
+  ["POST /remote-work", ALWAYS],
+  ["POST /remote-work/:id/chat", WORDS],
+  ["POST /remote-work/:id/back", ALWAYS],
+  ["DELETE /remote-work/:id", NARROWS],
 ];
 
 /** The table by its rows, `METHOD /pattern` as the router names them. @type {Map<string, PressClass>} */

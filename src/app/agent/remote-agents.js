@@ -558,14 +558,16 @@ export function createRemoteAgents({ machines, wait = pause }) {
             if (stop.aborted) throw stopped();
             throw new Error(`${m.name} did not say what it holds of ${project}: ${words(e)}`);
           }
-        const b = await bundleSnapshot(folder, { machine: m.machine.id, project, haves, signal });
+        // The person's yes on a project's first copy to that machine, asked before its bundle is built: a no builds none.
+        /** @param {{ files: number, bytes: number, untracked: string[], left: { path: string, why: string }[] }} o */
+        const asked = async (o) => {
+          const yes = await ask({ machine: m.name, project, ...o });
+          if (!yes) throw Object.assign(new Error(`no copy of ${project} went to ${m.name}: the person said no`), { said: true });
+          sent.add(m.machine.id, repo);
+        };
+        const b = await bundleSnapshot(folder, { machine: m.machine.id, project, haves, signal, ask: sent.has(m.machine.id, repo) ? null : asked });
         if (!b.ok) throw new Error(`no copy of ${project} was made to send: ${b.error}`);
         try {
-          if (!sent.has(m.machine.id, repo)) {
-            const yes = await ask({ machine: m.name, project, files: b.files, bytes: b.bytes, untracked: b.untracked, left: b.left });
-            if (!yes) throw Object.assign(new Error(`no copy of ${project} went to ${m.name}: the person said no`), { said: true });
-            sent.add(m.machine.id, repo);
-          }
           const out = { machine: { id: m.machine.id, name: m.name }, project, repo, named, commit: b.commit, sub: b.sub, files: b.files, bytes: b.bytes, left: b.left };
           if (b.unchanged || !b.file) return out;
           const fh = await open(b.file, "r");
@@ -712,6 +714,43 @@ export function createRemoteAgents({ machines, wait = pause }) {
       return { ...p, here, cwd, pending: null, copy };
     },
     /**
+     * Run on (the remote desk's s2b): a copy of the project `folder` is in sent to the machine `which` names (`sendCopy`,
+     * `ask` and `sent` as there) and placed there for the person's own chat (POST /transfers/place `for: "person"`, its
+     * `takes` saying `person-copy`), which this Filament's app starts in it as its full device there. Refused in words: a
+     * machine that does not answer, lets this Filament send no copy there (Agents and Run on both off), or takes none for
+     * a chat of the person's. → where it went: the commit, the copy, and this folder in it (`cwd`).
+     * @param {string} which
+     * @param {{ folder: string, ask: (o: SendAsk) => Promise<boolean>, sent: ReturnType<typeof sendsKept>, signal?: AbortSignal | null }} o
+     * @returns {Promise<{ machine: { id: string, name: string }, project: string, repo: string, commit: string, sub: string, files: number, bytes: number, left: { path: string, why: string }[], copy: { id: string, folder: string }, cwd: string, reused: boolean }>}
+     */
+    async placeForPerson(which, { folder, ask, sent, signal = null }) {
+      const m = machineOf(which);
+      /** @type {any} */
+      let c;
+      try {
+        c = await clientOf(m);
+      } catch (/** @type {any} */ e) {
+        if (e?.grant) throw new Error(`${m.name} lets no chat of yours run there: switch Run on on for this machine in Settings › Remote access on ${m.name}`);
+        throw e;
+      }
+      if (!takes(c, "person-copy")) throw new Error(`${m.name} runs no chat of yours in a copy yet: update Filament there`);
+      const out = await this.sendCopy(m.machine.id, { folder, ask, sent, signal });
+      /** @type {any} */
+      let placed;
+      try {
+        placed = await c.post("/transfers/place", { project: out.project, ...out.named, commit: out.commit, for: "person" }, { timeoutMs: PLACE_MS, ...(signal ? { signal } : {}) });
+      } catch (e) {
+        if (signal?.aborted) throw new Error(`the copy of ${out.project} on ${m.name} was not made: it was stopped`);
+        throw new Error(`${m.name} did not check the copy of ${out.project} out: ${refusedWords(m, e)}`);
+      }
+      const at = String(placed?.folder || "");
+      if (!at || !placed?.copy || placed.owned !== true) throw new Error(`${m.name} named no copy of ${out.project} for your chat`);
+      // Its folder as that machine names one: its own separator.
+      const sep = at.includes("\\") ? "\\" : "/";
+      const cwd = out.sub ? `${at.replace(/[\\/]+$/, "")}${sep}${out.sub.split("/").join(sep)}` : at;
+      return { machine: out.machine, project: out.project, repo: out.repo, commit: out.commit, sub: out.sub, files: out.files, bytes: out.bytes, left: out.left, copy: { id: String(placed.copy), folder: at }, cwd, reused: placed.reused === true };
+    },
+    /**
      * What a sub-agent changed in its copy on the machine `which` names, brought into this repository (cp-back): captured
      * there on the commit sent (`base`, POST /transfers/back) without what this repository holds of it (`haves`: those
      * it still holds alone are named, and a capture that builds on one it lost since is asked for again whole), read in
@@ -725,7 +764,14 @@ export function createRemoteAgents({ machines, wait = pause }) {
      * @returns {Promise<{ commit: string, unchanged: boolean, left: { path: string, why: string }[] }>}
      */
     async takeBack(which, { copy, chat, repo, base, haves = [], signal = null }) {
-      const m = machineOf(which);
+      /** @type {import("../../services/machines/remotes.js").Machine} */
+      let m;
+      try {
+        m = machineOf(which);
+      } catch (/** @type {any} */ e) {
+        // Unpaired here, or its agents' device gone: asking again brings nothing.
+        throw backFailed("refused", `what changed in its copy did not come back: ${e?.message || e}`);
+      }
       /** @type {any} */
       let c;
       try {
@@ -739,8 +785,11 @@ export function createRemoteAgents({ machines, wait = pause }) {
       /** @param {any} e */
       const lost = (e) => {
         const status = Number(e?.status) || 0;
-        return backFailed(status === 404 || status === 410 ? "gone" : REFUSED_FOR_GOOD.includes(status) ? "refused" : "cut", `what changed in its copy on ${m.name} did not come back: ${refusedWords(m, e)}`);
+        return backFailed(status === 404 || status === 410 ? "gone" : REFUSED_FOR_GOOD.includes(status) || forGood(e) ? "refused" : "cut", `what changed in its copy on ${m.name} did not come back: ${refusedWords(m, e)}`);
       };
+      // A 409 that no wait mends: a copy of the person's whose chat there is another, or none yet (services/transfers.js
+      // `back`); one while a turn still runs there (`runs`) is asked again.
+      const forGood = (/** @type {any} */ e) => Number(e?.status) === 409 && e?.body?.runs !== true;
       const here = async (/** @type {string} */ sha) => (await git(["cat-file", "-e", `${sha}^{commit}`], { cwd: repo })).code === 0;
       // Beside the copy sent, only a commit this repository still holds is named: that machine leaves out of its bundle
       // what a named one carries, and one git pruned here since would leave the bundle built on nothing (the review of
@@ -759,7 +808,7 @@ export function createRemoteAgents({ machines, wait = pause }) {
           if (stop.aborted) throw stopped();
           const status = Number(e?.status) || 0;
           // A 503 is that machine's store busy a moment (or no capture there, which its `takes` rules out): asked again.
-          if (REFUSED_FOR_GOOD.includes(status) || status === 404 || status === 410 || ++tries >= SEND_TRIES) throw lost(e);
+          if (REFUSED_FOR_GOOD.includes(status) || forGood(e) || status === 404 || status === 410 || ++tries >= SEND_TRIES) throw lost(e);
           await wait(1000 * tries, stop);
           continue;
         }

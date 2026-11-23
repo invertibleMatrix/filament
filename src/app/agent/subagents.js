@@ -44,7 +44,7 @@
 // its run log's events (`attach`). A look rides the turn's inbox behind the reports, made when it is read and never
 // kept; a due one rings the turn as a report does.
 import { randomBytes } from "node:crypto";
-import { readFileSync, readlinkSync, statSync } from "node:fs";
+import { readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInternalCall } from "../internal-call.js";
 import { CHAIN_HEADER } from "../../core/conversation.js";
@@ -3517,13 +3517,25 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
    * @type {Map<string, Promise<void>>}
    */
   const repoTurns = new Map();
+  /**
+   * A repository's turn by its real path — as Windows compares one, any case — so one reached through a junction, or
+   * named by a caller outside the registry (Run on's bring back), shares the turn. @param {string} repo
+   */
+  const repoTurnKey = (repo) => {
+    let real = repo;
+    try {
+      real = realpathSync.native(repo);
+    } catch {}
+    return process.platform === "win32" ? real.toLowerCase() : real;
+  };
   /** @template T @param {string} repo @param {() => Promise<T>} fn @returns {Promise<T>} */
   const inRepo = (repo, fn) => {
-    const next = (repoTurns.get(repo) || Promise.resolve()).then(fn);
+    const key = repoTurnKey(repo);
+    const next = (repoTurns.get(key) || Promise.resolve()).then(fn);
     const tail = next.then(() => {}, () => {});
-    repoTurns.set(repo, tail);
+    repoTurns.set(key, tail);
     tail.then(() => {
-      if (repoTurns.get(repo) === tail) repoTurns.delete(repo);
+      if (repoTurns.get(key) === tail) repoTurns.delete(key);
     });
     return next;
   };
@@ -3538,7 +3550,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
    * names. @param {string} repo @param {string | null} [but]
    */
   const stopSettles = (repo, but = null) => {
-    for (const [stop, slot] of settleStops.get(repo) || []) if (slot !== but) stop.abort();
+    for (const [stop, slot] of settleStops.get(repoTurnKey(repo)) || []) if (slot !== but) stop.abort();
   };
   /**
    * A write that waits for a sub-agent's work to be found and marked (`settling`): the reads beside that mark in its
@@ -7626,7 +7638,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
     try {
       const first = await waitingWork(key, chain);
       if (!first.ok) return false;
-      repo = first.w.repo;
+      repo = repoTurnKey(first.w.repo);
       settleStops.set(repo, (settleStops.get(repo) || new Map()).set(stop, `${chain}\n${key}`));
       const found = await inRepo(repo, async () => {
         stop.signal.throwIfAborted();
@@ -9777,6 +9789,11 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
     heldRefusing: (chainId, runId) => holds.refusing(chainId, heldTurn(chainId, runId)),
     /** Whether the session's turn runs now. @param {string} chainId */
     turnRuns: (chainId) => !!liveTurnOf(chainId),
+    /**
+     * `fn` in the repository's turn, ahead of Filament's own reads of waiting work there: a write into a folder from
+     * outside the registry — Run on's bring back (app/remote-work.js) — never beside an Apply's, nor beside another.
+     */
+    inRepoAhead,
     /**
      * Whether the session's turn is open: it runs, or it paused on a question that waits for the person's answer — a
      * pause is no end, so a side run set for the turn's end waits for the end of the answer's turn. @param {string} chainId

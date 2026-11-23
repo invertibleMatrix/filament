@@ -287,13 +287,16 @@ async function leaveOut({ pre, cwd, env, at, keepSent = false, signal = null }) 
  * that machine's mirror of the project holds (`mirrorHaves`) — a bundle carries only what changed since the newest one
  * also here; none, the tree alone. `unchanged`: that machine has the commit already, and no bundle is made.
  * `untracked`: the files that go which no commit of the project holds — untracked, or added and not committed —, for
- * the person's yes.
+ * the person's yes. `ask`: that yes, asked before the bundle is built — its bytes what git keeps of the objects that go,
+ * near the bundle's — so a no or a question answered later builds none; a git that cannot measure them (before 2.31)
+ * asks once it is built. What it throws ends the send.
  * @param {string} folder
- * @param {{ machine: string, project: string, haves?: readonly string[], signal?: AbortSignal | null }} o
+ * @param {{ machine: string, project: string, haves?: readonly string[], signal?: AbortSignal | null,
+ *   ask?: ((o: { files: number, bytes: number, untracked: string[], left: { path: string, why: string }[] }) => Promise<unknown>) | null }} o
  * @returns {Promise<{ ok: true, repo: string, sub: string, commit: string, basis: string | null, files: number, left: { path: string, why: string }[], untracked: string[], unchanged: boolean, dir: string | null, file: string | null, bytes: number, sha256: string }
  *   | { ok: false, error: string }>}
  */
-export async function bundleSnapshot(folder, { machine, project, haves = [], signal = null }) {
+export async function bundleSnapshot(folder, { machine, project, haves = [], signal = null, ask = null }) {
   // The home folder's repository holds the person's whole account: its history, its tokens, Filament's own data.
   const found = await repoOf(folder);
   if (found.repo && tooWide(found.repo)) return { ok: false, error: `this folder's repository is ${found.repo}, the home folder or a drive's root: no copy of it is sent` };
@@ -337,8 +340,6 @@ export async function bundleSnapshot(folder, { machine, project, haves = [], sig
       if (ct.code !== 0 || !ct.out) return { ok: false, error: `git commit-tree failed: ${ct.err || ct.error}` };
       commit = ct.out;
     }
-    const ur = await run(["update-ref", ref, commit]);
-    if (ur.code !== 0) return { ok: false, error: `git update-ref failed: ${ur.err || ur.error}` };
     // This folder within the repository, as git names its root: by its path as named, else by its real path (a link on
     // the way, which git's root leaves out; a drive `subst` or a mapped one keeps its letter in both); none where
     // neither is within.
@@ -354,6 +355,19 @@ export async function bundleSnapshot(folder, { machine, project, haves = [], sig
     }
     sub ??= "";
     const base = { ok: /** @type {const} */ (true), repo, sub, commit, basis, files: shaped.files, left, untracked: shaped.fresh };
+    const asked = { files: base.files, untracked: base.untracked, left: base.left };
+    // Asked before the bundle, measured from this commit; the ref every send of the project to that machine shares moves
+    // after the yes, just before the bundle reads it: another send while the person answers is never bundled on this yes.
+    let askLater = !!ask;
+    if (ask) {
+      const du = commit === basis ? { code: 0, out: "0" } : await run(["rev-list", "--objects", "--disk-usage", commit, ...(basis ? [`^${basis}`] : [])]);
+      if (du.code === 0 && /^\d+$/.test(String(du.out).trim())) {
+        await ask({ ...asked, bytes: Number(String(du.out).trim()) });
+        askLater = false;
+      }
+    }
+    const ur = await run(["update-ref", ref, commit]);
+    if (ur.code !== 0) return { ok: false, error: `git update-ref failed: ${ur.err || ur.error}` };
     if (commit === basis) return { ...base, unchanged: true, dir: null, file: null, bytes: 0, sha256: "" };
     const dir = await mkdtemp(join(tmpdir(), SEND_PREFIX));
     const file = join(dir, "copy.bundle");
@@ -362,7 +376,15 @@ export async function bundleSnapshot(folder, { machine, project, haves = [], sig
       await rm(dir, { recursive: true, force: true }).catch(() => {});
       return { ok: false, error: `git bundle failed: ${bundled.err || bundled.error}` };
     }
-    return { ...base, unchanged: false, dir, file, ...(await digestOf(file)) };
+    const digest = await digestOf(file);
+    if (askLater && ask)
+      try {
+        await ask({ ...asked, bytes: digest.bytes });
+      } catch (e) {
+        await rm(dir, { recursive: true, force: true }).catch(() => {});
+        throw e;
+      }
+    return { ...base, unchanged: false, dir, file, ...digest };
   } finally {
     await rm(dirname(index), { recursive: true, force: true }).catch(() => {});
   }
