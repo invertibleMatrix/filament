@@ -13,6 +13,36 @@ import { join } from "node:path";
 
 /** The wire Filaments speak to each other: a remote reads it from /.well-known/filament before it pairs. */
 export const MACHINE_PROTOCOL = 1;
+/**
+ * The oldest wire this Filament still speaks, said beside it (`protocolLowest`): a machine on an older one is told to
+ * update. Both are raised only by a change to the wire that an older Filament would misread, never for a feature, which
+ * goes by what a machine says it has (GET /remote/me's `desk` flags).
+ */
+export const MACHINE_PROTOCOL_LOWEST = 1;
+
+/** A wire as a machine said it: a whole number from 1, else 1 — every Filament spoke 1 before it said which. @param {unknown} n */
+const wireOf = (n) => (Number.isInteger(n) && Number(n) >= 1 ? Number(n) : 1);
+
+/**
+ * Which side must update for two Filaments to speak, from what the other said of itself (its /.well-known/filament):
+ * "there" where its wire is older than the oldest this one speaks, "here" where this one's is older than the oldest it
+ * speaks, null where they speak. @param {any} said @param {{ protocol?: number, lowest?: number }} [here]
+ * @returns {"there" | "here" | null}
+ */
+export function protocolGap(said, { protocol = MACHINE_PROTOCOL, lowest = MACHINE_PROTOCOL_LOWEST } = {}) {
+  if (wireOf(said?.protocol) < lowest) return "there";
+  if (protocol < wireOf(said?.protocolLowest)) return "here";
+  return null;
+}
+
+/**
+ * Who must update, in words: the other machine by its name, or this one (`self`: "this app", "this Filament").
+ * @param {"there" | "here"} gap @param {{ name: string, version?: string | null }} there @param {string} [self]
+ */
+export function gapWords(gap, { name, version }, self = "this app") {
+  const runs = version ? `runs Filament ${version}` : "runs a Filament";
+  return gap === "there" ? `${name} ${runs}, too old for ${self}: update Filament on ${name}.` : `${name} ${runs}, too new for ${self}: update ${self}.`;
+}
 /** The longest a machine's name may be: it is shown on a rail of machines. */
 export const NAME_MAX = 64;
 

@@ -56,6 +56,19 @@ describe("the address", () => {
     assert.deepEqual(asked, [], "the code goes nowhere");
   });
 
+  // (fails before: yes — the review of s4c: a Filament on a wire this app does not speak was said, through an SSH tunnel,
+  // as none answering there, and otherwise in the command line's words)
+  test("a Filament on a wire this app does not speak: which side to update, in the app's words, by its address or through an SSH tunnel; nothing claimed", async () => {
+    /** @type {string[]} */
+    const asked = [];
+    const fetchImpl = /** @type {any} */ (async (/** @type {string} */ u, /** @type {any} */ init) => (asked.push(`${init?.method || "GET"} ${new URL(u).pathname}`), Response.json({ id: "m-box", name: "Box", version: "9.0.0", protocol: 9, protocolLowest: 9 })));
+    const words = "Box runs Filament 9.0.0, too new for this app: update this app. Update this app in Settings › About (Check now), then add it again.";
+    assert.deepEqual(await checkMachine({ link: "http://localhost:20310#code=ABCD-EFGH" }, { fetchImpl }), { ok: false, words });
+    const ssh = { routeFor: async (/** @type {string} */ alias, /** @type {number} */ port) => ({ kind: "ssh", url: "http://127.0.0.1:5555", alias, port }), hold: async () => null };
+    assert.deepEqual(await checkMachine({ link: "ssh://box" }, { fetchImpl, ssh: /** @type {any} */ (ssh) }), { ok: false, words });
+    assert.deepEqual(asked, ["GET /.well-known/filament", "GET /.well-known/filament"], "who it is, asked; nothing more");
+  });
+
   // (fails before: yes — the rail had no way to add a machine)
   test("plain http to another machine is refused before anything is asked of it; nonsense is said as such", async () => {
     /** @type {string[]} */

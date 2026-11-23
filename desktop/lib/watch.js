@@ -312,7 +312,8 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
    * (chain → unread).
    * @typedef {{ machine: Machine, route: Route | null, picking: Promise<void> | null, why: string | null, watch: ReturnType<typeof createWatch>,
    *   watched: import("./machines.js").Watched | null, last: MachineLook | null, looking: Promise<void> | null, landed: MachineLook | null, failed: number | null,
-   *   owed: Map<string, boolean> }} Kept
+   *   owed: Map<string, boolean>, gap: boolean }} Kept
+   *   `gap`: its last pick found it on a wire this app does not speak — offline at once, as the window says it
    * @type {Map<string, Kept>}
    */
   const kept = new Map();
@@ -351,7 +352,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       return had;
     }
     /** @type {Kept} */
-    const k = /** @type {any} */ ({ machine: m, route: null, picking: null, why: null, watched: null, last: null, looking: null, landed: null, failed: null, owed: new Map() });
+    const k = /** @type {any} */ ({ machine: m, route: null, picking: null, why: null, watched: null, last: null, looking: null, landed: null, failed: null, owed: new Map(), gap: false });
     // Its watch's calls say how the last of them failed, for its look to read; a chat's unread mark says nothing there
     // — a refusal of it, a view-only device's, is no refusal of the look under way (the review of p3-watch).
     k.watch = createWatch({
@@ -375,6 +376,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
           if (kept.get(k.machine.id) !== k) return;
           k.route = r.route;
           k.why = r.route ? null : (r.tried.at(-1)?.why ?? null);
+          k.gap = !r.route && !!r.update;
         },
         (/** @type {any} */ e) => void (k.why = String(e?.message || e)),
       )
@@ -383,7 +385,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
 
   /** @param {Kept} k @param {{ answered: boolean, refused?: boolean, look?: Look | null }} o @returns {MachineLook} */
   const said = (k, { answered, refused = false, look = null }) => {
-    k.watched = machineWatch(k.watched, { answered, why: k.why }, now());
+    k.watched = machineWatch(k.watched, { answered, why: k.why, wrong: !answered && k.gap }, now());
     const m = k.machine;
     return (k.last = { id: m.id, name: m.name, partition: m.partition, status: k.watched.status, why: k.watched.why, refused, needs: look ? look.needs : 0, look });
   };
@@ -406,6 +408,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       if (!r?.route) {
         k.route = null;
         k.why = r?.tried.at(-1)?.why ?? k.why;
+        k.gap = !!r?.update;
       }
     }
     const route = k.route;

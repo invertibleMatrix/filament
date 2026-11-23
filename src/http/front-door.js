@@ -20,7 +20,7 @@ import { lendModels, modelsLentTo } from "../services/devices.js";
 import { selfAddress } from "../services/config/store.js";
 import { serveStatic, serveDoc } from "./static.js";
 import { artifactNameOfHost, isArtifactOrigin, stillNameOfHost } from "../core/artifacts.js";
-import { MACHINE_PROTOCOL } from "../services/machine.js";
+import { MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST } from "../services/machine.js";
 import { CONVERSATION_HEADERS } from "../core/conversation.js";
 
 /** The model endpoints' paths, the memory engine's door to them included: their answers bear no `FILAMENT_MARK`. */
@@ -256,11 +256,12 @@ export function createFrontDoor({
       (r) => sendJson(r.res, 200, { ok: true, version: VERSION, uptimeMs: Date.now() - startedAt }),
     ],
     // Who answers here, for another Filament adding this machine (the owner's remote Filament of 11-06): its id, its
-    // name, the wire it speaks and its version. Asked before any pairing, by whatever name reached it — a tailnet name
-    // no Host check knows yet included — so it says nothing a stranger could use: no path, no key, no session.
+    // name, the wire it speaks and the oldest it still speaks (services/machine.js `protocolGap`), and its version. Asked
+    // before any pairing, by whatever name reached it — a tailnet name no Host check knows yet included — so it says
+    // nothing a stranger could use: no path, no key, no session.
     ...(machine
       ? /** @type {import("./router.js").RouteRow[]} */ ([
-          ["GET", "/.well-known/filament", (r) => sendJson(r.res, 200, { ...machine.get(), protocol: MACHINE_PROTOCOL, version: VERSION }, { "cache-control": "no-store" })],
+          ["GET", "/.well-known/filament", (r) => sendJson(r.res, 200, { ...machine.get(), protocol: MACHINE_PROTOCOL, protocolLowest: MACHINE_PROTOCOL_LOWEST, version: VERSION }, { "cache-control": "no-store" })],
         ])
       : []),
     ["*", "/api/:rest*", (r) => admin(r.req, r.res, r.url)],

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { runCli } from "../src/cli/main.js";
 import { EXIT } from "../src/cli/client.js";
-import { REMOTES_FILE, connectTo, pairingOf, readRemotes } from "../src/cli/remotes.js";
+import { REMOTES_FILE, connectRemote, connectTo, disconnect, pairingOf, readRemotes } from "../src/cli/remotes.js";
 import { startApp, fakeUpstream, anthropicReply } from "./helpers/app.js";
 
 /**
@@ -280,6 +280,39 @@ test("connect to an https address whose certificate an authority signed (tailsca
       /No Filament answers at https:\/\/box\.tail1234\.ts\.net/,
       "no one there is said as that, not as a certificate",
     );
+    // (fails before: yes — the remote desk of 11-22, s4c) A Filament on a wire this one does not speak: which side to
+    // update, said, and the code never sent.
+    asked.length = 0;
+    /** @type {typeof fetch} */
+    const newer = /** @type {any} */ (
+      async (/** @type {string} */ url, /** @type {any} */ init) => {
+        asked.push(`${init?.method || "GET"} ${new URL(url).pathname}`);
+        return Response.json({ id: "m-box", name: "Box", version: "9.0.0", protocol: 9, protocolLowest: 9 });
+      }
+    );
+    await assert.rejects(connectTo(laptop, "https://box.tail1234.ts.net/ui/pair.html#code=ABCD-EFGH", { fetchImpl: newer, certificate }), (/** @type {any} */ e) => {
+      assert.equal(e.exitCode ?? e.code, EXIT.failed);
+      assert.equal(e.message, "Box runs Filament 9.0.0, too new for this Filament: update this Filament. Here: filament update, or the Filament app's Check for updates. Nothing was sent.");
+      return true;
+    });
+    assert.ok(!asked.some((a) => a.startsWith("POST")), "the code never went");
+    // (fails before: yes — the review of s4c) Box kept, then on a wire this one does not speak: --machine says which side
+    // to update, and disconnect still signs out there — its token stops — before it is forgotten here.
+    asked.length = 0;
+    /** @type {typeof fetch} */
+    const moved = /** @type {any} */ (
+      async (/** @type {string} */ url, /** @type {any} */ init) => {
+        asked.push(`${init?.method || "GET"} ${new URL(url).pathname}`);
+        return Response.json(url.endsWith("/.well-known/filament") ? { id: "m-box", name: "Box", version: "9.0.0", protocol: 9, protocolLowest: 9 } : { ok: true });
+      }
+    );
+    await assert.rejects(connectRemote(laptop, "Box", { fetchImpl: moved }), /Box runs Filament 9\.0\.0, too new for this Filament: update this Filament\./);
+    assert.deepEqual(asked, ["GET /.well-known/filament"], "its token never went");
+    asked.length = 0;
+    const gone = await disconnect(laptop, "Box", { fetchImpl: moved });
+    assert.deepEqual([gone.signedOut, gone.why], [true, null]);
+    assert.deepEqual(asked, ["GET /.well-known/filament", "GET /api/state", "POST /api/remote/sign-out"]);
+    assert.deepEqual(readRemotes(laptop), [], "forgotten here");
   } finally {
     rmSync(laptop, { recursive: true, force: true });
   }

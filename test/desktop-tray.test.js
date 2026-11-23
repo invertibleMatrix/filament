@@ -730,6 +730,22 @@ describe("every machine, watched", () => {
     assert.deepEqual(marks().slice(4), [seen("c5")], "tried once while it was kept, never again");
   });
 
+  // (fails before: yes — the review of s4c: the watch said such a machine reconnecting for half a minute where the window
+  // said it offline at once)
+  test("a machine on a wire this app does not speak: offline at once, saying which side to update, as the window says it; nothing sent there", async () => {
+    let t = 4_000_000;
+    const x = fleetOf();
+    const why = "Studio runs Filament 9.0.0, too new for this app: update this app.";
+    const pick = async (/** @type {any} */ m) => (m.id === "m-box" ? { route: null, name: "Studio", version: "9.0.0", tried: [{ url: m.routes[0].url, why }], update: { side: "here", route: m.routes[0] } } : x.pick(m));
+    const fleet = createFleet({ machines: () => MACHINES, cookieOf, pick: /** @type {any} */ (pick), fetchOf: x.fetchOf, now: () => t });
+    await fleet.look();
+    await settle();
+    t += WATCH_MS;
+    const got = await fleet.look();
+    assert.deepEqual(got.map((m) => [m.id, m.status, m.why]), [["m-box", "offline", why], ["m-mac", "online", null]]);
+    assert.ok(!x.asked.some((a) => a.kind === "lan"), "nothing sent to it");
+  });
+
   test("a machine that stops answering as itself: nothing more goes there, its way is picked anew, and it is back without a flood; one that refuses the sign-in says so; one removed is forgotten", async () => {
     let t = 2_000_000;
     const x = fleetOf();

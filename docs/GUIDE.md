@@ -285,7 +285,11 @@ the tray's menu. Another machine's **⋯** also holds **Disconnect**: the machin
 its pairing and its sign-in kept, but this window asks nothing of it — no notifications of its chats, no page of it
 open, no SSH tunnel — until you pick it again (or **Connect** in its **⋯**), after a restart too. **Remove** there takes
 it out of the window and forgets its sign-in here. A machine that cannot be reached shows why, and **Switch machine**
-takes you to another.
+takes you to another. One whose Filament is too old or too new for this app says which to update, at once: **Update
+Filament on** it — the Filament app there updates itself, a server with `filament update` —, with **Open its page** to
+use it meanwhile, or **Update this app**, which opens Settings › About here. It opens as usual once the two work
+together. `filament connect`, `--machine` and Add a machine say the same, and send nothing; `filament disconnect` still
+signs out there, so its sign-in stops.
 
 **Every machine in one list.** Once another machine is kept, This computer's left bar lists every machine's chats,
 not its own alone. Now's **Needs you**, **Working** and **Done** hold the other machines' rows among this computer's,
@@ -1865,7 +1869,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`); a device signs itself out. |
 | `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
 | `POST /api/remote/agent-device` | A full device makes its own machine's agents a device here: `{ device, machine, token }`, the token this once, its grant off. A second one replaces the first. |
-| `GET /.well-known/filament` | This machine's id and name, to anyone: what the pairing page and `filament connect` ask before a code or a token is sent. |
+| `GET /.well-known/filament` | This machine's id and name, its version, and the wire it speaks with the oldest it still speaks (`protocol`, `protocolLowest`), to anyone: what the pairing page, `filament connect` and another machine's app ask before a code or a token is sent. |
 | `POST /api/dry-run` | Route and shape a request without sending it. |
 | `GET /api/acp/agents`, `POST /api/acp/agents/<id>/login`, `POST /api/acp/detect` | Known agents with installed / logged-in state (asked asynchronously, cached a minute), open a login terminal, add or enable installed agents. |
 | `GET /api/acp/status`, `POST /api/acp/processes/<key>/kill`, `DELETE /api/acp/conversations/<key>` | Running agent processes and conversation mappings; stop one, forget one. |

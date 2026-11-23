@@ -22,6 +22,7 @@ import { dirname } from "node:path";
 import { pinnedFetch } from "../../src/cli/pinned.js";
 import { onThisMachine } from "../../src/cli/remotes.js";
 import { bodyText } from "../../src/services/machines/client.js";
+import { gapWords, protocolGap } from "../../src/services/machine.js";
 import { printOf } from "../../src/core/x509.js";
 import { aliasOf, localOf } from "./ssh-route.js";
 
@@ -431,9 +432,11 @@ function tunnelWords(e, ssh, timeoutMs) {
  * machine's own id answers — another machine at an address, or no Filament, is passed over, and said why. An SSH
  * route's tunnel is brought up first (`hold`: null, or why not); with none to hold it, it is asked as it is. A kind this
  * app does not know is passed over. Null `route` where none answers, with each route's why — `wrong` where another
- * machine answered there.
+ * machine answered there. The machine answering on a wire this app does not speak (services/machine.js `protocolGap`)
+ * is no way to it either, and no other route is asked: `update` says which side must update, and the route where it
+ * answered — its own page still opens there, at the person's word (lib/rail.js `updatePage`).
  * @param {Machine} machine @param {{ ask?: Ask, timeoutMs?: number, hold?: (route: Route) => Promise<string | null> }} [o]
- * @returns {Promise<{ route: Route | null, name: string | null, version: string | null, tried: Tried[] }>}
+ * @returns {Promise<{ route: Route | null, name: string | null, version: string | null, tried: Tried[], update?: Update }>}
  */
 export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, hold } = {}) {
   /** @type {Tried[]} */
@@ -456,7 +459,14 @@ export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, h
       const { status, json } = await ask(route, "/.well-known/filament", { timeoutMs });
       if (status !== 200 || typeof json?.id !== "string") tried.push({ url, why: `what answers at ${url} is no Filament (HTTP ${status})` });
       else if (!machine.local && String(json.id).toLowerCase() !== machine.id) tried.push({ url, why: `${url} is ${String(json.name || json.id)} (${json.id}), not ${machine.name}: nothing was sent there`, wrong: true });
-      else return { route, name: typeof json.name === "string" ? json.name : null, version: typeof json.version === "string" ? json.version : null, tried };
+      else {
+        const name = typeof json.name === "string" ? json.name : null;
+        const version = typeof json.version === "string" ? json.version : null;
+        const side = protocolGap(json);
+        if (!side) return { route, name, version, tried };
+        tried.push({ url, why: gapWords(side, { name: machine.name, version }) });
+        return { route: null, name, version, tried, update: { side, route } };
+      }
     } catch (/** @type {any} */ e) {
       tried.push({ url, why: ssh ? tunnelWords(e, ssh, timeoutMs) : failWords(e, route, timeoutMs) });
     }
@@ -466,6 +476,8 @@ export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, h
 
 /**
  * @typedef {{ url: string, why: string, wrong?: true }} Tried  a route passed over, and why; `wrong`: another machine answered there
+ * @typedef {{ side: "there" | "here", route: Route }} Update  the machine answered at `route` on a wire this app does not
+ *   speak: `there`, its Filament is to be updated; `here`, this app
  * @typedef {"online" | "reconnecting" | "offline" | "disconnected"} MachineStatus  `disconnected`: kept off, never asked
  * @typedef {{ status: MachineStatus, silentSince: number | null, why: string | null }} Watched
  */

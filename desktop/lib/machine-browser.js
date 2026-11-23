@@ -294,7 +294,8 @@ export function createMachineBrowsers({ machines, cookieOf, keep, pagesFor, pick
     const picked = await pick({ ...m, routes: ways }).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
     if (!still()) return;
     const route = picked.route;
-    if (!route) return later(k, `${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}`);
+    // One that answers on a wire this app does not speak says which side to update (machines.js `gapWords`).
+    if (!route) return later(k, /** @type {any} */ (picked).update ? String(picked.tried.at(-1)?.why).replace(/\.$/, "") : `${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}`);
     const origin = new URL(String(route.url)).origin;
     const cookie = await cookieOf(m.partition, origin).catch(() => "");
     if (!still()) return;

@@ -266,6 +266,24 @@ describe("which route a view loads", () => {
     assert.deepEqual(local.route, { kind: "url", url: ORIGIN }, "This computer is whichever Filament the app runs");
   });
 
+  // (fails before: yes — the remote desk of 11-22, s4c: a machine on a wire this app does not speak was taken, and failed
+  // oddly after)
+  test("the machine on a wire this app does not speak is no way to it: which side to update, and where it answered; no other route asked", async () => {
+    /** @type {string[]} */
+    const asked = [];
+    const at = (/** @type {any} */ json) => (/** @type {any} */ route, /** @type {string} */ path) => (asked.push(`${route.url}${path}`), Promise.resolve({ status: 200, json }));
+    const odd = await pickRoute(BOX, { ask: at({ id: "m-box", name: "DESKTOP-1", version: "0.9.40", protocol: 0.5 }) });
+    assert.deepEqual(odd.route, BOX.routes[0], "a wire that is no whole number is 1: spoken");
+    assert.equal(odd.update, undefined);
+    asked.length = 0;
+    const gone = await pickRoute(BOX, { ask: at({ id: "m-box", name: "DESKTOP-1", version: "9.0.0", protocol: 9, protocolLowest: 9 }) });
+    assert.equal(gone.route, null);
+    assert.deepEqual(gone.update, { side: "here", route: BOX.routes[0] });
+    assert.deepEqual(gone.tried, [{ url: String(BOX.routes[0].url), why: "Workstation runs Filament 9.0.0, too new for this app: update this app." }]);
+    assert.deepEqual([gone.name, gone.version], ["DESKTOP-1", "9.0.0"]);
+    assert.deepEqual(asked, [`${BOX.routes[0].url}/.well-known/filament`], "its other routes reach the same Filament: none asked");
+  });
+
   test("on the network: asked over the pinned certificate alone, cookie-less — another certificate ends it before a byte is sent", async () => {
     const dir = mkdtempSync(join(tmpdir(), "filament-machines-tls-"));
     made.push(dir);

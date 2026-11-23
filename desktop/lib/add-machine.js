@@ -12,7 +12,7 @@
 // a page of that machine in the machine's own view (lib/rail.js), so the cookie it answers lands in the machine's
 // partition and nowhere else, as a browser's does: `claimScript` is what that page runs, `claimOutcome` reads its answer.
 // Plain Node (NA-D13).
-import { computerName } from "../../src/services/machine.js";
+import { computerName, gapWords } from "../../src/services/machine.js";
 import { certRefused, machineAt, onThisMachine, pairingOf, plainWords } from "../../src/cli/remotes.js";
 import { certificateAt, pinnedFetch } from "../../src/cli/pinned.js";
 import { claimWords } from "../../src/ui/pair.js";
@@ -46,6 +46,17 @@ export function addressOf(text) {
 }
 
 /**
+ * A machine on a wire this app does not speak, in the app's words (remotes.js `machineAt`'s refusal, its body): which
+ * side to update, how, and to add it again then. Null for any other refusal. @param {any} e @returns {string | null}
+ */
+export function gapSaid(e) {
+  const b = e?.body;
+  if (b?.gap !== "there" && b?.gap !== "here") return null;
+  const how = b.gap === "there" ? "The Filament app there updates itself (its tray's Check for updates), and a server with filament update; then add it again." : "Update this app in Settings › About (Check now), then add it again.";
+  return `${gapWords(b.gap, { name: String(b.name ?? ""), version: b.version ? String(b.version) : null })} ${how}`;
+}
+
+/**
  * Who answers at the address the person gave, and the way there to keep — before any code or cookie goes to it.
  * `ssh`: this computer's tunnels (ssh-route.js `createTunnels`), for an `ssh://` address.
  * @param {AddInput} input
@@ -65,7 +76,10 @@ export async function checkMachine(input, { fetchImpl = fetch, certificate = cer
     try {
       const machine = await machineAt(route.url, { fetchImpl });
       return { ok: true, url: route.url, code: "", fingerprint: "", route, machine, ssh: route.alias };
-    } catch {
+    } catch (/** @type {any} */ e) {
+      // A Filament answers there, on another wire: said as that, not as none there (the review of s4c).
+      const gap = gapSaid(e);
+      if (gap) return { ok: false, words: gap };
       const ours = asked.port === FILAMENT_PORT ? "" : " The port after the colon is Filament's on that machine — SSH's own is your SSH config's.";
       return { ok: false, words: `The tunnel to ${asked.alias} is up, but no Filament answers at port ${asked.port} there: is it running, on that port?${ours}` };
     }
@@ -118,7 +132,7 @@ export async function checkMachine(input, { fetchImpl = fetch, certificate = cer
   } catch (/** @type {any} */ e) {
     if (wrong)
       return { ok: false, words: `Another certificate answered at ${url} than the one ${input?.fingerprint ? "you compared" : "its link names"}: nothing was sent. Something else answers at that address — or that machine's certificate was made anew: paste the link its Settings › Remote access shows now.` };
-    return { ok: false, words: String(e?.message || e) };
+    return { ok: false, words: gapSaid(e) ?? String(e?.message || e) };
   }
 }
 

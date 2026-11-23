@@ -15,7 +15,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { ANSWER_MAX, CliError, EXIT, bodyText, clientAt, redirectRefusal, redirected, refusalWords } from "./client.js";
 import { certificateAt, pinnedFetch } from "./pinned.js";
-import { cleanName } from "../machine.js";
+import { cleanName, gapWords, protocolGap } from "../machine.js";
 import { isSealed, loadKey, open, seal } from "../config/secrets.js";
 import { printOf } from "../../core/x509.js";
 
@@ -187,11 +187,13 @@ export const plainWords = (url) =>
 /**
  * Who answers at `url`: its /.well-known/filament, asked before anything is sent there — a redirect followed nowhere,
  * no more than WHO_MAX of it read, past which it says so —, the name it gives as kept (machine.js `cleanName`), its id
- * where that is none.
- * @param {string} url @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [o]
+ * where that is none. One on a wire this Filament does not speak (machine.js `protocolGap`) is refused, saying which
+ * side to update — its refusal's body `{ gap, name, version }`, for an app to say it in its own words —, unless `wire`
+ * is false: a sign-out, which stops a token there, goes on any wire (the review of s4c).
+ * @param {string} url @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, wire?: boolean }} [o]
  * @returns {Promise<{ id: string, name: string, version: string }>}
  */
-export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire = true } = {}) {
   /** @type {any} */
   let j;
   try {
@@ -208,7 +210,16 @@ export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000 } = {
     throw new CliError(`No Filament answers at ${url}: is the machine on, Filament running there, and its address one this machine reaches? (${e?.message || e})`, EXIT.noFilament);
   }
   if (typeof j?.id !== "string" || !j.id) throw new CliError(`What answers at ${url} is no Filament (it did not say who it is)`, EXIT.noFilament);
-  return { id: j.id, name: cleanName(j.name) || cleanName(j.id) || j.id, version: String(j.version || "") };
+  const who = { id: j.id, name: cleanName(j.name) || cleanName(j.id) || j.id, version: String(j.version || "") };
+  // A Filament on a wire this one does not speak is sent nothing: which side to update, said (services/machine.js).
+  const gap = wire ? protocolGap(j) : null;
+  if (gap)
+    throw new CliError(
+      `${gapWords(gap, who, "this Filament")} ${gap === "there" ? `On ${who.name}: filament update, or the Filament app's Check for updates there.` : "Here: filament update, or the Filament app's Check for updates."} Nothing was sent.`,
+      EXIT.failed,
+      { gap, name: who.name, version: who.version },
+    );
+  return who;
 }
 
 /**
@@ -426,17 +437,18 @@ export function remoteNamed(dataDir, which, { agents = false } = {}) {
 
 /**
  * A client of a connected machine's Filament, once the machine at its address says it is the one connected and it
- * still knows this device; else a CliError in words that say which.
- * @param {string} dataDir @param {string} which @param {{ fetchImpl?: typeof fetch, signal?: AbortSignal, timeoutMs?: number, agents?: boolean }} [o]
+ * still knows this device; else a CliError in words that say which. `anyWire`: whatever wire it speaks (`machineAt`'s
+ * `wire`), for a sign-out alone.
+ * @param {string} dataDir @param {string} which @param {{ fetchImpl?: typeof fetch, signal?: AbortSignal, timeoutMs?: number, agents?: boolean, anyWire?: boolean }} [o]
  */
-export async function connectRemote(dataDir, which, { fetchImpl: given, signal, timeoutMs = 5000, agents = false } = {}) {
+export async function connectRemote(dataDir, which, { fetchImpl: given, signal, timeoutMs = 5000, agents = false, anyWire = false } = {}) {
   let row = remoteNamed(dataDir, which, { agents });
   // One connected over plain http to another machine, before Filament took https alone: its token goes there no more.
   if (row.url.startsWith("http:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again (filament connect <link>).`, EXIT.failed);
   // A token still sealed: this data folder's secret.key does not open it, and the sealed text is no token to send.
   if (isSealed(row.token)) throw new CliError(`${row.name}: its token was sealed with another secret.key than this data folder's, and cannot be read: put that secret.key back, or connect again (filament connect <link>).`, EXIT.failed);
   const fetchImpl = given ?? (row.fingerprint ? pinnedFetch(row.fingerprint) : fetch);
-  const who = await machineAt(row.url, { fetchImpl, timeoutMs });
+  const who = await machineAt(row.url, { fetchImpl, timeoutMs, wire: !anyWire });
   if (who.id !== row.machine.id)
     throw new CliError(`The Filament at ${row.url} is ${who.name} (${who.id}), not ${row.name} that this command line paired with: its token is not sent there. Connect again (filament connect <link>) if that machine was set up anew.`, EXIT.noFilament);
   row = renamedKept(dataDir, row, who.name);
@@ -499,7 +511,8 @@ export async function modelsWayOf(dataDir, which, { agents = false, connectMs = 
  * one connected, or no longer knows the device. @param {string} dataDir @param {string} which @param {typeof fetch} [fetchImpl]
  */
 async function signOut(dataDir, which, fetchImpl) {
-  const client = await connectRemote(dataDir, which, { fetchImpl });
+  // On any wire: its token stops there even where the two Filaments speak nothing else (the review of s4c).
+  const client = await connectRemote(dataDir, which, { fetchImpl, anyWire: true });
   await client.post("/remote/sign-out", {});
   return true;
 }

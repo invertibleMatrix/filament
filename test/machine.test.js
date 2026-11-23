@@ -7,7 +7,7 @@ import http from "node:http";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computerName, createMachine, cleanName, MACHINE_PROTOCOL, NAME_MAX } from "../src/services/machine.js";
+import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, protocolGap } from "../src/services/machine.js";
 import { createFrontDoor } from "../src/http/front-door.js";
 import { defaultConfig } from "../src/config.js";
 import { startApp } from "./helpers/app.js";
@@ -121,8 +121,8 @@ test("/.well-known/filament says who answers — its id, name, wire and version 
     assert.equal(r.status, 200);
     assert.equal(r.headers.get("cache-control"), "no-store");
     const said = await r.json();
-    assert.deepEqual(Object.keys(said).sort(), ["id", "name", "protocol", "version"], "nothing a stranger could use");
-    assert.equal(said.protocol, MACHINE_PROTOCOL);
+    assert.deepEqual(Object.keys(said).sort(), ["id", "name", "protocol", "protocolLowest", "version"], "nothing a stranger could use");
+    assert.deepEqual([said.protocol, said.protocolLowest], [MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST]);
     assert.equal(said.id, JSON.parse(readFileSync(join(shim.dataDir, "machine.json"), "utf8")).id);
     // A tailnet name no Host check knows yet: who answers is said; the admin API is not reached by it.
     const named = /** @type {any} */ (await get(shim.port, "/.well-known/filament", { host: "box.tail1234.ts.net" }));
@@ -170,9 +170,25 @@ test("/.well-known/filament answers while memory opens, as /health does", async 
     const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
     const r = /** @type {any} */ (await Promise.race([get(port, "/.well-known/filament", {}), new Promise((res) => setTimeout(() => res(null), 2000))]));
     assert.ok(r, "answered, not held");
-    assert.deepEqual([r.status, JSON.parse(r.body)], [200, { id: "m-1", name: "Box", protocol: MACHINE_PROTOCOL, version: "9.9.9" }]);
+    assert.deepEqual([r.status, JSON.parse(r.body)], [200, { id: "m-1", name: "Box", protocol: MACHINE_PROTOCOL, protocolLowest: MACHINE_PROTOCOL_LOWEST, version: "9.9.9" }]);
   } finally {
     server.closeAllConnections();
     await new Promise((r) => server.close(() => r(undefined)));
   }
+});
+
+// (fails before: yes — the remote desk of 11-22, s4c: a machine on a wire the other did not speak failed oddly, saying
+// nothing of which side to update)
+test("which side must update for two Filaments to speak: the other below this one's oldest wire, or this one below the other's; one that says no wire speaks 1", () => {
+  assert.equal(protocolGap({ protocol: MACHINE_PROTOCOL, protocolLowest: MACHINE_PROTOCOL_LOWEST }), null, "the same Filament speaks with itself");
+  assert.equal(protocolGap({}), null, "a Filament from before the wire was said: 1");
+  assert.equal(protocolGap({ protocol: "2", protocolLowest: -1 }), null, "what is no whole number from 1 is 1");
+  const here = { protocol: 3, lowest: 2 };
+  assert.equal(protocolGap({ protocol: 1 }, here), "there");
+  assert.equal(protocolGap({ protocol: 2, protocolLowest: 2 }, here), null, "within each other's");
+  assert.equal(protocolGap({ protocol: 5, protocolLowest: 3 }, here), null, "a newer one that still speaks this one's");
+  assert.equal(protocolGap({ protocol: 5, protocolLowest: 4 }, here), "here");
+  assert.equal(gapWords("there", { name: "Studio", version: "0.9.40" }), "Studio runs Filament 0.9.40, too old for this app: update Filament on Studio.");
+  assert.equal(gapWords("here", { name: "Studio", version: "0.9.99" }, "this Filament"), "Studio runs Filament 0.9.99, too new for this Filament: update this Filament.");
+  assert.equal(gapWords("there", { name: "Studio" }), "Studio runs a Filament, too old for this app: update Filament on Studio.");
 });

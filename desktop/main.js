@@ -680,6 +680,8 @@ async function run() {
         onGuest: (g) => {
           if (!w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk-guest", g);
         },
+        // A machine too new for this app: This computer's Settings › About, where Updates' Check now takes the newest.
+        updateHere: () => void openWindow("harness", "#/settings/about"),
         guard: (contents, o) => {
           guard(contents, o);
           remotePages.set(contents, String(/** @type {any} */ (o.prefs).partition || ""));
@@ -1549,6 +1551,12 @@ async function run() {
     if (!id || id === LOCAL_ID || rail?.guest() !== id || !DESK_KEYS.includes(String(key)) || !w || w.isDestroyed()) return;
     w.webContents.focus();
     w.webContents.send("filament:desk-key", String(key));
+  });
+  // A machine's view showing the app's update page (lib/rail.js `updatePage`): its act, as the view it is, which the
+  // rail takes up only while that view shows such a page.
+  ipcMain.on("filament:machines-update", (e) => {
+    const id = rail?.hearsPage(e.sender, e.senderFrame);
+    if (id && id !== LOCAL_ID) rail?.updateOn(id);
   });
   /** @type {NodeJS.Timeout | null} */
   let soon = null;

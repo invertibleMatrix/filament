@@ -292,30 +292,58 @@ export const loadOwn = (wc, url) =>
  * @param {string} name @param {readonly { url: string, why: string }[]} tried @param {{ dark: boolean, every?: number, bar?: number }} o
  */
 export function unreachablePage(name, tried, { dark, every = LOOK_EVERY_MS, bar = BAR_H }) {
-  const c = dark ? { bg: "#1e1e1e", text: "rgba(255,255,255,0.93)", quiet: "rgba(235,235,245,0.6)", line: "rgba(255,255,255,0.22)" } : { bg: "#ffffff", text: "rgba(0,0,0,0.88)", quiet: "rgba(60,60,67,0.66)", line: "rgba(0,0,0,0.2)" };
   const rows = tried.map((t) => `<li>${esc(t.why)}</li>`).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(name)}</title><style>
-html,body{margin:0;height:100%;background:${c.bg};color:${c.text};font:13px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;cursor:default}
-.bar{position:fixed;left:0;right:0;top:0;height:${Math.max(0, Math.round(bar))}px;-webkit-app-region:drag}
-.main{box-sizing:border-box;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px 24px 64px;text-align:center}
-.tile{background:linear-gradient(180deg,#38bdf8,#0284c7);display:grid;place-items:center;margin-bottom:6px}
-.title{font-size:17px;font-weight:650}.line,li{color:${c.quiet}}ul{margin:4px 0 0;padding-left:18px;max-width:560px;text-align:left}
-button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;color:inherit;background:transparent;border:1px solid ${c.line}}
-</style></head><body><div class="bar"></div><div class="main" role="status" aria-live="polite">${markTile(44)}<div class="title">${esc(name)} cannot be reached</div><div class="line">Filament tries again every ${Math.round(every / 1000)} s, and opens it here as soon as it answers.</div>${rows ? `<ul>${rows}</ul>` : ""}<button type="button" id="switch" hidden>Switch machine</button></div><script>${SWITCH_SCRIPT}</script></body></html>`;
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  return ownPage(name, `<div class="title">${esc(name)} cannot be reached</div><div class="line">Filament tries again every ${Math.round(every / 1000)} s, and opens it here as soon as it answers.</div>${rows ? `<ul>${rows}</ul>` : ""}<button type="button" id="switch" hidden>Switch machine</button>`, SWITCH_SCRIPT, { dark, bar });
 }
 /** The unreachable page's one script: Switch machine shown where the view's bridge is, its press the app's popover under it. */
 const SWITCH_SCRIPT = `(()=>{const m=window.filamentMachines,b=document.getElementById("switch");if(!m||!b)return;b.hidden=false;b.onclick=()=>{const r=b.getBoundingClientRect();m.open({x:r.left,y:r.top,width:r.width,height:r.height})}})()`;
 
 /**
+ * A machine's view while it answers on a wire this app does not speak (machines.js `pickRoute`'s `update`): the app's own
+ * page, as the unreachable one, saying which side to update — that machine's Filament, or this app — and how. Its
+ * buttons, where the view's bridge is: Open its page (its own harness, which its own wire serves — the desk's calls stay
+ * off) or Update this app (This computer's Settings › About), and Switch machine. The machine is asked on, and opens here
+ * once it speaks this app's wire.
+ * @param {string} name @param {"there" | "here"} side @param {string} why  `gapWords`'s @param {{ dark: boolean, bar?: number }} o
+ */
+export function updatePage(name, side, why, { dark, bar = BAR_H }) {
+  const there = side === "there";
+  const how = there
+    ? `The Filament app on ${name} updates itself (its tray's Check for updates), and a server with filament update. It opens here once it runs a version this app works with.`
+    : `Update this app opens This computer's Settings › About, where Check now takes the newest. ${name} opens here once this app works with it.`;
+  return ownPage(name, `<div class="title">${esc(there ? `Update Filament on ${name}` : "Update this app")}</div><div class="line">${esc(why)}</div><div class="line">${esc(how)}</div><button type="button" id="act" hidden>${there ? "Open its page" : "Update this app"}</button><button type="button" id="switch" hidden>Switch machine</button>`, UPDATE_SCRIPT, { dark, bar });
+}
+/** The update page's one script: its act and Switch machine shown where the view's bridge is, their presses the app's. */
+const UPDATE_SCRIPT = `(()=>{const m=window.filamentMachines,a=document.getElementById("act"),b=document.getElementById("switch");if(!m||!a||!b)return;a.hidden=b.hidden=false;a.onclick=()=>m.update();b.onclick=()=>{const r=b.getBoundingClientRect();m.open({x:r.left,y:r.top,width:r.width,height:r.height})}})()`;
+
+/**
+ * The app's own page in a machine's view: a `data:` address, nothing of anyone's in it, its top row dragging the window.
+ * @param {string} name @param {string} body  its middle, escaped @param {string} script  its one script @param {{ dark: boolean, bar: number }} o
+ */
+function ownPage(name, body, script, { dark, bar }) {
+  const c = dark ? { bg: "#1e1e1e", text: "rgba(255,255,255,0.93)", quiet: "rgba(235,235,245,0.6)", line: "rgba(255,255,255,0.22)" } : { bg: "#ffffff", text: "rgba(0,0,0,0.88)", quiet: "rgba(60,60,67,0.66)", line: "rgba(0,0,0,0.2)" };
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(name)}</title><style>
+html,body{margin:0;height:100%;background:${c.bg};color:${c.text};font:13px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;cursor:default}
+.bar{position:fixed;left:0;right:0;top:0;height:${Math.max(0, Math.round(bar))}px;-webkit-app-region:drag}
+.main{box-sizing:border-box;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px 24px 64px;text-align:center}
+.tile{background:linear-gradient(180deg,#38bdf8,#0284c7);display:grid;place-items:center;margin-bottom:6px}
+.title{font-size:17px;font-weight:650}.line,li{color:${c.quiet}}.line{max-width:560px}ul{margin:4px 0 0;padding-left:18px;max-width:560px;text-align:left}
+button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;color:inherit;background:transparent;border:1px solid ${c.line}}
+</style></head><body><div class="bar"></div><div class="main" role="status" aria-live="polite">${markTile(44)}${body}</div><script>${script}</script></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+/**
  * @typedef {{ view: any, at: string | null, page?: string, shown: string, opening: boolean, popups: Set<any>, wanted?: { hash: string, asked: number } | null,
- *   only?: string, chat?: string, moves?: number }} RemoteView
+ *   only?: string, chat?: string, moves?: number, update?: import("./machines.js").Update | null, updating?: boolean }} RemoteView
  *   `at`: the origin its page is Filament's at, null while it shows the app's own page; `page`: the harness's address
  *   it was sent to there, its hash left out; `shown`: the app's page shown, as last drawn; `popups`: the windows its
  *   pages opened, in its partition — closed with it; `wanted`: the address of its harness it opens at next, asked for
  *   while its page was the app's own (`openOn`), and when — past `WANTED_MS` it is let go; `only`: the query its page
  *   shows a chat alone by (`only=chat&theme=…`, `showChat`), "" for its whole page; `chat`: the chat it shows so, as its
- *   address last said; `moves`: the chats it was moved to so since its page was made
+ *   address last said; `moves`: the chats it was moved to so since its page was made; `update`: the machine answers on a
+ *   wire this app does not speak, and which side is to update (`updatePage`); `updating`: its own page opened all the
+ *   same, at the person's Open its page — kept until it speaks this app's wire
  */
 
 /**
@@ -343,7 +371,8 @@ export const WANTED_MS = 60_000;
  *   check?: typeof checkMachine, deviceName?: () => string, claimMs?: number, menu?: (rows: MenuRow[]) => void, confirm?: (q: { title: string, detail: string, yes: string }) => Promise<boolean>,
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
  *   waiting?: (id: string) => number, tint?: (colors: { color: string, symbolColor: string } | null) => void,
- *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void }} o
+ *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void,
+ *   updateHere?: () => void }} o
  *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
  *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
@@ -351,9 +380,10 @@ export const WANTED_MS = 60_000;
  *   colours of the machine's page that shows — null, This computer's; `browserOf`: a machine's chats' pages this app
  *   holds (lib/machine-browser.js), drawn over its view's Browser pane — put back on top as its view comes to the front,
  *   parked as it goes from sight; `onGuest`: the chat shown in place moved — its address there as its page went to it,
- *   null as it stopped showing there (`showChat`)
+ *   null as it stopped showing there (`showChat`); `updateHere`: this app's update taken up, asked by a machine's update
+ *   page (`updatePage`)
  */
-export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, tint = () => {}, browserOf = () => null, onGuest = () => {} }) {
+export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {} }) {
   const wc = win.webContents;
   /** @type {Machine[]} */
   let list = [];
@@ -529,6 +559,18 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const showUnreachable = (m, v, tried) => {
     const page = unreachablePage(m.name, tried, { dark: look().dark, bar: win.isFullScreen?.() ? 0 : BAR_H });
     v.at = null;
+    v.update = null;
+    v.updating = false;
+    closePopups(v);
+    if (page === v.shown) return;
+    v.shown = page;
+    void Promise.resolve(v.view.webContents.loadURL(page)).catch(() => {});
+  };
+  /** @param {Machine} m @param {RemoteView} v @param {import("./machines.js").Update} update @param {string} why */
+  const showUpdate = (m, v, update, why) => {
+    const page = updatePage(m.name, update.side, why, { dark: look().dark, bar: win.isFullScreen?.() ? 0 : BAR_H });
+    v.at = null;
+    v.updating = false;
     closePopups(v);
     if (page === v.shown) return;
     v.shown = page;
@@ -559,7 +601,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const r = await pick(m).catch((/** @type {any} */ e) => ({ route: null, tried: [{ url: "", why: String(e?.message || e) }] }));
     if (pairing.has(m.id) || (pairings.get(m.id) || 0) !== epoch) return;
     const tried = /** @type {Tried[]} */ (r.tried);
-    watched.set(m.id, machineWatch(watched.get(m.id) ?? null, { answered: !!r.route, why: tried.at(-1)?.why ?? null, wrong: !r.route && tried.some((t) => t.wrong) }, now()));
+    // One on a wire this app does not speak is not waited on either: which side to update is said at once.
+    watched.set(m.id, machineWatch(watched.get(m.id) ?? null, { answered: !!r.route, why: tried.at(-1)?.why ?? null, wrong: !r.route && (tried.some((t) => t.wrong) || !!(/** @type {any} */ (r).update)) }, now()));
     // The name it answers by now — renamed there, or its own name read anew (the owner's MacBook of 11-09, kept as
     // "192.168.0.77" as it paired) — is the window's too; its menu, its chip and the popover read it from the list.
     // Cleaned as a pairing cleans it (remotes.js `machineAt`), so the name kept is the one compared next time. One the
@@ -583,12 +626,23 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const still = () => views.get(m.id) === v && !!v && alive(v.view) && !gone;
     if (!v || !still() || (v.opening && !opening)) return;
     const was = v.at;
+    const update = /** @type {import("./machines.js").Update | undefined} */ (/** @type {any} */ (r).update) ?? null;
+    if (!r.route && update) {
+      // It answers on a wire this app does not speak: which side to update, said — unless its own page was opened all
+      // the same, which stays while it answers where it was opened.
+      v.update = update;
+      if (!(v.updating && was === originOfRoute(update.route))) showUpdate(m, v, update, tried.at(-1)?.why ?? "");
+      return;
+    }
     if (!r.route) {
       // Another machine answers at its page's address (a tunnel's port another program took): the page goes at once,
-      // and its cookie with it — never sent on to whoever holds that address now (the review of p3-shell).
+      // and its cookie with it — never sent on to whoever holds that address now (the review of p3-shell). A look that
+      // got no answer leaves a page opened all the same as it is, as any page (the review of s4c).
       if (was === null || tried.some((t) => t.wrong && originOfRoute(t) === was)) showUnreachable(m, v, tried);
       return;
     }
+    v.update = null;
+    v.updating = false;
     const at = originOfRoute(r.route);
     if (was === null || tried.some((t) => originOfRoute(t) === was)) return openAt(v, r.route);
     if (was === at) return;
@@ -887,14 +941,15 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     let v = viewOf(m);
     // Moved through many chats: made anew, where it is reached, so what the old page kept goes with it.
     if (v.only === only && (v.moves || 0) >= GUEST_MOVES && v.at !== null && v.page) {
-      const { at, page } = v;
+      // Its page opened all the same on a wire this app does not speak stays so (the review of s4c).
+      const { at, page, update, updating } = v;
       const was = watched.get(id);
       // Shown in place again at once: nothing to tell This computer's page.
       if (guest?.id === id) guest = null;
       drop(id);
       if (was) watched.set(id, was);
       v = viewOf(m);
-      Object.assign(v, { at, page });
+      Object.assign(v, { at, page, update: update ?? null, updating: !!updating });
       log(`rail: machine ${id}'s page made anew after ${GUEST_MOVES} chats shown in place`);
     }
     if (guest && guest.id !== id) unguest();
@@ -1228,6 +1283,19 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
         v.wanted = { hash, asked: now() };
       }
       return select(id);
+    },
+    /**
+     * A machine's update page pressed (`updatePage`, machine-preload.cjs `update`): this app's update taken up where this
+     * app is to update; else its own page opened all the same, where it answered, kept until it speaks this app's wire.
+     * Nothing where its view shows no such page. @param {string} id
+     */
+    updateOn: (id) => {
+      const v = views.get(id);
+      const u = v?.update;
+      if (gone || !v || !u || v.at !== null || !alive(v.view)) return;
+      if (u.side === "here") return void updateHere();
+      v.updating = true;
+      openAt(v, u.route);
     },
     showChat,
     /**

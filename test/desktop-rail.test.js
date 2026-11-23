@@ -11,7 +11,7 @@ import { join } from "node:path";
 import vm from "node:vm";
 import { LOCAL_ID, colorOf, localMachine, partitionOf } from "../desktop/lib/machines.js";
 import { ICONS } from "../src/ui/harness/lib/icons.js";
-import { GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, zoomRows } from "../desktop/lib/rail.js";
+import { GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, updatePage, zoomRows } from "../desktop/lib/rail.js";
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 import { PEER_BYTES, PEER_MS, PEERS_MAX, cappedJson, tailnetFilaments } from "../desktop/lib/tailnet-peers.js";
@@ -147,6 +147,39 @@ describe("another machine's view", () => {
     assert.deepEqual(JSON.parse(JSON.stringify(opened)), [{ x: 600, y: 400, width: 120, height: 30 }]);
     assert.match(decodeURIComponent(unreachablePage("x", [], { dark: false, bar: 0 })), /height:0px;-webkit-app-region:drag/, "full screen: no bar");
   });
+
+  // (fails before: yes — the remote desk of 11-22, s4c: a machine on a wire this app does not speak said nothing of which
+  // side to update)
+  test("one on a wire this app does not speak: the app's own page says which side to update and how, its act and Switch machine its one script's, where the view's bridge is", () => {
+    const html = (/** @type {string} */ url) => decodeURIComponent(url.slice(url.indexOf(",") + 1));
+    const there = html(updatePage("Work<station>", "there", "Work<station> runs Filament 0.9.40, too old for this app: update Filament on Work<station>.", { dark: true }));
+    assert.match(there, /<div class="title">Update Filament on Work&lt;station&gt;<\/div><div class="line">Work&lt;station&gt; runs Filament 0\.9\.40, too old for this app: update Filament on Work&lt;station&gt;\.<\/div>/);
+    assert.match(there, /The Filament app on Work&lt;station&gt; updates itself \(its tray's Check for updates\), and a server with filament update\./);
+    assert.match(there, /<button type="button" id="act" hidden>Open its page<\/button><button type="button" id="switch" hidden>Switch machine<\/button>/);
+    assert.match(there, /\.bar\{position:fixed;left:0;right:0;top:0;height:48px;-webkit-app-region:drag\}/);
+    const here = html(updatePage("Studio", "here", "Studio runs Filament 9.0.0, too new for this app: update this app.", { dark: false, bar: 0 }));
+    assert.match(here, /<div class="title">Update this app<\/div>/);
+    assert.match(here, /<button type="button" id="act" hidden>Update this app<\/button>/);
+    assert.match(here, /height:0px;-webkit-app-region:drag/);
+    assert.equal((here.match(/<script/g) || []).length, 1, "one script alone");
+    const script = (/** @type {string[]} */ (here.match(/<script>[^<]*<\/script>/)))[0].replace(/^<script>|<\/script>$/g, "");
+    const run = (/** @type {any} */ bridge) => {
+      const el = (/** @type {DOMRect} */ r) => ({ hidden: true, /** @type {any} */ onclick: null, getBoundingClientRect: () => r });
+      const a = el(/** @type {any} */ ({ left: 1, top: 2, width: 3, height: 4 }));
+      const b = el(/** @type {any} */ ({ left: 600, top: 400, width: 120, height: 30 }));
+      vm.runInNewContext(script, { window: { filamentMachines: bridge }, document: { getElementById: (/** @type {string} */ id) => (id === "act" ? a : id === "switch" ? b : null) } });
+      return { a, b };
+    };
+    const none = run(undefined);
+    assert.deepEqual([none.a.hidden, none.b.hidden], [true, true], "no bridge: no buttons");
+    /** @type {any[]} */
+    const did = [];
+    const got = run({ update: () => did.push("update"), open: (/** @type {any} */ r) => did.push(r) });
+    assert.deepEqual([got.a.hidden, got.b.hidden], [false, false]);
+    /** @type {any} */ (got.a).onclick();
+    /** @type {any} */ (got.b).onclick();
+    assert.deepEqual(JSON.parse(JSON.stringify(did)), ["update", { x: 600, y: 400, width: 120, height: 30 }]);
+  });
 });
 
 /** A fake webContents: what it loaded, the CSS put into it, what it was sent, its handlers. */
@@ -242,9 +275,9 @@ function fakeContents() {
 /**
  * @param {{ kept?: any[], answers?: Record<string, any>, zoom?: number, inserts?: string[], check?: any, keep?: any, claim?: () => Promise<any>,
  *   menu?: (rows: any[]) => void, confirm?: (q: any) => Promise<boolean>, ownId?: () => string | null, peers?: () => Promise<any>,
- *   waiting?: (id: string) => number, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void }} [o]
+ *   waiting?: (id: string) => number, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void }} [o]
  */
-function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, platform = "win32", browserOf, onGuest } = {}) {
+function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, platform = "win32", browserOf, onGuest, updateHere } = {}) {
   let list = [localMachine(ORIGIN), ...kept];
   /** @type {any[]} */
   const views = [];
@@ -367,6 +400,7 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
     ...(peers ? { peers } : {}),
     ...(browserOf ? { browserOf } : {}),
     ...(onGuest ? { onGuest } : {}),
+    ...(updateHere ? { updateHere } : {}),
   });
   const settle = async () => {
     for (let i = 0; i < 6; i++) await new Promise((res) => setImmediate(res));
@@ -598,6 +632,57 @@ describe("the rail, run", () => {
     // Its page failed to load (the machine went as it loaded): the app's page again.
     v.webContents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", "https://mac.tail1234.ts.net/ui/harness.html", true);
     assert.match(decodeURIComponent(v.webContents.loads.at(-1)), /https:\/\/mac\.tail1234\.ts\.net did not load \(ERR_NAME_NOT_RESOLVED\)/);
+  });
+
+  // (fails before: yes — the remote desk of 11-22, s4c: a machine on a wire this app does not speak was offline after a
+  // wait, with no word of which side to update)
+  test("one on a wire this app does not speak: its update page at once, not offline after a wait; Open its page opens it there and it stays; Update this app is this app's; it opens once it speaks", async () => {
+    /** @type {string[]} */
+    const asked = [];
+    const t = rig({ updateHere: () => void asked.push("here") });
+    await t.settle();
+    const gap = (/** @type {"there" | "here"} */ side) => ({ route: null, name: "Workstation", version: "0.9.40", tried: [{ url: String(BOX.routes[0].url), why: "Workstation runs Filament 0.9.40, too old for this app: update Filament on Workstation." }], update: { side, route: BOX.routes[0] } });
+    t.answers["m-box"] = gap("there");
+    t.r.select("m-box");
+    await t.settle();
+    const v = t.viewOf("persist:machine-m-box");
+    assert.equal(v.webContents.loads.length, 1);
+    assert.match(decodeURIComponent(v.webContents.loads[0]), /<div class="title">Update Filament on Workstation<\/div><div class="line">Workstation runs Filament 0\.9\.40, too old for this app/);
+    assert.equal(stateOf(v.webContents).status, "offline", "said at once, no wait");
+    await t.tick();
+    assert.equal(v.webContents.loads.length, 1, "the same words: not drawn again");
+    // Open its page: its own harness, where it answered, which stays through the looks.
+    t.r.updateOn("m-box");
+    assert.deepEqual(v.webContents.loads.at(-1), "http://localhost:20310/ui/harness.html");
+    await t.tick();
+    assert.equal(v.webContents.loads.length, 2, "its page stays while it answers there");
+    // (the review of s4c) A look that got no answer between: the page stays, and stays as it answers there again.
+    t.answers["m-box"] = { route: null, name: null, version: null, tried: [{ url: String(BOX.routes[0].url), why: "no answer from http://localhost:20310 in 5 s" }] };
+    await t.tick();
+    t.answers["m-box"] = gap("there");
+    await t.tick();
+    assert.equal(v.webContents.loads.length, 2, "one missed look takes nothing away");
+    t.r.updateOn("m-box");
+    assert.equal(v.webContents.loads.length, 2, "its page shows: no such press there");
+    // Updated: it speaks this app's wire, and its page stands where it was.
+    t.answers["m-box"] = answered(BOX.routes[0]);
+    await t.tick();
+    assert.equal(v.webContents.loads.length, 2);
+    assert.equal(stateOf(v.webContents).status, "online");
+    // A wire too new for this app: its page goes for the update page, whose act is this app's update.
+    t.answers["m-box"] = gap("here");
+    await t.tick();
+    assert.match(decodeURIComponent(v.webContents.loads.at(-1)), /<div class="title">Update this app<\/div>/);
+    const loads = v.webContents.loads.length;
+    t.r.updateOn("m-box");
+    assert.deepEqual(asked, ["here"]);
+    assert.equal(v.webContents.loads.length, loads, "nothing loads there");
+    t.r.updateOn("m-mac");
+    assert.deepEqual(asked, ["here"], "a view with no update page: nothing");
+    // The app: the press heard from that machine's view alone; this app's update, This computer's Settings › About.
+    const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.match(main, /ipcMain\.on\("filament:machines-update", \(e\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id && id !== LOCAL_ID\) rail\?\.updateOn\(id\);\n\s+\}\);/);
+    assert.match(main, /\n\s+updateHere: \(\) => void openWindow\("harness", "#\/settings\/about"\),\n/);
   });
 
   // (fails before: yes — the review of p3-shell: with no route answering, a page standing stayed, its harness asking on
@@ -1774,8 +1859,9 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   const m = loadPreload("machine-preload.cjs");
   // Its Browser pane's too (b-remote), the shape This computer's has, so the pane draws a page the app holds for it.
   assert.deepEqual(Object.keys(m.bridge), ["filamentMachines", "filamentBrowser"], "no other bridge");
-  // Showing a chat alone beside This computer's list (s1j): its way to its whole page, and the list's keys by their id.
-  assert.deepEqual(Object.keys(m.bridge.filamentMachines).sort(), ["deskKey", "full", "onState", "open", "titleBar"]);
+  // Showing a chat alone beside This computer's list (s1j): its way to its whole page, and the list's keys by their id;
+  // and the app's update page's act (s4c).
+  assert.deepEqual(Object.keys(m.bridge.filamentMachines).sort(), ["deskKey", "full", "onState", "open", "titleBar", "update"]);
   assert.deepEqual(Object.keys(m.bridge.filamentBrowser).sort(), Object.keys(loadPreload("harness-preload.cjs").bridge.filamentBrowser).sort());
   m.bridge.filamentMachines.open({ x: "12", y: 3, width: 40, height: 28, more: "dropped" });
   m.bridge.filamentMachines.titleBar({ color: "#101010", symbolColor: 7, extra: 1 });
@@ -1787,12 +1873,14 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   assert.equal(m.heard.has("filament:machines"), false, "stopped");
   m.bridge.filamentMachines.full({ toString: () => "#/settings" });
   m.bridge.filamentMachines.deskKey("x".repeat(60));
+  m.bridge.filamentMachines.update("words dropped");
   assert.deepEqual(JSON.parse(JSON.stringify(m.sent)), [
     ["filament:machines-open", { x: 12, y: 3, width: 40, height: 28 }],
     ["filament:machines-title-bar", { color: "#101010", symbolColor: "7" }],
     ["filament:machines-ready", null],
     ["filament:machines-full", "#/settings"],
     ["filament:machines-key", "x".repeat(40)],
+    ["filament:machines-update", null],
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");

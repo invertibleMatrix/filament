@@ -65,7 +65,8 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
     const ways = f.tunnel ? m.routes : m.routes.filter((r) => String(r.url ?? "").startsWith("https:"));
     if (!ways.length) return stop(`This app reaches ${m.name} through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows.`);
     const picked = await pick({ ...m, routes: ways }).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
-    if (!picked.route) return stop(`${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
+    // One that answers on a wire this app does not speak says which side to update, in its own words (machines.js `gapWords`).
+    if (!picked.route) return stop(/** @type {any} */ (picked).update ? String(picked.tried.at(-1)?.why) : `${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
     const route = picked.route;
     const origin = new URL(String(route.url)).origin;
     /** @type {Open} */
