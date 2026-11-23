@@ -926,7 +926,24 @@ async function run() {
   const ask = (path, init = {}) => {
     const owner = path.startsWith("/api/") ? ownerHeaders(dataDir, origin) : {};
     if (path !== "/api/owner/session" && owner[OWNER_HEADER] && owner[OWNER_HEADER] !== sessionFor) void ownerSession();
-    return fetch(`${origin}${path}`, { ...init, headers: { "x-filament-ui": "1", ...owner, ...(init.body ? { "content-type": "application/json" } : {}) }, signal: AbortSignal.timeout(5000) });
+    return fetch(`${origin}${path}`, { ...init, headers: { "x-filament-ui": "1", ...owner, ...(init.body ? { "content-type": "application/json" } : {}), ...(/** @type {Record<string, string>} */ (init.headers) || {}) }, signal: AbortSignal.timeout(5000) });
+  };
+  /**
+   * The tray's Open in browser: Filament in the person's own browser, paired by a one-time link as this computer's own
+   * browser — a code made here with the app's press on it (the person pressed the tray), for loopback alone
+   * (devices.js `here`), the pairing page opened at it, which claims it and opens the harness (src/ui/pair.js). The
+   * browser is this computer itself to Filament, its pairing naming it; paired again, it takes its old pairing's place.
+   */
+  const openInBrowser = async () => {
+    try {
+      const r = await ask("/api/remote/pair", { method: "POST", body: JSON.stringify({ scope: "full", here: true }), headers: { "x-filament-press": pressKey } });
+      const p = /** @type {any} */ (r.ok ? await r.json() : await r.json().catch(() => null));
+      if (!r.ok || typeof p?.code !== "string" || !p.code) throw new Error(String(p?.error || `HTTP ${r.status}`));
+      await shell.openExternal(`${origin}/ui/pair.html#code=${encodeURIComponent(p.code)}`);
+    } catch (/** @type {any} */ e) {
+      log.line(`Open in browser: no pairing code was made (${e?.message || e})`);
+      dialog.showErrorBox("Filament did not open in your browser", `No pairing code was made for it: ${e?.message || e}`);
+    }
   };
   /** The key the windows' browser session was last minted with: "" before the first. */
   let sessionFor = "";
@@ -1736,6 +1753,7 @@ async function run() {
   /** @param {string} id @param {unknown} [route]  `open`'s: a chat's place in the harness */
   async function act(id, route) {
     if (id === "harness" || id === "dashboard") return void openWindow(id);
+    if (id === "browser") return void openInBrowser();
     if (id === "open") return void openWindow("harness", harnessRoute(route) || "");
     if (id === "card") return void openCard();
     // A machine's row: the harness window shows it.

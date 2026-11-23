@@ -236,19 +236,24 @@ describe("the browser host's socket, at the tailnet's door", () => {
   });
 
   // (fails before: yes, by its time alone — its answers held as they were, and the app's socket, ended with no close
-  // frame, stayed half open: the listener's close waited on it for good)
-  test("this machine's own app as it always was: on loopback by the inbound key, no other; a device's sign-in from this machine is no key", async () => {
+  // frame, stayed half open: the listener's close waited on it for good; and s0b: a device's sign-in on loopback was
+  // refused, the caller taken for this computer, so an SSH tunnel's app held no link)
+  test("this machine's own app: on loopback by the inbound key, no other; a device's sign-in there — an SSH tunnel's app — is its device's link", async () => {
     const s = await serve();
     try {
       const none = await s.dial({});
       assert.equal(none.status, 403);
       assert.match(none.words, /needs Filament's inbound key/);
       assert.equal((await s.dial({ authorization: "Bearer not-the-key" })).status, 403);
-      assert.equal((await s.dial({ ...signIn(s.laptop.token) })).status, 403, "this computer's caller gives the key");
+      assert.equal((await s.dial({ ...signIn(s.phone.token) })).status, 403, "a view-only device, through a tunnel too");
+      const tunnel = await s.dial({ ...signIn(s.laptop.token) });
+      assert.equal(tunnel.status, 101, "a device's sign-in on loopback is that device");
+      await until(() => s.host.linked(deviceHost(s.laptop.device.id)), "the device's app linked");
+      assert.equal(s.host.linked("here"), false, "never this machine's own app");
+      tunnel.end?.();
       const app = await s.dial({ authorization: `Bearer ${KEY}` });
       assert.equal(app.status, 101);
       await until(() => s.host.linked("here"), "this machine's app linked");
-      assert.equal(s.host.linked(deviceHost(s.laptop.device.id)), false);
       app.end?.();
     } finally {
       await s.close();

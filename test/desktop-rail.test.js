@@ -296,9 +296,10 @@ function fakeContents() {
  * @param {{ kept?: any[], answers?: Record<string, any>, zoom?: number, inserts?: string[], check?: any, keep?: any, claim?: () => Promise<any>,
  *   menu?: (rows: any[]) => void, confirm?: (q: any) => Promise<boolean>, ownId?: () => string | null, peers?: () => Promise<any>,
  *   waiting?: (id: string) => number, busy?: (id: string) => boolean, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void,
- *   appVersion?: string, updateThere?: any }} [o]
+ *   appVersion?: string, updateThere?: any, sshPair?: (alias: string, machine: any) => Promise<any> }} [o]
+ *   `sshPair`: a code made over SSH — none given, a test's ssh asks fail, never running ssh itself
  */
-function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, busy, platform = "win32", browserOf, onGuest, updateHere, appVersion, updateThere } = {}) {
+function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, busy, platform = "win32", browserOf, onGuest, updateHere, appVersion, updateThere, sshPair = async () => { throw new Error("ssh asked in a test that gives none"); } } = {}) {
   let list = [localMachine(ORIGIN), ...kept];
   /** @type {any[]} */
   const views = [];
@@ -427,6 +428,7 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
     ...(updateHere ? { updateHere } : {}),
     ...(appVersion ? { appVersion } : {}),
     ...(updateThere ? { updateThere } : {}),
+    sshPair,
   });
   const settle = async () => {
     for (let i = 0; i < 6; i++) await new Promise((res) => setImmediate(res));
@@ -1490,12 +1492,15 @@ describe("adding a machine", () => {
     assert.ok(t.ticks.length > 0, "and is looked at");
   });
 
-  // (fails before: yes — no SSH route)
-  test("through an SSH tunnel: kept with no code and no claim — ssh's sign-in let this computer in —, its harness opened with its alias, shown, the sheet closed", async () => {
+  // (fails before: yes — s0b: a machine added by ssh:// was kept with no device there, its Filament taking the tunnel's
+  // end for this computer itself)
+  test("through an SSH tunnel: a code made there over SSH and claimed through the tunnel, as any machine's — its device's cookie in its partition —, its harness opened with its alias, shown, the sheet closed", async () => {
     const route = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "filtest", port: 20300 };
     const SSHC = { ok: true, url: route.url, code: "", fingerprint: "", route, machine: { id: "m-new", name: "Studio", version: "" }, ssh: "filtest" };
     /** @type {any[]} */
     const kept = [];
+    /** @type {any[]} */
+    const asked = [];
     const t = rig({
       kept: [],
       check: async () => SSHC,
@@ -1508,24 +1513,65 @@ describe("adding a machine", () => {
         },
         remove: () => false,
       },
-      claim: async () => assert.fail("no claim through a tunnel"),
+      claim: async () => ({ status: 200, body: { machine: { id: "m-new" } } }),
+      sshPair: async (alias, m) => (asked.push([alias, m.id]), { code: "WXYZ-2345" }),
     });
     await t.settle();
     t.r.openAdd();
     assert.deepEqual(await t.r.add({ op: "check", link: "ssh://filtest" }), { ok: true, id: "m-new", url: route.url, name: "Studio", fingerprint: "", kept: false, code: false, ssh: "filtest" });
-    assert.deepEqual(kept, [], "Continue keeps nothing");
+    assert.deepEqual([kept, asked], [[], []], "Continue keeps nothing, and asks nothing over SSH");
     const got = await t.r.add({ op: "pair", link: "ssh://filtest", code: "", expect: "m-new" });
     assert.deepEqual(got, { ok: true, name: "Studio" });
+    assert.deepEqual(asked, [["filtest", "m-new"]], "the code made there, over SSH");
+    assert.deepEqual(kept, [{ id: "m-new", name: "Studio", routes: [route], partition: "persist:machine-m-new" }]);
+    const view = t.viewOf("persist:machine-m-new");
+    assert.equal(view.webContents.loads[0], "http://127.0.0.1:5555/.well-known/filament", "a page of the machine, through the tunnel");
+    assert.equal(view.webContents.scripts.length, 1);
+    assert.match(view.webContents.scripts[0], /^fetch\("\/api\/remote\/claim"/);
+    assert.match(view.webContents.scripts[0], /WXYZ-2345/);
+    assert.equal(view.webContents.loads.at(-1), "http://127.0.0.1:5555/ui/harness.html?ssh=filtest", "its harness opened");
+    assert.equal(t.r.active(), "m-new", "shown");
+    assert.equal(t.railView().webContents.sent.at(-1)[1].adding, false, "the sheet closed");
+    const again = rig({ kept: [], check: async () => SSHC, keep: { add: () => { throw new Error("the machines file is not writable"); }, remove: () => false }, claim: async () => ({ status: 200, body: { machine: { id: "m-new" } } }), sshPair: async () => ({ code: "WXYZ-2345" }) });
+    assert.deepEqual(await again.r.add({ op: "pair", link: "ssh://filtest" }), { ok: false, words: "Paired, but not kept: the machines file is not writable" });
+    const moved = rig({ kept: [], check: async () => SSHC });
+    assert.match((await moved.r.add({ op: "pair", link: "ssh://filtest", expect: "m-old" })).words, /^Another machine answers at http:\/\/127\.0\.0\.1:5555 now — Studio —/, "Add goes to the machine Continue showed alone");
+  });
+
+  test("through an SSH tunnel where no code could be made there: kept as it is reached, no claim, the sheet told why; a second press while ssh runs waits for none", async () => {
+    const route = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "filtest", port: 20300 };
+    const SSHC = { ok: true, url: route.url, code: "", fingerprint: "", route, machine: { id: "m-new", name: "Studio", version: "" }, ssh: "filtest" };
+    /** @type {any[]} */
+    const kept = [];
+    /** @type {Function[]} */
+    const later = [];
+    const t = rig({
+      kept: [],
+      check: async () => SSHC,
+      keep: {
+        add: (/** @type {any} */ m) => {
+          kept.push(m);
+          const k = machine(m.id, m.name, m.routes);
+          t.setList([localMachine(ORIGIN), k]);
+          return k;
+        },
+        remove: () => false,
+      },
+      claim: async () => assert.fail("no claim where no code was made"),
+      sshPair: () => new Promise((r) => later.push(r)),
+    });
+    await t.settle();
+    t.r.openAdd();
+    const first = t.r.add({ op: "pair", link: "ssh://filtest" });
+    await t.settle();
+    assert.deepEqual(await t.r.add({ op: "pair", link: "ssh://filtest" }), { ok: false, words: "A pairing with Studio is on its way." });
+    for (const r of later) r({ words: "the Filament app runs on Studio, and makes its codes in its window" });
+    assert.deepEqual(await first, { ok: true, name: "Studio", note: "the Filament app runs on Studio, and makes its codes in its window" });
     assert.deepEqual(kept, [{ id: "m-new", name: "Studio", routes: [route], partition: "persist:machine-m-new" }]);
     const view = t.viewOf("persist:machine-m-new");
     assert.deepEqual(view.webContents.loads, ["http://127.0.0.1:5555/ui/harness.html?ssh=filtest"], "its harness and nothing else: no claim's page");
     assert.equal(view.webContents.scripts.length, 0, "no claim run");
     assert.equal(t.r.active(), "m-new", "shown");
-    assert.equal(t.railView().webContents.sent.at(-1)[1].adding, false, "the sheet closed");
-    const again = rig({ kept: [], check: async () => SSHC, keep: { add: () => { throw new Error("the machines file is not writable"); }, remove: () => false } });
-    assert.deepEqual(await again.r.add({ op: "pair", link: "ssh://filtest" }), { ok: false, words: "Not kept: the machines file is not writable" });
-    const moved = rig({ kept: [], check: async () => SSHC });
-    assert.match((await moved.r.add({ op: "pair", link: "ssh://filtest", expect: "m-old" })).words, /^Another machine answers at http:\/\/127\.0\.0\.1:5555 now — Studio —/, "Add goes to the machine Continue showed alone");
   });
 
   // (fails before: yes — the review of 5739eb5b1: the rail painted once every machine had answered, so an SSH host that is down held every machine's state back for its ssh's whole wait)
@@ -1555,6 +1601,8 @@ describe("adding a machine", () => {
       kept: [had],
       answers: { "m-box": () => new Promise((r) => later.push(r)) },
       check: async () => ({ ok: true, url: route.url, code: "", fingerprint: "", route, machine: { id: "m-box", name: "Workstation", version: "" }, ssh: "filtest" }),
+      claim: async () => ({ status: 200, body: { machine: { id: "m-box" } } }),
+      sshPair: async () => ({ code: "WXYZ-2345" }),
       keep: {
         add: (/** @type {any} */ m) => {
           kept.push(m);
@@ -2502,13 +2550,18 @@ describe("the app's page", () => {
     assert.equal(closed, 1);
   });
 
-  // (fails before: yes — no SSH route)
-  test("the sheet through an SSH tunnel: no code asked, its field held, Add for Pair; who answers said through the tunnel", async () => {
+  // (fails before: yes — no SSH route; and s0b: Add kept it with no device there, where Pair now makes the code over SSH)
+  test("the sheet through an SSH tunnel: no code asked, its field held, Pair making the code there over SSH; who answers said through the tunnel; one where none could be made said so", async () => {
     const { addFlow, paintSheet } = load();
     /** @type {any[]} */
     const asked = [];
     /** @type {any[]} */
-    const answers = [{ ok: true, id: "m-new", url: "http://127.0.0.1:5555", name: "Studio", fingerprint: "", kept: false, code: false, ssh: "filtest" }, { ok: true, name: "Studio" }];
+    const answers = [
+      { ok: true, id: "m-new", url: "http://127.0.0.1:5555", name: "Studio", fingerprint: "", kept: false, code: false, ssh: "filtest" },
+      { ok: true, name: "Studio" },
+      { ok: true, id: "m-new", url: "http://127.0.0.1:5555", name: "Studio", fingerprint: "", kept: false, code: false, ssh: "filtest" },
+      { ok: true, name: "Studio", note: "the Filament app runs on Studio, and makes its codes in its window" },
+    ];
     /** @type {any[]} */
     const shown = [];
     const flow = addFlow({ add: async (/** @type {any} */ i) => (asked.push({ ...i }), answers.shift()), closeAdd: () => {} }, (/** @type {any} */ v) => shown.push(v));
@@ -2521,15 +2574,20 @@ describe("the app's page", () => {
     const prose = [];
     els["add-who-print"].classList = { toggle: (/** @type {string} */ c, /** @type {boolean} */ on) => void prose.push([c, on]) };
     paintSheet(doc, shown.at(-1));
-    assert.deepEqual([els["add-go"].textContent, els["add-code"].disabled, els["add-who"].hidden], ["Add", true, false]);
+    assert.deepEqual([els["add-go"].textContent, els["add-code"].disabled, els["add-who"].hidden], ["Pair", true, false]);
     assert.deepEqual(prose.at(-1), ["prose", true], "words in the fingerprint's place: drawn as words");
     assert.equal(els["add-who-name"].textContent, "Studio answers through an SSH tunnel to filtest");
-    assert.match(els["add-who-print"].textContent, /^No code: ssh signed in with your keys/);
+    assert.match(els["add-who-print"].textContent, /^No code to type: Pair makes one there over SSH \(filament pair, signed in with your keys\) and claims it through the tunnel/);
     const going = flow.go();
-    assert.equal(shown.at(-1).words, "Adding Studio…");
+    assert.equal(shown.at(-1).words, "Pairing with Studio over SSH…");
     await going;
     assert.deepEqual(asked.at(-1), { op: "pair", link: "ssh://filtest", code: "", fingerprint: "", expect: "m-new" }, "no code asked for");
-    assert.equal(shown.at(-1).words, "Added Studio.");
+    assert.equal(shown.at(-1).words, "Paired with Studio.");
+    flow.reset();
+    flow.edit("ssh://filtest", "");
+    await flow.go();
+    await flow.go();
+    assert.equal(shown.at(-1).words, "Added Studio, with no device there: the Filament app runs on Studio, and makes its codes in its window");
     paintSheet(doc, { phase: "ready", busy: false, words: "", err: false, who: { name: "Studio", url: "https://192.168.0.9:20343", fingerprint: "AA:BB", kept: true }, seen: "" });
     assert.deepEqual([els["add-go"].textContent, els["add-code"].disabled, els["add-who-name"].textContent], ["Pair", false, "Studio answers at https://192.168.0.9:20343"], "a network machine: Pair, and its code");
     assert.deepEqual(prose.at(-1), ["prose", false], "a fingerprint: drawn as one");

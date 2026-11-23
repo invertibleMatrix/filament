@@ -18,7 +18,7 @@ const box = (o = {}) => ({ id: "m-box", name: "Workstation", routes: [LAN, TAIL]
 /** @param {Record<string, any>} [o] @returns {any} */
 const mac = (o = {}) => ({ id: "m-mac", name: "Mac mini", routes: [{ kind: "ssh", url: "ssh://mac/20300" }], partition: "persist:machine-m-mac", addedAt: 2, ...o });
 
-/** @param {{ list?: any[], cookie?: string, route?: (m: any) => any }} [o] */
+/** @param {{ list?: any[], cookie?: string | ((origin: string) => string), route?: (m: any) => any }} [o]  `cookie`: the sign-in held, or by address */
 function rig({ list = [box(), mac()], cookie = "__Host-filament_device=fdt_box", route = (m) => m.routes[0] } = {}) {
   let kept = list;
   /** @type {any[]} */
@@ -38,7 +38,7 @@ function rig({ list = [box(), mac()], cookie = "__Host-filament_device=fdt_box",
   };
   const mb = createMachineBrowsers({
     machines: () => kept,
-    cookieOf: async (partition, origin) => (cookies.push([partition, origin]), cookie),
+    cookieOf: async (partition, origin) => (cookies.push([partition, origin]), typeof cookie === "function" ? cookie(origin) : cookie),
     keep: (id, on) => {
       const had = kept.find((m) => m.id === id);
       if (!had) return null;
@@ -274,12 +274,24 @@ describe("a machine's link for this app's browser", () => {
     assert.deepEqual([gone.failed, gone.said], [true, "No such machine in this window"]);
   });
 
-  test("through an SSH tunnel alone, or with no sign-in held: never dialled, said why", async () => {
-    const t = rig({ list: [mac({ browser: true })] });
+  // (fails before: yes — an SSH machine was never dialled: only an https way was taken.)
+  test("through an SSH tunnel, as the device Add paired there over SSH: dialled at the tunnel's plain ws; with no sign-in held, never dialled, said why", async () => {
+    const tunnel = { kind: "ssh", url: "http://127.0.0.1:40001", alias: "mac", port: 20300 };
+    const t = rig({ list: [mac({ browser: true, routes: [tunnel] })], cookie: "filament_device=fdt_mac" });
     t.mb.sync();
     await t.settle();
-    assert.deepEqual(t.dials, []);
-    assert.deepEqual(t.mb.rowOf("m-mac"), { id: "m-mac", browser: true, browserLink: "refused", browserWords: "This app reaches Mac mini through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows." });
+    assert.equal(t.dials.length, 1);
+    assert.deepEqual([t.dials[0].url, t.dials[0].headers, t.dials[0].pin], ["ws://127.0.0.1:40001/api/browser/host", { cookie: "filament_device=fdt_mac" }, ""]);
+    // (fails before: yes — the review of s0b: a tunnel with no sign-in was dialled before a way that holds one, and refused)
+    const both = rig({ list: [mac({ browser: true, routes: [tunnel, LAN] })], cookie: (origin) => (origin.startsWith("http://127.0.0.1") ? "" : "__Host-filament_device=fdt_mac") });
+    both.mb.sync();
+    await both.settle();
+    assert.deepEqual(both.dials.map((d) => d.url), ["wss://192.168.0.9:20343/api/browser/host"], "the way that holds a sign-in");
+    const n = rig({ list: [mac({ browser: true, routes: [tunnel] })], cookie: "" });
+    n.mb.sync();
+    await n.settle();
+    assert.deepEqual(n.dials, []);
+    assert.deepEqual(n.mb.rowOf("m-mac"), { id: "m-mac", browser: true, browserLink: "refused", browserWords: "This app holds no sign-in on Mac mini through its SSH tunnel: remove it from the machines list and add it again by its ssh:// address — Pair makes a code there over SSH." });
     const q = rig({ list: [box({ browser: true })], cookie: "" });
     q.mb.sync();
     await q.settle();

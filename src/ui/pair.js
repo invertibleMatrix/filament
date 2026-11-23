@@ -82,6 +82,12 @@ export function claimWords(status, body, machine, now = Date.now()) {
 export const HARNESS = "/ui/harness.html";
 
 /**
+ * Where a link sends the browser once paired (`&to=console`: the console, `filament open console`'s), else the harness.
+ * @param {string} hash
+ */
+export const goesTo = (hash) => (new URLSearchParams(String(hash || "").replace(/^#/, "")).get("to") === "console" ? "/" : HARNESS);
+
+/**
  * The page's behaviour over its elements (pair.html).
  * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void } }} [o]
  *   `win`: where a link opened on this page already says its new code (hashchange)
@@ -100,11 +106,14 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
   };
   /** The fingerprint the last link carried, to compare with the browser's own certificate details. */
   let print = "";
+  /** Where the browser goes once paired, as the link said. */
+  let then = HARNESS;
   // The code off the address at once: it stays in no history, no bookmark, no screen share. A link opened on this page
   // already changes its fragment alone, and is read the same way.
   const takeLink = () => {
     const code = codeOf(loc.hash);
     print = printOf(loc.hash) || print;
+    if (code) then = goesTo(loc.hash);
     if (loc.hash) hist.replaceState(null, "", loc.pathname + loc.search);
     if (code) codeIn.value = code;
     return code;
@@ -125,28 +134,52 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     nameIn.focus?.();
   });
   nameIn.value = deviceName(ua);
-  open.onclick = () => loc.assign(HARNESS);
+  open.onclick = () => loc.assign(then);
   try {
     const who = await (await fetchImpl("/.well-known/filament")).json();
     machine = String(who?.name || machine);
     $("pair-machine").textContent = machine;
     doc.title = `Pair with ${machine} — Filament`;
   } catch {}
+  /** The code claimed — POST /api/remote/claim, answered with the HttpOnly cookie — and Filament opened; the words where not. @param {string} code */
+  const claim = async (code) => {
+    go.disabled = true;
+    say("Pairing…");
+    try {
+      const r = await fetchImpl("/api/remote/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, name: String(nameIn.value || "").trim() }) });
+      const body = await r.json().catch(() => null);
+      if (!r.ok) {
+        go.disabled = false;
+        return say(claimWords(r.status, body, machine), true);
+      }
+      say(`Paired as ${body?.device?.name || "this device"}: opening Filament…`);
+      loc.assign(then);
+    } catch (/** @type {any} */ err) {
+      go.disabled = false;
+      say(`Not paired: ${err?.message || err}`, true);
+    }
+  };
   // Paired already, or this machine itself: nothing to claim. A paired browser sent here — a link from another site
   // carries no SameSite=Strict cookie, so the harness did not know it — goes on to Filament (the review of 35049d31f).
   try {
     const r = await fetchImpl("/api/remote/me");
     if (r.ok) {
       const me = await r.json();
+      // This machine's own browser — or an SSH tunnel's — at a link `filament open` or the app's Open in browser made
+      // here: the code is this Filament's own, claimed at once, its pairing naming this browser in its old one's place.
+      if (me?.who === "local" && fromLink) {
+        $("pair-lead").textContent = `Pairing this browser with ${machine}…`;
+        return claim(fromLink);
+      }
       form.hidden = true;
       open.hidden = false;
       if (me?.who === "device") {
         $("pair-lead").textContent = `This browser is paired with ${machine} as ${me.device?.name}: opening Filament…`;
-        loc.assign(HARNESS);
+        loc.assign(then);
       } else if (me?.who === "tailnet") {
         // Your own tailnet login, where this machine trusts it (Settings › Remote access › Share on my tailnet).
         $("pair-lead").textContent = `This browser is signed in to Tailscale as ${me.login}, whom ${machine} trusts: opening Filament…`;
-        loc.assign(HARNESS);
+        loc.assign(then);
       } else $("pair-lead").textContent = `This is ${machine} itself: its Filament needs no pairing here.`;
       return;
     }
@@ -164,21 +197,7 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     e.preventDefault();
     const code = String(codeIn.value || "").trim();
     if (!code) return say("Type the code first.", true);
-    go.disabled = true;
-    say("Pairing…");
-    try {
-      const r = await fetchImpl("/api/remote/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, name: String(nameIn.value || "").trim() }) });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) {
-        go.disabled = false;
-        return say(claimWords(r.status, body, machine), true);
-      }
-      say(`Paired as ${body?.device?.name || "this device"}: opening Filament…`);
-      loc.assign(HARNESS);
-    } catch (/** @type {any} */ err) {
-      go.disabled = false;
-      say(`Not paired: ${err?.message || err}`, true);
-    }
+    await claim(code);
   };
 }
 

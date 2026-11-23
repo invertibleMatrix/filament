@@ -11,7 +11,7 @@ import { guard } from "./guard.js";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, parse, relative, resolve, sep } from "node:path";
-import { DEVICE_COOKIE_DAYS, PAIR_PAGE, callerAddress, deviceCookie, drives, forwardedHttps, isLoopback, lapsedDevice, sealedWay } from "../guards.js";
+import { DEVICE_COOKIE_DAYS, PAIR_PAGE, callerAddress, deviceCookie, drives, forwardedHttps, hereDevice, isLocalCaller, isLoopback, lapsedDevice, sealedWay } from "../guards.js";
 import { printOf } from "../../core/x509.js";
 import { allowThroughFirewall, firewallVerdict, readFirewall } from "../../services/lan-tls.js";
 import { lowerHeaders } from "../../core/headers.js";
@@ -531,9 +531,10 @@ export const PAGES = Object.freeze(["new"]);
  * shows a chat alone at `?only=chat` (ui/harness/lib/chat-only.js), the desk's look at `&theme=`, beside the desk's own
  * left bar. `person-copy`: a chat the desk's full device starts in a copy its agents' device placed for the person
  * (`AGENT_TAKES`) is bound to that copy (http/admin/sessions.js), works there whatever agentLoop.roots lists, and is read
- * back from there — Run on.
+ * back from there — Run on. `tunnel-device`: a device's token through a tunnel, on loopback, is that device's (guards.js
+ * `whoIs`), so a machine reached by SSH alone pairs the desk a device there.
  */
-export const DESK = Object.freeze(["remote-key", "ask-events", "events-only", "chat-only", "person-copy"]);
+export const DESK = Object.freeze(["remote-key", "ask-events", "events-only", "chat-only", "person-copy", "tunnel-device"]);
 
 /** The claim's path, answered before any caller is known (index.js). */
 export const CLAIM_PATH = "/remote/claim";
@@ -641,8 +642,10 @@ export function remoteRoutes(a) {
   };
   return [
     [
-      // A new code for another machine to claim: `{ scope: "full" | "view" }`. The code, its scope, when it runs out,
-      // and this machine's id and name, which the other machine shows as it pairs.
+      // A new code for another machine to claim: `{ scope: "full" | "view", here? }`. The code, its scope, when it runs
+      // out, and this machine's id and name, which the other machine shows as it pairs. `here`: a code for a browser on
+      // this computer — `filament open`'s, the tray's Open in browser — or at an SSH tunnel's other end, claimed on
+      // loopback alone, with no link for the network (devices.js `here`).
       "POST",
       "/remote/pair",
       guard(async (r) => {
@@ -655,7 +658,9 @@ export function remoteRoutes(a) {
         // A code is the door's (press.js): a caller that may not press was refused before this row (index.js), so none is
         // opened here for a device that would press nothing. Devices paired so before the door asked for the key are
         // kept as they are (devices.js `pressless`).
-        const open = devices.startPairing({ scope: b.scope });
+        const here = b?.here === true;
+        const open = devices.startPairing({ scope: b.scope, here });
+        if (here) return sendJson(r.res, 200, { ...open, machine: machine(), addresses: [], links: [], fingerprint: null, hostOnly: null });
         // Where the other machine opens it: each address the network's listener answers at, the code and the
         // certificate's fingerprint in the link's fragment — once a save that turned it on or moved it is made, as
         // `filament pair` right after `filament settings set server.lan.enabled true` asks (the sv-live hunt's).
@@ -697,10 +702,16 @@ export function remoteRoutes(a) {
         const page = !!lowerHeaders(r.req.headers).origin;
         // The device this one replaces, where the claim carries the token of one that lapsed unused: it goes once this is paired.
         const was = lapsedDevice(r.req, devices);
-        const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine });
+        // A browser here paired again — `filament open` once more — takes its old pairing's place: that one goes for good.
+        const hereBefore = hereDevice(r.req, devices);
+        const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine, local: isLocalCaller(r.req) });
         if (!got.ok) return sendJson(r.res, got.unsaved ? 500 : got.retryAt ? 429 : 403, { error: got.why, ...(got.retryAt ? { retryAt: got.retryAt } : {}) }, got.retryAt ? { "retry-after": String(Math.max(1, Math.ceil((got.retryAt - Date.now()) / 1000))) } : {});
         a.log?.("info", `remote: ${got.device.name} paired (${got.device.scope}, ${got.device.kind}) from ${callerAddress(r.req) || "an unknown address"}${was ? `, replacing ${was.name}, which went unused` : ""}`);
         if (was) devices.revoke(was.id);
+        if (hereBefore && got.device.here) {
+          devices.revoke(hereBefore.id);
+          devices.forget(hereBefore.id);
+        }
         if (page) return sendJson(r.res, 200, { device: got.device, machine: machine() }, { "set-cookie": deviceCookie(got.token, DEVICE_COOKIE_DAYS * 86_400, overHttps(r.req)), "cache-control": "no-store" });
         return sendJson(r.res, 200, { device: got.device, machine: machine(), token: got.token }, { "cache-control": "no-store" });
       }),

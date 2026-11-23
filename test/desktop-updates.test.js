@@ -299,11 +299,11 @@ test("each kind of install: its own file and update file, named as electron-buil
 
 test("the tray: Check for updates where the installed app offers it, and the update's row as its notice has it — Update, its download, Restart to update; a build publishes nothing unless told", () => {
   const ids = (/** @type {any} */ f) => trayRows(f).map((r) => ("type" in r ? "-" : r.id)).join(" ");
-  assert.equal(ids({ owned: true, state: "up", port: 1 }), "card harness dashboard - restart - logon notify - quit", "a checkout: neither");
-  assert.equal(ids({ owned: true, state: "up", port: 1, updates: true }), "card harness dashboard - restart - logon notify updates - quit");
+  assert.equal(ids({ owned: true, state: "up", port: 1 }), "card harness browser dashboard - restart - logon notify - quit", "a checkout: neither");
+  assert.equal(ids({ owned: true, state: "up", port: 1, updates: true }), "card harness browser dashboard - restart - logon notify updates - quit");
   const u = (/** @type {any} */ o) => ({ phase: "available", version: "0.9.0", kind: "nsis", page: "", received: 0, size: 100, why: "", ...o });
   const row = (/** @type {any} */ update) => /** @type {any} */ (trayRows({ owned: true, state: "up", port: 1, updates: true, update }).find((r) => "id" in r && r.id.startsWith("update-") || ("id" in r && r.id === "update")));
-  assert.equal(ids({ owned: true, state: "up", port: 1, updates: true, update: u({ phase: "ready" }) }), "card harness dashboard - restart update - logon notify updates - quit");
+  assert.equal(ids({ owned: true, state: "up", port: 1, updates: true, update: u({ phase: "ready" }) }), "card harness browser dashboard - restart update - logon notify updates - quit");
   // (fails before: yes — the owner's of 11-07: the tray's row was Restart to update alone, the installer fetched unasked)
   assert.deepEqual([row(u({})).id, row(u({})).label], ["update-get", "Update to Filament 0.9.0"]);
   assert.deepEqual([row(u({ phase: "downloading", received: 42 })).label, row(u({ phase: "downloading", received: 42 })).enabled], ["Downloading Filament 0.9.0… 42%", false]);

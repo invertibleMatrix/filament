@@ -7,8 +7,8 @@
 // and said for the person to compare with the one that machine shows — nothing is sent before they say it is the same;
 // then the machine says who it is (/.well-known/filament) over that certificate alone. `ssh://<alias>` — Filament's port
 // there after a colon — is reached through a tunnel this computer holds (ssh-route.js): who answers through it is asked
-// the same, and no code is claimed — ssh's own sign-in let this computer in, and its Filament sees a caller on its own
-// loopback. The claim itself is made from
+// the same, and the code is made there over SSH (`pairOverSsh`: `filament pair --json`, ssh's own sign-in letting this
+// computer in), then claimed through the tunnel as any code is. The claim itself is made from
 // a page of that machine in the machine's own view (lib/rail.js), so the cookie it answers lands in the machine's
 // partition and nowhere else, as a browser's does: `claimScript` is what that page runs, `claimOutcome` reads its answer.
 // Plain Node (NA-D13).
@@ -18,6 +18,7 @@ import { certificateAt, pinnedFetch } from "../../src/cli/pinned.js";
 import { claimWords } from "../../src/ui/pair.js";
 import { printOf } from "../../src/core/x509.js";
 import { FILAMENT_PORT, sshAsked } from "./ssh-route.js";
+import { runSsh } from "./ssh-exec.js";
 
 /** The page of a machine the claim is made from: its own address, no script of its own, no policy against a fetch home. */
 export const CLAIM_FROM = "/.well-known/filament";
@@ -26,7 +27,7 @@ export const CLAIM_FROM = "/.well-known/filament";
  * @typedef {import("./machines.js").Route} Route
  * @typedef {{ link: string, code?: string, fingerprint?: string }} AddInput  `fingerprint`: the one the person said is the same
  * @typedef {{ ok: true, url: string, code: string, fingerprint: string, route: Route, machine: { id: string, name: string, version: string }, ssh?: string }} Checked
- *   `ssh`: the alias a tunnel reaches it through — no code to claim
+ *   `ssh`: the alias a tunnel reaches it through — its code made there over SSH (`pairOverSsh`)
  * @typedef {{ ok: false, words: string, ask?: "fingerprint", url?: string, seen?: string }} Refused  `ask`: the fingerprint `seen` is for the person to compare
  */
 
@@ -134,6 +135,42 @@ export async function checkMachine(input, { fetchImpl = fetch, certificate = cer
       return { ok: false, words: `Another certificate answered at ${url} than the one ${input?.fingerprint ? "you compared" : "its link names"}: nothing was sent. Something else answers at that address — or that machine's certificate was made anew: paste the link its Settings › Remote access shows now.` };
     return { ok: false, words: gapSaid(e) ?? String(e?.message || e) };
   }
+}
+
+/**
+ * What `pairOverSsh` runs there: `filament pair --json`, as install.sh installed it, else the one on its PATH — a shell
+ * there that is not a login one reads no profile that puts ~/.local/bin on it.
+ */
+export const PAIR_SCRIPT = 'f="$HOME/.local/bin/filament"; [ -x "$f" ] || f=filament; exec "$f" pair --json';
+/** How long `filament pair` over SSH may take: a login, and one call to the Filament there. */
+export const PAIR_MS = 30_000;
+
+/**
+ * A pairing code made on a machine reached through an SSH tunnel (the remote desk's s0b): `filament pair --json` run
+ * there (ssh-exec.js `runSsh`), for this window to claim through the tunnel as any code is — so that machine holds this
+ * window as a paired device of its own, never a caller on its own loopback. `machine`: who answered through the tunnel —
+ * a code another Filament there made (another data folder's) is none for it. → the code, or why none, in words.
+ * @param {string} alias @param {{ id: string, name: string }} machine @param {{ ssh?: typeof runSsh }} [o]
+ * @returns {Promise<{ code: string } | { words: string }>}
+ */
+export async function pairOverSsh(alias, machine, { ssh = runSsh } = {}) {
+  const run = await ssh(alias, { script: PAIR_SCRIPT }, { timeoutMs: PAIR_MS });
+  /** @type {any} */
+  let p = null;
+  // From the line its JSON starts at: a shell's start-up files may say words of their own first.
+  const out = String(run.stdout || "");
+  const from = out.startsWith("{") ? 0 : out.lastIndexOf("\n{") + 1;
+  try {
+    p = JSON.parse(out.slice(from));
+  } catch {}
+  if (run.code === 0 && typeof p?.code === "string" && p.code) {
+    const said = String(p.machine?.id || "").toLowerCase();
+    if (said && said !== String(machine.id).toLowerCase()) return { words: `filament pair on ${alias} made its code for another Filament there (${p.machine?.name || said}), not ${machine.name}: nothing was claimed.` };
+    return { code: p.code };
+  }
+  if (run.ask) return { words: `ssh ${alias} asks for ${run.ask === "host-key" ? "its host key to be trusted" : "a password or a code"}: run ssh ${alias} in a terminal once, then add it again.` };
+  const said = String(run.stderr || "").trim().split("\n").filter(Boolean).at(-1) || "";
+  return { words: run.why || said.replace(/^filament pair: /, "") || `filament pair on ${alias} ended with code ${run.code}.` };
 }
 
 /** The name this window is paired by on the other machine, which its Settings › Remote access lists. */

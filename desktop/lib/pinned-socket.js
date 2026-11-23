@@ -2,13 +2,14 @@
 // A WebSocket's client end in the app's main process, to another machine's Filament (b-remote: its browser host): over
 // https, the certificate the machine was paired with pinned where its route pins one (the network listener's, which no
 // authority signed) — any other ends the connection before a byte of the request is sent, its sign-in included — or
-// checked as any site's (tailscale serve's, which an authority signed). Node's own WebSocket pins no certificate, and the
+// checked as any site's (tailscale serve's, which an authority signed); plain ws to this computer's own loopback alone, an
+// SSH tunnel's, whose end there is the machine's loopback. Node's own WebSocket pins no certificate, and the
 // app ships no library for one: the protocol slice here is the one Filament's own sockets speak (src/http/ws.js), text
 // and binary frames and the control frames, each frame of ours masked as a client's must be. A refusal is heard with its
 // status and its words, so a 401 or a 403 is told from a way that does not answer. Plain Node (NA-D13).
 import http from "node:http";
 import tls from "node:tls";
-import { isIP } from "node:net";
+import { connect as connectPlain, isIP } from "node:net";
 import { randomBytes } from "node:crypto";
 import { WsDecoder, wsAcceptKey } from "../../src/http/ws.js";
 import { printOf } from "../../src/core/x509.js";
@@ -49,8 +50,8 @@ export function clientFrame(opcode, payload) {
  */
 
 /**
- * A socket to a wss address. `pin`: the certificate's SHA-256 fingerprint where the route pins one, "" to check it as
- * any site's. `onOpen` once the handshake is done; `onMessage` each text message, `onBinary` each binary one; `onClose`
+ * A socket to a wss address, or a ws one on this computer's loopback (an SSH tunnel's). `pin`: the certificate's SHA-256
+ * fingerprint where the route pins one, "" to check it as any site's. `onOpen` once the handshake is done; `onMessage` each text message, `onBinary` each binary one; `onClose`
  * once, however it ends.
  * @param {{ url: string, headers?: Record<string, string>, pin?: string, onOpen?: () => void, onMessage?: (text: string) => void,
  *   onBinary?: (data: Buffer) => void, onClose?: (c: Closed) => void, dialMs?: number, quietMs?: number }} o
@@ -58,8 +59,10 @@ export function clientFrame(opcode, payload) {
  */
 export function dialSocket({ url, headers = {}, pin = "", onOpen = () => {}, onMessage = () => {}, onBinary = () => {}, onClose = () => {}, dialMs = DIAL_MS, quietMs = QUIET_MS }) {
   const u = new URL(url);
-  if (u.protocol !== "wss:") throw new Error(`a machine's socket is wss alone, not ${u.protocol}`);
-  const port = Number(u.port || 443);
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const plain = u.protocol === "ws:" && (host === "localhost" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host));
+  if (u.protocol !== "wss:" && !plain) throw new Error(`a machine's socket is wss alone, or ws through a tunnel on this computer's loopback, not ${u.protocol}//${u.host}`);
+  const port = Number(u.port || (plain ? 80 : 443));
   const key = randomBytes(16).toString("base64");
   /** @type {import("node:stream").Duplex | null} */
   let sock = null;
@@ -88,8 +91,15 @@ export function dialSocket({ url, headers = {}, pin = "", onOpen = () => {}, onM
     port,
     path: `${u.pathname}${u.search}`,
     headers: { ...headers, host: u.host, connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": key },
-    // The connection is TLS, made here: the request goes over it only once its certificate is the pinned one.
+    // The connection is TLS, made here: the request goes over it only once its certificate is the pinned one. A tunnel's
+    // is plain: what crosses the network there is ssh's.
     createConnection: (/** @type {any} */ _o, /** @type {(e: Error | null, s?: any) => void} */ done) => {
+      if (plain) {
+        const p = connectPlain({ host, port });
+        p.once("connect", () => done(null, p));
+        p.once("error", (e) => done(e));
+        return undefined;
+      }
       const s = tls.connect({ host: u.hostname, port, ...(isIP(u.hostname) ? {} : { servername: u.hostname }), rejectUnauthorized: !pin });
       s.once("secureConnect", () => {
         if (!pin) return done(null, s);

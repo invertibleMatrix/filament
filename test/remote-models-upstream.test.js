@@ -561,20 +561,30 @@ test("there's door saying the device has its calls in flight already is busy: th
   }
 });
 
-// (fails before: yes — the plain-http row was taken, and here's call went to there's main listener, past its door,
-// which answered it 401)
-test("a machine kept at a plain-http address on this computer — an SSH tunnel — lends no models: the call is refused in words, and nothing is sent there", async () => {
+// (fails before: yes — s0b: a plain-http row on this computer was refused, so a machine reached by SSH alone lent
+// nothing; and there's main listener answered a device's model call as this computer's own, its grant never read)
+test("a machine kept at a plain-http address on this computer — an SSH tunnel — lends its models through the same door: its grant, a revoke", async () => {
   const s = await lending();
   try {
     createMachines({ dataDir: s.here.dataDir }).keep({ url: s.there.url, machine: s.remote.machine, device: s.agents.device, token: s.agents.token });
     await offer(s);
     s.up.reset();
     const r = await s.here.post("/v1/messages", message("workstation/m-1", "Through the tunnel?"));
-    assert.equal(r.status, 502);
-    const words = `Workstation is kept at ${s.there.url}: over an SSH tunnel alone, Workstation takes this computer for itself: its models are lent over the network or the tailnet`;
-    assert.ok((await r.json()).error.message.includes(words));
-    assert.ok(String(offlineWords("workstation")).startsWith(words));
-    assert.equal(s.up.received.length, 0);
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(wordsOf(await r.json()), "MODEL ANSWER");
+    assert.equal(s.up.received.length, 1);
+    await s.grant(false);
+    const off = await s.here.post("/v1/messages", message("workstation/m-1", "Still?"));
+    assert.equal(off.status, 502);
+    assert.match((await off.json()).error.message, /Workstation said: Filament agents on Laptop may not use this machine's models: its grant is switched on in Settings › Remote access/);
+    await s.grant(true);
+    const back = await s.here.post("/v1/messages", message("workstation/m-1", "Back?"));
+    assert.equal(back.status, 200, await back.clone().text());
+    await s.revoke();
+    const gone = await s.here.post("/v1/messages", message("workstation/m-1", "And now?"));
+    assert.equal(gone.status, 502);
+    assert.match((await gone.json()).error.message, /Workstation said: this device's token is not one this Filament knows: it was revoked, or replaced/);
+    assert.equal(s.up.received.length, 2, "the refused calls reached no provider there");
   } finally {
     await s.stop();
   }

@@ -1121,9 +1121,10 @@ describe("every machine, watched", () => {
     ];
     const rows = trayRows({ owned: true, state: "up", port: 20300, machines });
     const labels = rows.map((r) => ("type" in r ? "-" : `${r.id}: ${r.label}`));
-    assert.deepEqual(labels.slice(0, 10), [
+    assert.deepEqual(labels.slice(0, 11), [
       "card: Show the card",
       "harness: Open Filament",
+      "browser: Open in browser",
       "dashboard: Open the dashboard",
       "-",
       "machine:local: This computer — 1 chat needs you",
@@ -1133,7 +1134,7 @@ describe("every machine, watched", () => {
       "machine:m-new: New laptop — reconnecting",
       "machine:m-calm: Calm",
     ]);
-    assert.equal(labels[10], "-");
+    assert.equal(labels[11], "-");
     // (fails before: yes — the owner's of 11-08) One disconnected: said so, whatever it counted before.
     const offRow = /** @type {any} */ (trayRows({ owned: true, state: "up", port: 20300, machines: [machines[0], { id: "m-off", name: "Old box", status: "disconnected", needs: 3 }] }).find((r) => "id" in r && r.id === "machine:m-off"));
     assert.equal(offRow?.label, "Old box — disconnected");
@@ -1257,4 +1258,15 @@ test("on a Mac the tray's menu opens at a right-click alone, and the menu bar's 
   assert.match(main, /Menu\.buildFromTemplate\(\[\n\s*\.\.\.\(process\.platform === "darwin" \? \[\{ role: \/\*\* @type \{const\} \*\/ \("appMenu"\) \}\] : \[\]\),\n\s*\{ label: "Edit",/, "the app's menu first: About, Hide, Quit");
   // Its Quit (⌘Q) is the tray's: the app's before-quit asks before it stops a Filament at work.
   assert.match(main, /app\.on\("before-quit", \(e\) => \{\n\s*if \(quitting\) return;\n\s*e\.preventDefault\(\);\n\s*void quit\(\);/);
+});
+
+// (fails before: yes — s0b: no row opened Filament in the person's own browser, which `filament open` can no longer
+// pair while the app holds its key)
+test("the tray's Open in browser: a one-time code made with the app's press key, its pairing page opened in the browser; none made, said", () => {
+  const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+  assert.match(main, /if \(id === "browser"\) return void openInBrowser\(\);/);
+  assert.match(main, /ask\("\/api\/remote\/pair", \{ method: "POST", body: JSON\.stringify\(\{ scope: "full", here: true \}\), headers: \{ "x-filament-press": pressKey \} \}\)/);
+  assert.match(main, /shell\.openExternal\(`\$\{origin\}\/ui\/pair\.html#code=\$\{encodeURIComponent\(p\.code\)\}`\)/);
+  assert.match(main, /dialog\.showErrorBox\("Filament did not open in your browser"/);
+  assert.ok(trayRows({ owned: false, state: "attached", port: 20300 }).some((r) => "id" in r && r.id === "browser" && r.label === "Open in browser"), "attached to a Filament started elsewhere too");
 });

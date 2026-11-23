@@ -136,7 +136,7 @@ did not type.
 | `filament memory` · `memory on` · `memory off` · `memory model <name or auto>` | Memory, and the model it learns with. |
 | `filament chats` · `filament chat [--chat <id>] [--model <name>] [--folder <path>] <message>` | Your newest chats; send one its message (a new chat where `--chat` names none), the reply printed as it comes. The message may come on stdin, and goes as typed, past the questions a send can ask in the harness. Where the agent asks you something — a permission, a question, a sub-agent's call — at a terminal it is asked there, its answers numbered, and the turn goes on; with no terminal (or a form of several questions) the command says so and ends (exit 4), naming the ask's id: answer it in the harness, where the turn waits, or by `POST /api/sessions/<chat>/asks/<ask>/answer`. Ctrl+C stops watching; the turn goes on. |
 | `filament settings get <path>` · `settings set <path> <value>` | One setting by its path, as Settings' rows name it (`agentLoop.permissions`, `memory.enabled`…). A credential is never set here. |
-| `filament open [console]` · `filament stop [--force]` · `filament restart [--force]` | Open the harness (or the console) in your browser; stop Filament once no turn runs (`--force`: now). The Filament app's is quit with the app — which asks where a turn runs —, as the app starts its Filament again whenever it stops by itself. `restart` stops it where something starts it again — the app, or systemd — and refuses one started by hand. Under systemd both go through `systemctl --user`, so systemd does not start again what was stopped. |
+| `filament open [console] [--no-open]` · `filament stop [--force]` · `filament restart [--force]` | Open the harness (or the console) in your browser, paired by a one-time link as this computer's own browser: Settings › Remote access lists its pairing, which a later one takes the place of, and Filament answers it as this computer, from here or an SSH tunnel's other end alone; `--no-open` says the link instead, for a browser at a tunnel's other end (open it at the tunnel's own address and port). While the Filament app runs here, its tray's **Open in browser** does it, and `filament open` opens the page unpaired; with `--machine`, that machine's page asks for a code. Stop Filament once no turn runs (`--force`: now). The Filament app's is quit with the app — which asks where a turn runs —, as the app starts its Filament again whenever it stops by itself. `restart` stops it where something starts it again — the app, or systemd — and refuses one started by hand. Under systemd both go through `systemctl --user`, so systemd does not start again what was stopped. |
 | `filament service install` · `service status` · `service logs` · `service uninstall` | On a Linux server: run Filament under systemd's user manager — started at boot, and again 3 s after it ends by itself. `install` writes `~/.config/systemd/user/filament.service` (no root) running the installed Filament by its stable path (`~/.local/share/filament/current`, so an update starts at the next restart) on this data folder, with `--port` where given; a Filament run by hand is stopped first, once no turn runs. Starting at boot with no one logged in needs lingering — `loginctl enable-linger $USER`, which it checks and says. `status` (`--json`) says whether it runs and starts at boot, what it runs, lingering and its log's last lines; `logs` follows the log (journalctl). Refused on macOS and Windows (the Filament app starts at logon) and where there is no systemd user manager (WSL without systemd, a container). |
 | `filament pair [--view]` | On the machine Filament runs on — its own Filament, whatever `FILAMENT_MACHINE` says: a code good for five minutes and one claim, with a link for each address the network's listener answers at (Settings › Remote access › Reach this machine on my network) and the tailnet's where Filament is served there — what Settings › Remote access makes. Reached another way, an SSH tunnel say, there is no link: `connect` takes the address and the code. The device it pairs drives this Filament as you do; `--view` pairs one that reads alone (see [Remote access](#remote-access-this-filament-from-another-machine)). |
 | `filament connect <link>` · `connect <address> <code> [--fingerprint <SHA-256>] [--name <this device>]` | On another machine: connect its command line to the Filament the link names. That Filament is asked who it is first, the code claimed, and the device's token kept in this machine's data folder (`remotes.json`, yours alone to read), never printed. Over https it trusts the certificate the link names, or `--fingerprint`, and no other; an address with no scheme is https, and plain http goes to an address on the machine itself alone. Connected to that machine already, the device it had signs out there; one that says a kept machine's id from another address takes its place only where the two are shown to be one machine: the kept address, asked with the token kept for it, lists the device just claimed, or, where it no longer answers as itself, the new address lists the device kept for it. The token just claimed goes to the address it was claimed at alone. Else two machines may say one id, the device just claimed signs out, and `filament disconnect` comes first. |
@@ -217,8 +217,12 @@ the chats, the agents and the terminal run where Filament runs, and the other ma
   alone. **Trust my own tailnet login** lets in your own machines on the tailnet without pairing; while the desktop
   app runs, a browser let in so answers no ask until it is paired once ([Security](#15-security)).
 - **An SSH tunnel.** `ssh -L 20300:127.0.0.1:20300 you@this-machine` on the other machine, then
-  `http://127.0.0.1:20300` there. A tunnel's request arrives as this computer's own, and is answered as one, unpaired:
-  whoever can open it can sign in to this machine already.
+  `http://127.0.0.1:20300` there. A tunnel's port is open to every program on that machine, and a request through it
+  that sends no paired device's token is answered as this computer's own: whoever can open it can sign in here
+  already. One that sends a device's token or cookie is that device, its scope and grants standing as over the
+  network — the desktop app's **Add a machine…** pairs one of its own so by `ssh://` (*Driving other machines from the
+  app*, below). `filament open --no-open` here says a one-time link that pairs the browser there by name, opened at the
+  tunnel's own address and port; it is still answered as this computer.
 
 **Pairing.** Every other caller gets in by pairing once. On this machine, open Settings › Remote access, choose Full or
 View-only under Pair with a code and press Make a code (or run `filament pair`, `--view` for view-only, where the desktop
@@ -288,7 +292,10 @@ and **Continue**: the app asks who answers there before it sends anything. A lin
 fingerprint, which pins it; an address of a `tailscale serve` machine needs none; an address on the network with no
 link shows the certificate's fingerprint for you to compare with the one that machine shows — **Not the same** sends
 nothing. **Pair** then claims the code, and the machine shows in the window — its page fills it, its own top row the
-window's title bar, as this computer's is. Once another machine is kept, the top bar shows the machine you are looking
+window's title bar, as this computer's is. A machine reached by SSH alone: type `ssh://` and a Host of your SSH config,
+or `ssh://you@server` (Filament's port there after a colon, where it is not 20300). The app holds the tunnel itself,
+with your SSH keys and agent, and never asks a password; there is no code to type: **Pair** runs `filament pair` there
+over SSH and claims its code through the tunnel ([Filament on a server](server.md#5-reach-it-from-your-laptop)). Once another machine is kept, the top bar shows the machine you are looking
 at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of
 the chats that wait on you on the others. Press it for the machines menu: each machine with its state, its icon and
 its key (Ctrl+1…9, ⌘ on a Mac), the one showing ticked; pick one to show it, or **Add a machine…**. This window is listed on the other machine as
@@ -540,8 +547,11 @@ Each read of the card and each switch keeps the address and certificate the app 
 agents' sub-agents, commands and models follow a machine that moved. A read of the list that fails after one that
 worked leaves the cards as last read, and says so.
 It needs the app paired there as a full
-device over the network or the tailnet: through an SSH tunnel alone, the other machine takes this computer for itself,
-with no device to make one, and the machine's line says so.
+device — over the network, the tailnet, or by `ssh://`, where Add's **Pair** makes the device over SSH; added through a
+tunnel with no device there, the machine's line says to add it again by `ssh://`. Through an SSH tunnel the agents
+reach the machine while the app runs here, holding the tunnel — whose port on this computer is open to every program
+here, and the machine answers one that sends no device's token as itself: there Agents' grants fence your agents'
+device, not the tunnel.
 Switch it on only where you would let your agents work as freely as here: an agent with a shell on this computer can
 use this computer's sign-ins to the other machine. Your chats here then send sub-agents there
 ([Your agents on your other machines](#your-agents-on-your-other-machines)) and run commands there
@@ -572,8 +582,8 @@ sub-agent's does. What its chat may do on that machine is in
 access switches it off or revokes it. **Full control** beside it lets your agents act there as you, in any folder, with
 *auto* unasked and your MCP servers and memory there
 ([Another machine's agents](#remote-access-this-filament-from-another-machine)): a cleanup, a build, an upload, as you
-would at that machine. It needs the machine added to the app as a full device, over the network or the
-tailnet: one added by `ssh://` has no device to make one, and the machine's line says so. The sub-agent's chat
+would at that machine. It needs the machine added to the app as a full device — over the network, the
+tailnet, or by `ssh://`, which pairs one over SSH; through a tunnel with no device there, the machine's line says so. The sub-agent's chat
 runs in your chat's permission mode, *auto* only with **Without asking** or **Full control** on there
 ([Filament on a server](server.md#6-let-your-laptops-agents-work-there)).
 
@@ -1816,7 +1826,8 @@ are under `<data folder>\desktop`, never beside Filament's; `server.log` there h
 inbound key shortened (`Filament print-key` gives it whole), and `settings.json` the app's own choices.
 
 **The tray.** A click on the icon shows the card by it (a click again, a click anywhere else, or Esc, hides it); a
-double-click opens the harness. Its menu, at a right-click: **Show the card**, **Open Filament**, **Open the dashboard**, **Restart
+double-click opens the harness. Its menu, at a right-click: **Show the card**, **Open Filament**, **Open in browser** (this Filament in your
+own browser, which a one-time link pairs by name, as this computer's own), **Open the dashboard**, **Restart
 Filament** (and, with a newer Filament out, **Update to Filament *x***, then **Restart to update to Filament *x***
 once it is downloaded), **Start at logon**, **Notifications** and **Check for updates** (checks), **Quit**. Hover it
 for Filament's state and how many chats need you.
@@ -1968,7 +1979,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/remote/lan[?fresh=1]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
 | `POST /api/remote/lan/new-key` | New key: the network listener's key and certificate made anew and served at once, its artifacts' address too (this computer alone); every machine and command line paired over the network pairs again. Answers the listener's state, its new fingerprint in it. |
 | `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ cookie, token }`, which the app keeps as an HttpOnly cookie of its windows; any other call is refused (403). |
-| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on); a device signs itself out. |
+| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on; `tunnel-device`, a device's token through an SSH tunnel taken as that device's); a device signs itself out. A device's call through a tunnel says `device`. |
 | `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`; `copies` is Run on); an agents' device's `copies` says what its machine keeps here, your chats in its copies among it (`chats`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
 | `GET /api/remote-work`, `GET /api/remote-work/places?folder=`, `POST /api/remote-work`, `POST /api/remote-work/<id>/chat`, `POST /api/remote-work/<id>/check`, `POST /api/remote-work/<id>/back`, `DELETE /api/remote-work/<id>` | Run on, from this machine: `places` says where a chat in the folder may run — the folder in git (`here`), each machine kept for this Filament's agents (whether it answers and takes a chat of yours in a copy, its CPUs and load, memory, models and clones of the repository, what its grants let this Filament read), and the one it went to last (`last`). `{ machine, folder }` sends the folder's repository — uncommitted work and files in no commit with it, what stays here as a sub-agent's copy leaves it — to a machine kept for this Filament's agents, whose **Run on** or **Agents** is on there, and has it placed there for a chat of yours (`work.cwd`, where your device there starts it). The first send of a repository to a machine answers 409 with `ask` (the files, those in no commit, what stays here, and how many files Git LFS keeps, whose content stays here); the same body with `allow: { ask }`, that ask's `id`, sends it — its size is measured before any bundle is built, and it names the first 200 files in no commit and counts them all —, and a later send asks again only for a new file in no commit, or for LFS. `…/chat` `{ chat }` names the chat started there; `…/check` `{ seen? }` looks at what it changed there that the folder has not taken — the files, how each would come in, those that would stop it and the capture (`at`), nothing written; kept on the record as `waiting`, with `seen`, the chat's newest moment there the desk saw —; `…/back` brings what it changed into the folder as uncommitted edits, from where the last bring back left it — a file both sides changed stops it, nothing written (409 `conflicts` and `at`, the capture they came with), until `choices` by path (`yours`, `its`, `both`) or `overlap` (`markers`, `mine`) names a way with that `at` — changed there since, it says `moved` with what stops it now, nothing written; put back there as it went, the folder goes back too; 410 once its copy there went, or the folder here; 409 with `kind: "runs"` while a turn of its chat still runs there. A send or a bring back runs while its call stays open: one closed stops it. `DELETE` forgets it here, and its copy there stays that machine's to clear. Sends and bring backs are presses. |
 | `POST /api/remote/agent-device` | A full device makes its own machine's agents a device here: `{ device, machine, token }`, the token this once, its grant off. A second one replaces the first. |
@@ -2003,7 +2014,9 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 - **The console and admin API answer this computer, a paired device and `server.adminToken` alone** — a browser
   neither knows is sent to the pairing page, a view-only device reads alone, and the inbound keys are this computer's
   only; a request a proxy on this machine hands on (`tailscale serve`, nginx) is another machine's, while a plain
-  forward that adds no proxy header (an SSH tunnel) is this computer's. They answer only to a Host header that
+  forward that adds no proxy header (an SSH tunnel) is this computer's — but one that sends a paired device's token or
+  cookie, which is that device, as from the network, and a model call with another machine's agents' device's token
+  passes the network's door: its grant `models`, a revoke, the calls one device may have. They answer only to a Host header that
   names this machine (`localhost`, `*.localhost`, IP addresses, the configured host, `server.allowedHosts`; anything
   else gets HTTP 421, which stops DNS-rebinding attacks from web pages), refuse mutating requests from other origins,
   and require `application/json` on them.
@@ -5571,8 +5584,9 @@ page's bytes over a slow link. The app
 holds a link there as your device — over the network, its certificate pinned, or the tailnet — made again when it
 drops; that machine pings it every 15 seconds and, hearing nothing for 45, lets its pages go. The pages close when the
 link drops, the switch goes off, or the machine is disconnected or removed from the window; the chats' pages open
-again at their agents' next calls in that machine's own app or its Chrome, and wait where it has neither. It needs the app paired there as a full device over the
-network or the tailnet: added by `ssh://` the row says it cannot; revoked there, or signed out, the link closes at once
+again at their agents' next calls in that machine's own app or its Chrome, and wait where it has neither. It needs the app paired there as a full device — over the
+network, the tailnet, or by `ssh://`, the link then going through the tunnel; through a tunnel with no device there,
+the row says to add it again by `ssh://`; revoked there, or signed out, the link closes at once
 and the row says so — add the machine again to switch it back on.
 
 **What the browser never opens.** Filament's own addresses, by any name or address of this machine: its port, the

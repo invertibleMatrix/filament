@@ -132,8 +132,11 @@ A server has no browser of its own, so its Settings › Remote access is opened 
 
 **SSH, from the Filament app.** On your laptop: Settings › Remote access › **Add a machine…**, and type `ssh://` and the
 server's Host from your SSH config, or `ssh://you@server`. The app holds the tunnel itself, with your SSH keys and
-agent (it never asks for a password, and the server's host key must be known already). No code is needed: the server
-sees a caller on its own machine.
+agent (it never asks for a password, and the server's host key must be known already). No code to type: **Pair** runs
+`filament pair` on the server over SSH and claims its code through the tunnel, so the app is a full device there — its
+agents, its chats' browser and the server's models work through the tunnel as over the network, while the app holds
+it. Where the Filament app runs on the server, which makes its codes in its own window, the server is added with no
+device, and the sheet says why.
 
 **An SSH tunnel by hand.** On your laptop:
 
@@ -142,9 +145,11 @@ ssh -N -L 20400:127.0.0.1:20300 you@server
 ```
 
 Then open `http://127.0.0.1:20400` there. Any free port on your laptop will do; 20300 is taken where Filament runs on
-the laptop too. The server answers the tunnel as itself: whoever can open it can sign in to the server already. A
-browser needs no pairing this way. A command line connects with a code from `filament pair`:
-`filament connect http://127.0.0.1:20400 <code>`.
+the laptop too. The server answers a caller through the tunnel that sends no device's token as itself: whoever can
+open the tunnel — any program on your laptop — can sign in to the server already. `filament open --no-open` on the
+server says a one-time link (`http://127.0.0.1:20300/ui/pair.html#code=…`) that pairs that browser by name, opened on
+your laptop at the tunnel's own address and port (`http://127.0.0.1:20400/ui/pair.html#code=…`).
+A command line connects with a code from `filament pair`: `filament connect http://127.0.0.1:20400 <code>`.
 
 **Your network.** On the server:
 
@@ -187,8 +192,10 @@ one printed); or paste it into the Filament app's **Add a machine…**; or run `
 
 Your laptop's Filament can let its agents start chats in the server's projects, send them turns and follow them. In
 the Filament app on the laptop: Settings › Remote access › Machines, the **Agents** pill on the server's card.
-It needs the app paired with the server as a full device, over the network or the tailnet; a machine added by
-`ssh://` has no device to make one, and its card says so.
+It needs the app paired with the server as a full device — over the network, the tailnet, or by `ssh://`, where
+**Pair** makes the device over SSH. Through an SSH tunnel your laptop's agents reach the server while the app runs,
+holding the tunnel — whose port on your laptop is open to every program there, and the server answers one that sends
+no device's token as itself: Agents' grants fence your agents' device, not the tunnel.
 
 What their chats may do there, and what they never touch, is in
 [Another machine's agents](GUIDE.md#remote-access-this-filament-from-another-machine). In short: they start in the

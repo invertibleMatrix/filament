@@ -67,9 +67,11 @@ export const FULL_HOLDS = Object.freeze(/** @type {(keyof Grants)[]} */ (["unask
  * (its full device here is named for the app or the command line that paired, "Filament app on DESKTOP-1"). `pressless`: paired
  * by a program on this computer without the desktop app's key, while the app held one — or minted by such a device —: it
  * presses nothing while the app holds a key (http/guards.js `pressRefusal`; the xd-key hunt's). `machine`: the id of the
- * Filament whose desktop app claimed it, as its claim said it (`machineIdOf`).
+ * Filament whose desktop app claimed it, as its claim said it (`machineIdOf`). `here`: a browser on this computer —
+ * `filament open`'s, the tray's Open in browser —, or at an SSH tunnel's other end: its token is taken on loopback alone,
+ * where its caller is this computer itself (http/guards.js `whoIs`), and is no one's from the network.
  * @typedef {{ id: string, name: string, scope: Scope, kind: string, hash: string, grants: Grants, createdAt: number, lastSeenAt: number | null,
- *   lastSeenFrom: string | null, revokedAt: number | null, pairing?: string, of?: string, from?: string, machine?: string, pressless?: true }} KeptDevice
+ *   lastSeenFrom: string | null, revokedAt: number | null, pairing?: string, of?: string, from?: string, machine?: string, pressless?: true, here?: true }} KeptDevice
  */
 /**
  * A code open now, as said to this computer: its id, never the code; how long it has left by the store's own clock, so
@@ -181,7 +183,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
       else floorUnkept = true;
       devices = (Array.isArray(j?.devices) ? j.devices : [])
         .filter((/** @type {any} */ d) => d && typeof d.id === "string" && /^[0-9a-f]{64}$/.test(String(d.hash)))
-        .map((/** @type {any} */ d) => ({ id: d.id, name: cleanName(d.name) || "A device", scope: scopeOf(d.scope), kind: String(d.kind || "browser"), hash: d.hash, grants: grantsOf(d.grants), createdAt: Number(d.createdAt) || 0, lastSeenAt: d.lastSeenAt ?? null, lastSeenFrom: d.lastSeenFrom ?? null, revokedAt: d.revokedAt ?? null, ...(typeof d.pairing === "string" ? { pairing: d.pairing } : {}), ...(typeof d.of === "string" ? { of: d.of } : {}), ...(typeof d.from === "string" && cleanName(d.from) ? { from: cleanName(d.from) } : {}), ...(machineIdOf(d.machine) ? { machine: machineIdOf(d.machine) } : {}), ...(d.pressless === true ? { pressless: /** @type {true} */ (true) } : {}) }));
+        .map((/** @type {any} */ d) => ({ id: d.id, name: cleanName(d.name) || "A device", scope: scopeOf(d.scope), kind: String(d.kind || "browser"), hash: d.hash, grants: grantsOf(d.grants), createdAt: Number(d.createdAt) || 0, lastSeenAt: d.lastSeenAt ?? null, lastSeenFrom: d.lastSeenFrom ?? null, revokedAt: d.revokedAt ?? null, ...(typeof d.pairing === "string" ? { pairing: d.pairing } : {}), ...(typeof d.of === "string" ? { of: d.of } : {}), ...(typeof d.from === "string" && cleanName(d.from) ? { from: cleanName(d.from) } : {}), ...(machineIdOf(d.machine) ? { machine: machineIdOf(d.machine) } : {}), ...(d.pressless === true ? { pressless: /** @type {true} */ (true) } : {}), ...(d.here === true ? { here: /** @type {true} */ (true) } : {}) }));
     } catch (/** @type {any} */ e) {
       // Unread, nothing is let in: a device that cannot be checked is no device. The file is set aside, never written
       // over by the next pairing, for a person to look at.
@@ -243,7 +245,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
   };
   /** @type {Set<(id: string, grants: Grants, before: Grants) => void>} what hears an agents' device's grants set (`onGrant`) */
   const grantHeard = new Set();
-  /** @type {{ id: string, code: string, scope: Scope, expiresAt: number, pressless?: true }[]} the codes open now, in memory alone */
+  /** @type {{ id: string, code: string, scope: Scope, expiresAt: number, pressless?: true, here?: true }[]} the codes open now, in memory alone */
   let codes = [];
   /** @type {{ at: number, from: string }[]} the wrong codes in the window */
   let guesses = [];
@@ -264,17 +266,17 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     /**
      * A new pairing code, for a device of `scope` — full, else view: an agents' device is minted, never claimed. The
      * oldest open code goes where OPEN_CODES are open already. `pressless`: the device it pairs presses nothing while the
-     * desktop app holds a key (KeptDevice).
-     * @param {{ scope?: unknown, pressless?: boolean }} [o]
+     * desktop app holds a key; `here`: it pairs a browser on this computer, claimed on loopback alone (KeptDevice).
+     * @param {{ scope?: unknown, pressless?: boolean, here?: boolean }} [o]
      * @returns {OpenCode & { code: string }}
      */
-    startPairing({ scope = "full", pressless = false } = {}) {
+    startPairing({ scope = "full", pressless = false, here = false } = {}) {
       sweep();
       let code = "";
       do code = Array.from({ length: 8 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
       while (codes.some((c) => c.code === code));
-      /** @type {{ id: string, code: string, scope: Scope, expiresAt: number, pressless?: true }} */
-      const open = { id: randomUUID(), code, scope: scope === "full" ? "full" : "view", expiresAt: now() + CODE_TTL_MS, ...(pressless ? { pressless: /** @type {true} */ (true) } : {}) };
+      /** @type {{ id: string, code: string, scope: Scope, expiresAt: number, pressless?: true, here?: true }} */
+      const open = { id: randomUUID(), code, scope: scope === "full" ? "full" : "view", expiresAt: now() + CODE_TTL_MS, ...(pressless ? { pressless: /** @type {true} */ (true) } : {}), ...(here ? { here: /** @type {true} */ (true) } : {}) };
       codes = [...codes, open].slice(-OPEN_CODES);
       return { id: open.id, scope: open.scope, expiresAt: open.expiresAt, code: `${code.slice(0, 4)}-${code.slice(4)}`, leftMs: CODE_TTL_MS };
     },
@@ -306,12 +308,14 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     /**
      * A code claimed: the new device and its token, handed out this once — or why not, and when to try again.
      * @param {unknown} typed  the code as typed
-     * @param {{ name?: unknown, kind?: unknown, from?: string, machine?: unknown }} [o]  `from`: the claimer's address, which
-     *   its wrong codes count against; `machine`: the id of the Filament whose app claims it, kept where it is one
+     * @param {{ name?: unknown, kind?: unknown, from?: string, machine?: unknown, local?: boolean }} [o]  `from`: the claimer's
+     *   address, which its wrong codes count against; `machine`: the id of the Filament whose app claims it, kept where it
+     *   is one; `local`: the claim came on loopback, through no proxy — a code made for a browser here takes none else, and
+     *   stays open
      * @returns {{ ok: true, token: string, device: Device } | { ok: false, why: string, retryAt?: number, unsaved?: true }}
      *   `unsaved`: the device could not be kept, so none was paired; the code stays open for another try
      */
-    claim(typed, { name = "", kind = "browser", from = "", machine } = {}) {
+    claim(typed, { name = "", kind = "browser", from = "", machine, local = false } = {}) {
       const held = heldUntil(from);
       if (held) return { ok: false, why: "Too many wrong codes: pairing waits a few minutes.", retryAt: held };
       const want = normalCode(typed);
@@ -322,10 +326,11 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         if (guesses.length >= GUESSES_IN_ALL) codes = [];
         return { ok: false, why: "That code is not one this Filament has open: it may have run out (five minutes) or been used. Start a new pairing on that machine." };
       }
+      if (hit.here && !local) return { ok: false, why: "That code pairs a browser on the machine that made it, or at an SSH tunnel's other end: open its link there." };
       codes = codes.filter((c) => c !== hit);
       const token = `${TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
       /** @type {KeptDevice} */
-      const d = { id: randomUUID(), name: cleanName(name) || "A device", scope: hit.scope, kind: String(kind || "browser").slice(0, 16), hash: hashOf(token), grants: grantsOf(null), createdAt: now(), lastSeenAt: null, lastSeenFrom: null, revokedAt: null, pairing: hit.id, ...(machineIdOf(machine) ? { machine: machineIdOf(machine) } : {}), ...(hit.pressless ? { pressless: hit.pressless } : {}) };
+      const d = { id: randomUUID(), name: cleanName(name) || "A device", scope: hit.scope, kind: String(kind || "browser").slice(0, 16), hash: hashOf(token), grants: grantsOf(null), createdAt: now(), lastSeenAt: null, lastSeenFrom: null, revokedAt: null, pairing: hit.id, ...(machineIdOf(machine) ? { machine: machineIdOf(machine) } : {}), ...(hit.pressless ? { pressless: hit.pressless } : {}), ...(hit.here ? { here: hit.here } : {}) };
       devices = [...devices, d];
       const why = save();
       if (why) {

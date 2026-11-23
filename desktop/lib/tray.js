@@ -88,6 +88,8 @@ export function trayRows(f) {
   return [
     { id: "card", label: "Show the card" },
     { id: "harness", label: "Open Filament" },
+    // This computer's Filament in the person's own browser, paired with it by a one-time link (main.js `openInBrowser`).
+    { id: "browser", label: "Open in browser" },
     { id: "dashboard", label: "Open the dashboard" },
     // The machines the harness window drives, where any is kept beside this computer: each its own row.
     ...(machines.length ? [{ type: /** @type {const} */ ("separator") }, ...machines.map(machineRow)] : []),

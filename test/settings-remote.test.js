@@ -13,7 +13,7 @@ import { renderRemote, leftWords, deviceWords, expiryWords, NEW_KEY_WORDS, links
 import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
-import { codeOf, deviceName, claimWords, clearWords, inTheClear, mountPair, printOf, printWords } from "../src/ui/pair.js";
+import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, printOf, printWords } from "../src/ui/pair.js";
 import { startApp } from "./helpers/app.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -970,6 +970,15 @@ test("the pairing page: a link's code read and taken off the address, a link ope
   const self = await pairPage({ me: { who: "local" } });
   assert.equal(self.el("pair-lead").textContent, "This is Workstation itself: its Filament needs no pairing here.");
   assert.deepEqual(self.loc.went, [], "this computer is offered Open Filament");
+  // (fails before: yes — s0b: `filament open`'s link opened here offered Open Filament, the browser riding on being
+  // this computer, never paired)
+  const opened = await pairPage({ me: { who: "local" }, hash: "#code=WXYZ-2345" });
+  assert.equal(opened.el("pair-lead").textContent, "Pairing this browser with Workstation…");
+  assert.deepEqual(opened.posted, [{ code: "WXYZ-2345", name: "Chrome on macOS" }], "its link's code claimed at once");
+  assert.deepEqual(opened.loc.went, ["/ui/harness.html"]);
+  const toConsole = await pairPage({ me: { who: "local" }, hash: "#code=WXYZ-2345&to=console" });
+  assert.deepEqual([toConsole.posted.length, toConsole.loc.went], [1, ["/"]], "`filament open console`: the console once paired");
+  assert.deepEqual([goesTo("#code=A&to=console"), goesTo("#code=A"), goesTo("")], ["/", "/ui/harness.html", "/ui/harness.html"]);
   // (fails before: yes — your own tailnet login, let in where it is trusted, was told it was the machine itself)
   const tailnet = await pairPage({ me: { who: "tailnet", login: "owner@example.com" } });
   assert.equal(tailnet.el("pair-lead").textContent, "This browser is signed in to Tailscale as owner@example.com, whom Workstation trusts: opening Filament…");

@@ -157,7 +157,7 @@ function addFlow(bridge, show) {
       if (op === "pair" && !who?.ssh && !who?.code && !code.trim()) return view(`Type the code Settings › Remote access shows on ${who?.name || "that machine"}.`, true);
       busy = true;
       const g = gen;
-      view(op !== "pair" ? "Asking who answers there…" : who?.ssh ? `Adding ${who.name}…` : `Pairing with ${who?.name || "the machine"}…`);
+      view(op !== "pair" ? "Asking who answers there…" : who?.ssh ? `Pairing with ${who.name} over SSH…` : `Pairing with ${who?.name || "the machine"}…`);
       /** @type {any} */
       let got;
       try {
@@ -177,8 +177,9 @@ function addFlow(bridge, show) {
         if (phase === "compare") phase = "enter";
         return view(String(got?.words || "Not added."), true);
       }
-      // Paired: the app closes the sheet and shows the machine.
-      if (op === "pair") return view(who?.ssh ? `Added ${got.name}.` : `Paired with ${got.name}.`);
+      // Paired: the app closes the sheet and shows the machine — through an SSH tunnel, kept with no device there where
+      // none could be made, and why.
+      if (op === "pair") return view(got.note ? `Added ${got.name}, with no device there: ${got.note}` : `Paired with ${got.name}.`);
       phase = "ready";
       who = got;
       view();
@@ -197,10 +198,10 @@ function addFlow(bridge, show) {
 function paintSheet(doc, v) {
   const $ = (/** @type {string} */ id) => doc.getElementById(id);
   const w = v.phase === "ready" ? v.who : null;
-  $("add-go").textContent = w?.ssh ? "Add" : { enter: "Continue", compare: "It is the same", ready: "Pair" }[v.phase];
+  $("add-go").textContent = { enter: "Continue", compare: "It is the same", ready: "Pair" }[v.phase];
   $("add-go").disabled = v.busy;
   $("add-link").disabled = v.busy;
-  // Through an SSH tunnel no code is asked: its field is held.
+  // Through an SSH tunnel no code is typed — it is made there over SSH —: its field is held.
   $("add-code").disabled = v.busy || !!w?.ssh;
   $("add-back").hidden = v.phase !== "compare";
   $("add-print").hidden = v.phase !== "compare";
@@ -208,7 +209,7 @@ function paintSheet(doc, v) {
   $("add-who").hidden = !w;
   $("add-who-name").textContent = !w ? "" : w.ssh ? `${w.name} answers through an SSH tunnel to ${w.ssh}` : `${w.name} answers at ${w.url}`;
   $("add-who-print").textContent = w?.ssh
-    ? "No code: ssh signed in with your keys, and this computer holds the tunnel while the machine is in this window."
+    ? "No code to type: Pair makes one there over SSH (filament pair, signed in with your keys) and claims it through the tunnel, which this computer holds while the machine is in this window."
     : w?.fingerprint
       ? `Its certificate: ${w.fingerprint}`
       : w

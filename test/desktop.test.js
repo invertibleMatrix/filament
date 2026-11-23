@@ -518,7 +518,7 @@ describe("where its windows open", () => {
 // yes — NA3)
 test("the tray: the card, open, restart while the app runs Filament, start at logon, notifications, quit that says what it stops; its tooltip says where Filament stands", () => {
   const ids = (/** @type {any[]} */ rows) => rows.map((r) => (r.type ? "-" : `${r.id}${r.enabled === false ? " (off)" : ""}`)).join(" ");
-  const SHAPE = (/** @type {string} */ restart) => `card harness dashboard - ${restart} - logon notify - quit`;
+  const SHAPE = (/** @type {string} */ restart) => `card harness browser dashboard - ${restart} - logon notify - quit`;
   assert.equal(ids(trayRows({ owned: true, state: "up", port: 20300 })), SHAPE("restart"));
   assert.equal(ids(trayRows({ owned: true, state: "starting", port: 20300 })), SHAPE("restart (off)"));
   assert.equal(ids(trayRows({ owned: false, state: "attached", port: 20300 })), SHAPE("restart (off)"));

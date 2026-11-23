@@ -13,7 +13,7 @@ import { handleCountTokens } from "../app/count-tokens.js";
 import { handleEmbeddings } from "../app/embeddings.js";
 import { listModels } from "../app/models.js";
 import { createRouter } from "./router.js";
-import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, ownerOf, whoIs } from "./guards.js";
+import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, ownerOf, sendsDeviceKey, whoIs } from "./guards.js";
 import { originAllowed } from "./memory-mcp.js";
 import { isHouseCall } from "../services/house.js";
 import { lendModels, modelsLentTo } from "../services/devices.js";
@@ -153,6 +153,30 @@ export const lanDoor = (front, { devices = null, stallMs = LENT_STALL_MS } = {})
   res.setHeader(FILAMENT_MARK, "1");
   if (lent) return sendJson(res, lent.status, errorBody(anthropic ? "anthropic" : "openai", lent.status, lent.why));
   return sendJson(res, 404, { error: HERE_ALONE_WORDS });
+};
+
+/** A model call's path, under /v1 or not, as the front door answers either. */
+const MODEL_CALL = /^\/(v1\/)?(messages(\/count_tokens)?|chat\/completions|responses|models|embeddings)\/*$/;
+/**
+ * The main listener's door: a model call that sends a device's token is another machine's chats' — its agents' device
+ * through an SSH tunnel, which lands here on loopback — and passes the network's door (`lanDoor`): its grant `models`, a
+ * revoke, the calls one device may have; one at a path that door lends none at is refused. Never is it answered as a
+ * client's of this computer's. Anything else goes to the front door.
+ * @param {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => unknown} front
+ * @param {{ devices?: import("../services/devices.js").DeviceStore | null, stallMs?: number }} [o]
+ */
+export const mainDoor = (front, o = {}) => {
+  const lent = lanDoor(front, o);
+  return (/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res) => {
+    let path = "";
+    try {
+      path = new URL(req.url || "", "http://x").pathname;
+    } catch {}
+    if (!MODEL_CALL.test(path) || !sendsDeviceKey(req)) return front(req, res);
+    if (LENT_PATH.test(path)) return lent(req, res);
+    res.setHeader(FILAMENT_MARK, "1");
+    return sendJson(res, 404, errorBody(path.includes("messages") ? "anthropic" : "openai", 404, "a device's model calls go to /v1/messages, /v1/chat/completions, /v1/responses and /v1/models alone"));
+  };
 };
 
 /** How long any other request waits for memory's open: past it, it is answered 503 in words, never held on. */

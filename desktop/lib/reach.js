@@ -18,10 +18,11 @@ export const CALL_MS = 5000;
 export const ANSWER_MAX = 1024 * 1024;
 
 /**
- * What a sign-in there leads to, by who reaches the machine: Settings' switch, which a full device moves over the network
- * alone; the new-chat menu, which reads its projects as a full device, by the person's tailnet login, or through an SSH
- * tunnel, where the machine takes this computer for itself — as its page in the rail would; and the desk, which reaches
- * it as the menu does — its presses refused there but as a full device (lib/desk.js).
+ * What a sign-in there leads to, by who reaches the machine: Settings' switch, which a full device moves — over the
+ * network, or through an SSH tunnel, where its token says it (Add pairs one there over SSH); the new-chat menu, which
+ * reads its projects as a full device, by the person's tailnet login, or through a tunnel where none is paired, the
+ * machine taking this computer for itself — as its page in the rail would; and the desk, which reaches it as the menu
+ * does — its presses refused there but as a full device (lib/desk.js).
  */
 export const FOR = Object.freeze({
   switch: { then: "this switch moves", full: "a full device lets this Filament's agents in", tailnet: false, tunnel: false },
@@ -41,7 +42,7 @@ export const FOR = Object.freeze({
  *   the same call, its answer as it comes — a stream's — for its caller to read and let go; `signal` its end (else `CALL_MS`)
  * @typedef {{ send: Send, open: Open, route: Route, origin: string, me: any, flags: string[], who: string }} Reached
  *   `who`: who the machine takes this window for — "device", "tailnet" (the person's tailnet login), or "local" (through a
- *   tunnel, this computer for itself); `flags`: what its Filament does for the desk (watch.js `deskFlagsOf`)
+ *   tunnel where no device is paired, this computer for itself); `flags`: what its Filament does for the desk (watch.js `deskFlagsOf`)
  * @typedef {{ words: string, away?: "off" | "quiet" }} Unreached
  *   what stands in the way, in words; `away` where that is the machine itself, not this window's sign-in there —
  *   disconnected in this window (`off`), or no way to it answers (`quiet`)
@@ -62,9 +63,19 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
     /** @param {string} words @param {"off" | "quiet"} [away] @returns {Unreached} */
     const stop = (words, away) => ({ words, ...(away ? { away } : {}) });
     if (m.off) return stop(`${m.name} is disconnected in this window: connect it again from the machines list, and ${f.then}.`, "off");
-    const ways = f.tunnel ? m.routes : m.routes.filter((r) => String(r.url ?? "").startsWith("https:"));
-    if (!ways.length) return stop(`This app reaches ${m.name} through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows.`);
-    const picked = await pick({ ...m, routes: ways }).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
+    /** Whether this window's partition holds a sign-in at a way's address. @param {Route} r */
+    const signedAt = async (r) => {
+      try {
+        return !!(await cookieOf(m.partition, new URL(String(r.url)).origin));
+      } catch {
+        return false;
+      }
+    };
+    // Where a tunnel's machine is taken as this computer itself no more (Settings' switch), a tunnel holding no sign-in
+    // of this window's is passed over while another way is kept: there it would answer as no device.
+    const held = f.tunnel ? [] : await Promise.all(m.routes.map((r) => (r.kind === "ssh" ? signedAt(r) : true)));
+    const ways = f.tunnel ? m.routes : m.routes.filter((_, i) => held[i]);
+    const picked = await pick(ways.length ? { ...m, routes: ways } : m).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
     // One that answers on a wire this app does not speak says which side to update, in its own words (machines.js `gapWords`).
     if (!picked.route) return stop(/** @type {any} */ (picked).update ? String(picked.tried.at(-1)?.why) : `${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
     const route = picked.route;
@@ -108,9 +119,15 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
     if (me.status !== 200) return stop(`${m.name} answered ${String(me.json?.error || `HTTP ${me.status}`)}.`);
     const who = String(me.json?.who ?? "");
     const flags = deskFlagsOf(me.json);
-    // Through a tunnel — the app's SSH route, or an address the person forwarded — the machine takes this computer for
-    // itself: the menu and the desk read there as its page in the rail does.
+    // Through a tunnel — the app's SSH route, or an address the person forwarded — where no device is paired, the machine
+    // takes this computer for itself: the menu and the desk read there as its page in the rail does.
     if ((who === "tailnet" && f.tailnet) || (who === "local" && f.tunnel)) return { send, open, route, origin, me: me.json, flags, who };
+    // A Filament there that takes any caller on loopback for this computer itself reads no device's token through a tunnel.
+    if (who === "local" && !flags.includes("tunnel-device")) return stop(`Filament on ${m.name} takes this app through a tunnel for its own computer, never as a paired device: update it there (its ⋯ in the machines list), and ${f.then}.`);
+    // A sign-in held at the tunnel's address that it no longer knows: revoked there, or signed out.
+    if (who === "local" && (await signedAt(route))) return stop(gone);
+    if (who === "local")
+      return stop(`This app reaches ${m.name} through a tunnel where it is no paired device: remove it from the machines list and add it again by its ssh:// address — Pair makes a code there over SSH; where the Filament app runs there, by the link its Settings › Remote access shows —, and ${f.then}.`);
     if (who === "tailnet") return stop(`This app reaches ${m.name} by your tailnet login, not as a paired device: pair it with a code from its Settings › Remote access, and ${f.then}.`);
     if (who !== "device") return stop(gone);
     if (me.json?.device?.scope !== "full") return stop(`This app is paired with ${m.name} view-only: ${f.full}. Pair it again as Full with Add a machine.`);

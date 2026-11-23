@@ -136,6 +136,18 @@ test("filament pair here, connect there, then --machine: status, a chat with no 
       delete process.env.FILAMENT_MACHINE;
     }
     assert.equal((await run(laptop, ["pair", "--machine", name])).code, EXIT.usage);
+    // (fails before: yes — s0b: `filament open` here opened the harness unpaired, the browser riding on being this
+    // computer, unnamed) A one-time link to the pairing page, its code for a browser here (devices.js `here`); `console`
+    // goes on to the console.
+    const here = await run(home.dataDir, ["open", "--no-open"]);
+    assert.equal(here.code, EXIT.ok, here.all);
+    assert.match(here.out[0], /^http:\/\/127\.0\.0\.1:\d+\/ui\/pair\.html#code=[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    assert.equal(here.out[1], "A one-time link, good for 5 min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own address and port.");
+    const toConsole = await run(home.dataDir, ["open", "console", "--no-open"]);
+    assert.match(toConsole.out[0], /#code=[A-Z2-9]{4}-[A-Z2-9]{4}&to=console$/);
+    const open = (await (await home.api("/api/remote/pair")).json()).pending;
+    assert.ok(open.length >= 2 && open.every((/** @type {any} */ c) => c.scope === "full"), "full devices' codes");
+    await home.api("/api/remote/pair", { method: "DELETE" });
     assert.ok(!proxy.seen.some((x) => x.path === "/api/keys"), "the keys are never asked for");
     const list = await run(laptop, ["machines", "--json"]);
     assert.deepEqual(JSON.parse(list.out.join("\n")).map((/** @type {any} */ r) => [r.name, r.url, r.scope]), [[name, proxy.url, "full"]]);
@@ -233,14 +245,16 @@ test("over the network: connect pins the certificate its link carries; with none
     assert.equal(old.code, EXIT.failed);
     assert.match(old.all, /is plain http to another machine/);
     // (fails before: yes — disconnect asked with plain fetch, which refuses the machine's own certificate: its sign-out
-    // never went, and the device stayed signed in there, the review of p2-lan.) The test's listener is on loopback, so
-    // there its caller is this computer, which has no device to sign out: what shows is that the sign-out went, pinned.
+    // never went, and the device stayed signed in there, the review of p2-lan.) The test's listener is on loopback, where
+    // a device's token is that device's: the sign-out went, pinned, and its device there is signed out.
     remotes.remotes[0] = { ...remotes.remotes[0], url: at, fingerprint: lan.fingerprint };
     writeFileSync(join(laptop, REMOTES_FILE), JSON.stringify(remotes));
     const gone = await run(laptop, ["disconnect", kept.name]);
     assert.equal(gone.code, 0, gone.all);
-    assert.match(gone.all, /It could not be told \(only a paired device signs out; this is no device \(HTTP 400\)\)/, "the machine answered the sign-out");
+    assert.match(gone.all, /Signed out of .*, and forgot it\./, "the machine answered the sign-out");
     assert.doesNotMatch(gone.all, /certificate|No Filament answers/);
+    const devices = (await (await home.api("/api/remote/devices")).json()).devices;
+    assert.ok(devices.find((/** @type {any} */ d) => d.id === remotes.remotes[0].device.id)?.revokedAt, "its device there signed out");
   } finally {
     await home.stop();
     rmSync(laptop, { recursive: true, force: true });

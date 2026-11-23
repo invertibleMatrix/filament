@@ -236,6 +236,10 @@ export const forwardedHttps = (req) => {
   const said = protosSaid(req);
   return said.length > 0 && said.every((p) => p === "https");
 };
+/** Whether a request's key — the one `credentialOf` reads, its Bearer or its x-api-key — is a device's token. @param {import("node:http").IncomingMessage} req */
+export const sendsDeviceKey = (req) => credentialOf(lowerHeaders(req.headers)).startsWith(DEVICE_TOKEN);
+/** Whether a request's Bearer is a device's token, a cookie aside. @param {import("node:http").IncomingMessage} req */
+const deviceBearer = (req) => String(lowerHeaders(req.headers).authorization || "").replace(/^bearer\s+/i, "").trim().startsWith(DEVICE_TOKEN);
 /** A paired device's token: its browser's cookie, or a Bearer the CLI sends. "" for none. @param {import("node:http").IncomingMessage} req */
 export const deviceTokenOf = (req) => {
   const jar = cookiesOf(req);
@@ -368,6 +372,12 @@ const dropCookie = (req, name) => {
  * `server.adminToken` (`admin`), a machine signed in to the tailnet as this one is, where that is trusted (`tailnet`,
  * `ownTailnetLogin`), a paired device by its token — its scope, full or view, or another machine's agents' (`agent`,
  * `agentsDevice`), its grants on `device.grants` — over a sealed way (`sealedWay`), or nobody Filament knows (null).
+ * A device's token over loopback with no owner key — the desk's calls through an SSH tunnel, another machine's agents
+ * through one — is that device, as from afar: its scope, its grants and an agents' fence hold through a tunnel too. A
+ * browser here (devices.js `here`: `filament open`'s, the tray's) is this computer itself: its token names it, and gives
+ * it nothing loopback does not. A device's Bearer that does not verify — revoked, replaced, lapsed — is no one's, so an
+ * agents' device stops at its revoke; a cookie that does not — another port's: a browser sends a host's cookies to each
+ * of its ports — leaves the caller this computer.
  * @typedef {{ kind: "local", owner?: true } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
  * @param {import("node:http").IncomingMessage} req
  * @param {any} server  the `server` config section
@@ -376,7 +386,12 @@ const dropCookie = (req, name) => {
  */
 export function whoIs(req, server, devices = null) {
   const owner = ownerOf(req) === "owner";
-  if (isLocalCaller(req)) return owner ? { kind: "local", owner: true } : { kind: "local" };
+  if (isLocalCaller(req)) {
+    if (owner) return { kind: "local", owner: true };
+    const device = deviceOfToken(req, devices);
+    if (device && !device.here) return { kind: "device", device, scope: device.scope };
+    return !device && devices && deviceBearer(req) ? null : { kind: "local" };
+  }
   if (adminTokenIn(req, server)) return { kind: "admin" };
   const login = ownTailnetLogin(req, server);
   if (login) return { kind: "tailnet", login };
@@ -392,10 +407,27 @@ export function whoIs(req, server, devices = null) {
  * @returns {Extract<Caller, { kind: "device" }> | null}
  */
 export function deviceCaller(req, devices = null) {
-  const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
-  const device = token ? devices?.verify(token, callerAddress(req)) : null;
-  return device ? { kind: "device", device, scope: device.scope } : null;
+  const device = deviceOfToken(req, devices);
+  // A browser here is this computer itself on its loopback (`whoIs`), never a device of its own: from the network its
+  // token is no one's.
+  return device && !device.here ? { kind: "device", device, scope: device.scope } : null;
 }
+/**
+ * The device a request's token verifies as, a browser here's too, over a sealed way; null for none.
+ * @param {import("node:http").IncomingMessage} req @param {import("../services/devices.js").DeviceStore | null} devices
+ */
+const deviceOfToken = (req, devices) => {
+  const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
+  return (token && devices?.verify(token, callerAddress(req))) || null;
+};
+/**
+ * The browser here a request on this computer's loopback signs in as (devices.js `here`), or null.
+ * @param {import("node:http").IncomingMessage} req @param {import("../services/devices.js").DeviceStore | null} [devices]
+ */
+export const hereDevice = (req, devices = null) => {
+  const device = isLocalCaller(req) ? deviceOfToken(req, devices) : null;
+  return device?.here ? device : null;
+};
 /**
  * The person's device a request's token belongs to that went unused past its days (services/devices.js `lapsed`), taken
  * over a sealed way as `deviceCaller` takes one — its refusal says to pair it again —; null for any other.
@@ -493,7 +525,9 @@ export function pressRefusal(req, who, devices = null) {
   if (who?.kind === "device" && !who.device.pressless) return null;
   if (who?.kind !== "device" && who?.kind !== "local" && who?.kind !== "tailnet") return null;
   const token = who?.kind === "local" || who?.kind === "tailnet" ? deviceTokenOf(req) : "";
-  const device = who?.kind === "device" ? who.device : token ? devices?.verify(token, callerAddress(req)) : null;
+  const named = who?.kind === "device" ? who.device : token ? devices?.verify(token, callerAddress(req)) : null;
+  // A browser here presses as this computer does: never, while the app holds its key.
+  const device = named?.here ? null : named;
   if (device?.scope === "full" && !device.pressless) return null;
   const why = device?.pressless ? PRESSLESS_REFUSED : who?.kind === "tailnet" ? TAILNET_PRESS_REFUSED : PRESS_REFUSED;
   unpressed.set(req, why);

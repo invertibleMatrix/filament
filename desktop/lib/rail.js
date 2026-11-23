@@ -19,7 +19,7 @@ import { esc, markTile } from "./card.js";
 import { BAR_H, overlayColors } from "./frame.js";
 import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_ICONS, MAX_MACHINES, colorOf, iconOf, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, RANKS, rankOf, slotOfInput } from "./machines.js";
 import { glyphOf } from "../../src/ui/harness/lib/icons.js";
-import { CLAIM_FROM, checkMachine, claimOutcome, claimScript, deviceNameHere } from "./add-machine.js";
+import { CLAIM_FROM, checkMachine, claimOutcome, claimScript, deviceNameHere, pairOverSsh } from "./add-machine.js";
 import { cleanName } from "../../src/services/machine.js";
 import { isNewer } from "../../src/services/updates.js";
 import { aliasOf } from "./ssh-route.js";
@@ -447,7 +447,7 @@ export function pageKept(said) {
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
  *   waiting?: (id: string) => number, busy?: (id: string) => boolean, tint?: (colors: { color: string, symbolColor: string } | null) => void,
  *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void,
- *   updateHere?: () => void, appVersion?: string, updateThere?: ReturnType<typeof import("./update-there.js").createUpdateThere> | null }} o
+ *   updateHere?: () => void, appVersion?: string, updateThere?: ReturnType<typeof import("./update-there.js").createUpdateThere> | null, sshPair?: typeof pairOverSsh }} o
  *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
  *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
@@ -459,9 +459,10 @@ export function pageKept(said) {
  *   null as it stopped showing there (`showChat`); `updateHere`: this app's update taken up, asked by a machine's update
  *   page (`updatePage`); `appVersion`: this app's version, `updateThere`: another machine's Filament updated to it
  *   (lib/update-there.js) — its ⋯ menu's Update Filament, the popover's Update all machines, its update page's —, followed
- *   until it answers on it (`followUpdate`)
+ *   until it answers on it (`followUpdate`); `sshPair`: a code made on a machine added by `ssh://`, over SSH (add-machine.js
+ *   `pairOverSsh`), claimed through its tunnel
  */
-export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, busy = () => false, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {}, appVersion = "", updateThere = null }) {
+export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, busy = () => false, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {}, appVersion = "", updateThere = null, sshPair = pairOverSsh }) {
   const wc = win.webContents;
   /** @type {Machine[]} */
   let list = [];
@@ -491,6 +492,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const told = new Map();
   /** Each machine a pairing has in hand, as it will be kept: its view's certificate check reads it meanwhile. @type {Map<string, Machine>} */
   const pairing = new Map();
+  /** Each machine whose code is being made over SSH (`add`): a second press waits for none. @type {Set<string>} */
+  const sshing = new Set();
   /** How many pairings each machine has had: an ask from before the last one is stale. @type {Map<string, number>} */
   const pairings = new Map();
   /** The name each machine answered by that the machines file could not keep: not tried again until it answers by another. @type {Map<string, string>} */
@@ -1319,13 +1322,14 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    * machine kept already is paired again: its new way there first, the ways it had after, its old sign-in there ended
    * first. `expect`: the id Continue showed — Pair goes to that machine alone. What the claim could not keep is refused
    * before it: an id that is none, a full window, this computer's own Filament (the review of p3-add). Through an SSH
-   * tunnel no code is claimed (`keepSsh`).
+   * tunnel the code is made there over SSH (`sshPair`) and claimed through it; one where none could be made is kept as
+   * reached (`keepSsh`).
    * @param {{ op?: string, link?: string, code?: string, fingerprint?: string, expect?: string }} input
    * @returns {Promise<any>}
    */
   async function add(input) {
     if (gone) return { ok: false, words: "The window closed." };
-    const c = await check({ link: String(input?.link || ""), code: String(input?.code || ""), fingerprint: String(input?.fingerprint || "") });
+    let c = await check({ link: String(input?.link || ""), code: String(input?.code || ""), fingerprint: String(input?.fingerprint || "") });
     if (gone) return { ok: false, words: "The window closed." };
     if (!c.ok) return c;
     const id = idOf(c.machine.id);
@@ -1337,9 +1341,24 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const said = { ok: true, id, url: c.url, name: c.machine.name, fingerprint: c.fingerprint, kept: !!had, code: !!c.code, ...(c.ssh ? { ssh: c.ssh } : {}) };
     if (input?.op !== "pair") return said;
     if (input.expect && String(input.expect).toLowerCase() !== id) return { ok: false, words: `Another machine answers at ${c.url} now — ${c.machine.name} —, not the one shown: nothing was sent. Continue again to see who answers.` };
-    if (c.ssh) return keepSsh(c, id, had);
+    if (pairing.has(id) || sshing.has(id)) return { ok: false, words: `A pairing with ${c.machine.name} is on its way.` };
+    if (c.ssh) {
+      // Through an SSH tunnel it pairs as any machine does: its code made there over SSH, claimed through the tunnel. One
+      // where none could be made — the Filament app runs there and makes its codes, ssh asked for what only the person
+      // can answer — is kept as it is reached, its Filament reading the tunnel's end as its own loopback.
+      sshing.add(id);
+      /** @type {{ code: string } | { words: string }} */
+      let got;
+      try {
+        got = await sshPair(c.ssh, c.machine);
+      } finally {
+        sshing.delete(id);
+      }
+      if (gone) return { ok: false, words: "The window closed." };
+      if ("words" in got) return keepSsh(c, id, had, got.words);
+      c = { ...c, code: got.code };
+    }
     if (!c.code) return { ok: false, words: `Type the code Settings › Remote access shows on ${c.machine.name}.` };
-    if (pairing.has(id)) return { ok: false, words: `A pairing with ${c.machine.name} is on its way.` };
     const same = (/** @type {any} */ r) => r.kind === c.route.kind && r.url === c.route.url;
     // A certificate it was never paired with, at a host it was reached at, is met in a partition anew: the one it had
     // may hold a refusal of it — its page met it there before this pairing — and holds the old certificate's yes, both
@@ -1427,13 +1446,13 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   }
 
   /**
-   * A machine reached through an SSH tunnel, kept: no code is claimed — ssh's own sign-in let this computer in, and its
-   * Filament reads the tunnel's end as a caller on its own loopback. Its way first, the ways it had after, in the
-   * partition it had; an ask from before it is stale.
-   * @param {any} c  what `check` said @param {string} id @param {Machine | null} had
+   * A machine reached through an SSH tunnel where no code could be made there (`why`), kept all the same: ssh's own
+   * sign-in let this computer in, and its Filament reads the tunnel's end as a caller on its own loopback — no device
+   * of this window's there, so its agents are not switched on from here (machine-agents.js). Its way first, the ways it
+   * had after, in the partition it had; an ask from before it is stale.
+   * @param {any} c  what `check` said @param {string} id @param {Machine | null} had @param {string} why
    */
-  function keepSsh(c, id, had) {
-    if (pairing.has(id)) return { ok: false, words: `A pairing with ${c.machine.name} is on its way.` };
+  function keepSsh(c, id, had, why) {
     /** @type {Machine} */
     let m;
     try {
@@ -1441,7 +1460,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     } catch (/** @type {any} */ e) {
       return { ok: false, words: `Not kept: ${String(e?.message || e)}` };
     }
-    log(`rail: machine ${id} kept, reached through ssh ${c.ssh} at ${c.url}`);
+    log(`rail: machine ${id} kept, reached through ssh ${c.ssh} at ${c.url}, with no device there (${why})`);
     pairings.set(id, (pairings.get(id) || 0) + 1);
     sync();
     watched.set(id, machineWatch(watched.get(id) ?? null, { answered: true }, now()));
@@ -1450,7 +1469,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     refresh();
     if (active === id) layout();
     else select(id);
-    return { ok: true, name: c.machine.name };
+    return { ok: true, name: c.machine.name, note: why };
   }
 
   /**

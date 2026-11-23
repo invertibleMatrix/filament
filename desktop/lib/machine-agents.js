@@ -11,8 +11,9 @@
 // same device's grant `models` switched there, which the machine's door reads before it lends one (the page adds or
 // removes this Filament's upstream of that machine's models, its own config's). Full control: the same device's grant
 // `full` switched there, on top of `agents`: its agents act there as the person (services/devices.js `fullControl`).
-// Forget: the device revoked there, the token let go here. What the page shows is read there: the device list says the grants as they stand. Only an https
-// way is taken: through an SSH tunnel the machine takes this computer for itself, no device there. The new-chat menu's
+// Forget: the device revoked there, the token let go here. What the page shows is read there: the device list says the
+// grants as they stand. Through an SSH tunnel too, where Add paired this window a device over SSH: the agents' device
+// kept here then reaches the machine at the tunnel's address, while this app holds it. The new-chat menu's
 // part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login. The
 // machine is reached as lib/reach.js reaches it. Plain Node (NA-D13).
 import { pickRoute } from "./machines.js";

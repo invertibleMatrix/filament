@@ -208,15 +208,18 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
     assert.equal((await grants())?.agents, false, "no grant was set");
   });
 
-  // (fails before: no — a full device opened the door as it does now; it guards that it still does)
-  test("a paired full device — another machine's app — sets grants with no key, from the network and through an SSH tunnel's loopback, and pairs through the tunnel", async () => {
+  // (fails before: yes, its pairing — s0b: a device through a tunnel was this computer itself, and started a pairing)
+  test("a paired full device — another machine's app — sets grants with no key, from the network and through an SSH tunnel's loopback; it starts no pairing from either", async () => {
     const far = await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: full.far, body: { grants: { models: true } } });
     assert.equal(far.status, 200, far.text);
     const tunnel = await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: { cookie: full.cookie }, body: { grants: { models: false } } });
     assert.equal(tunnel.status, 200, tunnel.text);
     assert.equal((await grants())?.models, false);
+    const me = await call("/api/remote/me", { headers: { cookie: full.cookie } });
+    assert.deepEqual([me.json?.who, me.json?.device?.scope, me.json?.desk?.includes("tunnel-device")], ["device", "full", true], "through the tunnel, its device");
     const code = await call("/api/remote/pair", { method: "POST", headers: { cookie: full.cookie }, body: { scope: "view" } });
-    assert.equal(code.status, 200, code.text);
+    assert.equal(code.status, 403, "through the tunnel, the device is that machine's, not this computer");
+    assert.equal(code.json?.press, undefined, code.text);
     const there = await call("/api/remote/pair", { method: "POST", headers: full.far, body: { scope: "view" } });
     assert.equal(there.status, 403, "from another machine, a pairing starts on the machine it pairs with");
     assert.equal(there.json?.press, undefined, there.text);
@@ -234,6 +237,53 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
     assert.match(err.join("\n"), /the Filament app runs here, and makes the code while it runs: in it, Settings › Remote access › Pair with a code › Make a code/);
     assert.deepEqual(out, []);
     assert.deepEqual(await pending(), []);
+  });
+
+  // (fails before: yes — s0b: `filament open` opened the harness unpaired, saying nothing of the app's own way in)
+  test("`filament open` while the app holds a key makes no code: the page opens unpaired, and the tray's Open in browser is named", async () => {
+    /** @type {string[]} */
+    const out = [];
+    const code = await runCli(["open", "--no-open"], { dataDir: shim.dataDir, out: (s) => out.push(s), err: () => {}, write: () => {} });
+    assert.equal(code, EXIT.ok, out.join("\n"));
+    assert.match(out[0], /\/ui\/harness\.html$/);
+    assert.equal(out[1], "The Filament app runs here, and pairs a browser with its tray's Open in browser: this page opens unpaired.");
+    assert.deepEqual(await pending(), []);
+  });
+
+  // (fails before: yes — the review of s0b: a browser here paired by `filament open` or the tray was a full device that
+  // pressed with no key, and its cookie, which a browser sends to every port of 127.0.0.1, was a dev server's there to
+  // press with, and to take to the network)
+  test("a browser here — the tray's code, claimed on loopback alone — is this computer itself: no press, nothing from the network; paired again, its old pairing goes", async () => {
+    const own = { origin: `http://127.0.0.1:${shim.port}` };
+    const made = await call("/api/remote/pair", { method: "POST", headers: PRESS, body: { scope: "full", here: true } });
+    assert.equal(made.status, 200, made.text);
+    assert.deepEqual([made.json.links, made.json.fingerprint], [[], null], "no link for the network");
+    const afar = await call("/api/remote/claim", { method: "POST", headers: { ...FAR, ...own }, body: { code: made.json.code, name: "Far browser" } });
+    assert.equal(afar.status, 403, afar.text);
+    assert.equal((await pending()).length, 1, "refused from afar, the code still open");
+    const claimed = await call("/api/remote/claim", { method: "POST", headers: own, body: { code: made.json.code, name: "Chrome here" } });
+    assert.equal(claimed.status, 200, claimed.text);
+    const cookie = String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0];
+    assert.equal((await call("/api/remote/me", { headers: { cookie } })).json?.who, "local", "this computer itself");
+    /** This browser's pairings, as this machine lists them. */
+    const mine = async () => (await call("/api/remote/devices", { headers: PRESS })).json.devices.filter((/** @type {any} */ d) => d.name === "Chrome here" && d.revokedAt == null);
+    const first = await mine();
+    assert.deepEqual(first.map((/** @type {any} */ d) => d.here), [true]);
+    // No press with it while the app holds its key, as this computer's own browser never had; nor with its token as a
+    // Bearer, as a program at another port that read the cookie would send it.
+    shut(await call("/api/remote/pair", { method: "POST", headers: { ...own, cookie }, body: { scope: "view" } }), "a browser here's pairing");
+    shut(await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: { authorization: `Bearer ${cookie.slice(cookie.indexOf("=") + 1)}` }, body: { grants: { agents: true } } }), "its token as a Bearer");
+    assert.equal((await grants())?.agents, false);
+    assert.equal((await call("/api/state", { headers: { ...FAR, cookie } })).status, 403, "from the network, its token is no one's");
+    // Paired again — `filament open` once more —: one pairing for one browser.
+    const again = await call("/api/remote/pair", { method: "POST", headers: PRESS, body: { scope: "full", here: true } });
+    const second = await call("/api/remote/claim", { method: "POST", headers: { ...own, cookie }, body: { code: again.json.code, name: "Chrome here" } });
+    assert.equal(second.status, 200, second.text);
+    const now = await mine();
+    assert.equal(now.length, 1);
+    assert.notEqual(now[0].id, first[0].id, "the old pairing gone for good");
+    assert.ok(!(await call("/api/remote/devices", { headers: PRESS })).json.devices.some((/** @type {any} */ d) => d.id === first[0].id));
+    await call("/api/remote/pair", { method: "DELETE" });
   });
 
   // (fails before: no — with no key nothing changed; it guards that it still does not)

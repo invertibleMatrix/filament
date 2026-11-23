@@ -485,24 +485,18 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
  * certificate (`connectMs` its connection's time; null where none is pinned — one an authority signed, a tailnet's —,
  * and the caller's own fetch goes, following no redirect), and the headers its model endpoints take this device by: its
  * token as a Bearer, which nothing else here says. Read anew at each call, so a machine connected again is reached at its
- * new address with its new token. Over https alone: plain http reaches its main listener, through a tunnel on this
- * machine, where its door (front-door.js `lanDoor`) — its grant, a revoke, the calls one device may have — never stands.
- * Where no pin says who answers, the machine at the address says it first, as `connectRemote` asks it. Else a CliError
- * whose words say why: none kept so, a way that is not https, its token sealed with another secret.key, another machine
- * at its address, none answering there.
+ * new address with its new token. Over https, or plain http through an SSH tunnel on this computer: there its main
+ * listener takes a model call that sends a device's token through the same door (front-door.js `mainDoor`) — its grant,
+ * a revoke, the calls one device may have. Where no pin says who answers, the machine at the address says it first, as
+ * `connectRemote` asks it. Else a CliError whose words say why: none kept so, plain http on the network, its token
+ * sealed with another secret.key, another machine at its address, none answering there.
  * @param {string} dataDir @param {string} which @param {{ agents?: boolean, connectMs?: number }} [o]
  * @returns {Promise<{ machine: Machine, url: string, fetch: typeof fetch | null, headers: Record<string, string> }>}
  */
 export async function modelsWayOf(dataDir, which, { agents = false, connectMs = 0 } = {}) {
   const row = remoteNamed(dataDir, which, { agents });
   usePinBook(dataDir);
-  if (!row.url.startsWith("https:"))
-    throw new CliError(
-      onThisMachine(row.url)
-        ? `${row.name} is kept at ${row.url}: over an SSH tunnel alone, ${row.name} takes this computer for itself: its models are lent over the network or the tailnet, by the https link its Settings › Remote access shows`
-        : `${row.name}: ${plainWords(row.url)}; then connect again.`,
-      EXIT.failed,
-    );
+  if (!row.url.startsWith("https:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again.`, EXIT.failed);
   if (isSealed(row.token)) throw new CliError(`${row.name}: its token was sealed with another secret.key than this data folder's, and cannot be read: put that secret.key back, or connect again.`, EXIT.failed);
   if (!row.fingerprint) {
     /** @type {typeof fetch} */

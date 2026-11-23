@@ -191,9 +191,10 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
   const old = kept("Old tablet", now - 100 * day);
   const older = kept("Old phone", now - 120 * day);
   const fresh = kept("Phone", now - day);
+  const tunneled = kept("Desk PC", now - day);
   const sealed = kept("Laptop", now - day, "view");
   const agents = kept("Filament agents on Box", now - 300 * day, "agent");
-  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, sealed.row, { ...agents.row, of: old.row.id }] }));
+  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, tunneled.row, sealed.row, { ...agents.row, of: old.row.id }] }));
   const shim = await startApp({ dataDir });
   try {
     const { port } = shim;
@@ -217,7 +218,11 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
     assert.equal((await ask(port, "/api/remote/me", { headers: { ...FAR, authorization: `Bearer ${agents.token}` } })).json.who, "device");
     // A Bearer is no cookie: none is sent; nor to this computer, which is let in as itself.
     assert.equal((await ask(port, "/ui/harness.html", { headers: { ...FAR, authorization: `Bearer ${fresh.token}` } })).headers["set-cookie"], undefined);
-    assert.equal((await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${fresh.token}` } })).headers["set-cookie"], undefined);
+    assert.equal((await ask(port, "/ui/harness.html")).headers["set-cookie"], undefined);
+    // (fails before: yes — s0b: through an SSH tunnel, on loopback, a device's page was this computer's, its cookie never
+    // sent again) A tunnel's browser is its device: its cookie sent again too.
+    const tunnel = await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${tunneled.token}` } });
+    assert.deepEqual(tunnel.headers["set-cookie"], [`filament_device=${tunneled.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
     // In use: its page sends its cookie again, under the name it came by, then not again that day.
     const plain = { ...FAR, cookie: `filament_device=${fresh.token}` };
     const first = await ask(port, "/ui/harness.html", { headers: plain });
@@ -236,6 +241,12 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
     const revokedOf = async (/** @type {string} */ name) => (await ask(port, "/api/remote/devices")).json.devices.find((/** @type {any} */ d) => d.name === name)?.revokedAt;
     assert.ok((await revokedOf("Old tablet")) > 0);
     assert.ok((await revokedOf("Filament agents on Box")) > 0, "its agents' device with it");
+    // (fails before: yes — the review of s0b: on loopback a device's Bearer that no longer verified was this computer
+    // itself, so another machine's agents through an SSH tunnel went on past their revoke)
+    assert.equal((await ask(port, "/api/state", { headers: { authorization: `Bearer ${agents.token}` } })).status, 403, "a revoked agents' device through a tunnel");
+    const lapsedHere = await ask(port, "/api/state", { headers: { authorization: `Bearer ${older.token}` } });
+    assert.deepEqual([lapsedHere.status, lapsedHere.json.lapsed], [403, true], "a lapsed one through a tunnel, said so");
+    assert.equal((await ask(port, "/api/state", { headers: { cookie: "filament_device=fdt_nobody" } })).status, 200, "another port's cookie: this computer still");
     assert.equal((await ask(port, "/api/remote/sign-out", { method: "POST", headers: { ...FAR, ...own, cookie: "filament_device=fdt_nobody" }, body: {} })).status, 403);
     // A browser whose pairing lapsed claims a new code: the device it replaces goes; another's stays.
     const code = (await ask(port, "/api/remote/pair", { method: "POST", body: { scope: "full" } })).json.code;

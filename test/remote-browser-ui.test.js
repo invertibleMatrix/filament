@@ -111,7 +111,7 @@ const bridge = (rows, o = {}) => {
 };
 
 const MAC = { id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null, browser: false, browserLink: "off", browserWords: null };
-const BOX = { id: "m-box", name: "Build box", on: false, kept: false, ready: false, words: "This app reaches Build box through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows.", browser: false, browserLink: "off", browserWords: null };
+const BOX = { id: "m-box", name: "Build box", on: false, kept: false, ready: false, words: "This app reaches Build box through a tunnel where it is no paired device: remove it from the machines list and add it again by its ssh:// address — Pair makes a code there over SSH —, and this switch moves.", browser: false, browserLink: "off", browserWords: null };
 
 test("each other machine's line with its Browser pill, off at first; a press sends it to the app, the outcome said and the link's state drawn; off again at a press", async () => {
   const b = bridge([MAC, BOX]);
@@ -148,8 +148,8 @@ test("where this app is no full device there — an SSH tunnel alone —: the pi
   const p = await open({ app: b.app });
   const box = pillOf(p.body, "Let Build box use this app's browser");
   assert.equal(box.attrs.disabled, "", "no way to switch it on");
-  assert.match(textOf(itemOf(p.body, "Build box")), /through an SSH tunnel alone, where it is no paired device/);
-  assert.match(box.attrs.title, /through an SSH tunnel alone/, "its title says why");
+  assert.match(textOf(itemOf(p.body, "Build box")), /through a tunnel where it is no paired device/);
+  assert.match(box.attrs.title, /through a tunnel where it is no paired device/, "its title says why");
   const mac = pillOf(p.body, "Let Mac mini use this app's browser");
   assert.equal(mac.attrs["aria-pressed"], "true");
   assert.equal(mac.attrs.disabled ?? null, null, "on: it always switches off");

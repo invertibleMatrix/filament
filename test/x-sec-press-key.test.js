@@ -440,7 +440,11 @@ describe("the press key, on one Filament", () => {
     const there = await create();
     await turn(there, "WRITE tunnel.txt");
     const [second] = await asks(there);
-    refused(await call(`${S(there)}/asks/${encodeURIComponent(second.id)}/answer`, { method: "POST", headers: { cookie: view.cookie }, body: { allow: true } }), "a view device's cookie");
+    // (fails before: yes, its words — s0b: through a tunnel a view device's cookie was this computer, refused the press;
+    // now it is that device, which reads alone)
+    const viewing = await call(`${S(there)}/asks/${encodeURIComponent(second.id)}/answer`, { method: "POST", headers: { cookie: view.cookie }, body: { allow: true } });
+    assert.equal(viewing.status, 403, viewing.text);
+    assert.match(String(viewing.json?.error), /^a view-only device reads;/, "a view device's cookie");
     const tunnel = await call(`${S(there)}/asks/${encodeURIComponent(second.id)}/answer`, { method: "POST", headers: { cookie: full.cookie }, body: { allow: true } });
     assert.equal(tunnel.status, 200, tunnel.text);
     assert.equal(existsSync(join(root, "tunnel.txt")), true);

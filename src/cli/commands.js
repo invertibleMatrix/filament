@@ -223,15 +223,36 @@ export const COMMANDS = [
   },
   {
     name: "open",
-    usage: "open [console]",
-    summary: "Open the harness in your browser (console: the Filament console)",
+    usage: "open [console] [--no-open]",
+    summary: "Open the harness in your browser, paired with this Filament by a one-time link (console: the Filament console)",
+    more: "Here, the link is the pairing page's with a code made for it (good for five minutes and one claim, on this computer or through an SSH tunnel to it alone): the browser that opens it is paired as this computer's own, then opens it. --no-open says the link instead, for a browser at an SSH tunnel's other end (ssh -L): open it at the tunnel's own address and port. While the Filament app runs, its tray's Open in browser does this; here the page opens unpaired. With --machine, the page there asks the browser for a code.",
     async run(r) {
       const { client } = await ready(r);
-      const url = r.words[0] === "console" ? `${client.url}/` : `${client.url}/ui/harness.html`;
-      r.out(url);
+      const toConsole = r.words[0] === "console";
+      const url = toConsole ? `${client.url}/` : `${client.url}/ui/harness.html`;
       // This command line's device is no browser's: the page there asks this browser to pair (the hunt of p1-cli).
-      if (client.remote) r.out(`This browser is not paired with ${client.remote.name}: the page asks for a code — Settings › Remote access there makes one (or run \`filament pair\` on ${client.remote.name}).`);
-      openPage(url, r.flags);
+      if (client.remote) {
+        r.out(url);
+        r.out(`This browser is not paired with ${client.remote.name}: the page asks for a code — Settings › Remote access there makes one (or run \`filament pair\` on ${client.remote.name}).`);
+        return void openPage(url, r.flags);
+      }
+      // This computer's own: a code made for the browser that opens the link, claimed on loopback alone, so its page
+      // names a pairing of its own (devices.js `here`).
+      /** @type {any} */
+      const p = await client.post("/remote/pair", { scope: "full", here: true }).catch((/** @type {any} */ e) => {
+        // While the desktop app holds its key, its window pairs a browser (its tray's Open in browser).
+        if (e?.body?.press) return null;
+        throw e;
+      });
+      if (!p?.code) {
+        r.out(url);
+        r.out("The Filament app runs here, and pairs a browser with its tray's Open in browser: this page opens unpaired.");
+        return void openPage(url, r.flags);
+      }
+      const link = `${client.url}/ui/pair.html#code=${encodeURIComponent(p.code)}${toConsole ? "&to=console" : ""}`;
+      r.out(link);
+      const mins = Math.max(1, Math.round((Number(p.expiresAt) - Date.now()) / 60_000));
+      if (!openPage(link, r.flags)) r.out(`A one-time link, good for ${mins} min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own address and port.`);
     },
   },
   {

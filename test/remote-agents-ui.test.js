@@ -688,7 +688,8 @@ const kept = (o = {}) => ({ id: "m-mac", name: "Mac mini", routes: [{ kind: "lan
 /**
  * The flow over a scripted machine: `pick` answers as the machine at its first route, or as no one where `answers` is off.
  * @param {import("node:test").TestContext} t @param {ReturnType<typeof scripted>} there
- * @param {{ machine?: Record<string, any>, answers?: boolean, ownName?: () => string }} [o]
+ * @param {{ machine?: Record<string, any>, answers?: boolean, ownName?: () => string, signedAt?: (origin: string) => boolean }} [o]
+ *   `signedAt`: whether the window's partition holds a sign-in at an address (every one, unless said)
  */
 const flowOver = (t, there, o = {}) => {
   const store = createMachines({ dataDir: folder(t) });
@@ -696,7 +697,7 @@ const flowOver = (t, there, o = {}) => {
   const picked = [];
   const flow = createMachineAgents({
     machines: () => [kept(o.machine)],
-    cookieOf: async (partition) => `__Host-filament_device=cookie-of-${partition}`,
+    cookieOf: async (partition, origin) => (!o.signedAt || o.signedAt(origin) ? `__Host-filament_device=cookie-of-${partition}` : ""),
     store,
     pick: async (m) => {
       picked.push(...m.routes.map((r) => String(r.url)));
@@ -829,7 +830,7 @@ test("the kept agents' device follows the way this window reaches its machine by
   assert.deepEqual(wayOf(), [["https://192.0.2.9:20343", PRINT, "d-agents-1"]]);
 });
 
-test("main's switch says what stands in the way, and moves nothing: no answer, the sign-in gone, view-only, a tailnet login, an SSH tunnel alone, disconnected; a mint refused; a command line's device kept beside it", async (t) => {
+test("main's switch says what stands in the way, and moves nothing: no answer, the sign-in gone, view-only, a tailnet login, a tunnel with no device there, disconnected; a mint refused; a command line's device kept beside it", async (t) => {
   const quiet = scripted();
   const none = await flowOver(t, quiet, { answers: false }).flow.set("m-mac", true);
   assert.deepEqual([none.ready, none.on, none.failed], [false, false, true]);
@@ -848,13 +849,29 @@ test("main's switch says what stands in the way, and moves nothing: no answer, t
   assert.match(String(tail.words), /by your tailnet login, not as a paired device/);
   for (const r of [gone, view, tail]) assert.equal(r.ready, false);
 
-  const ssh = flowOver(t, scripted(), { machine: { routes: [{ kind: "ssh", url: "http://127.0.0.1:41000", alias: "mac", port: 20300 }, { kind: "url", url: "http://localhost:20310" }] } });
-  const sshRow = (await ssh.flow.list())[0];
-  assert.match(String(sshRow.words), /through an SSH tunnel alone, where it is no paired device/);
-  assert.deepEqual(ssh.picked, [], "no way asked: none is https");
-  const mixed = flowOver(t, scripted(), { machine: { routes: [{ kind: "ssh", url: "http://127.0.0.1:41000", alias: "mac", port: 20300 }, { kind: "url", url: "https://mac.tail0.ts.net" }] } });
-  await mixed.flow.list();
-  assert.deepEqual(mixed.picked, ["https://mac.tail0.ts.net"], "the https way alone");
+  // (fails before: yes — s0b: an SSH tunnel was never taken, whether Add paired a device there over SSH or not)
+  const TUNNEL = { kind: "ssh", url: "http://127.0.0.1:41000", alias: "mac", port: 20300 };
+  const ssh = flowOver(t, scripted(), { machine: { routes: [TUNNEL] } });
+  assert.deepEqual((await ssh.flow.list())[0], { id: "m-mac", name: "Mac mini", on: false, models: false, full: false, kept: false, ready: true, words: null }, "its device there, through the tunnel");
+  assert.deepEqual(ssh.picked, ["http://127.0.0.1:41000"]);
+  assert.equal((await ssh.flow.set("m-mac", true)).on, true);
+  assert.deepEqual(ssh.store.list().map((r) => [r.url, r.fingerprint ?? null, r.device.scope]), [["http://127.0.0.1:41000", null, "agent"]], "its agents reach it at the tunnel's address");
+  /** A tunnel's answer of a Filament that takes the caller for this computer itself. @param {string[]} desk */
+  const asLocal = (desk) => scripted({ me: { status: 200, json: { who: "local", machine: { id: "m-mac", name: "Mac mini" }, pages: ["new"], desk } } });
+  /** No sign-in at the tunnel's address: Add kept it with no device there. @param {string} origin */
+  const unsigned = (origin) => !origin.startsWith("http://127.0.0.1");
+  const bare = (await flowOver(t, asLocal(["tunnel-device"]), { machine: { routes: [TUNNEL] }, signedAt: unsigned }).flow.list())[0];
+  assert.equal(bare.words, "This app reaches Mac mini through a tunnel where it is no paired device: remove it from the machines list and add it again by its ssh:// address — Pair makes a code there over SSH; where the Filament app runs there, by the link its Settings › Remote access shows —, and this switch moves.");
+  const before = (await flowOver(t, asLocal([]), { machine: { routes: [TUNNEL] } }).flow.list())[0];
+  assert.equal(before.words, "Filament on Mac mini takes this app through a tunnel for its own computer, never as a paired device: update it there (its ⋯ in the machines list), and this switch moves.");
+  // (fails before: yes — the review of s0b: a sign-in the tunnel's machine no longer knows read as quiet)
+  const lost = (await flowOver(t, asLocal(["tunnel-device"]), { machine: { routes: [TUNNEL] } }).flow.list())[0];
+  assert.match(String(lost.words), /^This app's sign-in on Mac mini is gone — revoked there, or signed out/);
+  // (fails before: yes — the review of s0b: a tunnel holding no sign-in was taken before an https way that holds one)
+  const mixed = flowOver(t, scripted(), { machine: { routes: [TUNNEL, { kind: "url", url: "https://mac.tail0.ts.net" }] }, signedAt: unsigned });
+  assert.deepEqual((await mixed.flow.list())[0].words, null);
+  assert.deepEqual(mixed.picked, ["https://mac.tail0.ts.net"], "the tunnel with no sign-in passed over");
+  for (const r of [bare, before, lost]) assert.equal(r.ready, false);
 
   const off = (await flowOver(t, scripted(), { machine: { off: true } }).flow.list())[0];
   assert.match(String(off.words), /disconnected in this window/);
@@ -992,8 +1009,8 @@ test("the new-chat menu's machines: one whose page opens no new chat at an addre
   const tunnel = scripted({ me: { status: 200, json: { who: "local", machine: { id: "m-mac", name: "Mac mini" }, pages: ["new"] } }, projects: { status: 200, json: { projects: [{ id: "p1", cwd: "/a", name: "a" }, { id: "p2", cwd: `/${"x".repeat(450)}`, name: "long" }] } } });
   const through = flowOver(t, tunnel, { machine: { routes: [{ kind: "ssh", url: "http://127.0.0.1:20391", alias: "mac" }] } });
   assert.deepEqual((await through.flow.projects())[0], { id: "m-mac", name: "Mac mini", projects: [{ cwd: "/a", name: "a" }], words: null }, "the long folder left out");
-  // Settings' switch still takes no tunnel.
-  assert.match(String((await through.flow.list())[0].words), /through an SSH tunnel alone/);
+  // Settings' switch takes a tunnel only where a device of this window's is paired there.
+  assert.match(String((await through.flow.list())[0].words), /takes this app through a tunnel for its own computer, never as a paired device/);
 
   const store = createMachines({ dataDir: folder(t) });
   const flow = createMachineAgents({

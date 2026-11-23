@@ -194,8 +194,8 @@ test("who is refused there's models over the network: an agents' device without 
     // MCP, a hook and the memory engine's door stay refused, the device's token or not.
     for (const path of ["/mcp/memory", "/hook/app/token", "/memory-engine/v1/messages", "/v1/embeddings"])
       assert.equal((await s.call(path, { body: {} })).status, 404, path);
-    // The grant on: let in. Then a device's token over plain http, from the network to the main port: its model
-    // endpoints take this machine's inbound keys alone. Over the listener's TLS, a header that says http says nothing.
+    // The grant on: let in. Then a device's token over plain http, from the network to the main port: refused there by
+    // the same door, which takes it over a sealed way alone. Over the listener's TLS, a header that says http says nothing.
     const set = await s.there.api(`/api/remote/devices/${encodeURIComponent(s.agents.device.id)}`, { method: "PATCH", body: { grants: { models: true } } });
     assert.equal(set.status, 200);
     assert.equal((await s.call("/v1/messages", { body })).status, 200, "its grant on");
@@ -208,7 +208,12 @@ test("who is refused there's models over the network: an agents' device without 
       r.on("error", reject);
       r.end(raw);
     });
-    assert.equal(plain, 401, "the main port over plain http: its token is no inbound key");
+    assert.equal(plain, 403, "the main port over plain http from the network: a device's token is taken over a sealed way alone");
+    // (fails before: yes — the review of s0b: a device's model call at a path with no /v1 went past the door on the main
+    // port, served as this computer's own client's)
+    const bare = await fetch(`http://127.0.0.1:${s.there.port}/messages`, { method: "POST", headers: { ...JSON_TYPE, authorization: `Bearer ${s.agents.token}` }, body: JSON.stringify(body) });
+    assert.equal(bare.status, 404);
+    assert.match(JSON.stringify(await bare.json()), /a device's model calls go to \/v1\/messages, \/v1\/chat\/completions, \/v1\/responses and \/v1\/models alone/);
     const viaProxy = await s.call("/v1/messages", { body, headers: { "x-forwarded-proto": "http", "x-forwarded-for": "192.168.1.20" } });
     assert.equal(viaProxy.status, 200, "over the listener's own TLS, a header says nothing of the way it came");
   } finally {

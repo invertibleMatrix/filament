@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
-import { addressOf, checkMachine, claimOutcome, claimScript, deviceNameHere, CLAIM_FROM } from "../desktop/lib/add-machine.js";
+import { addressOf, checkMachine, claimOutcome, claimScript, deviceNameHere, pairOverSsh, CLAIM_FROM, PAIR_MS, PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 
 const made = /** @type {string[]} */ ([]);
@@ -202,5 +202,29 @@ describe("the claim", () => {
     assert.match(/** @type {any} */ (claimOutcome({ status: 429, body: { retryAt: Date.now() + 90_000 } }, box)).words, /Too many wrong codes: try again in 2 min/);
     assert.match(/** @type {any} */ (claimOutcome(null, box)).words, /Workstation did not answer the claim/);
     assert.equal(deviceNameHere("BOX"), "Filament app on BOX");
+  });
+
+  // (fails before: yes — s0b: a machine added by ssh:// got no code: kept with no device there)
+  test("through SSH: filament pair made there by ssh's own sign-in, its code taken for that machine alone; why not, in words", async () => {
+    /** @type {any[]} */
+    const ran = [];
+    /** @param {any} answer */
+    const over = (answer) => /** @type {any} */ (async (/** @type {string} */ alias, /** @type {any} */ what, /** @type {any} */ o) => (ran.push([alias, what, o]), { code: 0, stdout: "", stderr: "", cut: false, why: null, ask: null, ...answer }));
+    const box = { id: "m-box", name: "Workstation" };
+    const paired = JSON.stringify({ code: "WXYZ-2345", scope: "full", machine: { id: "M-BOX", name: "Workstation" } });
+    assert.deepEqual(await pairOverSsh("box", box, { ssh: over({ stdout: paired }) }), { code: "WXYZ-2345" });
+    assert.deepEqual(ran[0], ["box", { script: PAIR_SCRIPT }, { timeoutMs: PAIR_MS }]);
+    // (fails before: yes — the review of s0b: a shell's start-up words before the JSON were read as no code)
+    const pretty = JSON.stringify(JSON.parse(paired), null, 2);
+    assert.deepEqual(await pairOverSsh("box", box, { ssh: over({ stdout: `Welcome to Ubuntu 24.04\n{ not json\n${pretty}\n` }) }), { code: "WXYZ-2345" });
+    assert.match(PAIR_SCRIPT, /\$HOME\/\.local\/bin\/filament.* pair --json$/, "install.sh's Filament first, else the PATH's: a full device, as JSON");
+    const other = JSON.stringify({ code: "WXYZ-2345", machine: { id: "m-other", name: "Studio" } });
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ stdout: other }) })).words, "filament pair on box made its code for another Filament there (Studio), not Workstation: nothing was claimed.");
+    const press = { code: 1, stderr: "filament pair: the Filament app runs here, and makes the code while it runs: in it, Settings › Remote access › Pair with a code › Make a code (HTTP 403)\n" };
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over(press) })).words, "the Filament app runs here, and makes the code while it runs: in it, Settings › Remote access › Pair with a code › Make a code (HTTP 403)");
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: null, ask: "host-key", why: "ssh does not know box's host key yet" }) })).words, "ssh box asks for its host key to be trusted: run ssh box in a terminal once, then add it again.");
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: null, ask: "sign-in" }) })).words, "ssh box asks for a password or a code: run ssh box in a terminal once, then add it again.");
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: 255, why: "ssh to box ended: Connection refused" }) })).words, "ssh to box ended: Connection refused");
+    assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: 127 }) })).words, "filament pair on box ended with code 127.");
   });
 });

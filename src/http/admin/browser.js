@@ -11,7 +11,7 @@
 // sign-in, and holds the pages of the chats it drives there until it goes, is revoked, or stops answering the pings.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
-import { countOwnerless, deviceCaller, endsWithDevice, hostAllowed, hostNameOf, isLocalCaller, safeEq, whoIs } from "../guards.js";
+import { countOwnerless, deviceCaller, deviceTokenOf, endsWithDevice, hostAllowed, hostNameOf, isLocalCaller, safeEq, whoIs } from "../guards.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
 import { HEADLESS, HERE, deviceHost } from "../../app/browser/host.js";
@@ -168,7 +168,9 @@ export function browserUpgrade(a) {
     if (!hostAllowed(req, server)) return refuse("host not allowed", 403);
     /** The viewer's device, for one that dials from another machine; null for this machine's app. @type {Extract<import("../guards.js").Caller, { kind: "device" }> | null} */
     let viewer = null;
-    if (isLocalCaller(req)) {
+    // Another machine's app through an SSH tunnel comes over loopback with its device's sign-in: that device's, as from
+    // afar (guards.js `whoIs`); this computer's own app sends none.
+    if (isLocalCaller(req) && !deviceTokenOf(req)) {
       // The app's link without this computer's owner key, counted as its calls are (guards.js `countOwnerless`).
       countOwnerless(req, whoIs(req, server, devices));
       const key = String(h.authorization || "").replace(/^bearer\s+/i, "");

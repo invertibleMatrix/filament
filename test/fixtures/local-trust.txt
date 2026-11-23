@@ -3,10 +3,10 @@ src/http/admin/config.js 3
 src/http/admin/files.js 1
 src/http/admin/mcp-servers.js 1
 src/http/admin/owner.js 1
-src/http/admin/remote.js 4
+src/http/admin/remote.js 5
 src/http/admin/system.js 2
 src/http/artifacts.js 2
-src/http/guards.js 5
+src/http/guards.js 6
 src/http/hooks.js 1
 src/http/memory-mcp.js 1
 src/http/watch-hooks.js 1

@@ -123,7 +123,7 @@ import { createAdminHandler } from "./http/admin/index.js";
 import { agentFileRefusal, agentFolderRefusal } from "./http/admin/remote.js";
 import { testUpstream } from "./app/upstream-test.js";
 import { createResponsesFrontDoor } from "./http/responses.js";
-import { LENT_IN_FLIGHT, createFrontDoor, lanDoor } from "./http/front-door.js";
+import { LENT_IN_FLIGHT, createFrontDoor, lanDoor, mainDoor } from "./http/front-door.js";
 import { createHookDoor } from "./http/hooks.js";
 import { artifactsDoor, artifactsListener, createArtifactsHandler, createPasses, passKeyIn } from "./http/artifacts.js";
 import { createFeeds } from "./services/artifact-feeds.js";
@@ -3513,7 +3513,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       machine,
       devices,
     });
-  const server = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, frontDoor);
+  // A model call sending a device's token — another machine's agents through an SSH tunnel — passes the network's door
+  // here too (front-door.js `mainDoor`).
+  const server = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, mainDoor(frontDoor, { devices }));
   // Three WebSockets: a desktop app's browser host (HarnessV4_Browser_Plan BR-D2; a viewer's app, b-remote), a page's
   // run follows (one socket a page, so its followed runs hold none of the browser's six connections to this host — and
   // the chats' browsers cast live to a page with no app of its own to show them, another machine's), and the terminal's

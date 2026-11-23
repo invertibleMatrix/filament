@@ -6,9 +6,9 @@
 // drawn natively over the Browser pane of that machine's harness in the window (main.js, lib/rail.js). The link is made
 // here, in Electron main: over a way where the machine's own id answers (`pickRoute`), its certificate pinned on the
 // network, with this window's sign-in there — the cookie its partition holds, a full device's (lib/rail.js's pairing put
-// it there) — never through an SSH tunnel, where the machine takes this computer for itself and no device is there. It
-// is made again a little later each time it drops, and stops as the switch goes off, the machine goes from the window or
-// is disconnected, or the machine refuses it (401, 403: revoked, signed out, a view-only device), said on its row. Each
+// it there) —, through an SSH tunnel too, where Add paired that device over SSH. It is made again a little later each
+// time it drops, and stops as the switch goes off, the machine goes from the window or is disconnected, or the machine
+// refuses it (401, 403: revoked, signed out, a view-only device), said on its row. Each
 // machine's pages are their own (`partitionFor`): signed in to nothing of the person's, never the app's own profile nor
 // this computer's agent browser's. Their localhost is that machine's (b-tunnel): their profile sends it to a proxy of
 // this app's own, which carries it over the link (lib/tunnel.js), so the agent there opens its own dev server as
@@ -289,9 +289,20 @@ export function createMachineBrowsers({ machines, cookieOf, keep, pagesFor, pick
     const m = k.machine;
     const turn = ++k.turn;
     const still = () => !k.stopped && k.turn === turn && held.get(m.id) === k;
-    const ways = m.routes.filter((r) => String(r.url ?? "").startsWith("https:"));
-    if (!ways.length) return refuse(k, `This app reaches ${m.name} through an SSH tunnel alone, where it is no paired device: turn on Reach this machine on my network or Share on my tailnet there, and add it again by the link it shows.`);
-    const picked = await pick({ ...m, routes: ways }).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
+    // A tunnel holding no sign-in of this window's is passed over while another way is kept: it would answer as no device.
+    const signed = await Promise.all(
+      m.routes.map(async (r) => {
+        if (r.kind !== "ssh") return true;
+        try {
+          return !!(await cookieOf(m.partition, new URL(String(r.url)).origin));
+        } catch {
+          return false;
+        }
+      }),
+    );
+    const ways = m.routes.filter((_, i) => signed[i]);
+    if (!still()) return;
+    const picked = await pick(ways.length ? { ...m, routes: ways } : m).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
     if (!still()) return;
     const route = picked.route;
     // One that answers on a wire this app does not speak says which side to update (machines.js `gapWords`).
@@ -299,13 +310,14 @@ export function createMachineBrowsers({ machines, cookieOf, keep, pagesFor, pick
     const origin = new URL(String(route.url)).origin;
     const cookie = await cookieOf(m.partition, origin).catch(() => "");
     if (!still()) return;
-    if (!cookie) return refuse(k, `This app holds no sign-in on ${m.name}: pair it again with Add a machine and a code from its Settings › Remote access.`);
+    if (!cookie)
+      return refuse(k, route.kind === "ssh" ? `This app holds no sign-in on ${m.name} through its SSH tunnel: remove it from the machines list and add it again by its ssh:// address — Pair makes a code there over SSH.` : `This app holds no sign-in on ${m.name}: pair it again with Add a machine and a code from its Settings › Remote access.`);
     let ended = false;
     try {
       /** @type {Socket | null} */
       let made = null;
       const sock = dial({
-        url: `${origin.replace(/^https:/, "wss:")}${LINK_PATH}`,
+        url: `${origin.replace(/^http/, "ws")}${LINK_PATH}`,
         headers: { cookie },
         pin: route.kind === "lan" ? String(/** @type {any} */ (route).fingerprint || "") : "",
         onOpen: () => {
