@@ -26,7 +26,7 @@ import { tools } from "../src/cli/service.js";
 import { here } from "../src/cli/update.js";
 import { SERVER_FEED, isNewer, serverAsset, serverTarball, shaIn } from "../src/services/updates.js";
 import { readStoreFile } from "../src/services/store-files.js";
-import { removeDirs } from "./helpers/wait.js";
+import { removeDirs, until } from "./helpers/wait.js";
 
 const WIN = process.platform === "win32";
 
@@ -37,8 +37,8 @@ const sha512Of = (body) => createHash("sha512").update(body).digest("base64");
  * systemctl --user, as the update's restart calls it: the unit's main pid, start, restart and stop. Each call is noted
  * in FAKE_SYSTEMD_CALLS; the state is in FAKE_SYSTEMD's file. A start runs the version FAKE_CURRENT points at, as
  * systemd starting current/bin/filament does — or the one its unit names whatever current says (`pinned`); a version
- * of `dead` ends as it starts, one of `mute` runs and answers nothing; `unsaid`: systemd cannot say its main process.
- * Written to a file as it is here, run by Node.
+ * of `dead` ends as it starts — its unit then starting it again (`active` activating) —, one of `mute` runs and
+ * answers nothing; `unsaid`: systemd cannot say its main process. Written to a file as it is here, run by Node.
  * @param {any} require
  */
 function fakeSystemctl(require) {
@@ -51,12 +51,14 @@ function fakeSystemctl(require) {
   const [user, verb, ...rest] = args;
   if (tool !== "systemctl" || user !== "--user") return void (process.exitCode = 1);
   if (verb === "show" && rest.join(" ") === "filament -p MainPID --value") return void (s.unsaid ? (process.exitCode = 1) : process.stdout.write(`${s.mainPid}\n`));
+  if (verb === "show" && rest.join(" ") === "filament -p MainPID -p ActiveState")
+    return void (s.unsaid ? (process.exitCode = 1) : process.stdout.write(`MainPID=${s.mainPid}\nActiveState=${s.active || (s.running ? "active" : "inactive")}\n`));
   if (verb === "start" || verb === "restart") {
     if (verb === "start" && s.running) return;
     const ran = s.pinned || path.basename(fs.realpathSync(String(process.env.FAKE_CURRENT)));
     const dead = (s.dead || []).includes(ran);
-    Object.assign(s, { running: !dead, mainPid: dead ? 0 : ++s.pids, ran, hung: (s.mute || []).includes(ran) });
-  } else if (verb === "stop") Object.assign(s, { running: false, mainPid: 0 });
+    Object.assign(s, { running: !dead, mainPid: dead ? 0 : ++s.pids, ran, hung: (s.mute || []).includes(ran), active: dead ? "activating" : "" });
+  } else if (verb === "stop") Object.assign(s, { running: false, mainPid: 0, active: "" });
   else return void (process.exitCode = 1);
   fs.writeFileSync(file, JSON.stringify(s));
 }
@@ -211,6 +213,7 @@ describe("filament update, on a server installed by install.sh", () => {
     await new Promise((done) => filament.close(() => done(null)));
     here.root = own.root;
     here.glibc = own.glibc;
+    here.idleMs = own.idleMs;
     await removeDirs(dir);
   });
 
@@ -595,6 +598,121 @@ describe("filament update, on a server installed by install.sh", () => {
     assert.equal(hand.code, EXIT.ok, hand.err);
     assert.match(hand.out, /Filament 1\.0\.0 runs at http:\/\/127\.0\.0\.1:\d+, started by hand: it runs 1\.2\.0 once it is started again — filament stop, then filament start\.$/);
     assert.deepEqual(calls(), []);
+  });
+
+  // (fails before: yes — s3d: an update another machine's desk asked for was refused while a turn ran there, and left
+  // the new version for whoever restarted it next, with no way back watching it)
+  test("--wait: the restart waits while a turn runs, asking again, said once — then runs the new one; with --force, refused", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0");
+    running({ busy: true });
+    here.idleMs = 20;
+    const asked = () => came.filter((c) => c.path === "/api/shutdown").length;
+    const going = run(["update", "--wait", "--json"]);
+    await until(() => asked() >= 3, "asked three times to stop once idle");
+    assert.equal(current(), "1.1.0", "installed: current points at it");
+    assert.equal(state().ran, "1.0.0", "the turn goes on, on the one it ran on");
+    set({ busy: false });
+    const done = await going;
+    assert.equal(done.code, EXIT.ok, `${done.out}\n${done.err}`);
+    const j = JSON.parse(done.out);
+    assert.deepEqual([j.result, j.version, j.restart, state().ran], ["updated", "1.1.0", "systemd", "1.1.0"]);
+    assert.deepEqual(
+      j.said.filter((/** @type {string} */ s) => /goes on while it works/.test(s)),
+      ["Filament 1.1.0 is installed, and current points at it; the Filament that runs (1.0.0) goes on while it works — not stopped: 1 turn running in “Fix the build” (HTTP 409): it restarts on 1.1.0 once nothing runs."],
+      "said once",
+    );
+    const both = await run(["update", "--wait", "--force"]);
+    assert.deepEqual([both.code, both.err], [EXIT.usage, "filament update: --force restarts it now, --wait once nothing runs: one or the other"]);
+  });
+
+  test("--wait: one restarted meanwhile on the new one is done; one that no longer runs runs it at its next start", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0");
+    running({ busy: true });
+    here.idleMs = 20;
+    const asked = () => came.filter((c) => c.path === "/api/shutdown").length;
+    let going = run(["update", "--wait", "--json"]);
+    await until(() => asked() >= 1, "asked to stop once idle");
+    // Someone restarted it: systemd runs the version current points at.
+    set({ busy: false, ran: "1.1.0", mainPid: 4343 });
+    let done = await going;
+    assert.equal(done.code, EXIT.ok, done.err);
+    assert.deepEqual([JSON.parse(done.out).restart, asked()], ["systemd", 1], "nothing asked of it again");
+    here.root = join(base, "1.1.0");
+    await release("1.2.0");
+    latest = "1.2.0";
+    running({ busy: true });
+    going = run(["update", "--wait", "--json"]);
+    await until(() => asked() >= 2, "asked to stop once idle");
+    set({ running: false, mainPid: 0 });
+    done = await going;
+    assert.equal(done.code, EXIT.ok, done.err);
+    const j = JSON.parse(done.out);
+    assert.equal(j.restart, "not-running");
+    assert.equal(j.said.at(-1), "No Filament answers now: it runs 1.2.0 at its next start.");
+  });
+
+  // (fails before: yes — the review of s3d: a start of systemd's own while --wait waited, of a version that never came
+  // up, was taken for none — exit 0 — or waited on for ever, and nothing went back)
+  test("--wait: systemd's own start meanwhile that ends as it starts goes back to the version before; the one that ran, silent all the while, goes on, said", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0");
+    running({ busy: true, dead: ["1.1.0"] });
+    here.idleMs = 300;
+    const up = tools.upMs;
+    tools.upMs = 1500;
+    try {
+      const asked = () => came.filter((c) => c.path === "/api/shutdown").length;
+      const going = run(["update", "--wait", "--json"]);
+      await until(() => asked() >= 1, "asked to stop once idle");
+      // It crashed: systemd starts current — 1.1.0 —, which ends as it starts, and starts it again and again.
+      set({ running: false, mainPid: 0, active: "activating", ran: "1.1.0" });
+      const done = await going;
+      assert.equal(done.code, EXIT.failed, done.out);
+      assert.equal(current(), "1.0.0", "current points back");
+      assert.equal(state().ran, "1.0.0", "and systemd runs it");
+      assert.match(done.err, /Filament 1\.1\.0 did not come up — systemd started Filament, and it ended as it started —, so current points at 1\.0\.0 again: Filament 1\.0\.0 runs again at http:\/\/127\.0\.0\.1:\d+, under systemd\. 1\.1\.0 is kept beside it/);
+      // Again: the one that runs goes silent as it waits, and stays so — said, as one that does not answer is.
+      running({ busy: true, dead: [] });
+      const again = run(["update", "--wait", "--json"]);
+      await until(() => asked() >= 2, "asked to stop once idle");
+      set({ hung: true });
+      const mute = await again;
+      assert.equal(mute.code, EXIT.failed, mute.out);
+      assert.equal(current(), "1.1.0", "installed: current points at it");
+      assert.match(mute.err, /Filament 1\.1\.0 is installed, and current points at it; systemd runs a Filament \(process 4242\) that did not answer at http:\/\/127\.0\.0\.1:\d+ within 1\.5 seconds, so it goes on — systemctl --user restart filament starts 1\.1\.0 now, and cuts what runs\.$/);
+    } finally {
+      tools.upMs = up;
+    }
+  });
+
+  // (fails before: yes — the review of s3d: asked again once a restart was refused, it said "nothing changed", and
+  // systemd ran the version before on)
+  test("the version current points at, asked again while systemd runs another: restarted on it; --check restarts nothing", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0", "1.1.0"], "1.1.0");
+    running({ ran: "1.0.0" });
+    const check = await run(["update", "--check", "--json"]);
+    assert.equal(check.code, EXIT.ok, check.err);
+    assert.equal(state().ran, "1.0.0", "a look restarts nothing");
+    const named = await run(["update", "--version", "1.1.0", "--json"]);
+    assert.equal(named.code, EXIT.ok, named.err);
+    const j = JSON.parse(named.out);
+    assert.deepEqual([j.result, j.from, j.version, j.restart, state().ran], ["restarted", "1.0.0", "1.1.0", "systemd", "1.1.0"]);
+    assert.equal(j.said[0], "Filament 1.1.0 is installed, and current points at it; the Filament that runs is 1.0.0: it restarts on 1.1.0.");
+    // The newest, none named: the same.
+    running({ ran: "1.0.0" });
+    const newest = await run(["update", "--json"]);
+    assert.equal(newest.code, EXIT.ok, newest.err);
+    assert.deepEqual([JSON.parse(newest.out).result, state().ran], ["restarted", "1.1.0"]);
+    // Where it runs it: nothing.
+    const same = await run(["update", "--version", "1.1.0", "--json"]);
+    assert.deepEqual(JSON.parse(same.out), { result: "installed", installed: "1.1.0" });
   });
 
   // (fails before: yes — a Filament systemd runs that did not answer was taken for none: "No Filament answers now",

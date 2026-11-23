@@ -1,0 +1,313 @@
+// @ts-check
+// Every machine's Filament updated from the desk (the remote desk's s3d): this Filament's own side — whether it updates
+// itself on request, the update started in a unit of systemd's own and how it went (cli/update.js `createSelfUpdate`,
+// http/admin/update.js) —, and the desk's — the route called over a machine's picked way with its sign-in, an SSH
+// command where its Filament has no such route (desktop/lib/update-there.js).
+import { test, describe, after } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+import { UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate } from "../src/cli/update.js";
+import { updateRoutes } from "../src/http/admin/update.js";
+import { SSH_UPDATE_MS, createUpdateThere } from "../desktop/lib/update-there.js";
+import { removeDirs } from "./helpers/wait.js";
+
+const WIN = process.platform === "win32";
+const made = /** @type {string[]} */ ([]);
+after(() => removeDirs(...made));
+
+/** A folder of its own, taken away after. */
+const folder = () => {
+  const d = mkdtempSync(join(tmpdir(), "filament-desk-update-"));
+  made.push(d);
+  return d;
+};
+
+/**
+ * Filament for servers as install.sh installs it: `<base>/<version>` with its build-info.json and launcher, `current`
+ * pointing at it. → its folder.
+ * @param {string} version
+ */
+function serverBuild(version) {
+  const base = join(folder(), "filament");
+  const dir = join(base, version);
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "build-info.json"), JSON.stringify({ kind: "server", version, target: "linux-x64", file: `filament-server-${version}-linux-x64.tar.gz`, engine: true, releases: { provider: "github", owner: "o", repo: "r" } }));
+  writeFileSync(join(dir, "bin", "filament"), "#!/bin/sh\n");
+  symlinkSync(WIN ? dir : version, join(base, "current"), "junction");
+  return dir;
+}
+
+/** A PATH with a `systemd-run` on it, for the time `fn` takes. @param {() => Promise<void>} fn */
+async function withSystemdRun(fn) {
+  const bin = folder();
+  writeFileSync(join(bin, "systemd-run"), "");
+  const was = process.env.PATH;
+  process.env.PATH = [bin, String(was || "")].join(delimiter);
+  try {
+    await fn();
+  } finally {
+    process.env.PATH = was;
+  }
+}
+
+/** systemd's tools as a test says: `systemd-run`'s exit and words, whether the unit runs. */
+function fakeRun() {
+  /** @type {[string, string[]][]} */
+  const ran = [];
+  const o = {
+    ran,
+    active: "inactive",
+    start: { code: 0, out: "", err: "" },
+    /** @param {string} name @param {string[]} args */
+    run: async (name, args) => {
+      ran.push([name, args]);
+      if (name === "systemctl") return { code: o.active === "active" ? 0 : 3, out: o.active, err: "" };
+      return o.start;
+    },
+  };
+  return o;
+}
+
+describe("this Filament updated on request", () => {
+  test("it can where it is a server build systemd runs, with systemd-run; else it says why, in words", async () => {
+    const dir = serverBuild("1.0.0");
+    const data = folder();
+    const f = fakeRun();
+    const mk = (/** @type {string | null} */ supervisor, root = dir) => createSelfUpdate({ dataDir: data, supervisor, root: () => root, run: f.run });
+    assert.match(String(mk("systemd", process.cwd()).can().why), /runs from a checkout/, "a checkout");
+    assert.deepEqual(mk(null).can(), { can: false, why: "Filament 1.0.0 here was started by hand, not by its systemd service: filament update there updates it (filament service install runs it under systemd).", version: "1.0.0" });
+    const was = process.env.PATH;
+    process.env.PATH = folder();
+    try {
+      const none = mk("systemd").can();
+      // A system folder of the computer running the tests may hold one.
+      if (!none.can) assert.equal(none.why, "There is no systemd-run on this machine's PATH to update Filament with: filament update there updates it.");
+    } finally {
+      process.env.PATH = was;
+    }
+    await withSystemdRun(async () => assert.deepEqual(mk("systemd").can(), { can: true, why: null, version: "1.0.0" }));
+  });
+
+  // (fails before: yes — s3d: nothing updated a machine's Filament but a person at its terminal)
+  test("an update started: filament update --wait --json run by systemd in a unit of its own, its answer kept for once it ends; one runs at a time", async () => {
+    const dir = serverBuild("1.0.0");
+    const data = folder();
+    const f = fakeRun();
+    let t = 1_000;
+    const u = createSelfUpdate({ dataDir: data, supervisor: "systemd", root: () => dir, run: f.run, now: () => t });
+    await withSystemdRun(async () => {
+      assert.deepEqual(await u.state(), { running: false, last: null });
+      assert.deepEqual(await u.start("v1.1.0"), { ok: true, version: "1.1.0" });
+      const [name, args] = /** @type {[string, string[]]} */ (f.ran.find(([n]) => n === "systemd-run"));
+      assert.equal(name, "systemd-run");
+      // The command line current points at: the version an update waiting to restart installed, where one did.
+      assert.deepEqual(args, ["--user", "--collect", "--quiet", `--unit=${UPDATE_UNIT}`, "--", "/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(data, "update", "last"), join(dirname(dir), "current", "bin", "filament"), "--data-dir", data, "update", "--version", "1.1.0", "--wait", "--json"]);
+      f.active = "active";
+      assert.deepEqual(await u.state(), { running: true, last: { version: "1.1.0", at: 1_000, code: null, report: null, words: "" } });
+      await assert.rejects(u.start("1.1.0"), { status: 409, message: "An update runs here already: it says how it went once it ends." });
+      // It ended: what it said, read as this Filament runs again.
+      f.active = "inactive";
+      writeFileSync(join(data, "update", "last.json"), JSON.stringify({ result: "updated", version: "1.1.0", restart: "systemd", said: [] }));
+      writeFileSync(join(data, "update", "last.code"), "0\n");
+      assert.deepEqual((await u.state()).last, { version: "1.1.0", at: 1_000, code: 0, report: { result: "updated", version: "1.1.0", restart: "systemd", said: [] }, words: "" });
+      // The newest, where none is named; the last one's answer let go as it starts.
+      t = 2_000;
+      f.ran.length = 0;
+      assert.deepEqual(await u.start(null), { ok: true, version: null });
+      assert.ok(!f.ran.find(([n]) => n === "systemd-run")?.[1].includes("--version"));
+      assert.deepEqual((await u.state()).last, { version: null, at: 2_000, code: null, report: null, words: "" });
+      // A failure's words, cut to their end.
+      writeFileSync(join(data, "update", "last.log"), `${"x".repeat(5000)}\nFilament 1.2.0 did not come up — so current points at 1.0.0 again.`);
+      writeFileSync(join(data, "update", "last.code"), "1");
+      const last = /** @type {any} */ ((await u.state()).last);
+      assert.equal(last.code, 1);
+      assert.match(last.words, /^….*so current points at 1\.0\.0 again\.$/s);
+      assert.equal(last.words.length, 4001);
+    });
+  });
+
+  test("refused in words: a version that is none, the one that runs, where it cannot, and a start systemd refused — nothing left behind", async () => {
+    const dir = serverBuild("1.0.0");
+    const data = folder();
+    const f = fakeRun();
+    const u = createSelfUpdate({ dataDir: data, supervisor: "systemd", root: () => dir, run: f.run });
+    await withSystemdRun(async () => {
+      await assert.rejects(u.start("1.2"), { status: 400, message: "version takes a release's version: 1.2.3" });
+      await assert.rejects(u.start("1.0.0"), { status: 409, message: "Filament 1.0.0 runs here already: nothing to update." });
+      f.start = { code: 1, out: "", err: "Failed to start transient service unit: Unit filament-update.service already exists.\nmore" };
+      await assert.rejects(u.start("1.1.0"), { status: 502, message: "systemd-run did not start the update: Failed to start transient service unit: Unit filament-update.service already exists." });
+      assert.equal(existsSync(join(data, "update", "last.started")), false, "nothing said started");
+    });
+    await assert.rejects(createSelfUpdate({ dataDir: data, supervisor: null, root: () => dir, run: f.run }).start("1.1.0"), { status: 409, message: /started by hand/ });
+    // Never to an older version than the one that runs.
+    await withSystemdRun(async () => assert.rejects(u.start("0.9.0"), { status: 409, message: "Filament 1.0.0 runs here, newer than 0.9.0: filament update --version 0.9.0 there goes back to it." }));
+  });
+
+  // (fails before: yes — the review of s3d: once current moved to the new version, the Filament still running the one
+  // before said it was no install, ran no update and said none ran)
+  test("while an update waits to restart — current moved to the new version —: it can still, says the update runs, and starts none beside it", async () => {
+    const dir = serverBuild("1.0.0");
+    const base = dirname(dir);
+    mkdirSync(join(base, "1.1.0", "bin"), { recursive: true });
+    writeFileSync(join(base, "1.1.0", "build-info.json"), JSON.stringify({ kind: "server", version: "1.1.0", target: "linux-x64", file: "filament-server-1.1.0-linux-x64.tar.gz", engine: true, releases: { provider: "github", owner: "o", repo: "r" } }));
+    unlinkSync(join(base, "current"));
+    symlinkSync(WIN ? join(base, "1.1.0") : "1.1.0", join(base, "current"), "junction");
+    const data = folder();
+    const f = fakeRun();
+    f.active = "active";
+    const u = createSelfUpdate({ dataDir: data, supervisor: "systemd", root: () => dir, run: f.run });
+    await withSystemdRun(async () => {
+      assert.deepEqual(u.can(), { can: true, why: null, version: "1.0.0" });
+      assert.equal((await u.state()).running, true);
+      await assert.rejects(u.start("1.1.0"), { status: 409, message: "An update runs here already: it says how it went once it ends." });
+      assert.equal(f.ran.filter(([n]) => n === "systemd-run").length, 0);
+    });
+    // A folder beside it that is no server build is not taken for its install.
+    rmSync(join(base, "1.1.0", "build-info.json"));
+    assert.match(String(u.can().why), /is not where install\.sh installs it/);
+  });
+
+  test("what the unit runs keeps the update's lines, its words and its exit code beside the name it is given", { skip: spawnSync("sh", ["-c", "true"]).status !== 0 && "no sh here" }, () => {
+    const at = join(folder(), "last");
+    const p = spawnSync("sh", ["-c", UPDATE_SCRIPT, "sh", at, process.execPath, "-e", "console.log('{\"result\":\"updated\"}'); console.error('said'); process.exit(3)"], { encoding: "utf8" });
+    assert.equal(p.status, 0);
+    assert.deepEqual([readFileSync(`${at}.json`, "utf8"), readFileSync(`${at}.log`, "utf8"), readFileSync(`${at}.code`, "utf8").trim()], ['{"result":"updated"}\n', "said\n", "3"]);
+  });
+
+  test("its rows: GET says whether it can and how the last went; POST starts one, 202, or says why not", async () => {
+    /** A row's answer to a request. @param {any} a @param {string} method @param {any} [body] */
+    const call = async (a, method, body) => {
+      const row = updateRoutes(a).find((x) => x[0] === method && x[1] === "/update");
+      /** @type {{ status: number, body: any }} */
+      const got = { status: 0, body: null };
+      const res = { writableEnded: false, destroyed: false, writeHead: (/** @type {number} */ s) => void (got.status = s), end: (/** @type {string} */ b) => void (got.body = JSON.parse(b)) };
+      await /** @type {any} */ (row)[2]({ res, json: async () => body ?? null });
+      return got;
+    };
+    assert.deepEqual(await call({}, "GET"), { status: 200, body: { can: false, why: "This Filament does not update itself on request: filament update there updates it.", version: null, running: false, last: null } });
+    assert.deepEqual(await call({}, "POST", { version: "1.1.0" }), { status: 409, body: { error: "This Filament does not update itself on request: filament update there updates it." } });
+    /** @type {any[]} */
+    const asked = [];
+    const selfUpdate = {
+      can: () => ({ can: true, why: null, version: "1.0.0" }),
+      state: async () => ({ running: false, last: null }),
+      start: async (/** @type {any} */ v) => {
+        asked.push(v);
+        if (v === "9.9.9") throw Object.assign(new Error("no such release"), { status: 409 });
+        return { ok: true, version: v };
+      },
+    };
+    assert.deepEqual(await call({ selfUpdate }, "GET"), { status: 200, body: { can: true, why: null, version: "1.0.0", running: false, last: null } });
+    assert.deepEqual(await call({ selfUpdate }, "POST", { version: "1.1.0" }), { status: 202, body: { ok: true, version: "1.1.0" } });
+    assert.deepEqual(await call({ selfUpdate }, "POST", {}), { status: 202, body: { ok: true, version: null } });
+    assert.deepEqual(await call({ selfUpdate }, "POST", { version: "9.9.9" }), { status: 409, body: { error: "no such release" } });
+    assert.deepEqual(asked, ["1.1.0", null, "9.9.9"]);
+  });
+});
+
+describe("another machine's Filament updated from the desk", () => {
+  const WAY = { kind: "url", url: "https://box.tail1234.ts.net" };
+  const SSH = { kind: "ssh", url: "http://127.0.0.1:41234", alias: "me@box", port: 20300 };
+  /** @param {any[]} [routes] */
+  const box = (routes = [WAY]) => /** @type {any} */ ({ id: "m-box", name: "Workstation", routes, partition: "persist:machine-m-box", addedAt: 0 });
+  /**
+   * The desk's update over fakes: the way picked (`picked`), what the route answers (`answer`: its status and body, or
+   * a throw), what SSH does. @param {{ picked?: any, answer?: { status: number, body: any } | Error, run?: any }} o
+   */
+  function desk({ picked = { route: WAY, version: "0.9.0", tried: [] }, answer = { status: 200, body: {} }, run = { code: 0, stdout: "", stderr: "" } } = {}) {
+    /** @type {any[]} */
+    const calls = [];
+    /** @type {any[]} */
+    const ssh = [];
+    /** @type {any[]} */
+    const cookies = [];
+    const u = createUpdateThere({
+      pick: async () => picked,
+      cookieOf: async (p, origin) => (cookies.push([p, origin]), "__Host-filament_device=d1"),
+      fetchOf: (route) =>
+        /** @type {any} */ (
+          async (/** @type {string} */ url, /** @type {any} */ init) => {
+            calls.push({ via: route.url, url, method: init.method, headers: init.headers, body: init.body ?? null, redirect: init.redirect });
+            if (answer instanceof Error) throw answer;
+            return { status: answer.status, json: async () => answer.body };
+          }
+        ),
+      ssh: /** @type {any} */ (async (/** @type {string} */ alias, /** @type {any} */ what, /** @type {any} */ o) => (ssh.push([alias, what, o]), run)),
+    });
+    return { u, calls, ssh, cookies };
+  }
+  const LOOK = { can: true, why: null, version: "0.9.0", running: false, last: null };
+
+  // (fails before: yes — s3d: nothing here updated another machine's Filament)
+  test("asked of its own Filament at the way picked, with the sign-in its partition holds, nothing followed elsewhere", async () => {
+    const d = desk({ answer: { status: 200, body: LOOK } });
+    assert.deepEqual(await d.u.look(box()), LOOK);
+    d.calls.length = 0;
+    const s = desk({ answer: { status: 202, body: { ok: true, version: "1.0.0" } } });
+    assert.deepEqual(await s.u.start(box(), "1.0.0"), { ok: true, version: "1.0.0" });
+    assert.deepEqual(s.calls, [
+      {
+        via: WAY.url,
+        url: "https://box.tail1234.ts.net/api/update",
+        method: "POST",
+        headers: { "x-filament-ui": "1", cookie: "__Host-filament_device=d1", "content-type": "application/json" },
+        body: '{"version":"1.0.0"}',
+        redirect: "manual",
+      },
+    ]);
+    assert.deepEqual(s.cookies, [["persist:machine-m-box", "https://box.tail1234.ts.net"]]);
+    // One on a wire this app does not speak: the update is how it comes to, so its way is taken all the same.
+    const gap = desk({ picked: { route: null, version: "0.9.0", tried: [{ why: "too old" }], update: { side: "there", route: WAY } }, answer: { status: 202, body: { ok: true, version: "1.0.0" } } });
+    assert.deepEqual(await gap.u.start(box(), "1.0.0"), { ok: true, version: "1.0.0" });
+    assert.equal(gap.calls[0].url, "https://box.tail1234.ts.net/api/update");
+  });
+
+  test("refused in words: a version that is none, no way that answers, its own refusal, a sign-in it does not take, no answer", async () => {
+    assert.deepEqual(await desk().u.start(box(), "latest"), { ok: false, words: "latest is no release's version." });
+    const none = desk({ picked: { route: null, version: null, tried: [{ why: "nothing listens" }] } });
+    assert.deepEqual(await none.u.start(box(), "1.0.0"), { ok: false, words: "Workstation does not answer: nothing listens." });
+    assert.deepEqual(await none.u.look(box()), { words: "Workstation does not answer: nothing listens." });
+    assert.deepEqual(none.calls, [], "nothing asked");
+    const busy = desk({ answer: { status: 409, body: { error: "An update runs here already: it says how it went once it ends." } } });
+    assert.deepEqual(await busy.u.start(box(), "1.0.0"), { ok: false, words: "An update runs here already: it says how it went once it ends." });
+    const out = desk({ answer: { status: 401, body: { error: "sign in" } } });
+    assert.match(String(/** @type {any} */ (await out.u.start(box(), "1.0.0")).words), /^Workstation did not let this window in \(HTTP 401\): pair it again/);
+    // Never to the version it runs, nor an older one: nothing asked of it.
+    const same = desk({ picked: { route: WAY, version: "1.0.0", tried: [] } });
+    assert.deepEqual(await same.u.start(box(), "1.0.0"), { ok: false, words: "Workstation runs Filament 1.0.0 already." });
+    const newer = desk({ picked: { route: WAY, version: "1.1.0", tried: [] } });
+    assert.deepEqual(await newer.u.start(box(), "1.0.0"), { ok: false, words: "Workstation runs Filament 1.1.0, newer than 1.0.0: nothing to update." });
+    assert.deepEqual([...same.calls, ...newer.calls], []);
+    const cut = desk({ answer: new Error("socket hang up") });
+    assert.deepEqual(await cut.u.start(box(), "1.0.0"), { ok: false, words: "Workstation did not answer (socket hang up)" });
+    assert.deepEqual(await cut.u.look(box()), { words: "Workstation did not answer (socket hang up)" });
+  });
+
+  test("a Filament from before the route: updated over SSH where it is kept with an SSH way, else told to be in words", async () => {
+    const old = { status: 404, body: { error: "not found" } };
+    const bare = desk({ answer: old });
+    assert.deepEqual(await bare.u.look(box()), { can: false, why: "Workstation's Filament (0.9.0) is from before updates from this app: filament update there updates it.", version: "0.9.0", running: false, last: null, old: true });
+    assert.deepEqual(await bare.u.start(box(), "1.0.0"), { ok: false, words: "Workstation's Filament (0.9.0) is from before updates from this app: filament update there updates it." });
+    assert.deepEqual(bare.ssh, []);
+    const said = (/** @type {any} */ report) => ({ code: 0, stdout: JSON.stringify({ ...report, said: [] }, null, 2), stderr: "" });
+    const over = desk({ answer: old, run: said({ result: "updated", version: "1.0.0", restart: "systemd" }) });
+    assert.equal(/** @type {any} */ (await over.u.look(box([WAY, SSH]))).can, true);
+    assert.deepEqual(await over.u.start(box([WAY, SSH]), "1.0.0"), { ok: true, version: "1.0.0", ssh: true });
+    assert.deepEqual(over.ssh, [["me@box", { script: 'exec "$HOME/.local/bin/filament" update --version 1.0.0 --json' }, { timeoutMs: SSH_UPDATE_MS }]]);
+    // (the review of s3d) Done only once systemd's Filament restarted on it: installed and not restarted on, said as it stands.
+    const stands = async (/** @type {any} */ report) => desk({ answer: old, run: said(report) }).u.start(box([WAY, SSH]), "1.0.0");
+    assert.deepEqual(await stands({ result: "installed", installed: "1.0.0" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on: filament restart there starts it." });
+    assert.deepEqual(await stands({ result: "updated", restart: "not-running" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, where no Filament runs now: it runs 1.0.0 at its next start." });
+    assert.deepEqual(await stands({ result: "updated", restart: "by-hand" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, whose Filament was started by hand: it runs 1.0.0 once it is started again there." });
+    // Its ways of failing, each in words: a turn runs there, ssh asks what only the person can answer, its own words.
+    const busy = desk({ answer: old, run: { code: 5, stdout: "", stderr: "…" } });
+    assert.deepEqual(await busy.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on while a turn runs there: Update again once it ends restarts it on 1.0.0." });
+    const key = desk({ answer: old, run: { code: 255, stdout: "", stderr: "", ask: "host-key", why: "ssh does not know me@box's host key" } });
+    assert.deepEqual(await key.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, words: "ssh me@box asks for its host key to be trusted: run filament update there in a terminal (ssh me@box)." });
+    const failed = desk({ answer: old, run: { code: 1, stdout: "", stderr: "Downloading…\nGitHub was not reached (ENOTFOUND): nothing changed.\n" } });
+    assert.deepEqual(await failed.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, words: "GitHub was not reached (ENOTFOUND): nothing changed." });
+  });
+});

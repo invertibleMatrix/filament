@@ -8,6 +8,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appDataDir, createConfigStore, hostAndPort, isCheckout, selfAddress } from "./services/config/store.js";
 import { removeListening, writeListening } from "./cli/listening.js";
+import { createSelfUpdate } from "./cli/update.js";
 import { contextWindowForModel, findUpstream, aggregateModels } from "./core/routing.js";
 import { priceCard } from "./core/pricing.js";
 import { placeOfName } from "./core/model-caps.js";
@@ -294,6 +295,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     log("warn", `[copies] FILAMENT_COPIES_DIR names a drive's root or a home folder, which a Clear would empty: copies are kept in ${remoteCopies.root}`);
   // The machines it is paired with as a device, where its agents send work (services/machines, the remote-agents plan).
   const machines = createMachines({ dataDir });
+  // This Filament updated on the person's word from another machine's desktop app (the remote desk's s3d): where it is a
+  // server build systemd runs, `filament update --wait` in a unit of systemd's own (cli/update.js).
+  const selfUpdate = createSelfUpdate({ dataDir, supervisor });
   // Run on (the remote desk's s2b): a folder of the person's sent to one of those machines for a chat of theirs, and
   // what it changed brought back (app/remote-work.js), over this Filament's agents' device there. Its whole repository
   // goes and comes back, so that is judged as a chat's folder is; and a bring back writes in the repository's turn,
@@ -3309,6 +3313,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     remoteCopies,
     transfers,
     remoteWork,
+    selfUpdate,
     cfgForModels,
     discover,
     catalogue: catalogueNow,

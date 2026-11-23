@@ -48,8 +48,11 @@ contextBridge.exposeInMainWorld("filamentMachines", {
   full: (route) => ipcRenderer.send("filament:machines-full", String(route ?? "").slice(0, 2000)),
   /** A key of This computer's list pressed in the chat shown alone, by its shortcut's id (chat-only.js `DESK_KEYS`): its page runs it. @param {string} id */
   deskKey: (id) => ipcRenderer.send("filament:machines-key", String(id ?? "").slice(0, 40)),
-  /** The app's update page's act (lib/rail.js `updatePage`): Open its page, or Update this app. */
-  update: () => ipcRenderer.send("filament:machines-update"),
+  /**
+   * The app's update page's acts (lib/rail.js `updatePage`): Open its page, or Update this app; `install`, Update
+   * Filament on it. @param {string} [how]
+   */
+  update: (how) => ipcRenderer.send("filament:machines-update", ...(how === "install" ? ["install"] : [])),
 });
 
 contextBridge.exposeInMainWorld("filamentBrowser", {

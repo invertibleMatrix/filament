@@ -370,7 +370,7 @@ async function upOf(r, dataDir) {
 }
 
 /** What a Filament systemd started did, where it did not come up: ended as it started, or no answer in a minute. @param {boolean} ended */
-const upWords = (ended) => (ended ? "systemd started Filament, and it ended as it started" : "systemd started Filament, and it did not answer within a minute");
+export const upWords = (ended) => (ended ? "systemd started Filament, and it ended as it started" : "systemd started Filament, and it did not answer within a minute");
 
 /**
  * A start or restart whose Filament did not come up, refused in words; the unit stays as it is — systemd starts one that

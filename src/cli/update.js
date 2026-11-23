@@ -6,7 +6,9 @@
 // arm64), checked by the SHA-512 that machine's latest-server*.yml gives, unpacked beside the version that runs and
 // renamed into place, then `current` moved to it in one rename.
 // systemd's Filament restarts on it once no turn runs (filament restart's own way: --force does not wait, and restarts
-// one that does not answer too); one started by hand is told to start again. The version before is kept, and --back
+// one that does not answer too; --wait asks again until nothing runs, where it would be refused, and watches a start of
+// systemd's own meanwhile as a restart's); one started by hand is told to start again. The version current points at
+// already, where systemd runs another — its restart refused before —, is restarted on. The version before is kept, and --back
 // points current at it again; older ones are removed, as install.sh removes them — one that cannot be is said. Nothing
 // is half done: a download, a checksum, a glibc or an unpack that fails leaves current and the versions as they were,
 // and the folder it worked in goes. A version systemd starts that does not come up is left for the one before: current
@@ -14,7 +16,7 @@
 // another wrote, the update says which stores' files it does not read and what it does with them (`sayUnread`). A
 // checkout updates with git pull; the Filament app updates itself.
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isCheckout } from "../services/config/store.js";
@@ -23,7 +25,8 @@ import { fetchInstaller, isNewer, lookForUpdate, serverAsset, serverTarball } fr
 import { CliError, EXIT, clientAt, connect, whereFilament } from "./client.js";
 import { processRuns } from "./listening.js";
 import { ownerHeaders } from "../services/owner.js";
-import { UNIT, onPath, runTool, underSystemd } from "./service.js";
+import { UNIT, onPath, runTool, tools, underSystemd, upWords } from "./service.js";
+import { pause } from "./flows.js";
 
 /** The file at a server build's top that says what it is (scripts/dist-server.mjs MARKER). */
 const MARKER = "build-info.json";
@@ -48,10 +51,11 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 /**
  * What the update reads of this machine and of the Filament it runs from — a test's stand-ins: `root` this Filament's
- * folder, `glibc` this machine's, `fetch` how the releases are asked.
- * @type {{ root: string, glibc: () => string | null, fetch: typeof fetch }}
+ * folder, `glibc` this machine's, `fetch` how the releases are asked, `idleMs` how often a restart that waits (--wait)
+ * asks again whether nothing runs.
+ * @type {{ root: string, glibc: () => string | null, fetch: typeof fetch, idleMs: number }}
  */
-export const here = { root: ROOT, glibc: glibcHere, fetch: (url, init) => fetch(url, init) };
+export const here = { root: ROOT, glibc: glibcHere, fetch: (url, init) => fetch(url, init), idleMs: 5000 };
 
 /**
  * This machine's glibc as major.minor, read as install.sh reads it: getconf, else ldd's first line; null where the C
@@ -123,11 +127,12 @@ const builtFrom = (dir, name) => !isLink(dir) && buildOf(dir)?.file === name && 
 /**
  * The install this Filament is: its version's folder, the folder of its versions (`base`), its version, its kind, the
  * machine its build is for and the repository its releases are in. Refused in words where it is none install.sh
- * installed.
- * @param {string} root
+ * installed. `moved`: current may point at another server build of its versions — an update's, which this Filament
+ * restarts on once no turn runs (`createSelfUpdate`).
+ * @param {string} root @param {{ moved?: boolean }} [o]
  * @returns {{ dir: string, base: string, version: string, engine: boolean, target: string, owner: string, repo: string }}
  */
-function installOf(root) {
+function installOf(root, { moved = false } = {}) {
   const dir = resolve(root);
   const build = buildOf(dir);
   if (build?.kind !== "server") {
@@ -140,7 +145,9 @@ function installOf(root) {
   const named = build.releases?.provider === "github" && /^[\w.-]+$/.test(owner) && /^[\w.-]+$/.test(repo);
   const base = dirname(dir),
     version = basename(dir);
-  if (build.version !== version || !isLink(join(base, "current")) || realOf(join(base, "current")) !== realOf(dir))
+  const at = isLink(join(base, "current")) ? realOf(join(base, "current")) : null;
+  const ours = !!at && (at === realOf(dir) || (moved && dirname(at) === realOf(base) && buildOf(at)?.kind === "server"));
+  if (build.version !== version || !ours)
     throw new CliError(
       `This Filament for servers (${dir}) is not where install.sh installs it — a version's folder, with current beside it pointing at it: install.sh installs one (curl -fsSL https://github.com/${named ? `${owner}/${repo}` : "invertibleMatrix/filament"}/releases/latest/download/install.sh | sh), which filament update then updates.`,
       EXIT.failed,
@@ -483,13 +490,40 @@ async function restartOn(r, { base, version, from }, say) {
     return "systemd";
   }
   if (client.state?.supervisor === "systemd") {
-    try {
-      await restart(client);
-    } catch (/** @type {any} */ e) {
-      if (e?.code !== EXIT.busy) throw e;
-      throw new CliError(`Filament ${version} is installed, and current points at it; the Filament that runs (${client.version}) goes on — ${e.message}. filament restart starts ${version} once no turn runs (--force restarts it now, and cuts what runs).`, EXIT.busy);
+    /** The Filament asked to stop once idle: the one that answered last. */
+    let runs = client;
+    /** Its process, as systemd said it once it refused (--wait): a start of systemd's own is another. */
+    let old = 0;
+    for (let told = false; ; ) {
+      try {
+        await restart(runs);
+        return "systemd";
+      } catch (/** @type {any} */ e) {
+        if (e?.code !== EXIT.busy) throw e;
+        if (r.flags.wait !== true)
+          throw new CliError(`Filament ${version} is installed, and current points at it; the Filament that runs (${runs.version}) goes on — ${e.message}. filament restart starts ${version} once no turn runs (--force restarts it now, and cuts what runs).`, EXIT.busy);
+        // --wait: asked again every `here.idleMs`, said once, until nothing runs.
+        if (!told) say(`Filament ${version} is installed, and current points at it; the Filament that runs (${runs.version}) goes on while it works — ${e.message}: it restarts on ${version} once nothing runs.`);
+        told = true;
+        old = await unitPid(r.signal);
+      }
+      await pause(here.idleMs, r.signal);
+      /** @type {import("./client.js").Client | "not-running" | null} */
+      let now = null;
+      try {
+        now = await connect(r.dataDir, { timeoutMs: ANSWER_MS, signal: r.signal });
+      } catch (/** @type {any} */ e) {
+        if (e?.code === EXIT.interrupted) throw e;
+      }
+      now ??= await cameBack(r, { base, version, from }, old);
+      if (now === "not-running") {
+        say(`No Filament answers now: it runs ${version} at its next start.`);
+        return "not-running";
+      }
+      // Started again meanwhile — systemd's, after a crash or someone's restart — on the version current points at.
+      if (now.version === version) return "systemd";
+      runs = now;
     }
-    return "systemd";
   }
   say(`Filament ${client.version} runs at ${client.url}, started by hand: it runs ${version} once it is started again — filament stop, then filament start.`);
   return "by-hand";
@@ -519,6 +553,53 @@ async function goBack(r, { base, version, from }, why) {
   return new CliError(`${tried} so current points at ${from} again: ${ran} ${version} is kept beside it (${join(base, version)}) — filament service status shows its log.`, EXIT.failed);
 }
 
+/**
+ * The unit's main process (0: none) and systemd's word on it — `ActiveState`: active; activating while it starts again
+ * after one ended; failed once it ended too often; inactive once stopped; "" where systemd cannot say.
+ * @param {AbortSignal} [signal] @returns {Promise<{ pid: number, active: string }>}
+ */
+async function unitNow(signal) {
+  if (!onPath("systemctl")) return { pid: 0, active: "" };
+  const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "-p", "ActiveState"], signal);
+  if (p.code !== 0) return { pid: 0, active: "" };
+  const v = Object.fromEntries(p.out.split("\n").map((l) => /** @type {[string, string]} */ (l.trim().split("=", 2))));
+  return { pid: Number(v.MainPID) || 0, active: String(v.ActiveState || "") };
+}
+
+/**
+ * --wait, where no Filament answered while it waited: systemd's unit watched for up to `tools.upMs`, as a restart's
+ * Filament is (service.js `upOf`). One that answers is handed back; one stopped is "not-running", which runs `version`
+ * at its next start. A start of systemd's own meanwhile — `version`, which current points at, after the one that ran
+ * ended or was restarted — that ended as it started, or ran and did not answer in that time, is left for `from`
+ * (`goBack`); the one that ran (`old`), silent all that time, goes on, said as one that does not answer is.
+ * @param {import("./commands.js").Run} r @param {{ base: string, version: string, from: string }} to @param {number} old
+ * @returns {Promise<import("./client.js").Client | "not-running">}
+ */
+async function cameBack(r, to, old) {
+  let started = 0;
+  let pid = 0;
+  for (const end = Date.now() + tools.upMs; Date.now() < end; ) {
+    try {
+      const c = await connect(r.dataDir, { timeoutMs: ANSWER_MS, signal: r.signal });
+      if (c.state?.supervisor === "systemd") return c;
+    } catch (/** @type {any} */ e) {
+      if (e?.code === EXIT.interrupted || r.signal?.aborted) throw e;
+    }
+    const u = await unitNow(r.signal);
+    pid = u.pid;
+    if (u.active === "failed") throw await goBack(r, to, upWords(true));
+    if (!pid && (u.active === "inactive" || !u.active)) return "not-running";
+    if (pid && pid !== old && !started) started = pid;
+    else if (started && pid !== started) throw await goBack(r, to, upWords(true));
+    await pause(500, r.signal);
+  }
+  if (started || !pid) throw await goBack(r, to, upWords(!pid));
+  throw new CliError(
+    `Filament ${to.version} is installed, and current points at it; systemd runs a Filament (process ${pid}) that did not answer at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, so it goes on — systemctl --user restart ${UNIT} starts ${to.version} now, and cuts what runs.`,
+    EXIT.failed,
+  );
+}
+
 /** The version kept beside `version` to go back to: the newest other version's folder holding a server build. @param {string} base @param {string} version */
 function keptOf(base, version) {
   const kept = readdirSync(base).filter((n) => n !== version && isVersion(n) && !isLink(join(base, n)) && buildOf(join(base, n))?.kind === "server" && existsSync(join(base, n, "bin", "filament")));
@@ -536,7 +617,7 @@ function pointAt(base, to, from) {
 }
 
 /**
- * `filament update [--check | --version <v> | --back] [--force] [--json]`.
+ * `filament update [--check | --version <v> | --back] [--force | --wait] [--json]`.
  * @param {import("./commands.js").Run} r @returns {Promise<number | void>}
  */
 export async function runUpdate(r) {
@@ -554,7 +635,8 @@ export async function runUpdate(r) {
 /** `filament update`'s work, its lines kept in `said` where --json asks. @param {import("./commands.js").Run} r @param {string[]} said @returns {Promise<number | void>} */
 async function updating(r, said) {
   if (r.flags.machine || r.flags.url) throw new CliError("update runs on the machine Filament runs on: run it there (ssh <machine> filament update)", EXIT.usage);
-  if (r.words.length) throw new CliError("usage: filament update [--check | --version <v> | --back] [--force]", EXIT.usage);
+  if (r.words.length) throw new CliError("usage: filament update [--check | --version <v> | --back] [--force | --wait]", EXIT.usage);
+  if (r.flags.force !== undefined && r.flags.wait !== undefined) throw new CliError("--force restarts it now, --wait once nothing runs: one or the other", EXIT.usage);
   const named = r.flags.version;
   const asked = typeof named === "string" ? named.replace(/^v/, "") : "";
   if (named !== undefined && !VERSION.test(asked)) throw new CliError("--version takes a release's version: --version 1.2.3", EXIT.usage);
@@ -576,7 +658,27 @@ async function updating(r, said) {
     return report({ result: "back", from: installed, version: to, dir: join(base, to), kept: installed, removed, restart });
   }
 
+  /**
+   * The version current points at, where systemd runs another — an update whose restart was refused, or let go —:
+   * restarted on it, as an update's restart is. → whether it was.
+   */
+  const catchUp = async () => {
+    /** @type {import("./client.js").Client | null} */
+    let runs = null;
+    try {
+      runs = await connect(r.dataDir, { timeoutMs: ANSWER_MS, signal: r.signal });
+    } catch (/** @type {any} */ e) {
+      if (e?.code === EXIT.interrupted) throw e;
+    }
+    if (!runs || runs.state?.supervisor !== "systemd" || !runs.version || runs.version === installed) return false;
+    say(`Filament ${installed} is installed, and current points at it; the Filament that runs is ${runs.version}: it restarts on ${installed}.`);
+    const restart = await restartOn(r, { base, version: installed, from: runs.version }, say);
+    report({ result: "restarted", from: runs.version, version: installed, restart });
+    return true;
+  };
+
   if (asked === installed) {
+    if (r.flags.check === undefined && (await catchUp())) return;
     if (json) return void r.out(JSON.stringify({ result: "installed", installed }, null, 2));
     return void r.out(`Filament ${installed} is installed, and current points at it: nothing changed.`);
   }
@@ -601,6 +703,7 @@ async function updating(r, said) {
   const { update, why, newest } = found;
   if (!update) {
     if (!newest) throw new CliError(why, EXIT.failed);
+    if (r.flags.check === undefined && (await catchUp())) return;
     if (json) return void r.out(JSON.stringify({ result: "newest", installed, repo: `${owner}/${repo}` }, null, 2));
     return void r.out(`Filament ${installed} is already the newest release of ${owner}/${repo}: nothing to update.`);
   }
@@ -621,4 +724,135 @@ async function updating(r, said) {
   const removed = prune(base, update.version, installed, say);
   const restart = await restartOn(r, { base, version: update.version, from: installed }, say);
   return report({ result: kept ? "kept" : "updated", from: installed, version: update.version, engine, dir, kept: installed, removed, restart });
+}
+
+/** The unit an update asked for from another machine runs in: systemd's, beside Filament's own, which its restart stops. */
+export const UPDATE_UNIT = "filament-update";
+
+/**
+ * What the unit runs: `filament update …` with its answer kept beside `$1` — its lines (`.json`, --json's), its words
+ * where it failed (`.log`) and its exit code (`.code`) —, for `state` to read once this Filament runs again.
+ */
+export const UPDATE_SCRIPT = 'f=$1; shift; "$@" >"$f.json" 2>"$f.log"; echo $? >"$f.code"';
+
+/** The most of an update's words `state` says. */
+const WORDS_MAX = 4000;
+
+/**
+ * @typedef {{ can: boolean, why: string | null, version: string | null }} CanUpdate
+ * @typedef {{ version: string | null, at: number, code: number | null, report: any, words: string }} LastUpdate
+ *   `version`: the one asked (null: the newest); `code`: its exit code, null while it runs or where none was kept;
+ *   `report`: what --json said; `words`: what it said where it failed
+ */
+
+/**
+ * This Filament updated on the person's word from another machine — the desktop app's Update Filament (the remote desk's
+ * s3d): `filament update [--version <v>] --wait --json` run by systemd in a unit of its own (`UPDATE_UNIT`), never as a
+ * child of this Filament, which systemd's restart takes down with its own unit (its KillMode). The update waits until no
+ * turn runs to restart (--wait), and goes back to the version before where the new one does not come up, as it does
+ * when typed there. `can`: whether it can here — a server build install.sh installed, run by systemd, systemd-run on
+ * the PATH —, and why not in words. `state`: whether one runs, and how the last one went (`<dataDir>/update/last.*`).
+ * `start`: one started → the version asked; refused in words with a status (`{ status, message }`).
+ * @param {{ dataDir: string, supervisor: string | null, root?: () => string, run?: typeof runTool, now?: () => number }} o
+ *   `root`: this Filament's folder (`here.root`), `run`: how systemd's tools are run
+ */
+export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, run = runTool, now = Date.now }) {
+  const dir = join(dataDir, "update");
+  const at = (/** @type {string} */ ext) => join(dir, `last.${ext}`);
+  /** @param {number} status @param {string} message */
+  const refusal = (status, message) => Object.assign(new Error(message), { status });
+  /** @returns {CanUpdate} */
+  const can = () => {
+    /** @type {ReturnType<typeof installOf>} */
+    let install;
+    try {
+      // Current moved to another version — an update's, waiting to restart on it — is still this install.
+      install = installOf(root(), { moved: true });
+    } catch (/** @type {any} */ e) {
+      return { can: false, why: String(e?.message || e), version: null };
+    }
+    const version = install.version;
+    if (supervisor !== "systemd")
+      return { can: false, why: `Filament ${version} here was started by hand, not by its systemd service: filament update there updates it (filament service install runs it under systemd).`, version };
+    if (!onPath("systemd-run")) return { can: false, why: "There is no systemd-run on this machine's PATH to update Filament with: filament update there updates it.", version };
+    return { can: true, why: null, version };
+  };
+  /** @param {string} ext */
+  const read = (ext) => {
+    try {
+      return readFileSync(at(ext), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  /** @returns {LastUpdate | null} */
+  const last = () => {
+    let started = null;
+    try {
+      started = JSON.parse(read("started") || "null");
+    } catch {}
+    if (!started || typeof started !== "object") return null;
+    const code = read("code");
+    let report = null;
+    try {
+      report = JSON.parse(read("json") || "null");
+    } catch {}
+    const words = String(read("log") || "").trim();
+    return {
+      version: typeof started.version === "string" ? started.version : null,
+      at: Number(started.at) || 0,
+      code: code === null || !/^\d+$/.test(code.trim()) ? null : Number(code.trim()),
+      report,
+      words: words.length > WORDS_MAX ? `…${words.slice(-WORDS_MAX)}` : words,
+    };
+  };
+  /** Whether its unit runs now. */
+  const running = async () => /^(active|activating|reloading)$/.test((await run("systemctl", ["--user", "is-active", UPDATE_UNIT])).out.trim());
+  return {
+    can,
+    /** @returns {Promise<{ running: boolean, last: LastUpdate | null }>} */
+    state: async () => ({ running: await running(), last: last() }),
+    /**
+     * An update started: to `version`, or the newest where none is named; never to one older than the one that runs.
+     * The command line current points at runs it — the version an update waiting to restart installed, where one did.
+     * @param {string | null} [version] @returns {Promise<{ ok: true, version: string | null }>}
+     */
+    async start(version = null) {
+      const asked = version ? String(version).replace(/^v/, "") : null;
+      if (asked !== null && !VERSION.test(asked)) throw refusal(400, "version takes a release's version: 1.2.3");
+      if (await running()) throw refusal(409, "An update runs here already: it says how it went once it ends.");
+      const c = can();
+      if (!c.can) throw refusal(409, String(c.why));
+      if (asked === c.version) throw refusal(409, `Filament ${asked} runs here already: nothing to update.`);
+      if (asked !== null && c.version && isNewer(c.version, asked)) throw refusal(409, `Filament ${c.version} runs here, newer than ${asked}: filament update --version ${asked} there goes back to it.`);
+      mkdirSync(dir, { recursive: true });
+      for (const ext of ["code", "json", "log"]) rmSync(at(ext), { force: true });
+      writeFileSync(at("started"), JSON.stringify({ version: asked, at: now() }));
+      const cli = join(installOf(root(), { moved: true }).base, "current", "bin", "filament");
+      const p = await run("systemd-run", [
+        "--user",
+        "--collect",
+        "--quiet",
+        `--unit=${UPDATE_UNIT}`,
+        "--",
+        "/bin/sh",
+        "-c",
+        UPDATE_SCRIPT,
+        "sh",
+        join(dir, "last"),
+        cli,
+        "--data-dir",
+        dataDir,
+        "update",
+        ...(asked ? ["--version", asked] : []),
+        "--wait",
+        "--json",
+      ]);
+      if (p.code !== 0) {
+        rmSync(at("started"), { force: true });
+        throw refusal(502, `systemd-run did not start the update: ${(p.err || p.out || `exit ${p.code}`).split("\n")[0].trim()}`);
+      }
+      return { ok: true, version: asked };
+    },
+  };
 }

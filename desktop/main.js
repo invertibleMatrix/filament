@@ -42,6 +42,7 @@ import { underWay, waitPage, waitWords } from "./lib/waiting.js";
 import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickRoute, readHere, readKept, readMachines, removeMachine, renameMachine, setMachineBrowser, setMachineLook, setMachineOff } from "./lib/machines.js";
 import { createMachineBrowsers, machineGuards, partitionFor, placeOnMachine } from "./lib/machine-browser.js";
 import { createRail, showAsk, zoomRows } from "./lib/rail.js";
+import { createUpdateThere } from "./lib/update-there.js";
 import { DESK_KEYS } from "../src/ui/harness/lib/chat-only.js";
 import { checkMachine } from "./lib/add-machine.js";
 import { createTunnels } from "./lib/ssh-route.js";
@@ -521,6 +522,7 @@ async function run() {
   ipcMain.on("filament:rail-menu", (e, id) => void (rail?.hears(e.sender, e.senderFrame?.url) && rail.machineMenu(String(id))));
   ipcMain.on("filament:rail-add-open", (e) => void (rail?.hears(e.sender, e.senderFrame?.url) && rail.openAdd()));
   ipcMain.on("filament:rail-add-close", (e) => void (rail?.hears(e.sender, e.senderFrame?.url) && rail.closeAdd()));
+  ipcMain.on("filament:rail-update-all", (e) => void (rail?.hears(e.sender, e.senderFrame?.url) && rail.updateAll()));
   ipcMain.handle("filament:rail-add", (e, input) => (rail?.hears(e.sender, e.senderFrame?.url) ? rail.add(input) : { ok: false, words: "Not the rail's page." }));
   ipcMain.handle("filament:rail-tailnet", (e) => (rail?.hears(e.sender, e.senderFrame?.url) ? rail.tailnet() : { found: [], words: "Not the rail's page." }));
   /** The panes in windows of their own (BS4), by the tab each shows. @type {Map<string, BrowserWindow>} */
@@ -712,6 +714,10 @@ async function run() {
         },
         // A machine too new for this app: This computer's Settings › About, where Updates' Check now takes the newest.
         updateHere: () => void openWindow("harness", "#/settings/about"),
+        // Another machine's Filament updated to this app's version: its own update route, with the sign-in its partition
+        // holds, else over SSH (lib/update-there.js).
+        appVersion: app.getVersion(),
+        updateThere: createUpdateThere({ pick: pickHeld, cookieOf: (partition, url) => cookieOf(partition, url), log: (line) => log.line(line) }),
         guard: (contents, o) => {
           guard(contents, o);
           remotePages.set(contents, String(/** @type {any} */ (o.prefs).partition || ""));
@@ -1615,10 +1621,10 @@ async function run() {
     w.webContents.send("filament:desk-key", String(key));
   });
   // A machine's view showing the app's update page (lib/rail.js `updatePage`): its act, as the view it is, which the
-  // rail takes up only while that view shows such a page.
-  ipcMain.on("filament:machines-update", (e) => {
+  // rail takes up only while that view shows such a page — `install`, Update Filament on it.
+  ipcMain.on("filament:machines-update", (e, how) => {
     const id = rail?.hearsPage(e.sender, e.senderFrame);
-    if (id && id !== LOCAL_ID) rail?.updateOn(id);
+    if (id && id !== LOCAL_ID) rail?.updateOn(id, how === "install" ? "install" : "");
   });
   /** @type {NodeJS.Timeout | null} */
   let soon = null;

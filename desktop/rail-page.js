@@ -61,11 +61,12 @@ function drawRail(doc, s) {
 /** The popover's items in their order, for the arrows: each machine, then Add a machine. @param {any} doc */
 const itemsOf = (doc) => [...(doc.getElementById("pop")?.querySelectorAll?.(".pick") ?? [])];
 
-/** @param {any} doc @param {{ select: (id: string) => void, openAdd?: () => void, menu?: (id: string) => void, close?: () => void }} bridge */
+/** @param {any} doc @param {{ select: (id: string) => void, openAdd?: () => void, menu?: (id: string) => void, close?: () => void, updateAll?: () => void }} bridge */
 function hearRail(doc, bridge) {
   doc.addEventListener("click", (/** @type {any} */ e) => {
     const t = e.target;
     if (t?.closest?.("[data-add]")) return bridge.openAdd?.();
+    if (t?.closest?.("[data-update-all]")) return bridge.updateAll?.();
     const more = t?.closest?.("[data-more]");
     if (more) return bridge.menu?.(String(more.getAttribute("data-more")));
     const b = t?.closest?.("[data-machine]");

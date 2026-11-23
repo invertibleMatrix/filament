@@ -11,7 +11,7 @@ import { join } from "node:path";
 import vm from "node:vm";
 import { LOCAL_ID, colorOf, localMachine, partitionOf } from "../desktop/lib/machines.js";
 import { ICONS } from "../src/ui/harness/lib/icons.js";
-import { CARRY_MAX, GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, TYPED_MS, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageKept, pageState, READ_PAGE, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, updatePage, zoomRows } from "../desktop/lib/rail.js";
+import { CARRY_MAX, GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, TYPED_MS, UNDRAG_COLUMN_CSS, UNDRAG_CSS, UPDATE_LOOK_MS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageKept, pageState, READ_PAGE, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, updatePage, zoomRows } from "../desktop/lib/rail.js";
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 import { PEER_BYTES, PEER_MS, PEERS_MAX, cappedJson, tailnetFilaments } from "../desktop/lib/tailnet-peers.js";
@@ -295,9 +295,10 @@ function fakeContents() {
 /**
  * @param {{ kept?: any[], answers?: Record<string, any>, zoom?: number, inserts?: string[], check?: any, keep?: any, claim?: () => Promise<any>,
  *   menu?: (rows: any[]) => void, confirm?: (q: any) => Promise<boolean>, ownId?: () => string | null, peers?: () => Promise<any>,
- *   waiting?: (id: string) => number, busy?: (id: string) => boolean, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void }} [o]
+ *   waiting?: (id: string) => number, busy?: (id: string) => boolean, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void,
+ *   appVersion?: string, updateThere?: any }} [o]
  */
-function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, busy, platform = "win32", browserOf, onGuest, updateHere } = {}) {
+function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, busy, platform = "win32", browserOf, onGuest, updateHere, appVersion, updateThere } = {}) {
   let list = [localMachine(ORIGIN), ...kept];
   /** @type {any[]} */
   const views = [];
@@ -424,6 +425,8 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
     ...(browserOf ? { browserOf } : {}),
     ...(onGuest ? { onGuest } : {}),
     ...(updateHere ? { updateHere } : {}),
+    ...(appVersion ? { appVersion } : {}),
+    ...(updateThere ? { updateThere } : {}),
   });
   const settle = async () => {
     for (let i = 0; i < 6; i++) await new Promise((res) => setImmediate(res));
@@ -704,8 +707,159 @@ describe("the rail, run", () => {
     assert.deepEqual(asked, ["here"], "a view with no update page: nothing");
     // The app: the press heard from that machine's view alone; this app's update, This computer's Settings › About.
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
-    assert.match(main, /ipcMain\.on\("filament:machines-update", \(e\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id && id !== LOCAL_ID\) rail\?\.updateOn\(id\);\n\s+\}\);/);
+    assert.match(main, /ipcMain\.on\("filament:machines-update", \(e, how\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id && id !== LOCAL_ID\) rail\?\.updateOn\(id, how === "install" \? "install" : ""\);\n\s+\}\);/);
     assert.match(main, /\n\s+updateHere: \(\) => void openWindow\("harness", "#\/settings\/about"\),\n/);
+  });
+
+  // (fails before: yes — the remote desk of 11-22, s3d: a machine's Filament older than this app was updated at its
+  // terminal alone)
+  test("Update Filament from here: its ⋯ menu and the popover's Update all machines, asked first; its row says it updates, then how it went; done once it answers on this app's version", async () => {
+    /** @type {any[]} */
+    let rows = [];
+    /** @type {any[]} */
+    const asked = [];
+    let yes = false;
+    /** @type {any[]} */
+    const started = [];
+    /** @type {string[]} */
+    const looked = [];
+    /** @type {Record<string, any>} */
+    const looks = {};
+    /** @type {Record<string, any>} */
+    const starts = {};
+    const updateThere = {
+      look: async (/** @type {any} */ m) => (looked.push(m.id), looks[m.id] ?? { words: "no answer" }),
+      start: async (/** @type {any} */ m, /** @type {string} */ v) => (started.push([m.id, v]), starts[m.id] ?? { ok: true, version: v }),
+    };
+    const on = (/** @type {any} */ route, /** @type {string} */ version) => ({ route, name: null, version, tried: [] });
+    const t = rig({ answers: { "m-box": on(BOX.routes[1], "0.9.0"), "m-mac": on(MAC.routes[0], "1.0.0") }, appVersion: "1.0.0", updateThere, menu: (r) => void (rows = r), confirm: async (q) => (asked.push(q), yes) });
+    await t.settle();
+    const labels = () => rows.map((x) => x.label).filter(Boolean);
+    t.r.machineMenu("m-mac");
+    assert.ok(!labels().some((l) => l.startsWith("Update")), "one on this app's version: nothing to update");
+    t.r.machineMenu("m-box");
+    assert.deepEqual(labels().slice(2, 4), ["Update Filament on Workstation to 1.0.0…", "Disconnect Workstation"]);
+    // Asked first: no, nothing.
+    rows.find((x) => x.label?.startsWith("Update")).click();
+    await t.settle();
+    assert.deepEqual(asked, [{ title: "Update Filament on Workstation?", detail: "Workstation downloads Filament 1.0.0 and restarts on it once no turn runs there; where it does not come up, it goes back to the version it ran.", yes: "Update" }]);
+    assert.deepEqual(started, []);
+    // The popover: Update all machines, above Add a machine, those older than this app counted.
+    t.r.openPop(LOCAL_ID, { x: 800, y: 10, width: 100, height: 28 });
+    const list = () => t.railView().webContents.sent.filter((/** @type {any[]} */ x) => x[0] === "filament:rail-state").at(-1)[1].list;
+    assert.match(list(), /data-update-all=""><svg[^]*<b>Update all machines…<\/b><small>1 runs an older Filament than this app's 1\.0\.0<\/small>[^]*data-add/);
+    yes = true;
+    await t.r.updateAll();
+    await t.settle();
+    assert.equal(stateOf(t.win.webContents).open, false, "the popover closed");
+    assert.deepEqual(started, [["m-box", "1.0.0"]]);
+    assert.match(list(), /updating to 1\.0\.0…/, "its row says so");
+    assert.doesNotMatch(list(), /data-update-all/, "none left to update");
+    t.r.machineMenu("m-box");
+    assert.ok(!labels().some((l) => l.startsWith("Update")), "one updating: not asked again");
+    // Followed as it is looked at: how it goes asked of it now and then, not at each look.
+    await t.tick();
+    assert.deepEqual(looked, []);
+    looks["m-box"] = { can: true, why: null, version: "0.9.0", running: true, last: { version: "1.0.0", at: 1, code: null, report: null, words: "" } };
+    t.later(UPDATE_LOOK_MS);
+    await t.tick();
+    assert.deepEqual(looked, ["m-box"]);
+    assert.match(list(), /updating to 1\.0\.0…/, "it runs there");
+    await t.tick();
+    assert.deepEqual(looked, ["m-box"], "not again within UPDATE_LOOK_MS");
+    // It ended failing there: its words' last line on its row; left out of Update all on the version it still runs,
+    // asked again from its own ⋯.
+    looks["m-box"] = { ...looks["m-box"], running: false, last: { ...looks["m-box"].last, code: 1, words: "Downloading…\nFilament 1.0.0 did not come up — so current points at 0.9.0 again." } };
+    t.later(UPDATE_LOOK_MS);
+    await t.tick();
+    assert.match(list(), /update to 1\.0\.0 failed — Filament 1\.0\.0 did not come up — so current points at 0\.9\.0 again\./);
+    assert.doesNotMatch(list(), /data-update-all/);
+    await t.tick();
+    assert.match(list(), /update to 1\.0\.0 failed/, "kept while it runs the same version");
+    // Asked again from its menu; while it restarts, its line says its state first; it answers on this app's version:
+    // done, its row its own again.
+    t.r.machineMenu("m-box");
+    rows.find((x) => x.label?.startsWith("Update")).click();
+    await t.settle();
+    assert.deepEqual(started.length, 2);
+    t.answers["m-box"] = { route: null, name: null, version: null, tried: [{ url: String(BOX.routes[1].url), why: "nothing listens" }] };
+    await t.tick();
+    assert.match(list(), /<small>[^<]+ — updating to 1\.0\.0…<\/small>/);
+    assert.match(list(), /title="Workstation — [^"]*\nnothing listens"/, "its hover says why still");
+    t.answers["m-box"] = on(BOX.routes[1], "1.0.0");
+    await t.tick();
+    assert.doesNotMatch(list(), /updating|failed|data-update-all/);
+    t.r.machineMenu("m-box");
+    assert.ok(!labels().some((l) => l.startsWith("Update")));
+    // An update that ended with no word of how it went — stopped, or the machine restarted under it — is said so.
+    t.answers["m-box"] = on(BOX.routes[1], "0.9.5");
+    await t.tick();
+    await t.r.updateAll();
+    await t.settle();
+    looks["m-box"] = { can: true, why: null, version: "0.9.5", running: false, last: { version: "1.0.0", at: 2, code: null, report: null, words: "" } };
+    t.later(UPDATE_LOOK_MS);
+    await t.tick();
+    assert.match(list(), /update to 1\.0\.0 ended with no word of how it went — filament update there says where it stands/);
+    // Let go once it runs another version: in Update all again.
+    t.answers["m-box"] = on(BOX.routes[1], "0.9.6");
+    await t.tick();
+    assert.doesNotMatch(list(), /no word/);
+    assert.match(list(), /data-update-all/);
+    // One that did not start says why; one installed and not restarted on says what stands; one updated over SSH is
+    // done once its command said it restarted on it.
+    starts["m-box"] = { ok: false, words: "Workstation's Filament (0.9.6) is from before updates from this app: filament update there updates it." };
+    await t.r.updateAll();
+    await t.settle();
+    assert.match(list(), /update not started — Workstation's Filament \(0\.9\.6\) is from before updates from this app: filament update there updates it\./);
+    const again = async () => {
+      t.r.machineMenu("m-box");
+      rows.find((x) => x.label?.startsWith("Update")).click();
+      await t.settle();
+    };
+    starts["m-box"] = { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on while a turn runs there: Update again once it ends restarts it on 1.0.0." };
+    await again();
+    assert.match(list(), /<small>Filament 1\.0\.0 is installed on Workstation, and its Filament runs on while a turn runs there: Update again once it ends restarts it on 1\.0\.0\.<\/small>/);
+    starts["m-box"] = { ok: true, version: "1.0.0", ssh: true };
+    await again();
+    assert.doesNotMatch(list(), /updating|failed|not started|installed on|data-update-all/);
+    // Nothing without the way to update, or this app's version.
+    const bare = rig({ answers: { "m-box": on(BOX.routes[1], "0.9.0") }, menu: (r) => void (rows = r) });
+    await bare.settle();
+    bare.r.machineMenu("m-box");
+    assert.ok(!labels().some((l) => l.startsWith("Update")));
+  });
+
+  // (fails before: yes — s3d) An update page's Update Filament on it: asked first, updated from here, its note on the page.
+  test("one on a wire too old for this app: its update page's Update Filament on it updates it from here, the page saying how it goes", async () => {
+    /** @type {any[]} */
+    const started = [];
+    const updateThere = { look: async () => ({ words: "no answer" }), start: async (/** @type {any} */ m, /** @type {string} */ v) => (started.push([m.id, v]), { ok: false, words: "systemd-run did not start the update: no session bus" }) };
+    const t = rig({ appVersion: "1.0.0", updateThere, confirm: async () => true });
+    await t.settle();
+    t.answers["m-box"] = { route: null, name: "Workstation", version: "0.9.40", tried: [{ url: String(BOX.routes[0].url), why: "Workstation runs Filament 0.9.40, too old for this app: update Filament on Workstation." }], update: { side: "there", route: BOX.routes[0] } };
+    t.r.select("m-box");
+    await t.settle();
+    const v = t.viewOf("persist:machine-m-box");
+    const page = () => decodeURIComponent(v.webContents.loads.at(-1));
+    assert.match(page(), /<button type="button" id="inst" hidden>Update Filament on Workstation<\/button><button type="button" id="act" hidden>Open its page<\/button>/);
+    assert.match(page(), /A server's Filament is updated from here — Update Filament on Workstation —, or there with filament update/);
+    // Its script: the press, as the view's bridge takes it.
+    const script = (/** @type {string[]} */ (page().match(/<script>[^<]*<\/script>/)))[0].replace(/^<script>|<\/script>$/g, "");
+    const el = () => ({ hidden: true, /** @type {any} */ onclick: null, getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 }) });
+    /** @type {Record<string, any>} */
+    const els = { act: el(), switch: el(), inst: el() };
+    /** @type {any[]} */
+    const did = [];
+    vm.runInNewContext(script, { window: { filamentMachines: { update: (/** @type {any} */ how) => did.push(how ?? "open"), open() {} } }, document: { getElementById: (/** @type {string} */ id) => els[id] ?? null } });
+    assert.equal(els.inst.hidden, false);
+    els.inst.onclick();
+    els.act.onclick();
+    assert.deepEqual(did, ["install", "open"]);
+    t.r.updateOn("m-box", "install");
+    await t.settle();
+    assert.deepEqual(started, [["m-box", "1.0.0"]]);
+    assert.match(page(), /<div class="line">update not started — systemd-run did not start the update: no session bus<\/div>/);
+    assert.match(page(), /id="inst"/, "it may be asked again");
   });
 
   // (fails before: yes — the review of p3-shell: with no route answering, a page standing stayed, its harness asking on
@@ -1986,9 +2140,11 @@ test("the app's page's bridge hands the app every step's fields, Pair's machine 
   const bridge = {};
   /** @type {any[]} */
   const invoked = [];
+  /** @type {any[]} */
+  const sent = [];
   const electron = {
     contextBridge: { exposeInMainWorld: (/** @type {string} */ k, /** @type {any} */ v) => void (bridge[k] = v) },
-    ipcRenderer: { invoke: async (/** @type {string} */ ch, /** @type {any} */ arg) => (invoked.push([ch, arg ?? null]), { ok: true }), send() {}, on() {} },
+    ipcRenderer: { invoke: async (/** @type {string} */ ch, /** @type {any} */ arg) => (invoked.push([ch, arg ?? null]), { ok: true }), send: (/** @type {any[]} */ ...a) => void sent.push(a), on() {} },
   };
   vm.runInNewContext(src, { require: (/** @type {string} */ m) => (m === "electron" ? electron : null) });
   await bridge.filamentRail.add({ op: "pair", link: "https://box.tail1234.ts.net", code: "ABCD-EFGH", fingerprint: "AA:BB", expect: "m-box", more: "dropped" });
@@ -2000,6 +2156,9 @@ test("the app's page's bridge hands the app every step's fields, Pair's machine 
     ["filament:rail-add", { op: "check", link: "https://box.tail1234.ts.net", code: "", fingerprint: "" }],
     ["filament:rail-tailnet", null],
   ]);
+  // (s3d) Update all machines: nothing of the page's goes with it.
+  bridge.filamentRail.updateAll({ machines: ["m-box"] });
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), [["filament:rail-update-all"]]);
 });
 
 // (fails before: yes — the review of s4a: what a page carried was put back untested, and the answer main gives it too)
@@ -2074,6 +2233,8 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   m.bridge.filamentMachines.full({ toString: () => "#/settings" });
   m.bridge.filamentMachines.deskKey("x".repeat(60));
   m.bridge.filamentMachines.update("words dropped");
+  // (s3d) Update Filament on it: its one word alone.
+  m.bridge.filamentMachines.update("install");
   assert.deepEqual(JSON.parse(JSON.stringify(m.sent)), [
     ["filament:machines-open", { x: 12, y: 3, width: 40, height: 28 }],
     ["filament:machines-title-bar", { color: "#101010", symbolColor: "7" }],
@@ -2081,6 +2242,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
     ["filament:machines-full", "#/settings"],
     ["filament:machines-key", "x".repeat(40)],
     ["filament:machines-update", null],
+    ["filament:machines-update", "install"],
   ]);
   assert.deepEqual(got, [{ shown: true }]);
   const h = loadPreload("harness-preload.cjs");
@@ -2234,7 +2396,7 @@ describe("the app's page", () => {
     assert.deepEqual({ ...popPlace({ x: 20, y: 10, width: 100, height: 28 }, { width: 1440, height: 300 }) }, { left: 20, top: 44, maxHeight: 248 });
     assert.deepEqual({ ...popPlace({ x: -50, y: 10, width: 100, height: 28 }, { width: 200, height: 100 }) }, { left: 8, top: 44, maxHeight: 120 }, "a narrow window: at its edge, its least height");
   });
-  test("an item pressed asks the app for its machine, its ⋯ for its menu, Add a machine for the sheet; a press outside the popover closes it; elsewhere nothing", () => {
+  test("an item pressed asks the app for its machine, its ⋯ for its menu, Add a machine for the sheet, Update all machines for theirs; a press outside the popover closes it; elsewhere nothing", () => {
     const { hearRail } = load();
     /** @type {Record<string, Function>} */
     const on = {};
@@ -2243,17 +2405,18 @@ describe("the app's page", () => {
     const said = [];
     hearRail(
       { addEventListener: (/** @type {string} */ ev, /** @type {Function} */ fn) => void (on[ev] = fn), body: { classList: { contains: (/** @type {string} */ c) => classes.has(c) } } },
-      { select: (/** @type {string} */ id) => said.push(`select ${id}`), menu: (/** @type {string} */ id) => said.push(`menu ${id}`), openAdd: () => said.push("add"), close: () => said.push("close") },
+      { select: (/** @type {string} */ id) => said.push(`select ${id}`), menu: (/** @type {string} */ id) => said.push(`menu ${id}`), openAdd: () => said.push("add"), close: () => said.push("close"), updateAll: () => said.push("update all") },
     );
     const target = (/** @type {Record<string, any>} */ hits, id = "") => ({ id, closest: (/** @type {string} */ q) => hits[q] ?? null });
     on.click({ target: target({ "[data-machine]": { getAttribute: () => "m-box" } }) });
     on.click({ target: target({ "[data-more]": { getAttribute: () => "m-mac" } }) });
     on.click({ target: target({ "[data-add]": {} }) });
+    on.click({ target: target({ "[data-update-all]": {} }) });
     on.click({ target: target({}, "scrim") });
     on.click({ target: target({}, "pop") });
     classes.delete("pop");
     on.click({ target: target({}, "scrim") });
-    assert.deepEqual(said, ["select m-box", "menu m-mac", "add", "close"]);
+    assert.deepEqual(said, ["select m-box", "menu m-mac", "add", "update all", "close"]);
   });
   test("the popover's keys, as a menu's: the arrows, Home and End move between its items, Escape closes it — not while the sheet is open", () => {
     const { hearRail } = load();

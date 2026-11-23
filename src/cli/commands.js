@@ -684,7 +684,7 @@ export const COMMANDS = [
   },
   {
     name: "update",
-    usage: "update [--check | --version <v> | --back] [--force]",
+    usage: "update [--check | --version <v> | --back] [--force | --wait]",
     summary: "Update Filament for servers, as install.sh installed it, to the newest release — or go back to the version before",
     more: [
       "filament update                the newest release, of the kind installed (with the memory engine, or without):",
@@ -695,6 +695,8 @@ export const COMMANDS = [
       "filament update --check        only say whether a newer one is out",
       "filament update --version <v>  that release, older or newer — one kept beside is pointed at again, nothing downloaded",
       "filament update --back         current back to the version kept before, restarted the same way",
+      "filament update --wait         the restart waits until no turn runs, asking again every few seconds, where it",
+      "                               would be refused (exit 5) — another machine's desk updates it so",
       "The version before is kept and older ones removed, as install.sh does. A download, a checksum or an unpack that",
       "fails changes nothing; nor does a release built on a newer glibc than this machine's. A version that does not",
       "come up under systemd is left for the one before: current points back at it, and it is started again. A checkout",

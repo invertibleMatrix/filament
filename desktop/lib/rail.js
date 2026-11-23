@@ -21,11 +21,14 @@ import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_IC
 import { glyphOf } from "../../src/ui/harness/lib/icons.js";
 import { CLAIM_FROM, checkMachine, claimOutcome, claimScript, deviceNameHere } from "./add-machine.js";
 import { cleanName } from "../../src/services/machine.js";
+import { isNewer } from "../../src/services/updates.js";
 import { aliasOf } from "./ssh-route.js";
 import { tailnetFilaments } from "./tailnet-peers.js";
 
 /** How often each other machine is asked whether it answers, while one is kept. */
 export const LOOK_EVERY_MS = 10_000;
+/** How often an update of a machine's Filament this app asked for is asked how it goes, at most (`followUpdate`). */
+export const UPDATE_LOOK_MS = 20_000;
 /** This computer's page with no region that drags, put in while a view lies over it (createRail's `undrag`). */
 export const UNDRAG_CSS = "*, *::before, *::after { -webkit-app-region: no-drag !important; }";
 /**
@@ -119,7 +122,7 @@ export const zoomRows = ({ page, zoomed }) => {
 };
 
 /**
- * @typedef {{ id: string, name: string, status: import("./machines.js").MachineStatus, why: string | null, active: boolean, slot: number | null, local: boolean, waiting: number, color: string, icon: string }} RailRow
+ * @typedef {{ id: string, name: string, status: import("./machines.js").MachineStatus, why: string | null, active: boolean, slot: number | null, local: boolean, waiting: number, color: string, icon: string, note?: string }} RailRow
  * @typedef {{ label: string, click?: () => void, type?: "radio", checked?: boolean, swatch?: string, submenu?: MenuRow[] } | { type: "separator" }} MenuRow
  *   a row of a machine's own menu, as Electron's menu takes it; `swatch`: a colour's dot beside it (#rrggbb), which the app draws
  */
@@ -131,13 +134,15 @@ export const zoomRows = ({ page, zoomed }) => {
  * @param {(id: string) => Watched | null} watched  each machine's state; This computer's is the app's own
  * @param {string} active
  * @param {(id: string) => number} [waiting]  its chats that wait on you, as the app's watch last saw them
+ * @param {(id: string) => string | null} [noteOf]  what its row says of an update of its Filament under way, or failed
  * @returns {RailRow[]}
  */
-export function railRows(machines, watched, active, waiting = () => 0) {
+export function railRows(machines, watched, active, waiting = () => 0, noteOf = () => null) {
   return machines.map((m, i) => {
     const w = watched(m.id);
     const n = Math.max(0, Math.floor(Number(waiting(m.id)) || 0));
-    return { id: m.id, name: m.name, status: w?.status ?? "reconnecting", why: w?.why ?? null, active: m.id === active, slot: i < 9 ? i + 1 : null, local: !!m.local, waiting: n, color: colorOf(m), icon: iconOf(m) };
+    const note = noteOf(m.id);
+    return { id: m.id, name: m.name, status: w?.status ?? "reconnecting", why: w?.why ?? null, active: m.id === active, slot: i < 9 ? i + 1 : null, local: !!m.local, waiting: n, color: colorOf(m), icon: iconOf(m), ...(note ? { note } : {}) };
   });
 }
 
@@ -146,6 +151,7 @@ const STATUS_WORDS = { online: "connected", reconnecting: "reconnecting", offlin
 const PICK_TO_CONNECT = "pick it to connect again";
 /** A disconnected machine's state: never asked, so never reconnecting nor offline. @type {Watched} */
 const OFF_WATCHED = Object.freeze({ status: /** @type {const} */ ("disconnected"), silentSince: null, why: null });
+const UP_SVG = `<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 15.5v-11M5.5 9L10 4.5 14.5 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const PLUS_SVG = `<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const TICK_SVG = `<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const MORE_SVG = `<svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><circle cx="5" cy="10" r="1.4" fill="currentColor"/><circle cx="10" cy="10" r="1.4" fill="currentColor"/><circle cx="15" cy="10" r="1.4" fill="currentColor"/></svg>`;
@@ -157,19 +163,22 @@ export const countWords = (n) => (n > 99 ? "99+" : String(n));
  * its name, why where it is not connected — a disconnected one, that a pick connects it —, its count of chats that wait
  * on you, a tick on the one showing and its key; its own More beside it (its Colour and Icon; another machine's
  * Disconnect or Connect, and Remove too) — and Add a machine; where the chip pressed stands (`at`, in the page's pixels); and whether
- * the Add sheet is open. Everything a machine names is escaped: a name is the person's, a why may hold what a network
+ * the Add sheet is open. A row's note — an update of its Filament under way, or failed — is its line, after its state where it is not connected. Everything a machine names is escaped: a name is the person's, a why may hold what a network
  * answered.
  * @param {readonly RailRow[]} rows
- * @param {{ dark: boolean, colors?: { color: string, symbolColor: string } | null, mod?: string, bar?: number, adding?: boolean, at?: Rect | null }} o  `colors`: the title bar's, as This computer's page said them
+ * @param {{ dark: boolean, colors?: { color: string, symbolColor: string } | null, mod?: string, bar?: number, adding?: boolean, at?: Rect | null, update?: { count: number, to: string } | null }} o
+ *   `colors`: the title bar's, as This computer's page said them; `update`: how many machines run an older Filament than
+ *   this app's `to`, whose Update all machines the popover holds above Add a machine
  * @returns {{ list: string, at: Rect | null, dark: boolean, bg: string, fg: string, bar: number, adding: boolean }}
  */
-export function railState(rows, { dark, colors = null, mod = "Ctrl+", bar = 0, adding = false, at = null }) {
+export function railState(rows, { dark, colors = null, mod = "Ctrl+", bar = 0, adding = false, at = null, update = null }) {
   const list =
     rows
       .map((r) => {
         const words = STATUS_WORDS[r.status];
         const off = r.status === "disconnected";
-        const why = r.status === "online" ? "" : off ? `${words} — ${PICK_TO_CONNECT}` : r.why ? `${words} — ${r.why}` : words;
+        // An update's note follows what is not connected — its restart, a machine gone —, and its hover says why still.
+        const why = r.status === "online" ? (r.note ?? "") : off ? `${words} — ${PICK_TO_CONNECT}` : r.note ? `${words} — ${r.note}` : r.why ? `${words} — ${r.why}` : words;
         const tip = `${r.name} — ${words}${r.slot ? ` · ${mod}${r.slot}` : ""}${off ? `\n${PICK_TO_CONNECT[0].toUpperCase()}${PICK_TO_CONNECT.slice(1)}.` : r.why && r.status !== "online" ? `\n${r.why}` : ""}`;
         const label = `${r.name}, ${words}${r.waiting ? `, ${r.waiting} waiting on you` : ""}`;
         return (
@@ -182,7 +191,12 @@ export function railState(rows, { dark, colors = null, mod = "Ctrl+", bar = 0, a
           `</div>`
         );
       })
-      .join("") + `<div class="sep" role="separator"></div><button type="button" class="pick add" role="menuitem" data-add="">${PLUS_SVG}<span class="nm"><b>Add a machine…</b></span></button>`;
+      .join("") +
+    `<div class="sep" role="separator"></div>` +
+    (update && update.count > 0
+      ? `<button type="button" class="pick add" role="menuitem" data-update-all="">${UP_SVG}<span class="nm"><b>Update all machines…</b><small>${esc(`${update.count} ${update.count === 1 ? "runs" : "run"} an older Filament than this app's ${update.to}`)}</small></span></button>`
+      : "") +
+    `<button type="button" class="pick add" role="menuitem" data-add="">${PLUS_SVG}<span class="nm"><b>Add a machine…</b></span></button>`;
   const bg = colors?.color || (dark ? "#202020" : "#f3f3f3");
   const fg = colors?.symbolColor || (dark ? "#ffffff" : "#1a1a1a");
   return { list, at, dark, bg, fg, bar, adding };
@@ -305,20 +319,28 @@ const SWITCH_SCRIPT = `(()=>{const m=window.filamentMachines,b=document.getEleme
 /**
  * A machine's view while it answers on a wire this app does not speak (machines.js `pickRoute`'s `update`): the app's own
  * page, as the unreachable one, saying which side to update — that machine's Filament, or this app — and how. Its
- * buttons, where the view's bridge is: Open its page (its own harness, which its own wire serves — the desk's calls stay
- * off) or Update this app (This computer's Settings › About), and Switch machine. The machine is asked on, and opens here
- * once it speaks this app's wire.
- * @param {string} name @param {"there" | "here"} side @param {string} why  `gapWords`'s @param {{ dark: boolean, bar?: number }} o
+ * buttons, where the view's bridge is: Update Filament on it (`install`: this app updates it, its update route or SSH,
+ * lib/update-there.js), Open its page (its own harness, which its own wire serves — the desk's calls stay off) or Update
+ * this app (This computer's Settings › About), and Switch machine; `note`, an update of its under way or failed. The
+ * machine is asked on, and opens here once it speaks this app's wire.
+ * @param {string} name @param {"there" | "here"} side @param {string} why  `gapWords`'s
+ * @param {{ dark: boolean, bar?: number, install?: boolean, note?: string }} o
  */
-export function updatePage(name, side, why, { dark, bar = BAR_H }) {
+export function updatePage(name, side, why, { dark, bar = BAR_H, install = false, note = "" }) {
   const there = side === "there";
   const how = there
-    ? `The Filament app on ${name} updates itself (its tray's Check for updates), and a server with filament update. It opens here once it runs a version this app works with.`
+    ? install
+      ? `A server's Filament is updated from here — Update Filament on ${name} —, or there with filament update; the Filament app there updates itself (its tray's Check for updates). It opens here once it runs a version this app works with.`
+      : `The Filament app on ${name} updates itself (its tray's Check for updates), and a server with filament update. It opens here once it runs a version this app works with.`
     : `Update this app opens This computer's Settings › About, where Check now takes the newest. ${name} opens here once this app works with it.`;
-  return ownPage(name, `<div class="title">${esc(there ? `Update Filament on ${name}` : "Update this app")}</div><div class="line">${esc(why)}</div><div class="line">${esc(how)}</div><button type="button" id="act" hidden>${there ? "Open its page" : "Update this app"}</button><button type="button" id="switch" hidden>Switch machine</button>`, UPDATE_SCRIPT, { dark, bar });
+  const own = there && install ? `<button type="button" id="inst" hidden>${esc(`Update Filament on ${name}`)}</button>` : "";
+  return ownPage(name, `<div class="title">${esc(there ? `Update Filament on ${name}` : "Update this app")}</div><div class="line">${esc(why)}</div>${note ? `<div class="line">${esc(note)}</div>` : ""}<div class="line">${esc(how)}</div>${own}<button type="button" id="act" hidden>${there ? "Open its page" : "Update this app"}</button><button type="button" id="switch" hidden>Switch machine</button>`, UPDATE_SCRIPT, { dark, bar });
 }
-/** The update page's one script: its act and Switch machine shown where the view's bridge is, their presses the app's. */
-const UPDATE_SCRIPT = `(()=>{const m=window.filamentMachines,a=document.getElementById("act"),b=document.getElementById("switch");if(!m||!a||!b)return;a.hidden=b.hidden=false;a.onclick=()=>m.update();b.onclick=()=>{const r=b.getBoundingClientRect();m.open({x:r.left,y:r.top,width:r.width,height:r.height})}})()`;
+/**
+ * The update page's one script: its acts and Switch machine shown where the view's bridge is, their presses the app's —
+ * Update Filament on it (`install`), Open its page or Update this app.
+ */
+const UPDATE_SCRIPT = `(()=>{const m=window.filamentMachines,a=document.getElementById("act"),b=document.getElementById("switch"),i=document.getElementById("inst");if(!m||!a||!b)return;a.hidden=b.hidden=false;a.onclick=()=>m.update();if(i){i.hidden=false;i.onclick=()=>m.update("install")}b.onclick=()=>{const r=b.getBoundingClientRect();m.open({x:r.left,y:r.top,width:r.width,height:r.height})}})()`;
 
 /**
  * The app's own page in a machine's view: a `data:` address, nothing of anyone's in it, its top row dragging the window.
@@ -340,7 +362,7 @@ button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radiu
 /**
  * @typedef {{ view: any, at: string | null, page?: string, shown: string, opening: boolean, popups: Set<any>, wanted?: { hash: string, asked: number } | null,
  *   only?: string, chat?: string, moves?: number, update?: import("./machines.js").Update | null, updating?: boolean,
- *   typed?: number, carry?: [string, string][] | null, loadedAt?: string }} RemoteView
+ *   typed?: number, carry?: [string, string][] | null, loadedAt?: string, updateWhy?: string }} RemoteView
  *   `at`: the origin its page is Filament's at, null while it shows the app's own page; `page`: the harness's address
  *   it was sent to there, its hash left out; `shown`: the app's page shown, as last drawn; `popups`: the windows its
  *   pages opened, in its partition — closed with it; `wanted`: the address of its harness it opens at next, asked for
@@ -425,7 +447,7 @@ export function pageKept(said) {
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
  *   waiting?: (id: string) => number, busy?: (id: string) => boolean, tint?: (colors: { color: string, symbolColor: string } | null) => void,
  *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void,
- *   updateHere?: () => void }} o
+ *   updateHere?: () => void, appVersion?: string, updateThere?: ReturnType<typeof import("./update-there.js").createUpdateThere> | null }} o
  *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
  *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
@@ -435,9 +457,11 @@ export function pageKept(said) {
  *   holds (lib/machine-browser.js), drawn over its view's Browser pane — put back on top as its view comes to the front,
  *   parked as it goes from sight; `onGuest`: the chat shown in place moved — its address there as its page went to it,
  *   null as it stopped showing there (`showChat`); `updateHere`: this app's update taken up, asked by a machine's update
- *   page (`updatePage`)
+ *   page (`updatePage`); `appVersion`: this app's version, `updateThere`: another machine's Filament updated to it
+ *   (lib/update-there.js) — its ⋯ menu's Update Filament, the popover's Update all machines, its update page's —, followed
+ *   until it answers on it (`followUpdate`)
  */
-export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, busy = () => false, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {} }) {
+export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, busy = () => false, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {}, appVersion = "", updateThere = null }) {
   const wc = win.webContents;
   /** @type {Machine[]} */
   let list = [];
@@ -471,6 +495,16 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const pairings = new Map();
   /** The name each machine answered by that the machines file could not keep: not tried again until it answers by another. @type {Map<string, string>} */
   const unkept = new Map();
+  /** The version of Filament each machine runs, as it last answered. @type {Map<string, string>} */
+  const versions = new Map();
+  /**
+   * Each machine's Filament this app updates (`startUpdate`): to `to`, from `from` (the version it ran), asked at `at`;
+   * its row's line (`note`); `failed` once it did not start or its update there said it failed — kept until it runs
+   * another version; `lookedAt` when its update route was last asked how it goes, `looking` while it is or while the
+   * update starts.
+   * @type {Map<string, { to: string, from: string, at: number, note: string, failed: boolean, lookedAt: number, looking: boolean }>}
+   */
+  const updates = new Map();
   /**
    * Another machine's chat shown in place (the remote desk of 11-22): its view over This computer's column beside its
    * list, at `rect` in the window's units — null while something of This computer's page lies over that column, its
@@ -489,7 +523,16 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   const machineOf = (/** @type {string} */ id) => pairing.get(id) || list.find((m) => m.id === id) || null;
   const statusOf = (/** @type {string} */ id) => (id === LOCAL_ID ? localWatched() : machineOf(id)?.off ? OFF_WATCHED : (watched.get(id) ?? null));
   const alive = (/** @type {any} */ v) => !!v && !v.webContents.isDestroyed();
-  const rowsNow = () => railRows(list, statusOf, active, waiting);
+  const rowsNow = () => railRows(list, statusOf, active, waiting, (id) => updates.get(id)?.note ?? null);
+  /** Whether a machine's Filament is older than this app's, as it last answered: one this app may update. @param {Machine} m */
+  const older = (m) => !m.local && !m.off && !!appVersion && !!versions.get(m.id) && isNewer(appVersion, String(versions.get(m.id)));
+  /** Whether this app updates a machine now: one asked and not failed. @param {string} id */
+  const updatingNow = (id) => !!updates.get(id) && !updates.get(id)?.failed;
+  /**
+   * The machines Update all machines takes: older than this app, kept connected, none updating — nor one whose update
+   * failed on the version it still runs, asked again from its own ⋯ alone.
+   */
+  const behind = () => (updateThere && appVersion ? list.filter((m) => older(m) && !updates.has(m.id)) : []);
   /** The page a machine is in the window: This computer's, or its view's while that lives. @param {string} id */
   const pageOf = (id) => (id === LOCAL_ID ? wc : views.get(id) && alive(views.get(id)?.view) ? views.get(id)?.view.webContents : null);
   /** The chat shown in place, while it is in sight: This computer showing, its place given, its view alive. */
@@ -539,7 +582,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const { dark, colors } = look();
     const z = zoomOf(rail.webContents);
     const at = popping ? { x: popping.at.x / z, y: popping.at.y / z, width: popping.at.width / z, height: popping.at.height / z } : null;
-    rail.webContents.send("filament:rail-state", railState(rowsNow(), { dark, colors, mod: platform === "darwin" ? "⌘" : "Ctrl+", bar, adding, at }));
+    const n = behind().length;
+    rail.webContents.send("filament:rail-state", railState(rowsNow(), { dark, colors, mod: platform === "darwin" ? "⌘" : "Ctrl+", bar, adding, at, update: n ? { count: n, to: appVersion } : null }));
   };
 
   /** A key that names a slot, from any page of the window: that machine shown. @param {any} e @param {any} input */
@@ -673,13 +717,108 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   };
   /** @param {Machine} m @param {RemoteView} v @param {import("./machines.js").Update} update @param {string} why */
   const showUpdate = (m, v, update, why) => {
-    const page = updatePage(m.name, update.side, why, { dark: look().dark, bar: win.isFullScreen?.() ? 0 : BAR_H });
+    v.updateWhy = why;
+    const u = updates.get(m.id);
+    const install = update.side === "there" && !!updateThere && !!appVersion && !updatingNow(m.id);
+    const page = updatePage(m.name, update.side, why, { dark: look().dark, bar: win.isFullScreen?.() ? 0 : BAR_H, install, note: u?.note ?? "" });
     v.at = null;
     v.updating = false;
     closePopups(v);
     if (page === v.shown) return;
     v.shown = page;
     void Promise.resolve(v.view.webContents.loadURL(page)).catch(() => {});
+  };
+  /** Its row and its update page drawn again: an update of its started, failed or done. @param {Machine} m */
+  const redraw = (m) => {
+    paint();
+    const v = views.get(m.id);
+    if (v && v.update && v.at === null && alive(v.view)) showUpdate(m, v, v.update, v.updateWhy || "");
+  };
+  /** An update of its done: it runs `ran`; its row's line let go. @param {Machine} m @param {string} ran */
+  const updated = (m, ran) => {
+    updates.delete(m.id);
+    versions.set(m.id, ran);
+    log(`update: ${m.id} runs Filament ${ran}`);
+    redraw(m);
+  };
+  /** An update of its not started, or ended failing: said on its row and its update page until it is asked again. @param {Machine} m @param {string} note */
+  const failed = (m, note) => {
+    const u = updates.get(m.id);
+    if (!u) return;
+    u.failed = true;
+    u.note = note;
+    log(`update: ${m.id}: ${note}`);
+    redraw(m);
+  };
+  /**
+   * An update of a machine's Filament this app asked for, followed as the machine is looked at: done once it answers on
+   * the version asked or a later one, or its update there said it ended well; else its update route asked how it goes,
+   * each `UPDATE_LOOK_MS` at most, and one that ended failing — or ended with no word of how it went: stopped, or the
+   * machine restarted under it — said with its words' last line. One that failed is let go once it runs another version.
+   * @param {Machine} m
+   */
+  const followUpdate = (m) => {
+    const u = updates.get(m.id);
+    if (!u || gone) return;
+    const ran = versions.get(m.id);
+    if (ran && !isNewer(u.to, ran)) return updated(m, ran);
+    if (u.failed) {
+      if (ran && ran !== u.from) {
+        updates.delete(m.id);
+        redraw(m);
+      }
+      return;
+    }
+    if (!updateThere || u.looking || now() - u.lookedAt < UPDATE_LOOK_MS) return;
+    u.looking = true;
+    void updateThere
+      .look(m)
+      .catch((/** @type {any} */ e) => ({ words: String(e?.message || e) }))
+      .then((s) => {
+        u.looking = false;
+        u.lookedAt = now();
+        if (gone || updates.get(m.id) !== u || "words" in s || s.running) return;
+        const last = s.last?.version === u.to ? s.last : null;
+        if (last?.code === 0) return updated(m, u.to);
+        const said = String(last?.words || "").trim().split("\n").filter(Boolean).at(-1);
+        failed(m, last && last.code !== null ? `update to ${u.to} failed — ${said || `filament update ended with code ${last.code}`}` : `update to ${u.to} ended with no word of how it went — filament update there says where it stands`);
+      });
+  };
+  /**
+   * A machine's Filament updated to this app's version (lib/update-there.js `start`): its row says so meanwhile, and why
+   * where it did not start, or what stands where it was installed and not restarted on. One updated over SSH is done
+   * once its command said it restarted on it. @param {Machine} m
+   */
+  const startUpdate = async (m) => {
+    if (!updateThere || !appVersion || gone || updatingNow(m.id)) return;
+    const u = { to: appVersion, from: String(versions.get(m.id) || ""), at: now(), note: `updating to ${appVersion}…`, failed: false, lookedAt: 0, looking: true };
+    updates.set(m.id, u);
+    log(`update: ${m.id} asked to update to ${appVersion}`);
+    redraw(m);
+    /** @type {import("./update-there.js").UpdateStart} */
+    const r = await updateThere.start(m, appVersion).catch((/** @type {any} */ e) => ({ ok: /** @type {const} */ (false), words: String(e?.message || e) }));
+    u.looking = false;
+    u.lookedAt = now();
+    if (gone || updates.get(m.id) !== u) return;
+    if (!r.ok) return failed(m, r.installed ? r.words : `update not started — ${r.words}`);
+    if (r.ssh) updated(m, appVersion);
+  };
+  /**
+   * Machines' Filament updated to this app's version, asked first: one machine's (its ⋯ menu, its update page) or every
+   * one older than this app (Update all machines). @param {Machine[]} ms
+   */
+  const updateSome = async (ms) => {
+    if (!updateThere || !appVersion || gone || !ms.length) return;
+    const one = ms.length === 1 ? ms[0] : null;
+    const yes = await confirm({
+      title: `Update Filament on ${one ? one.name : `${ms.length} machines`}?`,
+      detail: one
+        ? `${one.name} downloads Filament ${appVersion} and restarts on it once no turn runs there; where it does not come up, it goes back to the version it ran.`
+        : `${ms.map((m) => m.name).join(", ")}: each downloads Filament ${appVersion} and restarts on it once no turn runs there; one where it does not come up goes back to the version it ran.`,
+      yes: "Update",
+    });
+    if (!yes || gone) return;
+    for (const m of ms) void startUpdate(m);
   };
   /** @param {RemoteView} v @param {import("./machines.js").Route} route */
   const openAt = (v, route) => {
@@ -708,6 +847,11 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const tried = /** @type {Tried[]} */ (r.tried);
     // One on a wire this app does not speak is not waited on either: which side to update is said at once.
     watched.set(m.id, machineWatch(watched.get(m.id) ?? null, { answered: !!r.route, why: tried.at(-1)?.why ?? null, wrong: !r.route && (tried.some((t) => t.wrong) || !!(/** @type {any} */ (r).update)) }, now()));
+    // The version its Filament runs, as it answers — on a wire this app does not speak too —: an update of it under way
+    // reads it (`followUpdate`).
+    const ran = /** @type {any} */ (r).version;
+    if ((r.route || /** @type {any} */ (r).update) && typeof ran === "string" && ran) versions.set(m.id, ran);
+    followUpdate(m);
     // The name it answers by now — renamed there, or its own name read anew (the owner's MacBook of 11-09, kept as
     // "192.168.0.77" as it paired) — is the window's too; its menu, its chip and the popover read it from the list.
     // Cleaned as a pairing cleans it (remotes.js `machineAt`), so the name kept is the one compared next time. One the
@@ -1347,9 +1491,13 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       { label: "Icon", submenu: MACHINE_ICONS.map((i) => ({ label: ICON_WORDS[/** @type {keyof typeof ICON_WORDS} */ (i)], type: /** @type {const} */ ("radio"), checked: iconOf(m) === i, click: () => dress({ icon: i }) })) },
     ];
     if (m.local) return menu(looks);
+    // Its Filament older than this app, as it last answered: updated from here, asked first (`updateSome`).
+    /** @type {MenuRow[]} */
+    const update = updateThere && older(m) && !updatingNow(id) ? [{ label: `Update Filament on ${m.name} to ${appVersion}…`, click: () => void updateSome([m]) }, { type: "separator" }] : [];
     menu([
       ...looks,
       { type: "separator" },
+      ...update,
       m.off ? { label: `Connect ${m.name}`, click: () => void select(id) } : { label: `Disconnect ${m.name}`, click: () => disconnect(id) },
       { type: "separator" },
       {
@@ -1442,16 +1590,24 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     },
     /**
      * A machine's update page pressed (`updatePage`, machine-preload.cjs `update`): this app's update taken up where this
-     * app is to update; else its own page opened all the same, where it answered, kept until it speaks this app's wire.
-     * Nothing where its view shows no such page. @param {string} id
+     * app is to update; its Filament updated from here at Update Filament on it (`install`), asked first; else its own
+     * page opened all the same, where it answered, kept until it speaks this app's wire. Nothing where its view shows no
+     * such page. @param {string} id @param {string} [how]
      */
-    updateOn: (id) => {
+    updateOn: (id, how = "") => {
       const v = views.get(id);
       const u = v?.update;
-      if (gone || !v || !u || v.at !== null || !alive(v.view)) return;
+      const m = machineOf(id);
+      if (gone || !v || !u || !m || v.at !== null || !alive(v.view)) return;
       if (u.side === "here") return void updateHere();
+      if (how === "install") return void updateSome([m]);
       v.updating = true;
       openAt(v, u.route);
+    },
+    /** Update all machines (the popover's): the popover closed, every machine older than this app updated, asked first. */
+    updateAll: () => {
+      closePop();
+      return updateSome(behind());
     },
     showChat,
     /**

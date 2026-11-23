@@ -37,7 +37,7 @@ export function parseArgs(argv, booleans) {
 }
 
 /** Flags every command takes alone. */
-const GLOBAL_BOOLEANS = ["json", "help", "yes", "key-stdin", "no-test", "also", "force", "reveal", "turn", "no-open", "open", "view", "check", "back"];
+const GLOBAL_BOOLEANS = ["json", "help", "yes", "key-stdin", "no-test", "also", "force", "reveal", "turn", "no-open", "open", "view", "check", "back", "wait"];
 
 /**
  * The commands' list, as `filament --help` gives it after `start`'s.

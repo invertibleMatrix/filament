@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("filamentRail", {
   openAdd: () => ipcRenderer.send("filament:rail-add-open"),
   /** The Add sheet closed. */
   closeAdd: () => ipcRenderer.send("filament:rail-add-close"),
+  /** Update all machines: every machine's Filament older than this app updated to its version, asked first. */
+  updateAll: () => ipcRenderer.send("filament:rail-update-all"),
   /**
    * One step of the Add sheet — `check` who answers at the address, `pair` with the code — answered by the app.
    * `expect`: at Pair, the machine Continue showed — another answering there now is refused (lib/rail.js `add`).

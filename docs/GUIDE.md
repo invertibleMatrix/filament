@@ -303,10 +303,23 @@ its pairing and its sign-in kept, but this window asks nothing of it — no noti
 open, no SSH tunnel — until you pick it again (or **Connect** in its **⋯**), after a restart too. **Remove** there takes
 it out of the window and forgets its sign-in here. A machine that cannot be reached shows why, and **Switch machine**
 takes you to another. One whose Filament is too old or too new for this app says which to update, at once: **Update
-Filament on** it — the Filament app there updates itself, a server with `filament update` —, with **Open its page** to
+Filament on** it — a server's from here, with its button there (below); the Filament app there updates itself —, with **Open its page** to
 use it meanwhile, or **Update this app**, which opens Settings › About here. It opens as usual once the two work
 together. `filament connect`, `--machine` and Add a machine say the same, and send nothing; `filament disconnect` still
 signs out there, so its sign-in stops.
+
+**Updating the other machines.** A machine whose Filament is older than this app, as it last answered, has **Update
+Filament on** *it* **to** *this app's version*… in its **⋯**, and the machines menu shows **Update all machines…** above
+Add a machine, with how many run an older Filament. Either asks first; then each machine's Filament downloads this
+app's version and restarts on it once no turn runs there, as `filament update --wait` typed there does, and one where
+the new version does not come up goes back to the version it ran. Its row in the menu says *updating to* the version
+meanwhile, why where it did not start or failed there, and nothing once the machine answers on the new version; one
+that failed is left out of Update all machines until it runs another version, and its **⋯** asks again. A machine
+too old for this app to open has the same as a button on its page. Nothing goes to an older version than a machine
+runs. It updates Filament for servers run by its systemd service (`filament service install`); the Filament app on
+another computer updates itself, and says so. A server whose Filament is from before this is updated over SSH where
+this window keeps an SSH way to it — refused while a turn runs there, which its row says: the new version is
+installed, and asking again once the turn ends restarts it on it —, else at its terminal with `filament update`.
 
 A machine reached more than one way is reached by the best that answers, by where its address is: this computer
 itself first (another Filament here, a tunnel you hold), then the home network, the tailnet, an SSH tunnel, and an

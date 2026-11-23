@@ -167,6 +167,9 @@ export const PRESS_TABLE = [
   ["GET /jobs", READS],
   ["GET /live", READS],
   ["POST /shutdown", NARROWS],
+  ["GET /update", READS],
+  // Another version of Filament installed and started as the person, the caller naming which.
+  ["POST /update", ALWAYS],
   ["GET /events", READS],
   // traffic.js
   ["GET /requests", READS],

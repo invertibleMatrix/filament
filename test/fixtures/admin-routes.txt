@@ -239,6 +239,7 @@ GET /api/terminal
 GET /api/token-calib
 GET /api/transfers/back/*
 GET /api/transfers/haves
+GET /api/update
 GET /api/upstreams
 GET /api/upstreams/*/removal
 GET /api/upstreams/*/test
@@ -500,6 +501,7 @@ POST /api/transfers/*/commit
 POST /api/transfers/*/part
 POST /api/transfers/back
 POST /api/transfers/place
+POST /api/update
 POST /api/upstreams
 POST /api/upstreams/test
 PUT /api/agents/*
