@@ -147,8 +147,9 @@ export function createTelemetry({ dataDir = null, armed = false, onByDefault = f
       if (!counting() || !payload || typeof payload !== "object") return;
       if (payload.type === "run-start") {
         const meta = payload.meta || {};
-        // A turn the loop goes on with after a restart is the same turn: counted once, when it began.
-        if (meta.resumed) return;
+        // A turn the loop goes on with after a restart is the same turn: counted once, when it began. A sub-agent's turn on
+        // another machine, shown here as a run (subagents.js `mirrorRun`), is that machine's to count.
+        if (meta.resumed || payload.kind === "remote-subagent") return;
         const upstream = typeof meta.upstream === "string" ? meta.upstream : null;
         const sub = payload.kind === "subagent";
         const key = `${upstream || ""}|${sub ? 1 : 0}`;

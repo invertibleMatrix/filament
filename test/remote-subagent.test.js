@@ -21,7 +21,7 @@ import { createMachines } from "../src/services/machines/index.js";
 import { CliError, clientAt } from "../src/services/machines/client.js";
 import { houseAuth } from "../src/services/house.js";
 import { createRemoteAgents, SEND_COPY, STREAM_IDLE_MS, modelThere, repoKeyOf } from "../src/app/agent/remote-agents.js";
-import { createSubagentRegistry } from "../src/app/agent/subagents.js";
+import { createSubagentRegistry, mirrorEvents } from "../src/app/agent/subagents.js";
 
 const JSON_TYPE = { "content-type": "application/json" };
 const ORIGIN = "https://github.com/acme/widgets.git";
@@ -128,6 +128,64 @@ test("a turn's stream that goes silent is let go of, and its run's events are re
     server.closeAllConnections();
     server.close();
   }
+});
+
+// (fails before: yes — the reply's words were read for its report alone: nothing here heard them as they came)
+test("a turn there hands on its words and its thinking as the reply streams them, each block's end with them", async () => {
+  /** @type {any[]} */
+  const heard = [];
+  /** @param {any} delta @returns {[string, any]} */
+  const delta = (delta) => ["content_block_delta", { type: "content_block_delta", index: 0, delta }];
+  /** @returns {[string, any]} */
+  const stop = () => ["content_block_stop", { type: "content_block_stop", index: 0 }];
+  const client = {
+    post: async () => ({ id: "c1", model: "m-1" }),
+    stream: async (/** @type {string} */ _p, /** @type {any} */ _b, /** @type {(e: string, d: any) => void} */ onEvent) => {
+      onEvent(...runEvent({ n: 1, type: "round-start", round: 1, blocksBefore: 0 }));
+      onEvent(...delta({ type: "thinking_delta", thinking: "weighing" }));
+      onEvent(...delta({ type: "signature_delta", signature: "sig" }));
+      onEvent(...stop());
+      onEvent(...delta({ type: "text_delta", text: "WORDS " }));
+      onEvent(...delta({ type: "text_delta", text: "THERE" }));
+      onEvent(...stop());
+      onEvent(...runEvent({ n: 2, type: "round-text", round: 1, text: "WORDS THERE" }));
+      onEvent(...runEvent({ n: 3, type: "run-end", status: "done", summary: { rounds: 1 } }));
+    },
+    get: async () => ({ events: [] }),
+  };
+  const words = { piece: (/** @type {string} */ type, /** @type {string} */ text) => void heard.push([type, text]), endBlock: () => void heard.push(["end"]) };
+  const fin = await createRemoteAgents({ machines: oneMachine(client), wait: async () => {} }).turn(onBox(), { content: [{ type: "text", text: "go" }], signal: new AbortController().signal, words });
+  assert.deepEqual(heard, [["thinking", "weighing"], ["end"], ["text", "WORDS "], ["text", "THERE"], ["end"]]);
+  assert.deepEqual([fin.status, fin.report], ["done", "WORDS THERE"]);
+});
+
+// (fails before: yes — the review of s2e: a follow-up that first settled a pause still waiting there put the resumed
+// turn's rounds and its own, numbered from 1 again, in one run here, two turns' words and calls in one round)
+test("a turn there read into its run here: two runs of one exchange never share a round, a resumed turn's rounds go on as they are, and what that machine keeps stays out", () => {
+  /** @type {string[]} */
+  const said = [];
+  let blocks = 0;
+  const read = mirrorEvents({ endBlock: () => void said.push("end"), held: () => blocks });
+  /** @param {string} runId @param {any} e */
+  const at = (runId, e) => read({ runId, n: 1, ...e });
+  // The pause a follow-up settled first: its turn goes on from its paused round, 2.
+  assert.deepEqual(at("r-old", { type: "round-start", round: 3, blocksBefore: 4 }), { runId: "r-old", n: 1, type: "round-start", round: 3, blocksBefore: 4 });
+  assert.equal(at("r-old", { type: "round-text", round: 4, text: "OLD" }).round, 4);
+  assert.deepEqual(said, [], "no block ended before the first run's");
+  blocks = 2;
+  // The follow-up's own turn starts from round 1 again: numbered on from the last round shown.
+  assert.deepEqual(at("r-new", { type: "round-start", round: 1, blocksBefore: 0 }), { runId: "r-new", n: 1, type: "round-start", round: 5, blocksBefore: 2 });
+  assert.deepEqual(said, ["end"], "the block open here ended as the new run began");
+  assert.equal(at("r-new", { type: "tool-start", round: 2, id: "t1", name: "read" }).round, 6);
+  // A pause answered in the same exchange: its resumed turn goes on from its paused round and keeps its numbers.
+  const again = mirrorEvents({ endBlock: () => {}, held: () => 1 });
+  assert.equal(again({ runId: "a", type: "round-start", round: 1, blocksBefore: 0 }).round, 1);
+  assert.equal(again({ runId: "a", type: "round-start", round: 2, blocksBefore: 1 }).round, 2);
+  assert.deepEqual([again({ runId: "b", type: "round-start", round: 3, blocksBefore: 0 })].map((e) => [e.round, e.blocksBefore]), [[3, 1]]);
+  // What its card asks, its steers, pictures, artifacts, graph and own agents are that machine's; a budget's stop, an
+  // output cut and its coding agent's notices are its thread's.
+  for (const type of ["ask", "ask-end", "subagent-ask", "steer", "steer-read", "visual", "artifact", "graph", "subagent-dispatch", "run-start", "run-end"]) assert.equal(again({ runId: "b", type }), null, type);
+  for (const type of ["budget", "output-cut", "agent-notice", "notice", "compaction", "tool-output"]) assert.ok(again({ runId: "b", type, round: 3 }), type);
 });
 
 // (fails before: yes — the swarm's review of 11-10: a stream that dropped before its run's first event threw, and the
@@ -683,6 +741,8 @@ describe("a sub-agent on another machine", () => {
   /** The model calls there `WAIT` and the first `ONCE` hold, apart from `held`, each let go at the end. @type {(() => void)[]} */
   const waiting = [];
   let onces = 0;
+  /** The `STREAM` calls there, each holding its reply's rest until let go. @type {(() => void)[]} */
+  const streamed = [];
   /** @type {Awaited<ReturnType<typeof fakeUpstream>>} */
   let up;
   /** @type {Awaited<ReturnType<typeof startTwoMachines>>} */
@@ -703,10 +763,36 @@ describe("a sub-agent on another machine", () => {
     const said = wordsOf(call.body?.messages?.at(-1));
     const reply = (/** @type {string} */ text) => (call.body?.stream ? anthropicStream(text, { model: "m-1" }) : anthropicReply(text, { model: "m-1" }));
     if (/HOLD/.test(said)) return new Promise((resolve) => held.push(() => resolve(reply("LET GO"))));
+    // A raw stream the fake provider pumps as it comes (helpers/app.js `writeReply`'s `body`).
+    if (/STREAM/.test(said) && call.body?.stream) return /** @type {any} */ ({ body: slowly() });
     if (/WAIT/.test(said) || (/ONCE/.test(said) && onces++ === 0)) return new Promise((resolve) => waiting.push(() => resolve(reply("LET GO"))));
     if (/ONCE/.test(said)) return reply("ANSWERED ONCE");
     if (/FOLLOW/.test(said)) return reply("FOLLOWED UP THERE");
     return reply("REPORT FROM THERE");
+  };
+  /**
+   * A reply whose thinking and first words come at once, and its rest once `streamed` lets it go: words there as they
+   * are written.
+   */
+  const slowly = () => {
+    const enc = new TextEncoder();
+    const frame = (/** @type {string} */ event, /** @type {any} */ data) => enc.encode(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`);
+    return new ReadableStream({
+      async start(c) {
+        c.enqueue(frame("message_start", { message: { id: "msg_slow", type: "message", role: "assistant", model: "m-1", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 5, output_tokens: 1 } } }));
+        c.enqueue(frame("content_block_start", { index: 0, content_block: { type: "thinking", thinking: "" } }));
+        c.enqueue(frame("content_block_delta", { index: 0, delta: { type: "thinking_delta", thinking: "WEIGHING " } }));
+        c.enqueue(frame("content_block_stop", { index: 0 }));
+        c.enqueue(frame("content_block_start", { index: 1, content_block: { type: "text", text: "" } }));
+        c.enqueue(frame("content_block_delta", { index: 1, delta: { type: "text_delta", text: "FIRST WORDS " } }));
+        await new Promise((resolve) => streamed.push(() => resolve(undefined)));
+        c.enqueue(frame("content_block_delta", { index: 1, delta: { type: "text_delta", text: "AND THE REST" } }));
+        c.enqueue(frame("content_block_stop", { index: 1 }));
+        c.enqueue(frame("message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 6 } }));
+        c.enqueue(frame("message_stop", {}));
+        c.close();
+      },
+    });
   };
   /** The model calls there whose first message opens with where its sub-agent runs. */
   const briefed = () => up.received.filter((c) => c.kind === "anthropic" && /Where you run: on Workstation/.test(wordsOf(c.body?.messages?.[0])));
@@ -780,7 +866,7 @@ describe("a sub-agent on another machine", () => {
 
   after(async () => {
     clearInterval(presser);
-    for (const go of [...held.splice(0), ...waiting.splice(0)]) go();
+    for (const go of [...held.splice(0), ...waiting.splice(0), ...streamed.splice(0)]) go();
     await two?.stop();
     await up?.close();
     if (copiesWas === undefined) delete process.env.FILAMENT_COPIES_DIR;
@@ -829,6 +915,40 @@ describe("a sub-agent on another machine", () => {
     const before2 = briefed().length + up.received.length;
     await assert.rejects(call({ agent_id: sa.id, sync: true, prompt: "go on" }), /works on Workstation, in its clone there: sync brings this folder into a worktree here, and it has none/);
     assert.equal(briefed().length + up.received.length, before2, "no follow-up went");
+  });
+
+  // (fails before: yes — one on another machine had no run here: its thread here said Starting until its report came
+  // whole, its words as they were written seen on that machine alone)
+  test("its turn there is a run here while it works: its words and thinking as they stream, its rounds in that run's log, ended as its exchange ends", async () => {
+    const res = await call({ machine: "workstation", cwd: thereMain, description: "Say it slowly", prompt: "STREAM: say it slowly.", model: MODEL, run_in_background: true });
+    assert.equal(res.ok, true, res.text);
+    const row = () => registry.list(chainId).find((/** @type {any} */ r) => r.description === "Say it slowly");
+    await until(() => !!row()?.exchanges?.at(-1)?.mirror, "its run here");
+    const shown = String(row().exchanges.at(-1).mirror);
+    assert.match(shown, /^rsa-[0-9a-f]{12}$/);
+    assert.equal(row().exchanges.at(-1).runId ?? null, null, "never its runId, which a stop steers into");
+    const app = /** @type {any} */ (two.here.app);
+    await until(() => app.liveWords.blocks(shown).some((/** @type {any} */ b) => b.type === "text" && b.text === "FIRST WORDS "), "its words as they stream");
+    assert.deepEqual(app.liveWords.blocks(shown).map((/** @type {any} */ b) => [b.type, b.text]), [["thinking", "WEIGHING "], ["text", "FIRST WORDS "]]);
+    const meta = app.runs.getRun(shown);
+    assert.deepEqual([meta?.kind, meta?.endedAt ?? null, meta?.meta?.chain ?? null, meta?.meta?.machine], ["remote-subagent", null, null, "Workstation"], "running, and no chat here reads as working for it");
+    const started = app.runs.events(shown, { since: 0 }).events.filter((/** @type {any} */ e) => e.type === "round-start");
+    assert.deepEqual(started.map((/** @type {any} */ e) => e.blocksBefore), [0], "where its round's words begin among them");
+    streamed.splice(0).forEach((go) => go());
+    await until(() => row()?.status === "done", "its report");
+    await until(() => app.runs.getRun(shown)?.endedAt != null, "its run here ended");
+    assert.equal(app.runs.getRun(shown).status, "done");
+    assert.deepEqual(app.liveWords.blocks(shown), [], "its words let go of with its end");
+    const log = app.runs.events(shown, { since: 0 }).events;
+    assert.ok(log.some((/** @type {any} */ e) => e.type === "round-text" && /FIRST WORDS AND THE REST/.test(String(e.text))), "its round's words, whole, in its log");
+    assert.deepEqual(log.filter((/** @type {any} */ e) => e.type === "run-start" || e.type === "run-end").map((/** @type {any} */ e) => e.type), ["run-start", "run-end"], "its own start and end alone: that machine's stay there");
+    assert.deepEqual(log.filter((/** @type {any} */ e) => /^(ask|steer|subagent|visual|artifact|graph)/.test(String(e.type))), [], "what that machine keeps stays there");
+    // A follow-up is a run of its own, its exchange's.
+    const again = await call({ agent_id: row().id, prompt: "FOLLOW: once more", run_in_background: false });
+    assert.equal(again.ok, true, again.text);
+    const next = String(row().exchanges.at(-1).mirror);
+    assert.notEqual(next, shown);
+    assert.equal(app.runs.getRun(next)?.status, "done");
   });
 
   // (fails before: yes — the agent tool took no machine: the patch went to a sub-agent on this machine)

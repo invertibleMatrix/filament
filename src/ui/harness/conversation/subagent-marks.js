@@ -59,6 +59,42 @@ function machineAt(m, tone) {
   return { el, tone: paint };
 }
 
+/**
+ * Its machine and its chat there, as the page's store says them: none before its chat there is made, nor while the
+ * store knows it not. @param {SubagentMark} m
+ */
+function chatThere(m) {
+  const r = chipActions.subagentRow?.(m.agentId);
+  const machine = r?.machine || m.machine;
+  return machine && r?.remote?.chat ? { machine, chat: r.remote.chat } : null;
+}
+
+/**
+ * Open on Workstation, beside Open, for one launched on another machine where the page opens that machine's (s2e): its
+ * chat there, as that machine shows it — drawn once that chat is made, as the store says while the row stands. Null for
+ * one of this machine's.
+ * @param {SubagentMark} m
+ * @returns {{ el: HTMLElement, paint: () => void } | null}
+ */
+function thereButton(m) {
+  if (!chipActions.openOnMachine || !(m.machine?.id || chipActions.subagentRow?.(m.agentId)?.machine)) return null;
+  const el = h("button", { class: "subagent-open hidden", type: "button", onclick: () => {
+    const at = chatThere(m);
+    if (at) chipActions.openOnMachine?.(at.machine, at.chat);
+  } });
+  const paint = () => {
+    const at = chatThere(m);
+    el.classList.toggle("hidden", !at);
+    const words = at ? `Open on ${at.machine.name}` : "";
+    if (at && el.textContent !== words) {
+      el.textContent = words;
+      el.title = `Its chat on ${at.machine.name}, as that machine shows it`;
+    }
+  };
+  paint();
+  return { el, paint };
+}
+
 /** How a sub-agent's exchange stands now in the page's store, as statusTone says it; "" while the store knows it not. @param {SubagentMark} m */
 function toneNow(m) {
   const r = chipActions.subagentRow?.(m.agentId);
@@ -106,21 +142,28 @@ export function subagentMarkRow(m, { between = false, shown } = {}) {
       m.inform ? (m.told ? "the main agent was told" : "the main agent is told") : "",
       m.deliver === false ? "report kept for you" : "",
     ].filter(Boolean);
-    // One on another machine: its dot follows its run there, in the store, while the row stands.
+    // One on another machine: its dot follows its run there, in the store, while the row stands, and its chat there opens.
     const at = machineAt(m, toneNow(m));
+    const there = thereButton(m);
     const row = h("div", { class: "tool-note sub-mark is-dispatch" },
       h("span", { class: "sub-mark-ic", "aria-hidden": "true" }, "↗"),
       h("span", { class: "sub-mark-text" },
         m.followUp ? `You asked ${name} ${who} again` : `You sent ${name} ${who} off`,
         at ? h("span", { class: "sub-mark-facts" }, " · ", at.el) : null,
         facts.length ? h("span", { class: "sub-mark-facts" }, ` · ${facts.join(" · ")}`) : null),
+      there?.el ?? null,
       open);
-    if (at) followStore(row, () => at.tone(toneNow(m)));
+    if (at || there)
+      followStore(row, () => {
+        at?.tone(toneNow(m));
+        there?.paint();
+      });
     return row;
   }
   const status = m.status || "done";
   const facts = [m.ms ? formatWorkedFor(m.ms) : "", m.rounds ? `${m.rounds} round${m.rounds === 1 ? "" : "s"}` : "", m.toolCalls ? `${m.toolCalls} tool call${m.toolCalls === 1 ? "" : "s"}` : ""].filter(Boolean);
   const at = machineAt(m, statusTone(status));
+  const there = thereButton(m);
   const where = h("span", { class: "sub-mark-where" });
   const action = h("span", { class: "sub-mark-action" });
   const work = h("span", { class: "sub-mark-action" });
@@ -133,7 +176,9 @@ export function subagentMarkRow(m, { between = false, shown } = {}) {
       where),
     work,
     action,
+    there?.el ?? null,
     open);
+  if (there) followStore(row, there.paint);
   const held = m.delivery === "held";
   if (!held) where.textContent = arrivalWhere(m, between);
   if (!held && !(Number(m.changes) > 0)) return row;

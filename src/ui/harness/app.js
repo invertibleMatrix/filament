@@ -1194,6 +1194,9 @@ chipActions.openTeam = (id) => { void openBesideChat(id); };
 chipActions.openFlow = (id) => openFlowRow(id);
 // …and the chat that wrote a letter (app/letters.js).
 chipActions.openChat = (chain) => openChain(chain);
+// …and a sub-agent's chat on another machine, where the desktop app opens that machine's pages: in place beside the bar
+// where it can, else on that machine's whole page (s2e).
+chipActions.openOnMachine = typeof (/** @type {any} */ (globalThis).filamentApp?.openOn) === "function" ? (m, chat) => sidebar.openOnMachine(m, deskRoute({ chain: chat, thread: null })) : null;
 // …and whether that list was answered: only then is a sub-agent it has no row of one Filament holds no longer.
 chipActions.subagentsKnown = () => subagentStore.known();
 // …and how such a one ended, as its own run's log says.

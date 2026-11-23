@@ -122,6 +122,8 @@ test("a day's summary goes the next day, timed at its end: runs by engine, sub-a
   events.publish("run:2", { type: "run-start", kind: "coding-agent", meta: { engine: "acp", upstream: "claude-work" } });
   events.publish("run:3", { type: "run-start", kind: "subagent", meta: { upstream: "claude-work", subagent: "sa_1" } });
   events.publish("run:4", { type: "run-start", kind: "agent-turn", meta: { resumed: true } });
+  // A sub-agent's turn on another machine, shown here as a run: that machine counts it.
+  events.publish("run:5", { type: "run-start", kind: "remote-subagent", meta: { subagent: "sa_2", machine: "Studio" } });
   events.publish("graph", { type: "graph", chainId: "chain-1" });
   events.publish("graph", { type: "graph", chainId: "chain-1" });
   usageDays["2026-11-10"] = {
@@ -138,7 +140,7 @@ test("a day's summary goes the next day, timed at its end: runs by engine, sub-a
   assert.ok(daily, "the summary went");
   assert.equal(daily.properties.day, "2026-11-10");
   assert.equal(new Date(daily.timestamp).getDate(), 10, "timed at the day's end, on this machine's clock");
-  assert.deepEqual(daily.properties.runs, { filament: 1, "claude-code": 2 }, "the resumed turn counted once, when it began");
+  assert.deepEqual(daily.properties.runs, { filament: 1, "claude-code": 2 }, "the resumed turn counted once, when it began; one on another machine, there");
   assert.equal(daily.properties.features.subagents, 1);
   assert.equal(daily.properties.features.graphChats, 1, "a chat counted once a day");
   assert.equal(daily.properties.hours[14], 3);

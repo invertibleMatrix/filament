@@ -773,6 +773,7 @@ const stillMarked = (repo, path) => {
  * @property {string} description
  * @property {SubagentOrigin} by
  * @property {string | null} runId
+ * @property {string} [mirror]  one on another machine: its run here (`Exchange.mirror`)
  * @property {string} status
  * @property {number} startedAt
  * @property {number | null} endedAt
@@ -1312,6 +1313,8 @@ const heldKept = (v) => (Number(v?.tokens) > 0 ? { held: { tokens: Number(v.toke
  *   exchange's, so a follow-up's task shows (HarnessV3-Launch RD-D5)
  * @property {SubagentOrigin} by  who started it (a follow-up may come from someone other than the launcher)
  * @property {string | null} runId  the host request's id (its run in the run log)
+ * @property {string} [mirror]  one on another machine: the run here that shows its turn there (`mirrorRun`) — never
+ *   `runId`, which a stop or a message steers into
  * @property {string} status
  * @property {number} startedAt
  * @property {number | null} endedAt
@@ -2302,6 +2305,53 @@ const remoteRefusal = (input, followed) => {
 /** How much of a command asked to run on another machine its ask here shows, whole for any command a person reads. */
 const ASKED_COMMAND_THERE = 20_000;
 /**
+ * The events of a turn on another machine that its run here carries (`mirrorRun`): what its rounds are drawn from —
+ * its words, its calls and their output, its plan, its state, its compactions, its hooks, a budget's stop, an output
+ * cut, its coding agent's notices and Filament's notes.
+ */
+const MIRRORED = new Set(["round-start", "round-thinking", "round-text", "tool-start", "tool-output", "tool-end", "tool-errors", "plan", "turn-state", "compacting", "compaction", "notice", "agent-notice", "budget", "output-cut", "hook", "hooks", "window", "held"]);
+/**
+ * How the events of a turn on another machine read in its run here (`mirrorRun`), one after another: those it carries
+ * (`MIRRORED`), else null. Its blocks of words go on from those an earlier run there of the same exchange left (an
+ * answer's resumed turn, the turn a follow-up's settled pause resumed): as a new run there begins, the block open here
+ * ends (`endBlock`), and each of its rounds says where its own begin (`blocksBefore`) counted from the blocks held here
+ * then (`held`). A run whose rounds start again from 1 is numbered on from the last round shown, so two runs there never
+ * share one round here (the review of s2e); a resumed turn's, which go on from its paused round, keep theirs.
+ * @param {{ endBlock: () => void, held: () => number }} words
+ * @returns {(e: any) => any}
+ */
+export function mirrorEvents({ endBlock, held }) {
+  /** The run there its events come from now, the blocks held here before its own, and what its rounds move by here. */
+  let there = /** @type {string | null} */ (null);
+  let base = 0;
+  let rounds = 0;
+  /** Whether that run's first round is still to come; the last round shown here. */
+  let fresh = false;
+  let last = 0;
+  return (e) => {
+    if (!e || typeof e !== "object") return null;
+    const from = e.runId ? String(e.runId) : null;
+    if (from && from !== there) {
+      if (there) endBlock();
+      there = from;
+      base = held();
+      fresh = true;
+    }
+    if (!MIRRORED.has(e.type)) return null;
+    if (fresh && Number.isInteger(e.round)) {
+      fresh = false;
+      rounds = e.round > last ? 0 : last;
+    }
+    const round = Number.isInteger(e.round) ? e.round + rounds : null;
+    if (round != null) last = Math.max(last, round);
+    return {
+      ...e,
+      ...(round != null ? { round } : {}),
+      ...(e.type === "round-start" && Number.isInteger(e.blocksBefore) ? { blocksBefore: e.blocksBefore + base } : {}),
+    };
+  };
+}
+/**
  * What a sub-agent's chat on another machine asks the person there, as its ask here (`ask`, the remote-agents plan's
  * s-asks): its words name the machine and who asks there — its chat, its coding agent, a sub-agent of it —, a command
  * whole and redacted, line by line as it would run, a question's choices by their words.
@@ -2427,7 +2477,11 @@ const attachedTo = (compose, attached) => (!attached ? compose : /** @type {C} *
  * @param {{ config: () => any, log: (level: string, msg: string) => void, events: { publish: (topic: string, evt: any) => void },
  *   runs: { steer: (runId: string, msg: { kind?: string, text?: string, from?: string }) => any,
  *     events?: (runId: string, o?: { since?: number, limit?: number }) => { events: any[] } | null,
- *     subscribe?: (runId: string, fn: (evt: any) => void) => () => void } | null,
+ *     subscribe?: (runId: string, fn: (evt: any) => void) => () => void,
+ *     startRun?: (o: { id: string, kind?: string, title?: string | null, parentId?: string | null, meta?: any }) => any,
+ *     endRun?: (runId: string, o?: { status?: string }) => any,
+ *     closeOnDisk?: (runId: string, end: { status: string }) => boolean } | null,
+ *   liveWords?: import("../../services/live-words.js").LiveWords | null,
  *   context?: SubagentContext | null, call?: ReturnType<typeof createInternalCall> | null, now?: () => number,
  *   later?: (fn: () => void, ms: number) => void,
  *   runCheck?: (command: string, o: { root: string, signal: AbortSignal }) => Promise<{ exit: number | null, output: string, stopped: boolean }>,
@@ -2443,9 +2497,10 @@ const attachedTo = (compose, attached) => (!attached ? compose : /** @type {C} *
  *   kept (remote-agents.js `sendsKept`), so a project's first copy to a machine alone is asked. `remoteWait`: the
  *   pause between two reads of a sub-agent's turn on another machine (remote-agents.js `wait`; tests shorten it).
  *   `keptChars`: the ended conversations' budget (`KEPT_CHARS`; tests hold it to their own). `dataDir`: Filament's data
- *   folder, which a call's `attach` never reads from (attach.js).
+ *   folder, which a call's `attach` never reads from (attach.js). `liveWords`: where a running turn's words are held
+ *   (services/live-words.js), a turn on another machine's among them (`mirrorRun`).
  */
-export function createSubagentRegistry({ config, log, events, runs, context = null, call = null, now = Date.now, later = (fn, ms) => void setTimeout(fn, ms).unref?.(), runCheck = (command, { root, signal }) => runOwnCommand(command, { root, signal, redact: redactSecrets }), selfBase = undefined, machines = null, cli = cliCommand(), sendsFile = null, remoteWait = undefined, keptChars = KEPT_CHARS, dataDir = null }) {
+export function createSubagentRegistry({ config, log, events, runs, liveWords = null, context = null, call = null, now = Date.now, later = (fn, ms) => void setTimeout(fn, ms).unref?.(), runCheck = (command, { root, signal }) => runOwnCommand(command, { root, signal, redact: redactSecrets }), selfBase = undefined, machines = null, cli = cliCommand(), sendsFile = null, remoteWait = undefined, keptChars = KEPT_CHARS, dataDir = null }) {
   const post = call || createInternalCall({ config, log, ...(selfBase ? { selfBase } : {}) });
   // The other machines' side of a sub-agent launched there (the remote-agents plan's s-launch).
   const remote = createRemoteAgents({ machines, ...(remoteWait ? { wait: remoteWait } : {}) });
@@ -2649,6 +2704,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
       description: x.description,
       by: x.by,
       runId: x.runId,
+      ...(x.mirror ? { mirror: x.mirror } : {}),
       status: x.status,
       startedAt: x.startedAt,
       endedAt: x.endedAt,
@@ -2722,6 +2778,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
       description: String(x.description || ""),
       by: x.by,
       runId: x.runId || null,
+      ...(typeof x.mirror === "string" && x.mirror ? { mirror: x.mirror } : {}),
       status: x.outcome ? String(x.status) : "aborted",
       startedAt: Number(x.startedAt) || 0,
       endedAt: x.endedAt ?? null,
@@ -2858,6 +2915,9 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
       // copy there by then is brought here (cp-back), as its exchange's end would have.
       if (sa.remote && (Array.isArray(t.exchanges) ? t.exchanges : []).some((x) => !x.outcome)) {
         stopCut(sa);
+        // Its run here, left open by the stop that cut it, ends as its exchange did (`mirrorRun`).
+        const shown = sa.exchanges.at(-1)?.mirror;
+        if (shown) runs?.closeOnDisk?.(shown, { status: "aborted" });
         if (sa.work?.there) void (cutStops.get(sa.id) || Promise.resolve()).then(() => bringBack(sa)).then(() => changed(sa));
       }
       // A stop its turn there was owed before this start, kept with its thread, goes now: its turn may have run on there
@@ -3824,6 +3884,8 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
         description: x.description,
         by: x.by,
         runId: x.runId,
+        // One on another machine: its run here, which its conversation follows (`mirrorRun`).
+        ...(x.mirror ? { mirror: x.mirror } : {}),
         status: x.status,
         startedAt: x.startedAt,
         endedAt: x.endedAt,
@@ -5142,6 +5204,49 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
   };
 
   /**
+   * A sub-agent's turn on another machine as a run here (s2e): its conversation here follows it as it follows one of
+   * this machine's — its rounds' events and its words as they stream, its thinking with them —, and its exchange names it
+   * (`mirror`), never as `runId`, which a stop and a message steer into. Its run carries what draws its rounds alone
+   * (`MIRRORED`): its asks are its card's (`ask`), and its messages, pictures and own agents are that machine's; two
+   * runs there of one exchange read on from each other (`mirrorEvents`). No chat of this machine's is named in it, so
+   * no chat here reads as working for it. Null where this Filament keeps no runs (tests).
+   * @param {Subagent} sa
+   */
+  const mirrorRun = (sa) => {
+    const ex = sa.exchanges.at(-1);
+    const rem = sa.remote;
+    if (!ex || !rem || !runs?.startRun || !runs.endRun) return null;
+    const id = `rsa-${randomBytes(6).toString("hex")}`;
+    runs.startRun({ id, kind: "remote-subagent", title: `${sa.card.name} ${sa.id} on ${rem.machine.name}`, parentId: sa.run?.parent?.live.runId || null, meta: { subagent: sa.id, card: sa.card.tag, machine: rem.machine.name } });
+    liveWords?.start(id);
+    ex.mirror = id;
+    changed(sa);
+    const mirror = mirrorEvents({ endBlock: () => liveWords?.endBlock(id), held: () => liveWords?.blocks(id).length ?? 0 });
+    let ended = false;
+    return {
+      /** @param {any} e  an event of its run there */
+      event(e) {
+        if (ended) return;
+        const shown = mirror(e);
+        if (shown) events.publish(`run:${id}`, shown);
+      },
+      words: liveWords
+        ? {
+            piece: (/** @type {"text" | "thinking"} */ type, /** @type {string} */ text) => void (!ended && liveWords.piece(id, type, text)),
+            endBlock: () => void (!ended && liveWords.endBlock(id)),
+          }
+        : null,
+      /** Its turn there ended, as its exchange says. @param {string} status */
+      end(status) {
+        if (ended) return;
+        ended = true;
+        runs.endRun?.(id, { status });
+        liveWords?.end(id);
+      },
+    };
+  };
+
+  /**
    * A sub-agent's exchange on another machine (the remote-agents plan's s-launch): what of its messages its chat there
    * has not read goes to it as a turn (`remoteContent`), whose events reach its card here as a host's do (`relay`), and
    * whose end is its host's finish — its conversation here its messages and the report's words, which a follow-up goes
@@ -5158,6 +5263,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
     await cutStops.get(sa.id);
     const sent = userBlocks(messages).length;
     let began = false;
+    const shown = mirrorRun(sa);
     /** @param {any} e */
     const onEvent = (e) => {
       if (!began && rem.run) {
@@ -5165,6 +5271,7 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
         rem.held = sent;
         changed(sa);
       }
+      shown?.event(e);
       registryApi?.relay(sa.id, e);
     };
     /** @param {import("./remote-agents.js").RemoteAsk} ask @param {AbortSignal} asked @returns {Promise<import("./remote-agents.js").RemoteAnswer | null>} */
@@ -5222,11 +5329,14 @@ export function createSubagentRegistry({ config, log, events, runs, context = nu
       // Its chat there is kept the moment it is made: a restart here before its run began finds it, and stops it there.
       // The sending chat's mode as this message goes, where its launch fixed none (the owner's of 11-10).
       const mode = rem.fixed || permissionMode(settingsOf(sa.chainId).doc?.loop?.permissions);
-      const fin = await remote.turn(rem, { content: remoteContent(messages, rem.held ?? 0), signal, title: sa.description, mode, onEvent, onAsk, onChat: () => changed(sa), onAway });
+      const fin = await remote.turn(rem, { content: remoteContent(messages, rem.held ?? 0), signal, title: sa.description, mode, onEvent, onAsk, onChat: () => changed(sa), onAway, words: shown?.words ?? null });
       if (sa.run) sa.run.wrote = false;
       if (rem.model) sa.model = rem.model;
+      shown?.end(fin.status);
       return { ...fin, convo: fin.status === "done" ? [...messages, { role: "assistant", content: [{ type: "text", text: fin.report || "(no words)" }] }] : messages };
     } finally {
+      // One that threw ended too, in its exchange's words: aborted, where its stop ended it.
+      shown?.end(signal.aborted ? "aborted" : "failed");
       awayNow.delete(sa.id);
       if (rem.run) rem.held = sent;
       if (!had && rem.chat) changed(sa);

@@ -1028,16 +1028,19 @@ export function createRemoteAgents({ machines, wait = pause }) {
      * the person's to answer before this message goes, which would answer it else.
      * @param {RemoteChat} remote @param {{ content: any[], signal: AbortSignal, title?: string, mode?: string | null,
      *   onEvent?: (e: any) => void, onAsk?: ((ask: RemoteAsk, signal: AbortSignal) => Promise<RemoteAnswer | null>) | null,
-     *   onChat?: () => void, onAway?: (away: { ms: number, why: string } | null) => void }} o
+     *   onChat?: () => void, onAway?: (away: { ms: number, why: string } | null) => void,
+     *   words?: { piece: (type: "text" | "thinking", text: string) => void, endBlock: () => void } | null }} o
      *   `content`: the message's blocks, words and pictures or documents carried whole; `mode`: the permission mode of
      *   the chat that sends it, now — the chat there starts in it, and takes a change of it with the message; `onAsk`: an
      *   ask shown to the person, resolved with their answer — null where its signal let it go unanswered (the stop,
      *   `ANSWERED_THERE`); `onChat`: its chat there is made, before its message goes — for the caller to keep it, so a
      *   restart here before its run begins still finds the chat to stop; `onAway`: its machine has not answered for
-     *   `UNREACHABLE_AFTER_MS` (how long, and what the last read said), then null once it answers again
+     *   `UNREACHABLE_AFTER_MS` (how long, and what the last read said), then null once it answers again; `words`: its
+     *   words and thinking as the reply streams them, each block's end with them — none where the reply dropped and its
+     *   run is read from its events, whose rounds carry their words whole
      * @returns {Promise<import("./subagents.js").HostFinish>}
      */
-    async turn(remote, { content, signal, title = "", mode = null, onEvent = () => {}, onAsk = null, onChat = () => {}, onAway = () => {} }) {
+    async turn(remote, { content, signal, title = "", mode = null, onEvent = () => {}, onAsk = null, onChat = () => {}, onAway = () => {}, words = null }) {
       // Its newest turn's run, once this one's events name it: none, where it is refused before it began.
       remote.run = null;
       const m = machineOf(remote.machine.id);
@@ -1179,7 +1182,15 @@ export function createRemoteAgents({ machines, wait = pause }) {
           onRun(d?.event);
           // Its run ended: the reply has said all it says, and the stream is let go of.
           if (seen.end) reading.abort();
-        } else if (type === "content_block_delta" && d?.delta?.type === "text_delta") said += String(d.delta.text || "");
+        } else if (type === "content_block_delta" && d?.delta?.type === "text_delta") {
+          said += String(d.delta.text || "");
+          if (!over) words?.piece("text", String(d.delta.text || ""));
+        } else if (type === "content_block_delta" && d?.delta?.type === "thinking_delta") {
+          if (!over) words?.piece("thinking", String(d.delta.thinking || ""));
+        }
+        // The wire opens a block where its kind changes and closes one at each model call's end, as that machine's own
+        // words are held (live-words.js): a block's end here is one there.
+        else if (type === "content_block_stop") words?.endBlock();
         else if (type === "error") failed = wordsThere(d?.error?.message || "the turn failed", ERROR_CHARS);
       };
       /**

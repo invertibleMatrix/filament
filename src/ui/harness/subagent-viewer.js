@@ -68,6 +68,12 @@ const FILE_STATUS = Object.freeze({ A: "added", M: "changed", D: "deleted", T: "
 const clock = (at) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 /** @param {any} e */
 const roundOf = (e) => (Number.isInteger(e?.round) ? e.round : 0);
+/**
+ * The run an exchange's rounds are followed in: its own, else — one on another machine — the run here its turn there
+ * streams into (`mirror`), which takes no press of its cards: those are that machine's.
+ * @param {{ runId?: string | null, mirror?: string } | null | undefined} ex
+ */
+const runOf = (ex) => ex?.runId || ex?.mirror || null;
 
 /**
  * One sentence per round note the run's events carry that its cards do not draw: a budget's stop, an output cut. A
@@ -364,7 +370,7 @@ function exchangeView(ex, index, o) {
         ? `Waiting for your answer${why.includes(" — ") ? `: ${why.split(" — ").slice(1).join(" — ")}` : ""}`
         : st?.to === "waiting" && (st.retry || st.queue)
           ? capital(turnStateWords(st))
-          : !current.runId || !last
+          : !runOf(current) || !last
             ? "Starting"
             : busy
               ? ""
@@ -602,7 +608,7 @@ function exchangeView(ex, index, o) {
     // ran (no run), or its run log is gone. Until the run's events are all in, that is not known yet.
     // One its run's log wrote (`fromLog`) is what its rounds show already, where they are shown.
     const said = heard.said || (!!current.fromLog && heard.events > 0);
-    const report = current.report && !said && (!current.runId || followed) ? h("div", { class: "a-md sav-text" }) : null;
+    const report = current.report && !said && (!runOf(current) || followed) ? h("div", { class: "a-md sav-text" }) : null;
     if (report) setHtml(report, mdChat(current.report || "", null).out);
     // Drawn again at each word of the registry once it ended: in place, its report's links and its failure's buttons
     // the elements under the pointer (the owner's of 11-01: buttons blinking under a resting pointer, clicks lost).
@@ -728,8 +734,9 @@ function exchangeView(ex, index, o) {
       }
       current = next;
       // No run to follow yet: nothing of its rounds to wait for.
-      if (!next.runId) landed();
-      if (next.runId && !follow && awake) {
+      const run = runOf(next);
+      if (!run) landed();
+      if (run && !follow && awake) {
         const hears = {
           onRun: heardRun,
           onEvent: (/** @type {any} */ e) => push(e),
@@ -741,7 +748,7 @@ function exchangeView(ex, index, o) {
             schedule();
           },
         };
-        follow = o.follow ? o.follow(hears) : followRun(next.runId, { words: true, ...hears });
+        follow = o.follow ? o.follow(hears) : followRun(run, { words: true, ...hears });
         follow.promise.then(() => {
           followed = true;
           endReplay();
@@ -796,6 +803,9 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
   // between them (the UI/UX review, 2026-09-30).
   const detachBtn = button({ label: "Run in background — auto-report", variant: "outline", size: "sm", title: "Free the main agent now. This agent keeps running in the background; when it finishes, its report reaches the main agent automatically.", onClick: () => detach(true) });
   const takeBtn = button({ label: "Run in background — report to me", variant: "outline", size: "sm", title: "Free the main agent now. This agent keeps running in the background; its report comes to you instead, and you can send it on to the main agent later.", onClick: () => detach(false) });
+  // One on another machine: its chat there, opened as that machine's own page (s2e). What the person sends there is a
+  // turn of that chat's as any other: while it runs, a message from here is refused there as busy.
+  const thereBtn = button({ label: "Open there", variant: "outline", size: "sm", class: "hidden", onClick: () => openThere() });
   const avatar = h("span", { class: "sav-avatar", html: ICONS.bot });
   /** The face drawn now, so the clock's ticks leave it be. */
   let faceKey = "";
@@ -803,7 +813,7 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
     avatar,
     h("div", { class: "sav-head-text" }, title, meta),
     // Its state, its context's gauge and what can be done with it: one group, which a narrow head sets under its words.
-    h("div", { class: "sav-head-acts" }, pill, ctx, detachBtn, takeBtn, stopBtn));
+    h("div", { class: "sav-head-acts" }, pill, ctx, thereBtn, detachBtn, takeBtn, stopBtn));
   const body = h("div", { class: "sav-body" }, h("div", { class: "sav-loading gradient" }, "Loading"));
   /** Its worktree's changes, after the exchanges: the files, the diff on demand, Apply. */
   const workBox = h("section", { class: "sav-work hidden" });
@@ -1098,6 +1108,7 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
     // What its context holds as it works, and where it compacts: its gauge, beside its state.
     paintContext(ctx, running() ? sa.progress : null);
     stopBtn.classList.toggle("hidden", !running());
+    paintThere();
     // Only a launch the main agent is waiting on can be detached: the agent's own, in the foreground, still running.
     const detachable = running() && !sa.background && sa.origin === "agent";
     detachBtn.classList.toggle("hidden", !detachable);
@@ -1195,7 +1206,7 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
     sa.exchanges.forEach((ex, i) => {
       if (!views[i]) {
         // Opened, the thread follows its newest exchange, and any still running; the rest as it comes near them.
-        const sleeps = canSleep && first && i < newest && ex.status !== "running" && !!ex.runId;
+        const sleeps = canSleep && first && i < newest && ex.status !== "running" && !!runOf(ex);
         const v = exchangeView(ex, i, { stick, asleep: sleeps, label: askedWords(sa, i, ex), onward: { main, send: passOn }, toast, pictures: drawn, at: { chain: chainId, agent: id } });
         views.push(v);
         if (sleeps) asleep.set(v.el, i);
@@ -1211,7 +1222,24 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
     if (sa.status !== "running") void held?.settled(chainId, id);
     if (retry) clearTimeout(retry);
     const last = sa.exchanges.at(-1);
-    retry = last && last.status === "running" && !last.runId ? setTimeout(lookWhenShown, STARTING_RETRY_MS) : null;
+    retry = last && last.status === "running" && !runOf(last) ? setTimeout(lookWhenShown, STARTING_RETRY_MS) : null;
+  }
+
+  /** Its machine and its chat there, where the page can open that machine's: none before its chat there is made. */
+  const thereOf = () => (sa?.machine && sa.remote?.chat && chipActions.openOnMachine ? { machine: sa.machine, chat: sa.remote.chat } : null);
+  /** Open on <machine>, where its chat there can be opened. */
+  function paintThere() {
+    const at = thereOf();
+    thereBtn.classList.toggle("hidden", !at);
+    if (!at) return;
+    const label = `Open on ${at.machine.name}`;
+    const words = /** @type {HTMLElement} */ (thereBtn.querySelector(".zc-btn-label"));
+    if (words.textContent !== label) words.textContent = label;
+    thereBtn.title = `Its chat on ${at.machine.name}, as that machine shows it. A message you send there is a turn of that chat's, and while one runs there a message from here is refused as busy.`;
+  }
+  function openThere() {
+    const at = thereOf();
+    if (at) chipActions.openOnMachine?.(at.machine, at.chat);
   }
 
   async function stop() {

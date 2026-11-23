@@ -573,7 +573,13 @@ runs in your chat's permission mode, *auto* only with **Without asking** or **Fu
    `changes` on the call (`uncommitted`, say) hands your work here over as a patch. In its own copy, nothing to catch
    up: the copy is your folder as it stands, and the brief says what was held back.
 4. Its rows in your chat — sent off, and back — say *on Studio* with a dot in its run's state; its row in the Sub
-   Agents tab and its thread say *on Studio* too. On Studio, its chat stands in the sidebar with whose agents started it under
+   Agents tab and its thread say *on Studio* too. Its thread here (**Open**, or **Open beside**) shows it working as
+   one of this machine's: its thinking and words as they are written, its calls and their output, each turn there a
+   run here kept as runs are. Its asks stay on its card (*What it asks*, below); the pictures, artifacts and
+   sub-agents it makes stay on Studio. Where the stream from Studio drops, its words come whole as each round ends. In
+   the desktop app, **Open on Studio** on its rows and in its thread's head opens its chat there, in place beside the
+   left bar: a message you send there is a turn of that chat's, and while it runs one from here is refused as busy.
+   On Studio, its chat stands in the sidebar with whose agents started it under
    its name (*From Laptop's agents*, by this machine's name in Settings › Remote access › This machine), and the agents'
    mark in its header.
 5. Its report comes back to your chat. In its own copy, what it changed there comes back with it as each turn ends:

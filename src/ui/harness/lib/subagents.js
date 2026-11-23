@@ -244,7 +244,7 @@ export function contextGauge(p) {
  *   failure?: { head?: string, more?: string } | null, handed?: { source: string, files: number | null },
  *   pictures?: string[], files?: string[],
  *   fresh?: "restart" | "let-go", why?: string, drew?: Drew[],
- *   made?: Made[], sentIn?: { run: string, round: number | null }, fromLog?: boolean,
+ *   made?: Made[], sentIn?: { run: string, round: number | null }, fromLog?: boolean, mirror?: string,
  *   agentModel?: string, otherModel?: { chosen: string, answered: string }, promptHead?: boolean, reportHead?: boolean }} SubagentExchange
  *   `promptHead`, `reportHead`: the list carries its asking, its answer, as a head (the list's `heads`), read whole where
  *   shown whole;
@@ -255,7 +255,8 @@ export function contextGauge(p) {
  *   `fresh`: a fresh agent took the thread up with this message, and why; `why`: why Filament started it itself (`by`
  *   is then "self"); `drew`: the pictures it drew in this exchange, in the order drawn
  *   (HarnessV4_Visuals_Plan VS-D50); `made`: the artifacts it published, each once (HarnessV4_Artifacts_Plan AFC-100);
- *   `sentIn`: the turn that sent it and that turn's round, where a turn's call did (HarnessV4_OneAgent_Plan L47)
+ *   `sentIn`: the turn that sent it and that turn's round, where a turn's call did (HarnessV4_OneAgent_Plan L47);
+ *   `mirror`: one on another machine, the run here that shows its turn there as it works, its words streamed (s2e)
  */
 /**
  * A picture a helper drew, by where it is kept: on the turn that launched it (`turn`), or on the session (`session`),

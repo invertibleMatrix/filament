@@ -15,6 +15,7 @@ import { stubDocument } from "./helpers/dom-stub.js";
 import { fakeH, textOf } from "./helpers/fake-dom.js";
 import { agentRow, sideIO, sideSeams } from "./helpers/side-view.js";
 import { until } from "./helpers/wait.js";
+import { runSocketStandIn } from "./helpers/run-socket.js";
 import { fakeUpstream, startApp } from "./helpers/app.js";
 
 const g = /** @type {any} */ (globalThis);
@@ -150,6 +151,126 @@ describe("the machine that launched it", () => {
     } finally {
       for (const c of open) c.close();
       serve = () => null;
+      for (const [k, v] of Object.entries(had)) {
+        if (v === undefined) delete g[k];
+        else g[k] = v;
+      }
+      doc.restore();
+    }
+  });
+
+  // (fails before: yes — nothing opened a sub-agent's chat on its machine: Open showed its thread here alone)
+  test("Open on its machine stands beside Open once its chat there is made, and opens that chat there; a local one, or a page that opens no other machine's, has none", () => {
+    const doc = stubDocument();
+    /** @type {Map<string, any>} */
+    const rows = new Map([
+      ["sa_r", { id: "sa_r", status: "running", machine: ON, remote: { ...THERE, chat: null }, exchanges: [{ status: "running" }] }],
+      ["sa_l", { id: "sa_l", status: "done", exchanges: [{ status: "done" }] }],
+    ]);
+    /** @type {(() => void)[]} */
+    const heard = [];
+    /** @type {[string, string][]} */
+    const opened = [];
+    Object.assign(chipActions, {
+      subagentRow: (/** @type {string} */ id) => rows.get(id) ?? null,
+      watchSubagents: (/** @type {() => void} */ fn) => (heard.push(fn), () => void heard.splice(heard.indexOf(fn), 1)),
+      openSubagent: () => {},
+      openOnMachine: (/** @type {{ name: string }} */ m, /** @type {string} */ chat) => void opened.push([m.name, chat]),
+    });
+    try {
+      const mark = (/** @type {string} */ id, /** @type {"dispatch" | "arrival"} */ event) =>
+        /** @type {any} */ (subagentMarkRow(/** @type {any} */ ({ event, agentId: id, exchange: 0, description: "Run the suite", status: "done", card: { tag: "builder", name: "Builder" } })));
+      /** Its buttons, as the person sees them: Open on its machine first, then Open. @param {any} row */
+      const shown = (row) => row.querySelectorAll(".subagent-open").filter((/** @type {any} */ b) => !b.classList.contains("hidden")).map((/** @type {any} */ b) => b.textContent);
+      const sent = mark("sa_r", "dispatch");
+      doc.document.body.append(sent);
+      assert.deepEqual(shown(sent), ["Open"], "its chat there is not made yet");
+      rows.set("sa_r", { ...rows.get("sa_r"), remote: THERE });
+      for (const fn of [...heard]) fn();
+      assert.deepEqual(shown(sent), ["Open on Workstation", "Open"], "drawn once the store says its chat there");
+      sent.querySelectorAll(".subagent-open")[0].dispatch("click");
+      assert.deepEqual(opened, [["Workstation", "c_there"]]);
+      const back = mark("sa_r", "arrival");
+      doc.document.body.append(back);
+      assert.deepEqual(shown(back), ["Open on Workstation", "Open"]);
+      assert.deepEqual(shown(mark("sa_l", "dispatch")), ["Open"], "one of this machine's");
+      assert.deepEqual(shown(mark("sa_l", "arrival")), ["Open"]);
+      chipActions.openOnMachine = null;
+      assert.deepEqual(shown(mark("sa_r", "dispatch")), ["Open"], "a page that opens no other machine's");
+    } finally {
+      Object.assign(chipActions, { subagentRow: null, watchSubagents: null, openSubagent: null, openOnMachine: null });
+      doc.restore();
+    }
+  });
+
+  // (fails before: yes — one on another machine had no run here: its thread said Starting until its report came whole,
+  // and nothing in its head opened its chat there)
+  test("its thread follows its turn there as a run here, its words as they stream; its head opens its chat there; a local one's head has none", async () => {
+    const doc = stubDocument();
+    const had = { requestAnimationFrame: g.requestAnimationFrame, cancelAnimationFrame: g.cancelAnimationFrame, MutationObserver: g.MutationObserver, EventSource: g.EventSource, addEventListener: g.addEventListener, WebSocket: g.WebSocket, location: g.location };
+    /** @type {{ key: string, run: string, words: boolean, peer: any }[]} */
+    const follows = [];
+    const ex = { prompt: "Run the suite.", description: "Run the suite", by: "agent", runId: null, mirror: "rsa-0123456789ab", status: "running", startedAt: 1, endedAt: null, delivery: null };
+    /** @type {Record<string, any>} */
+    const rows = {
+      sa_r: agentRow("sa_r", { asked: false, origin: "agent", model: "m-1", status: "running", machine: ON, remote: THERE, provider: null, exchanges: [ex] }),
+      sa_l: agentRow("sa_l", { asked: false, origin: "agent", model: "m-1", provider: "Anthropic" }),
+    };
+    serve = (url) => {
+      const id = /\/subagents\/(sa_[a-z])(?:$|\?)/.exec(url)?.[1];
+      return id ? new Response(JSON.stringify({ subagent: rows[id] }), { status: 200, headers: { "content-type": "application/json" } }) : null;
+    };
+    g.requestAnimationFrame = (/** @type {(t: number) => void} */ f) => setTimeout(() => f(0), 0);
+    g.cancelAnimationFrame = (/** @type {any} */ id) => clearTimeout(id);
+    g.MutationObserver = class { observe() {} disconnect() {} };
+    g.EventSource = class { close() {} };
+    g.addEventListener = () => {};
+    g.WebSocket = runSocketStandIn((msg, peer) => {
+      if (msg.op === "follow") follows.push({ key: msg.key, run: msg.run, words: msg.words, peer });
+    });
+    g.location = { protocol: "http:", host: "stand-in" };
+    /** @type {[string, string][]} */
+    const opened = [];
+    chipActions.openOnMachine = (m, chat) => void opened.push([m.name, chat]);
+    /** @type {{ close: () => void }[]} */
+    const open = [];
+    try {
+      const { subagentConversation } = await import("../src/ui/harness/subagent-viewer.js");
+      const { h } = await import("../src/ui/lib/dom.js");
+      const MAIN = { state: () => /** @type {const} */ ("idle"), outside: () => null, start: () => {}, write: () => {} };
+      const thread = (/** @type {string} */ id) => {
+        const conv = subagentConversation({ chainId: "c1", id, toast: () => {}, main: MAIN });
+        open.push(conv);
+        const scroll = h("div", { class: "scroll" }, conv.body);
+        doc.document.body.append(h("div", {}, conv.head, scroll, conv.foot));
+        conv.mount(scroll);
+        return /** @type {any} */ (conv);
+      };
+      /** Its head's buttons as the person sees them. @param {any} conv */
+      const acts = (conv) => conv.head.querySelectorAll(".sav-head-acts button").filter((/** @type {any} */ b) => !b.classList.contains("hidden")).map((/** @type {any} */ b) => b.textContent);
+      const remote = thread("sa_r");
+      await until(() => follows.length === 1, "its thread follows its run here");
+      assert.deepEqual([follows[0].run, follows[0].words], ["rsa-0123456789ab", true], "its turn there's run here, with its words");
+      const { key, peer } = follows[0];
+      peer.data(key, { type: "hello", run: { id: "rsa-0123456789ab", status: "running", endedAt: null, events: 1 }, firstAvailable: 1, gap: null });
+      peer.data(key, { type: "words", blocks: [{ type: "text", text: "FIRST WORDS" }], open: true });
+      peer.data(key, { n: 1, type: "round-start", round: 1, blocksBefore: 0 });
+      const said = () => remote.body.querySelectorAll(".sav-round .sav-text").filter((/** @type {any} */ t) => !t.classList.contains("hidden")).map((/** @type {any} */ t) => String(t.innerHTML));
+      await until(() => said().some((t) => /FIRST WORDS/.test(t)), "its words as they stream");
+      peer.data(key, { type: "words", piece: { block: 0, type: "text", text: " AND MORE" } });
+      await until(() => said().some((t) => /FIRST WORDS AND MORE/.test(t)), "each piece as it comes");
+      await until(() => acts(remote).includes("Open on Workstation"), "its head's Open on Workstation");
+      const btn = remote.head.querySelectorAll(".sav-head-acts button").find((/** @type {any} */ b) => b.textContent === "Open on Workstation");
+      assert.match(String(btn.attrs?.get?.("title") ?? btn.title ?? ""), /a message from here is refused as busy/);
+      btn.dispatch("click");
+      assert.deepEqual(opened, [["Workstation", "c_there"]]);
+      const local = thread("sa_l");
+      await until(() => local.head.querySelectorAll(".sav-meta span").some((/** @type {any} */ s) => s.textContent === "m-1 on Anthropic"), "the local one's head");
+      assert.equal(acts(local).some((/** @type {string} */ a) => /^Open on /.test(a)), false);
+    } finally {
+      for (const c of open) c.close();
+      serve = () => null;
+      chipActions.openOnMachine = null;
       for (const [k, v] of Object.entries(had)) {
         if (v === undefined) delete g[k];
         else g[k] = v;

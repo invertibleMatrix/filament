@@ -797,7 +797,8 @@ describe("HarnessV4_Tasks U1: the sub-agent view streams a round's thinking and 
     assert.deepEqual(roundWords(blocks, 4), { thinking: "", text: "" }, "a round that has streamed nothing yet");
     assert.deepEqual(roundWords([], 0), { thinking: "", text: "" });
     const viewer = readFileSync("src/ui/harness/subagent-viewer.js", "utf8");
-    assert.match(viewer, /follow = o\.follow \? o\.follow\(hears\) : followRun\(next\.runId, \{ words: true, \.\.\.hears \}\);/, "the run's words are asked for");
+    assert.match(viewer, /const run = runOf\(next\);/, "its run, or one on another machine's run here");
+    assert.match(viewer, /follow = o\.follow \? o\.follow\(hears\) : followRun\(run, \{ words: true, \.\.\.hears \}\);/, "the run's words are asked for");
     assert.match(viewer, /words = applyWords\(\/\*\* @type \{any\} \*\/ \(words\), w\);/, "and kept as they come");
     assert.match(viewer, /roundView\(r\)\.from = Number\.isInteger\(e\.blocksBefore\) \? e\.blocksBefore : null;/, "each round knows where its own begin");
     assert.match(viewer, /if \(own\.thinking && !v\.thought\) \{/, "its thinking streams until the log brings it whole");

@@ -1445,7 +1445,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   // Sub-agents (HarnessV3 §15 item 86): one registry for the process — agent turns launch from it, the harness and
   // /subagent launch into it, and a sub-agent's own request is served against it. It reads the sessions it serves
   // through a context bound below, once the sessions service exists.
-  const subagents = createSubagentRegistry({ config: config.get, log, events, runs, selfBase, machines, cli: cliLine, sendsFile: join(dataDir, "remote-sends.json"), dataDir });
+  const subagents = createSubagentRegistry({ config: config.get, log, events, runs, liveWords, selfBase, machines, cli: cliLine, sendsFile: join(dataDir, "remote-sends.json"), dataDir });
   // Its memory's census each minute to the desktop app, which keeps it in its memory log (services/memory-log.js); none
   // where Filament runs under no app.
   const stopCensus = postCensus(/** @type {any} */ (process).parentPort, () => censusOf({ runs, subagents }));

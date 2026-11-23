@@ -85,7 +85,9 @@ export function toolRow(o) {
  *  (`envelopeState`: still sealed, as the store says, and the later turn that opened it) and opens whoever sent it — a
  *  team's chat beside this one (`openTeam`), a flow (`openFlow`), else the sub-agent. An agent's card the person
  *  hid stays off the chat, its answer seen (`cardClosed`, HarnessV4_Tasks_Logs E37); one whose agent runs again stands
- *  and says so at each paint, and once its row has left the document (`standing`). With nothing set
+ *  and says so at each paint, and once its row has left the document (`standing`). A sub-agent on another machine
+ *  opens its chat there (`openOnMachine`: in place beside the left bar where the desktop app can, else on that
+ *  machine's whole page; null where the page opens no other machine's). With nothing set
  *  (a test page, a card rendered outside the harness) a file chip copies its path instead, an image card shows no
  *  picture and a sub-agent card offers no link. */
 /**
@@ -119,13 +121,14 @@ export function toolRow(o) {
  *   envelopeState: ((n: number) => { sealed: boolean | null, later: { turn: number, round: number, by: "tool" | "wait" } | null }) | null,
  *   openTeam: ((id: string) => void) | null,
  *   openFlow: ((id: string) => void) | null,
- *   openChat: ((chain: string) => void) | null }}
+ *   openChat: ((chain: string) => void) | null,
+ *   openOnMachine: ((machine: { id: string, name: string }, chat: string) => void) | null }}
  */
 export const chipActions = {
   open: null, readFile: null, openSubagent: null, subagentDelivery: null, sendSubagent: null, watchSubagents: null, subagentWork: null, reviewSubagent: null,
   subagentRow: null, subagentsKnown: null, subagentLogged: null, subagentCard: null, cardMarks: null, cardAnswer: null, cardOpen: null, cardClosed: null, stopSubagent: null, askAgain: null, outsideClient: null,
   overrule: null, overruledOf: null, drewOf: null, visualWords: null, madeOf: null, openArtifact: null, toBackground: null, readCalls: null,
-  envelopeState: null, openTeam: null, openFlow: null, openChat: null,
+  envelopeState: null, openTeam: null, openFlow: null, openChat: null, openOnMachine: null,
 };
 
 /** A file chip: the leaf name, the path as its title. Click opens the file in the side pane (§5.7 B3). @param {string} path */
