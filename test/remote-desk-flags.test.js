@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { remoteKeys } from "../src/adapters/git/inspect.js";
+import { FOLDER_STATS_HUNG, remoteKeys, remoteRead } from "../src/adapters/git/inspect.js";
 import { DESK, PAGES } from "../src/http/admin/remote.js";
 import { REMOTES_WAIT_MS } from "../src/http/admin/memory.js";
 import { CHATS_MS, createWatch, deskFlagsOf } from "../desktop/lib/watch.js";
@@ -175,6 +175,41 @@ describe("remoteKeys: each folder's remote's key, kept a while", () => {
     assert.deepEqual([...(await keys.of(["/quick", "/slow"], { waitMs: 0 }))], [["/quick", "h/quick"], ["/slow", "h/slow"]], "the next ask has it");
     assert.equal(reads, 2, "read once");
     assert.ok(REMOTES_WAIT_MS >= 500 && REMOTES_WAIT_MS <= 3000, "a list waits a moment, not a git's whole time");
+  });
+
+  // (fails before: yes — the review of s1c: a folder on a mount gone offline was looked for on the server's thread, which
+  // waited as long as the share did, every request with it, at each desk's ask)
+  test("a folder whose stat does not answer: unread within its wait and asked once however often it is read; past a few such, none is asked; the list goes without it", async () => {
+    const share = gate();
+    /** @type {string[]} */
+    const asked = [];
+    /** A stat on the share: it answers once the share does, that the folder is not there. @param {string} f */
+    const offline = (f) => (asked.push(f), share.p.then(() => Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))));
+    const there = { ms: 50, statOf: offline };
+    try {
+      const t0 = Date.now();
+      assert.deepEqual(await remoteRead("/offline/a", { there }), { remote: null, unread: true });
+      assert.ok(Date.now() - t0 < 1000, `answered in ${Date.now() - t0} ms`);
+      const t1 = Date.now();
+      assert.deepEqual(await remoteRead("/offline/a", { there }), { remote: null, unread: true }, "read again while its stat is under way");
+      assert.ok(Date.now() - t1 < 40, `at once, not after another wait: ${Date.now() - t1} ms`);
+      assert.deepEqual(asked, ["/offline/a"], "asked once");
+      // The desk's list: answered within its wait, the folder not known, kept for no while.
+      const keys = remoteKeys({ read: (f) => remoteRead(f, { there }) });
+      const t2 = Date.now();
+      assert.equal((await keys.of(["/offline/b"], { waitMs: REMOTES_WAIT_MS })).get("/offline/b"), undefined);
+      assert.ok(Date.now() - t2 < REMOTES_WAIT_MS, `the list answered in ${Date.now() - t2} ms`);
+      // As many stats as hold threads now: another folder is not asked.
+      assert.equal(FOLDER_STATS_HUNG, 2);
+      assert.deepEqual(await remoteRead("/offline/c", { there }), { remote: null, unread: true });
+      assert.deepEqual(asked, ["/offline/a", "/offline/b"], "a third is not asked while two hold threads");
+    } finally {
+      share.open();
+    }
+    // The share answers: its stats end, and a folder is asked again.
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(await remoteRead("/offline/c", { there }), { remote: null, unread: false }, "not there, once the share says so");
+    assert.deepEqual(asked, ["/offline/a", "/offline/b", "/offline/c"]);
   });
 });
 

@@ -375,7 +375,9 @@ on its own machine. A chat of theirs under a project wears its mark there too �
 is folded. Ctrl+Shift+[ and ] move through the chats the bar lists, another machine's shown in place as they come —
 not one whose machine does not answer. Another machine's page in the window lists
 its own chats alone. A machine whose Filament is older than the one that brought this list says no repository for its
-chats: they stand in projects of their own until it is updated.
+chats: they stand in projects of their own until it is updated. A folder on a drive or a share that does not answer — a
+mapped drive gone offline — is given two seconds: its chats stand in a project of their own meanwhile, and the chat's
+branch line says the folder did not answer; nothing else on that machine waits on it.
 
 **A chat alone.** A Filament's page opened with `?only=chat` in its address (`http://127.0.0.1:20300/ui/harness.html?only=chat#/task/<chat>`)
 shows that chat alone — its header, its transcript, its box and its panes, no left bar — as another machine's window

@@ -4,7 +4,7 @@
 // stage, no discard, no commit, no checkout; those are the developer's, by hand. Every call runs in the repository the
 // folder belongs to through snapshot.js's `git()`, so an inherited GIT_DIR cannot redirect it, and a missing git or a
 // folder outside any repository is answered in words.
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { firstLine, git, repoOf } from "./snapshot.js";
@@ -34,6 +34,70 @@ export const NO_LOCKS = Object.freeze(["--no-optional-locks"]);
 export const BASE_NAMES = Object.freeze(["main", "master", "trunk", "develop"]);
 /** A whole place read's fields before git has answered them (`placeInfo`). */
 const WHOLE_UNREAD = Object.freeze({ base: null, onBase: false, ahead: null, behind: null, uncommitted: null });
+
+/**
+ * How long a folder's stat is waited for (`folderThere`). A folder on a network mount gone offline — a mapped drive, an
+ * SMB or NFS share — answers none for as long as its system waits on the share, a minute and more: asked on the
+ * server's thread, as a check of whether it is there was, it held every request and stream that long, and a desk asks
+ * its chats' folders' remotes every minute.
+ */
+export const FOLDER_STAT_MS = 2000;
+/**
+ * How many stats that have not answered may be under way at once. Each holds one of the few threads Node's file calls
+ * share until its system gives up on the share: past this many, a folder is not asked, and is unread, so that every
+ * other file read of the server's goes on.
+ */
+export const FOLDER_STATS_HUNG = 2;
+/**
+ * The stats under way, by folder, so a folder that does not answer is asked once however often it is read; `late`: it
+ * is past `FOLDER_STAT_MS`. @type {Map<string, { answer: Promise<boolean>, late: boolean }>}
+ */
+const statting = new Map();
+/** How many stats under way are late. */
+let hung = 0;
+
+/**
+ * Whether a folder is there, asked off the server's thread and waited for `ms` at most: true, false (gone, or not
+ * readable), or null where its stat has not answered by then — it goes on, and the folder read again meanwhile is null
+ * at once. `statOf`: the stat (the tests').
+ * @param {string} folder @param {{ ms?: number, statOf?: (path: string) => Promise<unknown> }} [o]
+ * @returns {Promise<boolean | null>}
+ */
+export async function folderThere(folder, { ms = FOLDER_STAT_MS, statOf = stat } = {}) {
+  let asking = statting.get(folder);
+  if (asking?.late) return null;
+  if (!asking) {
+    if (hung >= FOLDER_STATS_HUNG) return null;
+    const answer = Promise.resolve()
+      .then(() => statOf(folder))
+      .then(
+        () => true,
+        () => false,
+      );
+    const it = { answer, late: false };
+    asking = it;
+    statting.set(folder, it);
+    const timer = setTimeout(() => {
+      it.late = true;
+      hung++;
+    }, ms);
+    timer.unref?.();
+    void answer.finally(() => {
+      clearTimeout(timer);
+      if (it.late) hung--;
+      statting.delete(folder);
+    });
+  }
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  /** @type {Promise<null>} */
+  const waited = new Promise((r) => (timer = setTimeout(() => r(null), ms)));
+  try {
+    return await Promise.race([asking.answer, waited]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * @typedef {object} StatusFile
@@ -214,7 +278,9 @@ export async function placeInfo(folder, { whole = false, sinceBase = false } = {
   const none = (error) => noPlace(folder, error, { whole });
   if (!folder) return none("no folder was named");
   const cwd = resolve(folder);
-  if (!existsSync(cwd)) return none("the folder is gone");
+  const is = await folderThere(cwd);
+  if (is === null) return none(`the folder did not answer in ${FOLDER_STAT_MS / 1000} s: the drive or share it is on may be offline`);
+  if (!is) return none("the folder is gone");
   const dirs = await git(
     ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"],
     { cwd },
@@ -922,12 +988,16 @@ export async function remoteOf(folder) {
 }
 
 /**
- * A folder's remote as `remoteOf` reads it, and whether git read the folder at all: `unread` where git did not answer
- * there — it could not start, or ran out of time —, so no remote is known either way; a folder that is not there has none.
- * @param {string} folder @returns {Promise<{ remote: { name: string, url: string } | null, unread: boolean }>}
+ * A folder's remote as `remoteOf` reads it, and whether git read the folder at all: `unread` where the folder or git did
+ * not answer there — its stat past `FOLDER_STAT_MS` (`folderThere`), git that could not start or ran out of time —, so no
+ * remote is known either way; a folder that is not there has none. `there`: `folderThere`'s options (the tests').
+ * @param {string} folder @param {{ there?: Parameters<typeof folderThere>[1] }} [o]
+ * @returns {Promise<{ remote: { name: string, url: string } | null, unread: boolean }>}
  */
-export async function remoteRead(folder) {
-  if (!existsSync(folder)) return { remote: null, unread: false };
+export async function remoteRead(folder, { there } = {}) {
+  const is = await folderThere(folder, there);
+  if (is === null) return { remote: null, unread: true };
+  if (!is) return { remote: null, unread: false };
   const r = await git(["config", "--local", "-z", "--get-regexp", "^remote\\..+\\.url$"], { cwd: folder });
   if (r.code === -1) return { remote: null, unread: true };
   // 1: no remote; anything else, no repository git will read.
