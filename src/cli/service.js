@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { isCheckout, portOption } from "../services/config/store.js";
 import { CliError, EXIT, clientAt, connect, whereFilament } from "./client.js";
 import { listeningUrl } from "./listening.js";
+import { ownerHeaders } from "../services/owner.js";
 import { pause } from "./flows.js";
 
 /** The unit's name, as `systemctl --user … filament` names it. */
@@ -288,15 +289,21 @@ const userOf = (env) => {
 /** A path to compare by. @param {string} p */
 const pathKey = (p) => resolve(p);
 
-/** The Filament at `url`, where one answers: its /api/state; null where none does. @param {string} url */
-async function stateAt(url) {
+/**
+ * The Filament at `url`, where one answers: its /api/state, asked with `dataDir`'s owner key where its Filament listens there (services/owner.js); null
+ * where none does. @param {string} url @param {string} dataDir
+ */
+async function stateAt(url, dataDir) {
   try {
-    const res = await fetch(`${url}/api/state`, { headers: { "x-filament-ui": "1" }, signal: AbortSignal.timeout(1500) });
+    const res = await fetch(`${url}/api/state`, { headers: { "x-filament-ui": "1", ...ownerHeaders(dataDir, url) }, signal: AbortSignal.timeout(1500) });
     return res.ok ? await res.json() : null;
   } catch {
     return null;
   }
 }
+
+/** A client of the Filament at `url`, with `dataDir`'s owner key where its Filament listens there, read at each call. @param {string} url @param {any} state @param {string} dataDir */
+const ownClient = (url, state, dataDir) => clientAt(url, state, fetch, undefined, { headers: () => ownerHeaders(dataDir, url) });
 
 /** The unit's main process now: its pid, 0 where none runs, null where systemd cannot say. @param {AbortSignal} [signal] */
 const mainPid = async (signal) => {
@@ -462,7 +469,7 @@ async function clearWay(r, dataDir, port) {
   /** @type {import("./client.js").Client | null} */
   let systemd = null;
   for (const url of [...new Set([at, own])]) {
-    const state = await stateAt(url);
+    const state = await stateAt(url, dataDir);
     if (!state) {
       // No Filament answers at the service's port, and something listens there all the same — not this data folder's own
       // Filament, whose listening.json says its live process listens there: the service would fail at each start, and
@@ -476,14 +483,14 @@ async function clearWay(r, dataDir, port) {
       throw new CliError(`The Filament at ${url} runs from ${state.dataDir}, and the service would find its port taken: stop that one, or give --port.`, EXIT.failed);
     }
     if (state.supervisor === "systemd") {
-      systemd = clientAt(url, state);
+      systemd = ownClient(url, state, dataDir);
       continue;
     }
     if (state.supervisor === "desktop") throw new CliError(`The Filament app runs this data folder's Filament (at ${url}), and starts it again when it stops: quit the app (its tray's Quit) first.`, EXIT.failed);
     // One run by hand — `filament start` in a terminal, tmux: the service takes its place, once no turn runs.
-    await clientAt(url, state).post("/shutdown", { ifIdle: true });
-    for (const end = Date.now() + (STOP_SEC + 30) * 1000; Date.now() < end && (await stateAt(url)); ) await pause(500, r.signal);
-    if (await stateAt(url)) throw new CliError(`The Filament at ${url} was asked to stop, and still answers: stop it (filament stop --force), then run this again.`, EXIT.failed);
+    await ownClient(url, state, dataDir).post("/shutdown", { ifIdle: true });
+    for (const end = Date.now() + (STOP_SEC + 30) * 1000; Date.now() < end && (await stateAt(url, dataDir)); ) await pause(500, r.signal);
+    if (await stateAt(url, dataDir)) throw new CliError(`The Filament at ${url} was asked to stop, and still answers: stop it (filament stop --force), then run this again.`, EXIT.failed);
     r.out(`Stopped the Filament that ran at ${url}, started by hand: systemd runs it from now on.`);
   }
   return systemd;
@@ -552,13 +559,13 @@ async function uninstall(r) {
   if (!existsSync(file)) return void r.out(`No Filament service is installed here: there is no ${file}.`);
   const dataDir = dataDirOf(readFileSync(file, "utf8")) || r.dataDir;
   const url = whereFilament(dataDir).url;
-  const state = r.flags.force === true ? null : await stateAt(url);
-  if (state?.supervisor === "systemd") await endWhenIdle(r, clientAt(url, state));
+  const state = r.flags.force === true ? null : await stateAt(url, dataDir);
+  if (state?.supervisor === "systemd") await endWhenIdle(r, ownClient(url, state, dataDir));
   await systemctl(["disable", "--now", UNIT], r.signal);
   rmSync(file, { force: true });
   await systemctl(["daemon-reload"], r.signal);
   const at = whereFilament(dataDir).url;
-  const still = await stateAt(at);
+  const still = await stateAt(at, dataDir);
   if (!still || (typeof still.dataDir === "string" && pathKey(still.dataDir) !== pathKey(dataDir)))
     return void r.out(`Removed ${file}: Filament is stopped, and starts no more at boot or after a crash. filament start runs it by hand.`);
   const by =

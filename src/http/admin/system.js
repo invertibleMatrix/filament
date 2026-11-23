@@ -168,6 +168,9 @@ export function systemRoutes(a) {
           viewer: r.req?.socket && !isLocalCaller(r.req) ? "remote" : "local",
           // The paired device that reads it, and its scope — the page draws a view-only device's controls off.
           device: r.who?.kind === "device" ? { id: r.who.device.id, name: r.who.device.name, scope: r.who.scope } : null,
+          // This computer's calls without its owner key since this start, and the programs that made them
+          // (services/owner.js): this computer's to read, which Settings › Remote access and `filament doctor` say.
+          ...(r.who?.kind === "local" && a.owner ? { ownerless: a.owner.said() } : {}),
           // Where it listens since it started; a host or port saved since waits for a restart (HC-67).
           listening: listening(),
           configFile: config.loaded.file,

@@ -10,14 +10,29 @@
 // has no deadline.
 import { request } from "node:http";
 import { Readable } from "node:stream";
+import { OWNER_HEADER, ownerAt } from "./owner.js";
 
 /** The statuses whose reply has no body (fetch answers them with a null body). */
 const BODILESS = new Set([204, 205, 304]);
 
 /**
+ * The owner key a call to Filament's admin API here carries (services/owner.js): the key of the Filament in this
+ * process that listens at its port; none for any other address. @param {string} url
+ */
+const ownerFor = (url) => {
+  try {
+    const u = new URL(url);
+    const key = u.pathname.startsWith("/api/") ? ownerAt(u.port)?.key() : "";
+    return key ? { [OWNER_HEADER]: key } : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
  * POST `body` to `url` on loopback. A call that names no user agent goes as `node`, the name Node's fetch gave it:
  * the records' By client and memory's client of a loop's model call are built on it, and memory stays out of a call
- * named `Filament-…`.
+ * named `Filament-…`. A call to the admin API of a Filament in this process carries its owner key.
  * @param {string} url
  * @param {{ headers: Record<string, string>, body: string, signal?: AbortSignal | null }} init
  * @returns {Promise<Response>}
@@ -27,7 +42,7 @@ export function loopbackPost(url, { headers, body, signal = null }) {
     if (signal?.aborted) return reject(signal.reason);
     /** @type {import("node:http").IncomingMessage | null} */
     let got = null;
-    const req = request(url, { method: "POST", headers: { "user-agent": "node", ...headers } });
+    const req = request(url, { method: "POST", headers: { "user-agent": "node", ...headers, ...ownerFor(url) } });
     const onAbort = () => (got || req).destroy(signal?.reason);
     const done = () => signal?.removeEventListener("abort", onAbort);
     signal?.addEventListener("abort", onAbort);

@@ -1,6 +1,6 @@
 // @ts-check
 // Settings › Remote access (the owner's remote Filament of 11-06, Part 1): this machine as other machines see it — its
-// name —; reaching it on the network (Part 2): the https listener turned on, its port, its addresses, its certificate's
+// name —; the calls of this computer's programs that came without Filament's owner key (`ownerlessWords`); reaching it on the network (Part 2): the https listener turned on, its port, its addresses, its certificate's
 // fingerprint and what Windows Firewall lets through, with Allow; sharing it on the tailnet: tailscale serve turned on,
 // its https address, what Tailscale asks for, and trusting your own tailnet login; a pairing started here: a code good for five minutes
 // and one claim, counted down, and a link for each address another machine reaches this Filament at — the tailnet's
@@ -27,6 +27,7 @@ import { PAIR_PAGE } from "../../lib/standing.js";
 export const SEARCH_ROWS = Object.freeze([
   { label: "This machine", words: "name hostname remote access" },
   { label: "This device", words: "sign out remote" },
+  { label: "Calls without the owner key", words: "owner key token programs scripts curl command line api security local this computer" },
   { path: "server.lan.enabled", label: "Reach this machine on my network", words: "lan local network https tls wifi remote access listen" },
   { path: "server.lan.port", label: "Port", words: "network lan https port" },
   { label: "Certificate", words: "tls https fingerprint self-signed warning lan network address ip", also: ["Addresses"] },
@@ -49,6 +50,18 @@ export const sizeWords = (n) => {
 /** What New key asks the person to confirm: what it cuts off, and that renewal never does. */
 export const NEW_KEY_WORDS =
   "This machine's network listener gets a new key and certificate now. Every machine and command line paired over the network pinned the old one: each stops reaching this machine there until it pairs again with a new code. A browser warns of the certificate once more: compare the new fingerprint. Devices on your tailnet or an SSH tunnel go on. Renewing the certificate keeps the key: this is only for a key that may have been copied.";
+
+/**
+ * This computer's calls without Filament's owner key since it started (/state `ownerless`, services/owner.js), in
+ * words: none, or how many and the programs that made them, newest first.
+ * @param {{ count?: number, programs?: { agent: string, count: number }[] } | null | undefined} o
+ */
+export const ownerlessWords = (o) => {
+  const n = Number(o?.count) || 0;
+  if (!n) return "Every program on this computer that called Filament since it started sent its owner key: the Filament app and the filament command line do.";
+  const named = (o?.programs || []).slice(0, 3).map((p) => `${p.agent} (${p.count})`).join(", ");
+  return `${n} call${n === 1 ? "" : "s"} since Filament started came from a program here without its owner key, answered all the same${named ? `: ${named}` : ""}. The Filament app and the filament command line send it; a script sends owner.key from Filament's data folder as the x-filament-owner header.`;
+};
 
 /** How often a page with a code open looks for the device that claimed it. */
 export const CLAIM_LOOK_MS = 2000;
@@ -990,6 +1003,8 @@ export function renderRemote(body, cb = {}, io = {}) {
     out.push(kit.row("This machine", "The name another machine shows for it as it pairs, and in its list of machines.", m("span", { class: "cset-plain" }, s.machine?.name || "This machine")));
     if (s.device)
       out.push(kit.row("This device", `You reach this Filament from another machine, as ${s.device.name} (${scopeWords(s.device.scope)}).`, m("button", { class: "ghost sm danger", type: "button", onclick: () => void signOut() }, "Sign out")));
+    // This computer's own read alone carries it.
+    if (s.ownerless) out.push(kit.row("Calls without the owner key", ownerlessWords(s.ownerless), m("span", { class: "cset-plain" }, String(Number(s.ownerless.count) || 0))));
     out.push(...machinesRows(kit, s, here, elsewhere));
     if (s.device?.scope !== "view") out.push(...network(kit, here, elsewhere), ...tailnet(kit, here));
 

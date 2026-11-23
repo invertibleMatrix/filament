@@ -158,14 +158,15 @@ export function placeRect(rect, zoom, content) {
 
 /**
  * The link to Filament: a socket to its `/api/browser/host`, the inbound key in its header (a page cannot set one, and
- * the app's main process sends no Origin), connected again whenever it drops — a little later each time, until it
+ * the app's main process sends no Origin) and this computer's owner key beside it (`owner`, src/services/owner.js),
+ * connected again whenever it drops — a little later each time, until it
  * holds. What Filament says goes to `onMessage`; `onDown` hears the link go, which its pages go with (Filament forgets
  * them as it hears it, `lost`). A Filament older than the browser answers the socket with a refusal: the link keeps
  * trying, quietly, and connects once that Filament is the newer one.
- * @param {{ url: () => string, key: () => string, onMessage: (m: any) => void, onDown?: () => void, log?: (line: string) => void,
+ * @param {{ url: () => string, key: () => string, owner?: () => Record<string, string>, onMessage: (m: any) => void, onDown?: () => void, log?: (line: string) => void,
  *   WebSocket?: any, wait?: (fn: () => void, ms: number) => any, clear?: (t: any) => void }} o
  */
-export function createLink({ url, key, onMessage, onDown = () => {}, log = () => {}, WebSocket = globalThis.WebSocket, wait = setTimeout, clear = clearTimeout }) {
+export function createLink({ url, key, owner = () => ({}), onMessage, onDown = () => {}, log = () => {}, WebSocket = globalThis.WebSocket, wait = setTimeout, clear = clearTimeout }) {
   /** @type {any} */
   let ws = null;
   let stopped = true;
@@ -190,7 +191,7 @@ export function createLink({ url, key, onMessage, onDown = () => {}, log = () =>
     /** @type {any} */
     let s;
     try {
-      s = new WebSocket(url(), { headers: { authorization: `Bearer ${k}` } });
+      s = new WebSocket(url(), { headers: { authorization: `Bearer ${k}`, ...owner() } });
     } catch (/** @type {any} */ e) {
       return later(`could not connect (${String(e?.message || e)})`);
     }

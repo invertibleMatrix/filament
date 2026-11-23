@@ -9,7 +9,7 @@
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
 import { allowedFolder } from "./folder.js";
-import { drives, endsWithDevice, hostAllowed, hostNameOf, ownOrigin, pressRefusal, safeEq, whoIs } from "../guards.js";
+import { countOwnerless, drives, endsWithDevice, hostAllowed, hostNameOf, ownOrigin, pressRefusal, safeEq, whoIs } from "../guards.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
 import { wsHandshake, wsTextFrame, wsCloseFrame, WsDecoder } from "../ws.js";
@@ -101,6 +101,8 @@ export function terminalUpgrade(a) {
     // This computer, the admin token, or a full device (its browser's cookie rides the upgrade): a terminal types into
     // this machine, so a view-only device opens none (the owner's remote Filament of 11-06).
     const who = whoIs(req, server, devices) || (server.adminToken && safeEq(token, server.adminToken) ? /** @type {const} */ ({ kind: "admin" }) : null);
+    // This computer's socket without its owner key, counted as its calls are (guards.js `countOwnerless`).
+    countOwnerless(req, who);
     if (!who) return refuse("a terminal answers this machine, a paired device, or server.adminToken", 403);
     if (!drives(who)) return refuse("a view-only device opens no terminal", 403);
     // A page anywhere may open a WebSocket to this host (the bug hunt of 10-30: one read a terminal's backlog and typed

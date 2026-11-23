@@ -353,6 +353,26 @@ const starred = (method, pattern) => `${method} /api${pattern.replace(/:[^/*]+\*
 async function adminRoutes() {
   return [...new Set((await adminRows()).map(([method, pattern]) => starred(method, pattern)))].sort();
 }
+// This computer trusted by its address (the "same computer = owner" gap): each site that lets a caller in, or gives it
+// more, for coming over loopback — a call of `isLocalCaller(`, a caller's `kind === "local"` — counted by file and
+// pinned in fixtures/local-trust.txt, so a new one is a conscious change, and the day this computer's calls need the
+// owner key (services/owner.js) finds every one listed.
+const LOCAL_TRUST_FIXTURE = join(ROOT, "test", "fixtures", "local-trust.txt");
+describe("ratchets: this computer's trust", () => {
+  test("every site that trusts a caller for being this computer is in fixtures/local-trust.txt (UPDATE_RATCHETS=1 to accept a deliberate change)", () => {
+    const now = srcFiles
+      .map((f) => /** @type {[string, number]} */ ([f, (read(f).match(/\bisLocalCaller\(|\bkind\s*[!=]==\s*"local"/g) || []).length]))
+      .filter(([, n]) => n > 0)
+      .map(([f, n]) => `${f} ${n}`)
+      .join("\n") + "\n";
+    if (UPDATE || !existsSync(LOCAL_TRUST_FIXTURE)) {
+      writeFileSync(LOCAL_TRUST_FIXTURE, now);
+      return;
+    }
+    assert.equal(now, readFileSync(LOCAL_TRUST_FIXTURE, "utf8"), "a site trusting this computer by its address was added or removed");
+  });
+});
+
 describe("ratchets: the admin API surface", () => {
   test("the route list matches fixtures/admin-routes.txt (UPDATE_RATCHETS=1 to accept a deliberate change)", async () => {
     const now = (await adminRoutes()).join("\n") + "\n";

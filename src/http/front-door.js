@@ -13,7 +13,7 @@ import { handleCountTokens } from "../app/count-tokens.js";
 import { handleEmbeddings } from "../app/embeddings.js";
 import { listModels } from "../app/models.js";
 import { createRouter } from "./router.js";
-import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, whoIs } from "./guards.js";
+import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, ownerOf, whoIs } from "./guards.js";
 import { originAllowed } from "./memory-mcp.js";
 import { isHouseCall } from "../services/house.js";
 import { lendModels, modelsLentTo } from "../services/devices.js";
@@ -292,6 +292,9 @@ export function createFrontDoor({
     // Every answer of Filament's own, a refusal and a 404 too: another Filament's fetch knows this one by it, at any
     // port. The model endpoints' answers are a client's wire, as they were; a fetch only GETs, and they hold no rows.
     if (!MODEL_PATH.test(url.pathname)) res.setHeader(FILAMENT_MARK, "1");
+    // This computer's owner key and the app's session, read and taken out of every request before anything below
+    // reads its headers (guards.js `ownerOf`): no record, log or route holds either.
+    ownerOf(req);
     // The fence (AF-D2): an artifact's page runs on its own origin, which Filament's admin check would take for its own,
     // so its address is answered by its files alone — every path, every method, before anything below is reached.
     const host = hostNameOf(req);

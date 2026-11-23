@@ -687,6 +687,8 @@ export const PRESS_TABLE = [
   // star.js
   ["GET /star", READS],
   ["POST /star/seen", SETTING],
+  // owner.js: the call proves the owner key itself.
+  ["POST /owner/session", PROOF],
 ];
 
 /** The table by its rows, `METHOD /pattern` as the router names them. @type {Map<string, PressClass>} */

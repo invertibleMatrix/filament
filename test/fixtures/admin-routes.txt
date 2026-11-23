@@ -345,6 +345,7 @@ POST /api/memory/uninstall
 POST /api/migrate/9router
 POST /api/models/caps
 POST /api/models/ping
+POST /api/owner/session
 POST /api/plugins/connectors/add
 POST /api/plugins/connectors/anthropic
 POST /api/plugins/install

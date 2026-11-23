@@ -91,7 +91,8 @@ test("the app's main process: the harness shows at the launch, waits with the ap
   assert.match(main, /if \(owned && sup\.now\(\)\.state !== "up"\) \{\n {6}waiting\.set\(w, \{ name, route \}\);\n {6}paintWait\(w\);\n {4}\} else void w\.loadURL\(`\$\{pageOf\(name\)\}\$\{route\}`\)\.catch\(\(\) => \{\}\);/);
   assert.match(main, /void w\.loadURL\(waitPage\(waitWords\(state, port\), \{ dark, busy: underWay\(state\), bar, version: appVersion\(ROOT\) \}\)\)\.catch\(\(\) => \{\}\);/);
   // As Filament's state moves the waiting windows say it; at its answer each takes its page, at the route it was asked.
-  assert.match(main, /if \(state === "up" \|\| taken\?\.kind === "attach"\) reload\(\);\n {4}else for \(const w of waiting\.keys\(\)\) paintWait\(w\);/);
+  // The windows' browser session first (src/services/owner.js), so the page they load calls with it.
+  assert.match(main, /if \(state === "up" \|\| taken\?\.kind === "attach"\) void ownerSession\(\)\.finally\(reload\);\n {4}else for \(const w of waiting\.keys\(\)\) paintWait\(w\);/);
   assert.match(main, /const waited = waiting\.get\(w\);\n {6}if \(waited\) \{\n {8}waiting\.delete\(w\);\n {8}void w\.loadURL\(`\$\{pageOf\(waited\.name\)\}\$\{waited\.route\}`\)/);
   assert.match(main, /if \(route && waited\) waited\.route = route;/, "a chat asked meanwhile opens at the answer");
   assert.match(main, /w\.on\("closed", \(\) => \{\n {6}every\.delete\(w\);\n {6}unloaded\.delete\(w\);\n {6}waiting\.delete\(w\);/);

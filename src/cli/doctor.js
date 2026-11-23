@@ -15,6 +15,7 @@ import { claudeIdentity } from "../core/agent-limits.js";
 import { detectHousekeeping } from "../app/housekeeping.js";
 import { loadCursorSdk, findSdkDir, SDK_INSTALL_HINT, SDK_KEY_URL } from "../adapters/agents/cursor-sdk.js";
 import { CodexBridge } from "../adapters/agents/codex/bridge.js";
+import { ownerHeaders } from "../services/owner.js";
 
 const ok = (what, detail = "") => ({ level: "ok", what, detail });
 const warn = (what, detail = "", fix = "") => ({ level: "warn", what, detail, fix });
@@ -49,8 +50,11 @@ export async function runDoctor({ dataDir, turn = false, agentFilter = null, log
   const host = String(config.server.host || "").trim();
   const base = `http://${!host || host === "0.0.0.0" || host === "::" || host === "[::]" ? "127.0.0.1" : host.includes(":") && !host.startsWith("[") ? `[${host}]` : host}:${config.server.port}`;
   let running = false, state = null;
-  try { const r = await fetch(`${base}/api/state`, { headers: { "x-filament-ui": "1" }, signal: AbortSignal.timeout(3000) }); state = await r.json(); running = r.ok; srv.items.push(ok(`Filament ${state.version} answers at ${base}`, `up ${Math.round((state.uptimeMs || 0) / 60000)} min`)); }
+  try { const r = await fetch(`${base}/api/state`, { headers: { "x-filament-ui": "1", ...ownerHeaders(dataDir, base) }, signal: AbortSignal.timeout(3000) }); state = await r.json(); running = r.ok; srv.items.push(ok(`Filament ${state.version} answers at ${base}`, `up ${Math.round((state.uptimeMs || 0) / 60000)} min`)); }
   catch (e) { srv.items.push(warn(`no Filament answering at ${base}`, e.message, "start it (the Filament app, `npm run desktop`, or `node bin/filament.js`); the agent checks below still run")); }
+  // This computer's calls without its owner key (services/owner.js): answered for now, each program named.
+  const ownerless = state?.ownerless;
+  if (running && ownerless) srv.items.push(ownerless.count ? warn(`${ownerless.count} call${ownerless.count === 1 ? "" : "s"} from this computer reached Filament without its owner key since it started`, (ownerless.programs || []).slice(0, 5).map((p) => `${p.agent} (${p.count})`).join(", "), "answered all the same: a program here that calls Filament's API sends the key from owner.key in the data folder as x-filament-owner, or uses the `filament` command line") : ok("every call from this computer carried Filament's owner key"));
   if (running) { // the first model list after a start asks every agent for its models, so allow it time
     try { const r = await fetch(`${base}/v1/models`, { headers: { authorization: `Bearer ${config.server.inboundKeys?.[0] || ""}` }, signal: AbortSignal.timeout(90000) }); const j = await r.json(); const n = (j.data || []).length; srv.items.push(r.ok ? ok(`model list works (${n} names)`) : fail(`model list failed (HTTP ${r.status})`, JSON.stringify(j).slice(0, 200), "check the inbound key")); } catch (e) { srv.items.push(fail("model list failed", e.message)); }
   }

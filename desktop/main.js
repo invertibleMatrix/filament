@@ -49,6 +49,7 @@ import { createMachineAgents } from "./lib/machine-agents.js";
 import { createDesk } from "./lib/desk.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { usePinBook } from "../src/services/machines/key-pins.js";
+import { OWNER_COOKIE, OWNER_HEADER, ownerHeaders } from "../src/services/owner.js";
 import { mergedPath, readShellPath } from "./lib/shell-path.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -333,6 +334,7 @@ async function run() {
   const link = createLink({
     url: () => `ws://${host}:${port}${LINK_PATH}`,
     key: () => inboundKeyOf(dataDir),
+    owner: () => ownerHeaders(dataDir, `http://${host}:${port}`),
     onMessage: (m) => {
       if (typeof m.n !== "number") return;
       pages.handle(m).then(
@@ -883,8 +885,36 @@ async function run() {
    * page by its bridge — never an environment, a file or the log. A Filament the app attached to holds none.
    */
   const pressKey = randomBytes(32).toString("base64url");
-  /** @param {string} path @param {RequestInit} [init] */
-  const ask = (path, init = {}) => fetch(`${origin}${path}`, { ...init, headers: { "x-filament-ui": "1", ...(init.body ? { "content-type": "application/json" } : {}) }, signal: AbortSignal.timeout(5000) });
+  /**
+   * A call to Filament's own address; one to its admin API carries the owner key its data folder holds now
+   * (src/services/owner.js), read at each call — each start of Filament mints its own — and sent only where that
+   * folder's Filament listens. A key other than the one the windows' session was minted with (a Filament the app
+   * attached to started again by itself) takes a new session (`ownerSession`).
+   * @param {string} path @param {RequestInit} [init]
+   */
+  const ask = (path, init = {}) => {
+    const owner = path.startsWith("/api/") ? ownerHeaders(dataDir, origin) : {};
+    if (path !== "/api/owner/session" && owner[OWNER_HEADER] && owner[OWNER_HEADER] !== sessionFor) void ownerSession();
+    return fetch(`${origin}${path}`, { ...init, headers: { "x-filament-ui": "1", ...owner, ...(init.body ? { "content-type": "application/json" } : {}) }, signal: AbortSignal.timeout(5000) });
+  };
+  /** The key the windows' browser session was last minted with: "" before the first. */
+  let sessionFor = "";
+  /**
+   * The app's windows' browser session: minted by Filament for this call, which holds its owner key, and kept as an
+   * HttpOnly cookie of their session, never written to disk — the page itself holds no secret. Taken again at each
+   * start of Filament, before its windows load: a session lasts while the start that minted it does.
+   */
+  const ownerSession = async () => {
+    sessionFor = ownerHeaders(dataDir, origin)[OWNER_HEADER] || "";
+    try {
+      const r = await ask("/api/owner/session", { method: "POST", body: "{}" });
+      const j = /** @type {any} */ (r.ok ? await r.json() : null);
+      if (typeof j?.token === "string" && j.token) await session.defaultSession.cookies.set({ url: origin, name: String(j.cookie || OWNER_COOKIE), value: j.token, path: "/", httpOnly: true, sameSite: "strict" });
+      else log.line(`Filament minted no browser session for the app's windows (HTTP ${r.status})`);
+    } catch (/** @type {any} */ e) {
+      log.line(`Filament minted no browser session for the app's windows (${e?.message || e})`);
+    }
+  };
   const sup = createSupervisor({
     fork: () => {
       const c = utilityProcess.fork(join(ROOT, "bin", "filament.js"), serverArgs({ dataDir, port: given != null ? port : undefined }), { env: serverEnv(process.env, { packaged: app.isPackaged }), stdio: "pipe", serviceName: "Filament server", cwd: ROOT });
@@ -963,7 +993,8 @@ async function run() {
         .then((s) => say(backNote(String(s?.version || ""), port)), () => say(backNote("", port)));
     }
     if (state !== "up" && state !== "restarting" && state !== "starting" && state !== "late") restartAsked = null;
-    if (state === "up" || taken?.kind === "attach") reload();
+    // The windows' browser session first (`ownerSession`), so the page they load calls with it.
+    if (state === "up" || taken?.kind === "attach") void ownerSession().finally(reload);
     else for (const w of waiting.keys()) paintWait(w);
     if (state === "late" && !toldLate) {
       toldLate = true;

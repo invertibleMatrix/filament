@@ -36,7 +36,7 @@
 // its queue past the cap, is cut off, and each of its follows resumes from its own cursor on the page's next socket.
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
-import { agentsDevice, drives, endsWithDevice, hostAllowed, hostNameOf, ownOrigin, safeEq, whoIs } from "../guards.js";
+import { agentsDevice, countOwnerless, drives, endsWithDevice, hostAllowed, hostNameOf, ownOrigin, safeEq, whoIs } from "../guards.js";
 import { wsHandshake, wsTextFrame, wsCloseFrame, wsPingFrame, wsPongFrame, WsDecoder } from "../ws.js";
 import { drainedOrGone, writeHeld } from "../events.js";
 import { eventJson, followRunEvents } from "../../services/runs.js";
@@ -90,6 +90,8 @@ export function runSocketUpgrade(a) {
     const token = url.searchParams.get("token") || (h["authorization"] || "").replace(/^bearer\s+/i, "") || h["x-filament-admin"] || "";
     // This computer, the admin token, or a paired device — a view-only one too: the socket follows runs, and reads.
     const who = whoIs(req, server, devices);
+    // This computer's socket without its owner key, counted as its calls are (guards.js `countOwnerless`).
+    countOwnerless(req, who);
     if (!who && !(server.adminToken && safeEq(token, server.adminToken))) return refuse("the run socket answers this machine, a paired device, or server.adminToken", 403);
     // Another machine's agents follow the runs of their chats by their events (/api/runs/:id/events), as their grant
     // lets them (remote.js AGENT_ROUTES): the socket follows every run, and serves the person's pages.

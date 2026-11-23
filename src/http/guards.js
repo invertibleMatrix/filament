@@ -7,6 +7,7 @@ import { lowerHeaders } from "../core/headers.js";
 import { credentialOf, isHouseCall } from "../services/house.js";
 import { modelsLentTo } from "../services/devices.js";
 import { lanNames } from "../services/lan-tls.js";
+import { OWNER_COOKIE, OWNER_HEADER, ownerAt } from "../services/owner.js";
 import { tailnetDoor } from "../services/tailscale.js";
 
 /** Constant-time string compare; both sides coerced to strings, a length mismatch answers false. */
@@ -309,19 +310,73 @@ const ownTailnetLogin = (req, server) => {
   return !h["tailscale-funnel-request"] && String(h["tailscale-user-login"] || "") === d.login ? d.login : "";
 };
 
+/** What each request said of this computer's owner key (`ownerOf`), read once. @type {WeakMap<import("node:http").IncomingMessage, "owner" | "stale" | "none">} */
+const ownerSaid = new WeakMap();
 /**
- * Who calls (the owner's remote Filament of 11-06): this computer through no proxy (`local`), a holder of
+ * What a request says of this computer's owner key (services/owner.js), read once and taken out of it — the header and
+ * the app's session cookie both —, so no route, record or log holds either: `owner` where it came over loopback, through
+ * no proxy, with the key of the Filament at the port it reached, or a browser session minted with it; `stale` where it
+ * carried one that is not (a key or session of an earlier start: the app's window before it took the new one); `none`
+ * where it carried neither, or came through a proxy, where the key counts for nothing.
+ * @param {import("node:http").IncomingMessage} req
+ * @returns {"owner" | "stale" | "none"}
+ */
+export function ownerOf(req) {
+  const was = ownerSaid.get(req);
+  if (was) return was;
+  if (!req.headers) return "none";
+  const sent = String(req.headers[OWNER_HEADER] ?? "");
+  delete req.headers[OWNER_HEADER];
+  const session = cookiesOf(req)[OWNER_COOKIE] || "";
+  if (session) dropCookie(req, OWNER_COOKIE);
+  const owner = ownerAt(/** @type {any} */ (req.socket)?.localPort);
+  /** @type {"owner" | "stale" | "none"} */
+  let said = "none";
+  if ((sent || session) && !isLocalCaller(req)) owner?.proxied();
+  else if (sent || session) said = owner && (owner.holds(sent) || owner.sessionHolds(session)) ? "owner" : "stale";
+  ownerSaid.set(req, said);
+  return said;
+}
+/**
+ * A call of this computer's that came without its owner key, counted by the program that sent it at the Filament
+ * listening at its port (services/owner.js `tokenless`): what would be refused once the key is needed. Answered all the
+ * same. One with a key or session of an earlier start is not counted (`stale`), nor one carrying a device's token — an
+ * SSH tunnel's page, which is that device's —, read by its presence alone, so no device is marked seen by it.
+ * @param {import("node:http").IncomingMessage} req @param {Caller | null} who  as `whoIs` said it
+ */
+export function countOwnerless(req, who) {
+  if (who?.kind !== "local" || who.owner || ownerOf(req) !== "none" || deviceTokenOf(req)) return;
+  ownerAt(/** @type {any} */ (req.socket)?.localPort)?.tokenless(req.headers?.["user-agent"]);
+}
+/** A request's Cookie header with one cookie taken out; the header itself where it held no other. @param {import("node:http").IncomingMessage} req @param {string} name */
+const dropCookie = (req, name) => {
+  const kept = String(req.headers.cookie || "")
+    .split(";")
+    .filter((part) => {
+      const at = part.indexOf("=");
+      return (at < 0 ? part : part.slice(0, at)).trim() !== name;
+    })
+    .join(";")
+    .trim();
+  if (kept) req.headers.cookie = kept;
+  else delete req.headers.cookie;
+};
+
+/**
+ * Who calls (the owner's remote Filament of 11-06): this computer through no proxy (`local`) — `owner` where it sent
+ * this computer's owner key (`ownerOf`), which for now changes nothing —, a holder of
  * `server.adminToken` (`admin`), a machine signed in to the tailnet as this one is, where that is trusted (`tailnet`,
  * `ownTailnetLogin`), a paired device by its token — its scope, full or view, or another machine's agents' (`agent`,
  * `agentsDevice`), its grants on `device.grants` — over a sealed way (`sealedWay`), or nobody Filament knows (null).
- * @typedef {{ kind: "local" } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
+ * @typedef {{ kind: "local", owner?: true } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
  * @param {import("node:http").IncomingMessage} req
  * @param {any} server  the `server` config section
  * @param {import("../services/devices.js").DeviceStore | null} [devices]  none: no device is known
  * @returns {Caller | null}
  */
 export function whoIs(req, server, devices = null) {
-  if (isLocalCaller(req)) return { kind: "local" };
+  const owner = ownerOf(req) === "owner";
+  if (isLocalCaller(req)) return owner ? { kind: "local", owner: true } : { kind: "local" };
   if (adminTokenIn(req, server)) return { kind: "admin" };
   const login = ownTailnetLogin(req, server);
   if (login) return { kind: "tailnet", login };

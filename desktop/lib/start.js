@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defaultPort, portOption } from "../../src/config.js";
+import { ownerHeaders } from "../../src/services/owner.js";
 
 /**
  * @typedef {{ kind: "start" }
@@ -79,14 +80,15 @@ export const sameFolder = (a, b) => {
  * would show another folder's chats as this one's. The wait is a port's answer, never a model's.
  * @param {number} port
  * @param {{ fetch?: typeof globalThis.fetch, waitMs?: number, host?: string, dataDir?: string }} [o]  `dataDir`: the
- *   app's own, which a Filament found there must serve
+ *   app's own, which a Filament found there must serve, and whose owner key the question carries where that folder's
+ *   Filament says it listens at `port` (src/services/owner.js)
  * @returns {Promise<Found>}
  */
 export async function foundAt(port, { fetch = globalThis.fetch, waitMs = 5000, host = "127.0.0.1", dataDir = undefined } = {}) {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), waitMs);
   try {
-    const r = await fetch(`http://${host}:${port}/api/state`, { headers: { "x-filament-ui": "1" }, signal: stop.signal });
+    const r = await fetch(`http://${host}:${port}/api/state`, { headers: { "x-filament-ui": "1", ...(dataDir ? ownerHeaders(dataDir, `http://${host}:${port}`) : {}) }, signal: stop.signal });
     const body = /** @type {any} */ (await r.json().catch(() => null));
     if (r.ok && typeof body?.version === "string" && typeof body?.dataDir === "string") {
       if (dataDir && !sameFolder(body.dataDir, dataDir)) return { kind: "refuse", why: `port ${port} is held by a Filament of another data folder (${body.dataDir})` };

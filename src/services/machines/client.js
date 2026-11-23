@@ -81,12 +81,15 @@ export const redirected = (r) => r.status >= 300 && r.status < 400;
 
 /**
  * A client of the Filament at `url`, whose `/api/state` said `state`. `signal`: the command's own — its Ctrl+C —, which
- * ends any call it makes. `headers` ride every call: a paired machine's device token (remotes.js); `remote` is that
- * machine, as this data folder paired with it, its token aside — none for this machine's own Filament.
+ * ends any call it makes. `headers` ride every call: a paired machine's device token (remotes.js), or — read at each
+ * call, as a function — this machine's own owner key (cli/client.js), which each start of Filament mints anew; `remote`
+ * is that machine, as this data folder paired with it, its token aside — none for this machine's own Filament.
  * @param {string} url @param {any} state @param {typeof fetch} [fetchImpl] @param {AbortSignal} [signal]
- * @param {{ headers?: Record<string, string>, remote?: import("./remotes.js").Machine | null }} [o]
+ * @param {{ headers?: Record<string, string> | (() => Record<string, string>), remote?: import("./remotes.js").Machine | null }} [o]
  */
-export function clientAt(url, state, fetchImpl = fetch, signal, { headers: always = {}, remote = null } = {}) {
+export function clientAt(url, state, fetchImpl = fetch, signal, { headers: given = {}, remote = null } = {}) {
+  /** The headers every call carries, as they are now. */
+  const always = () => (typeof given === "function" ? given() : given);
   /** @param {number} ms @param {AbortSignal} [own]  the call's own stop */
   const ending = (ms, own) => AbortSignal.any([AbortSignal.timeout(ms), ...(signal ? [signal] : []), ...(own ? [own] : [])]);
   /** Who answers, in a refusal's words: the machine as paired, else its address. */
@@ -99,7 +102,7 @@ export function clientAt(url, state, fetchImpl = fetch, signal, { headers: alway
   const call = async (method, path, body, { headers = {}, timeoutMs = 120_000, signal: own } = {}) => {
     const r = await fetchImpl(`${url}/api${path}`, {
       method,
-      headers: { "x-filament-ui": "1", ...always, ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
+      headers: { "x-filament-ui": "1", ...always(), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       redirect: "manual",
       signal: ending(timeoutMs, own),
@@ -150,7 +153,7 @@ export function clientAt(url, state, fetchImpl = fetch, signal, { headers: alway
       const both = [own, signal, idleMs > 0 ? idle.signal : null].filter((s) => !!s);
       try {
         touch();
-        const r = await fetchImpl(`${url}/api${path}`, { method: "POST", headers: { "x-filament-ui": "1", ...always, "content-type": "application/json", ...headers }, body: JSON.stringify(body), redirect: "manual", ...(both.length ? { signal: AbortSignal.any(/** @type {AbortSignal[]} */ (both)) } : {}) });
+        const r = await fetchImpl(`${url}/api${path}`, { method: "POST", headers: { "x-filament-ui": "1", ...always(), "content-type": "application/json", ...headers }, body: JSON.stringify(body), redirect: "manual", ...(both.length ? { signal: AbortSignal.any(/** @type {AbortSignal[]} */ (both)) } : {}) });
         if (redirected(r)) throw redirectRefusal(r, who);
         if (!r.ok) {
           const text = await bodyText(r, ANSWER_MAX, who, `POST ${path}`);

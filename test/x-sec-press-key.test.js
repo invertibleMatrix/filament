@@ -26,6 +26,7 @@ import { agentEnv } from "../src/adapters/agents/agent-process.js";
 import { runCli } from "../src/cli/main.js";
 import { EXIT } from "../src/cli/client.js";
 import { consolePage } from "../desktop/lib/browser-host.js";
+import { OWNER_HEADER, ownerKeyOf } from "../src/services/owner.js";
 
 const KEY = randomBytes(32).toString("base64url");
 const PRESS = { [PRESS_HEADER]: KEY };
@@ -787,13 +788,19 @@ describe("the press key, on one Filament", () => {
   // (fails before: no — no answer held a header of the request's; it guards that none holds the key. That the key is
   // taken out of the request is the first test's.)
   test("the key is in no answer: the state, the settings, the config's changes, the keys, the requests' records of turns that carried it", async () => {
-    const id = await create();
-    await turn(id, "hello", PRESS);
+    // This computer's owner key with it (services/owner.js, s0a): carried by the same calls, held by no answer either.
+    const OWN = ownerKeyOf(shim.dataDir);
+    assert.match(OWN, /^fot_/);
+    const both = { ...PRESS, [OWNER_HEADER]: OWN };
+    const id = await create({}, both);
+    await turn(id, "hello", both);
     for (const path of ["/api/state", "/api/config/changes", "/api/keys", "/api/defaults/settings", `${S(id)}/settings`, `${S(id)}`, "/api/requests?limit=50"]) {
-      const r = await call(path, { headers: PRESS });
+      const r = await call(path, { headers: both });
       assert.equal(r.status, 200, `${path}: ${r.text}`);
       assert.ok(!r.text.includes(KEY), path);
       assert.ok(!JSON.stringify(r.headers).includes(KEY), `${path}: its headers`);
+      assert.ok(!r.text.includes(OWN), `${path}: the owner key`);
+      assert.ok(!JSON.stringify(r.headers).includes(OWN), `${path}: its headers, the owner key`);
     }
   });
 

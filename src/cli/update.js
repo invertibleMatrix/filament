@@ -22,6 +22,7 @@ import { STORE_FILES, STORE_FILES_BEFORE, asidesOf, setAside, setAsideIn, unread
 import { fetchInstaller, isNewer, lookForUpdate, serverAsset, serverTarball } from "../services/updates.js";
 import { CliError, EXIT, clientAt, connect, whereFilament } from "./client.js";
 import { processRuns } from "./listening.js";
+import { ownerHeaders } from "../services/owner.js";
 import { UNIT, onPath, runTool, underSystemd } from "./service.js";
 
 /** The file at a server build's top that says what it is (scripts/dist-server.mjs MARKER). */
@@ -35,6 +36,12 @@ const ANSWER_MS = 10_000;
 
 /** A release's version, as --version takes it (a v before it is taken too). */
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
+/** A client of the data folder's Filament that did not answer yet, with its owner key where it listens, read at each call. @param {string} dataDir */
+const ownClientOf = (dataDir) => {
+  const url = whereFilament(dataDir).url;
+  return clientAt(url, null, fetch, undefined, { headers: () => ownerHeaders(dataDir, url) });
+};
 
 /** This Filament's own folder: a version's, where install.sh installed it — its launcher followed the links to it. */
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -472,7 +479,7 @@ async function restartOn(r, { base, version, from }, say) {
     say(`${mute}: --force restarts it.`);
     // --force restarts the unit at once and asks nothing of Filament: its answer once it runs again is waited for at
     // the data folder's address.
-    await restart(clientAt(url, null));
+    await restart(ownClientOf(r.dataDir));
     return "systemd";
   }
   if (client.state?.supervisor === "systemd") {
@@ -504,7 +511,7 @@ async function goBack(r, { base, version, from }, why) {
   }
   let ran = "";
   try {
-    await underSystemd({ ...r, flags: { ...r.flags, force: true }, out: (s) => void (ran = s) }, clientAt(whereFilament(r.dataDir).url, null), "restart", from);
+    await underSystemd({ ...r, flags: { ...r.flags, force: true }, out: (s) => void (ran = s) }, ownClientOf(r.dataDir), "restart", from);
   } catch (/** @type {any} */ e) {
     if (e?.code === EXIT.interrupted) return e;
     return new CliError(`${tried} so current points at ${from} again, and ${from} did not start in its place either — ${e.notUp ? `${e.notUp}: filament service status shows its log.` : e.message}`, EXIT.failed);

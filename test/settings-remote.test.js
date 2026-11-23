@@ -229,6 +229,19 @@ test("Remote access sits under Filament after Connect other apps; its search row
   assert.equal(PAGE_ROWS.remote, SEARCH_ROWS);
 });
 
+// (fails before: yes — the page said nothing of this computer's calls without the owner key: /state had no `ownerless`)
+test("this computer's read says the calls that came without the owner key, and from which programs; a read without it says nothing", async () => {
+  const p = await open({ state: { ownerless: { count: 3, programs: [{ agent: "curl/8.4.0", count: 2, lastAt: T0 }, { agent: "python-requests/2.32", count: 1, lastAt: T0 }] } } });
+  assert.deepEqual(labels(p.body).slice(0, 2), ["This machine", "Calls without the owner key"]);
+  const row = textOf(rowOf(p.body, "Calls without the owner key"));
+  assert.match(row, /3 calls since Filament started came from a program here without its owner key, answered all the same: curl\/8\.4\.0 \(2\), python-requests\/2\.32 \(1\)/);
+  assert.match(row, /owner\.key/);
+  const none = await open({ state: { ownerless: { count: 0, programs: [] } } });
+  assert.match(textOf(rowOf(none.body, "Calls without the owner key")), /Every program on this computer that called Filament since it started sent its owner key/);
+  const elsewhere = await open({ state: { viewer: "remote" } });
+  assert.ok(!labels(elsewhere.body).includes("Calls without the owner key"), "another machine's read carries none");
+});
+
 // (fails before: yes — Settings had no Remote access: nothing paired another machine)
 test("a pairing here: Full or View-only, its code and links with Copy, counted down; the device that claims it closes it", async () => {
   const p = await open();

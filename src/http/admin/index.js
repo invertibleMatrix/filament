@@ -7,7 +7,7 @@
 // server-locals the areas need.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { BACK_PATH } from "../../app/sessions/mcp-sign-in.js";
-import { agentsDevice, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
+import { agentsDevice, countOwnerless, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
 import { CLAIM_PATH, SIGN_OUT_PATH, VIEW_FOLDER_ROWS, agentBodyRefusal, agentFileRefusal, agentFolderRefusal, agentHeaderRefusal, agentRefusal, aliasedPath, copiesRefusal, remoteRoutes, viewFolderRefusal, viewReads } from "./remote.js";
 import { LAPSED_WORDS, fullControl } from "../../services/devices.js";
 import { lowerHeaders } from "../../core/headers.js";
@@ -41,6 +41,7 @@ import { transferRoutes } from "./transfers.js";
 import { coachRoutes } from "./coach.js";
 import { telemetryRoutes } from "./telemetry.js";
 import { starRoutes } from "./star.js";
+import { ownerRoutes } from "./owner.js";
 import { pressClass } from "./press.js";
 
 /** How long an answer a device's revoke finds not begun yet may still take before it is cut (`createAdminHandler`). */
@@ -86,6 +87,7 @@ export function createAdminHandler(a) {
     ...coachRoutes(a),
     ...telemetryRoutes(a),
     ...starRoutes(a),
+    ...ownerRoutes(a),
     ...remoteRoutes(a),
   ]);
   return async function handleAdmin(req, res, url) {
@@ -96,6 +98,9 @@ export function createAdminHandler(a) {
     // passes the Origin and JSON checks below as every write does. A caller it does not know is told where a browser
     // pairs: the harness or console of a device revoked meanwhile goes there (ui/lib/standing.js).
     const who = whoIs(req, a.config.get().server, a.devices || null);
+    // This computer's call without its owner key (services/owner.js): answered all the same, and counted by the program
+    // that sent it — what would be refused once the key is needed (guards.js `countOwnerless`).
+    countOwnerless(req, who);
     // Read once, and taken out of the request whatever the row: the desktop app's key (guards.js `pressRefusal`).
     const pressNo = pressRefusal(req, who, a.devices || null);
     const claim = method === "POST" && path === CLAIM_PATH;

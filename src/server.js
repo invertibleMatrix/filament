@@ -37,6 +37,7 @@ import { createLiveWords } from "./services/live-words.js";
 import { createAgentAccounts } from "./services/agent-accounts.js";
 import { createMachine } from "./services/machine.js";
 import { UNREAD_DEVICE, createDevices, fullControl, heldGrant } from "./services/devices.js";
+import { createOwner } from "./services/owner.js";
 import { copiesRootOf, createCopies } from "./services/copies.js";
 import { createTransfers } from "./services/transfers.js";
 import { bundleKept, captureCopy, checkoutCopy, dropKept, importBundle, keepCapture, mirrorHas, mirrorHaves } from "./adapters/git/send.js";
@@ -281,6 +282,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const machine = createMachine({ dataDir, log });
   // The devices paired with it and the codes that pair them: the admin API, its stream and its sockets know them.
   const devices = createDevices({ dataDir, log });
+  // This computer's key to the admin API (services/owner.js), minted as Filament listens: its own programs send it.
+  const owner = createOwner({ dataDir, log });
   // Where another machine's agents work in a copy of their project (services/copies.js, the remote plan's cp-root).
   const remoteCopies = createCopies({ dataDir, root: copiesRootOf(), devices, log });
   // The copies of a project another machine sends here for its agents, taken into its mirror in that machine's store.
@@ -3276,6 +3279,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     supervisor,
     machine,
     devices,
+    owner,
     remoteCopies,
     transfers,
     cfgForModels,
@@ -3732,6 +3736,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           const port = boundAt.port;
           config.get().server.port = port;
           listening = { host: config.get().server.host, port };
+          // This start's owner key, in its file before the command line finds Filament by the next.
+          owner.listen(port);
           // Where the command line finds it (cli/listening.js): its address, its process, its version.
           try {
             writeListening(dataDir, { host: config.get().server.host, port, pid: process.pid, version: VERSION, startedAt: Date.now() });
@@ -3915,6 +3921,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           ops.close();
           try {
             removeListening(dataDir, process.pid);
+          } catch {}
+          try {
+            owner.close();
           } catch {}
           // The network's listener closes with what it holds open: a device's terminal, its stream.
           await Promise.race([Promise.all([lan.close(), artLan.close(), tailnet.close()]), new Promise((r) => setTimeout(r, 2000).unref())]);
