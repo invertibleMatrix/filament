@@ -399,8 +399,8 @@ test("a machine that takes this command line's device no more because it went un
     const studio = (refusal) =>
       /** @type {any} */ (async (/** @type {string} */ url) => (new URL(url).pathname === "/.well-known/filament" ? json(200, { id, name: "Studio", version: "0.9.90" }) : json(403, refusal)));
     await assert.rejects(
-      connectRemote(dataDir, "Studio", { fetchImpl: studio({ error: "this device went unused here for 90 days…", lapsed: true, pair: "/ui/pair.html" }) }),
-      (/** @type {any} */ e) => e.message === "Studio takes this device no more: it went unused there for 90 days, so its pairing ran out. Connect again with the link its Settings › Remote access shows (filament connect <link>)." && e.code === EXIT.failed,
+      connectRemote(dataDir, "Studio", { fetchImpl: studio({ error: "this device went unused here for 30 days…", lapsed: true, days: 30, pair: "/ui/pair.html" }) }),
+      (/** @type {any} */ e) => e.message === "Studio takes this device no more: it went unused there for 30 days, so its pairing ran out. Connect again with the link its Settings › Remote access shows (filament connect <link>)." && e.code === EXIT.failed,
     );
     await assert.rejects(connectRemote(dataDir, "Studio", { fetchImpl: studio({ error: "admin API answers…", pair: "/ui/pair.html" }) }), /Studio no longer knows this device — revoked there, or signed out/);
   } finally {

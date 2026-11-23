@@ -183,9 +183,12 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
       } else $("pair-lead").textContent = `This is ${machine} itself: its Filament needs no pairing here.`;
       return;
     }
-    // A device that went unused past its days is refused so (http/admin/index.js): this browser was paired, and pairs again.
-    if ((await r.json().catch(() => null))?.lapsed === true)
-      $("pair-lead").textContent = `This browser went unused on ${machine} for 90 days, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.`;
+    // A device that went unused past its days is refused so, and how many it says (http/admin/index.js): this browser was
+    // paired, and pairs again.
+    const j = await r.json().catch(() => null);
+    const unused = Number.isInteger(j?.days) && j.days > 0 ? `for ${j.days} days` : "too long";
+    if (j?.lapsed === true)
+      $("pair-lead").textContent = `This browser went unused on ${machine} ${unused}, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.`;
   } catch {}
   if (inTheClear(loc)) {
     form.hidden = true;

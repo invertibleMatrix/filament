@@ -823,7 +823,7 @@ test("the words: time left, a device's line", () => {
   const day = new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   assert.equal(expiryWords(at, at - 1), `expires ${day} if unused`);
   assert.equal(deviceWords({ kind: "browser", scope: "full", lastSeenAt: at - 3_600_000, lastSeenFrom: "192.0.2.4", expiresAt: at }, at - 60_000), `Browser · full · seen 59 min ago from 192.0.2.4 · expires ${day} if unused`);
-  assert.equal(deviceWords({ kind: "cli", scope: "view", lastSeenAt: null, expiresAt: at }, at), "Command line · view-only · not seen yet · expired: unused 90 days, pair it again");
+  assert.equal(deviceWords({ kind: "cli", scope: "view", lastSeenAt: null, expiresAt: at }, at), "Command line · view-only · not seen yet · expired: it went unused, pair it again");
   assert.equal(deviceWords({ kind: "browser", scope: "full", lastSeenAt: null, revokedAt: at - 60_000, expiresAt: null }, at), "Browser · full · revoked 1 min ago", "revoked: nothing lapses");
   assert.deepEqual([expiryWords(null, at), expiryWords(undefined, at)], ["", ""], "an agents' device, or a Filament from before");
 });
@@ -984,8 +984,8 @@ test("the pairing page: a link's code read and taken off the address, a link ope
   assert.equal(tailnet.el("pair-lead").textContent, "This browser is signed in to Tailscale as owner@example.com, whom Workstation trusts: opening Filament…");
   assert.deepEqual(tailnet.loc.went, ["/ui/harness.html"]);
   // (fails before: yes — s4f: a browser whose pairing lapsed unused met the page as one never paired)
-  const lapsed = await pairPage({ refused: { error: "this device went unused here for 90 days…", lapsed: true, pair: "/ui/pair.html" } });
-  assert.equal(lapsed.el("pair-lead").textContent, "This browser went unused on Workstation for 90 days, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.");
+  const lapsed = await pairPage({ refused: { error: "this device went unused here for 60 days…", lapsed: true, days: 60, pair: "/ui/pair.html" } });
+  assert.equal(lapsed.el("pair-lead").textContent, "This browser went unused on Workstation for 60 days, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.");
   assert.equal(lapsed.el("pair-form").hidden, false, "the form stays, to pair again");
   assert.equal((await pairPage()).el("pair-lead").textContent, "", "one never paired: the page's own lead");
 });

@@ -13,7 +13,7 @@ import { handleCountTokens } from "../app/count-tokens.js";
 import { handleEmbeddings } from "../app/embeddings.js";
 import { listModels } from "../app/models.js";
 import { createRouter } from "./router.js";
-import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, ownerOf, sendsDeviceKey, whoIs } from "./guards.js";
+import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, cookieDevice, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, ownerOf, sendsDeviceKey, whoIs } from "./guards.js";
 import { originAllowed } from "./memory-mcp.js";
 import { isHouseCall } from "../services/house.js";
 import { lendModels, modelsLentTo } from "../services/devices.js";
@@ -247,12 +247,12 @@ export function createFrontDoor({
   const page = (r, path) => {
     const who = whoIs(r.req, config.get().server, devices);
     if (!who) return serveStatic(r.res, path, ownPort(), { stranger: PAIR_PAGE });
-    const again = who.kind === "device" ? cookieAgain(r.req, who.device.id, cookieSent) : "";
+    // The device its cookie signs in as, whoever lets it in — a tailnet login, a browser here on this computer — too.
+    const named = who.kind === "device" ? who.device : cookieDevice(r.req, devices);
+    const again = named ? cookieAgain(r.req, named.id) : "";
     if (again) r.res.setHeader("set-cookie", again);
     return serveStatic(r.res, path, ownPort());
   };
-  /** When each device's cookie was sent again (`page`), by its id. @type {Map<string, number>} */
-  const cookieSent = new Map();
   /** The port Filament listens on now. */
   const ownPort = () => (deps.selfPort ? deps.selfPort() : config.get().server.port);
   /** Where Filament reaches itself now (`selfAddress`): the address a refused page is pointed at instead. */

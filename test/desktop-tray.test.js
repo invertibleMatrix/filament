@@ -1099,7 +1099,7 @@ describe("every machine, watched", () => {
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     // One reader of a machine's sign-in, its partition's cookies, for the watch and the agents' switch alike (f-ui).
     assert.match(main, /const cookieOf = async \(partition, url\) => \(await session\.fromPartition\(partition\)\.cookies\.get\(\{ url \}\)\)\.map\(\(c\) => `\$\{c\.name\}=\$\{c\.value\}`\)\.join\("; "\);/);
-    assert.match(main, /const fleet = createFleet\(\{ machines: \(\) => readKept\(machinesFile\), pick: pickHeld, cookieOf \}\);/);
+    assert.match(main, /const fleet = createFleet\(\{ machines: \(\) => readKept\(machinesFile\), pick: pickHeld, cookieOf, keepSignIn \}\);/);
     // (fails before: yes — the review of p3-watch: one machine's look that threw threw out this computer's with it)
     // A look some machines' events stream asked (`only`) reads those alone, this computer's own not (the review of s1e).
     assert.match(main, /const \[w, others\] = await Promise\.all\(\[up && !only \? watch\.look\(\)\.catch\(\(\) => null\) : null, fleet\.look\(\{ only \}\)\.catch\(\(\) => \[\]\)\]\);/, "every other machine watched whatever this computer's Filament does, each read on its own");

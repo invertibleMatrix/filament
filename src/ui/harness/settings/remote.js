@@ -86,7 +86,7 @@ const agoWords = (ms) => {
  * never does — an agents' device, a revoked one. @param {number | null | undefined} at @param {number} now
  */
 export const expiryWords = (at, now) =>
-  typeof at !== "number" ? "" : at <= now ? "expired: unused 90 days, pair it again" : `expires ${new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} if unused`;
+  typeof at !== "number" ? "" : at <= now ? "expired: it went unused, pair it again" : `expires ${new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} if unused`;
 
 /**
  * A paired device's line: what it is, what it may do, and when it was last seen and from where, and when it lapses

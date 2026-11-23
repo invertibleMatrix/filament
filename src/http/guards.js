@@ -261,14 +261,16 @@ const COOKIE_AGAIN_MS = 86_400_000;
  * @param {string} value @param {number} maxAge  seconds; 0 takes it away @param {boolean} secure
  */
 export const deviceCookie = (value, maxAge, secure) => `${secure ? SECURE_DEVICE_COOKIE : DEVICE_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+/** When each device's cookie was sent again (`cookieAgain`), by its id: the pages' and the admin API's one count. @type {Map<string, number>} */
+const cookiesSent = new Map();
 /**
- * A device's cookie sent again, its DEVICE_COOKIE_DAYS counted afresh: the one its page came with, under the name it came
- * by, a day apart at the most for each device (`sent`, by its id — what was sent when). "" where none is owed: the device
- * came by a Bearer, or its cookie was sent again within the day.
- * @param {import("node:http").IncomingMessage} req  one `whoIs` let in as that device @param {string} id  the device's
- * @param {Map<string, number>} sent @param {number} [at]
+ * A device's cookie sent again, its DEVICE_COOKIE_DAYS counted afresh: the one its request came with, under the name it
+ * came by, a day apart at the most for each device (`sent`, by its id — what was sent when). "" where none is owed: the
+ * device came by a Bearer, or its cookie was sent again within the day.
+ * @param {import("node:http").IncomingMessage} req  one that signs in as that device by its cookie (`cookieDevice`)
+ * @param {string} id  the device's @param {Map<string, number>} [sent] @param {number} [at]
  */
-export function cookieAgain(req, id, sent, at = Date.now()) {
+export function cookieAgain(req, id, sent = cookiesSent, at = Date.now()) {
   const jar = cookiesOf(req);
   const secure = !!jar[SECURE_DEVICE_COOKIE];
   const value = jar[SECURE_DEVICE_COOKIE] || jar[DEVICE_COOKIE];
@@ -377,7 +379,8 @@ const dropCookie = (req, name) => {
  * browser here (devices.js `here`: `filament open`'s, the tray's) is this computer itself: its token names it, and gives
  * it nothing loopback does not. A device's Bearer that does not verify — revoked, replaced, lapsed — is no one's, so an
  * agents' device stops at its revoke; a cookie that does not — another port's: a browser sends a host's cookies to each
- * of its ports — leaves the caller this computer.
+ * of its ports — leaves the caller this computer. A tailnet login that carries a device's token is the login, and its
+ * device is counted in use all the same (its verify).
  * @typedef {{ kind: "local", owner?: true } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
  * @param {import("node:http").IncomingMessage} req
  * @param {any} server  the `server` config section
@@ -394,7 +397,11 @@ export function whoIs(req, server, devices = null) {
   }
   if (adminTokenIn(req, server)) return { kind: "admin" };
   const login = ownTailnetLogin(req, server);
-  if (login) return { kind: "tailnet", login };
+  if (login) {
+    // Let in by its login, it may carry the token a pairing gave it too: that device is in use, its days counted afresh.
+    deviceOfToken(req, devices);
+    return { kind: "tailnet", login };
+  }
   return deviceCaller(req, devices);
 }
 /**
@@ -419,6 +426,17 @@ export function deviceCaller(req, devices = null) {
 const deviceOfToken = (req, devices) => {
   const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
   return (token && devices?.verify(token, callerAddress(req))) || null;
+};
+/**
+ * The device a request's cookie signs in as — a browser here's too —, over a sealed way, whoever `whoIs` says the
+ * caller is (a tailnet login it trusts first, this computer itself): the device its cookie is sent again for
+ * (`cookieAgain`), which a verify counts as in use. Null for none, and for a Bearer's.
+ * @param {import("node:http").IncomingMessage} req @param {import("../services/devices.js").DeviceStore | null} [devices]
+ */
+export const cookieDevice = (req, devices = null) => {
+  const jar = cookiesOf(req);
+  const cookie = jar[SECURE_DEVICE_COOKIE] || jar[DEVICE_COOKIE];
+  return (cookie && devices && sealedWay(req) && devices.verify(cookie, callerAddress(req))) || null;
 };
 /**
  * The browser here a request on this computer's loopback signs in as (devices.js `here`), or null.

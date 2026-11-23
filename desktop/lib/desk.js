@@ -211,16 +211,17 @@ export const frameOf = (d, tab) => {
 };
 
 /**
- * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, tell: (frame: DeskFrame) => void,
+ * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: import("./watch.js").KeepSignIn, tell: (frame: DeskFrame) => void,
  *   pick?: typeof pickRoute, fetchOf?: (route: import("./machines.js").Route) => typeof fetch, tab?: string, now?: () => number,
  *   sleep?: (ms: number, signal: AbortSignal) => Promise<void>, quietMs?: number, beginMs?: number }} o
  *   `machines`: the machines the window keeps, read now; `cookieOf`: the Cookie header the machine's partition sends that
- *   origin; `tell`: each frame of every machine's events stream the desk reads; `tab`: the desk's tab on every machine
+ *   origin; `keepSignIn`: the sign-in an answer sent again, kept there (watch.js `storeSignIn`); `tell`: each frame of
+ *   every machine's events stream the desk reads; `tab`: the desk's tab on every machine
  *   (made here, for this run of the app); `quietMs`: how long a stream may say nothing (`QUIET_MS`); `beginMs`: how long
  *   a turn's head is waited on (`BEGIN_MS`)
  */
-export function createDesk({ machines, cookieOf, tell, pick = pickRoute, fetchOf = routeFetch, tab = `desk-${randomBytes(8).toString("hex")}`, now = Date.now, sleep = rest, quietMs = QUIET_MS, beginMs = BEGIN_MS }) {
-  const reach = createReach({ cookieOf, pick, fetchOf });
+export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRoute, fetchOf = routeFetch, tab = `desk-${randomBytes(8).toString("hex")}`, now = Date.now, sleep = rest, quietMs = QUIET_MS, beginMs = BEGIN_MS }) {
+  const reach = createReach({ cookieOf, keepSignIn, pick, fetchOf });
   /** A machine by its id, kept beside this computer now. @param {string} id */
   const machineOf = (id) => machines().find((m) => !m.local && m.id === String(id).toLowerCase()) ?? null;
   /** Calls under way, per machine. @type {Map<string, number>} */

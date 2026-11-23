@@ -840,7 +840,7 @@ test("main's switch says what stands in the way, and moves nothing: no answer, t
   const gone = (await flowOver(t, scripted({ me: { status: 401, json: { error: "pair this device" } } })).flow.list())[0];
   assert.match(String(gone.words), /This app's sign-in on Mac mini is gone — revoked there, or signed out: pair it again with Add a machine/);
   // (fails before: yes — s4f: one that lapsed unused there was said revoked)
-  const lapsed = (await flowOver(t, scripted({ me: { status: 403, json: { error: "this device went unused here for 90 days…", lapsed: true, pair: "/ui/pair.html" } } })).flow.list())[0];
+  const lapsed = (await flowOver(t, scripted({ me: { status: 403, json: { error: "this device went unused here for 90 days…", lapsed: true, days: 90, pair: "/ui/pair.html" } } })).flow.list())[0];
   assert.equal(lapsed.words, "This app's sign-in on Mac mini ran out: it went unused there for 90 days. Pair it again with Add a machine and a code from its Settings › Remote access.");
   assert.equal(lapsed.ready, false);
   const view = (await flowOver(t, scripted({ me: { status: 200, json: { who: "device", device: { ...VIEW } } } })).flow.list())[0];

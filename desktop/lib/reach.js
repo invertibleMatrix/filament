@@ -5,7 +5,7 @@
 // sends the cookie its partition holds (lib/rail.js's pairing put it there), and /remote/me says who the machine takes
 // this window for. The page hears what came of it alone, never a token. Plain Node (NA-D13).
 import { pickRoute } from "./machines.js";
-import { deskFlagsOf, routeFetch } from "./watch.js";
+import { deskFlagsOf, keepSentSignIn, routeFetch } from "./watch.js";
 import { bodyText } from "../../src/services/machines/client.js";
 
 /** How long one call to the machine waits, unless its caller says otherwise. */
@@ -48,12 +48,16 @@ export const FOR = Object.freeze({
  *   disconnected in this window (`off`), or no way to it answers (`quiet`)
  */
 
+/** How long a device went unused before its pairing ran out, as the machine's refusal says it (`days`). @param {any} j */
+export const unusedFor = (j) => (Number.isInteger(j?.days) && j.days > 0 ? `for ${j.days} days` : "too long");
+
 /**
- * @param {{ cookieOf: (partition: string, origin: string) => Promise<string>, pick?: typeof pickRoute, fetchOf?: (route: Route) => typeof fetch }} o
- *   `cookieOf`: the Cookie header the machine's partition sends that origin
+ * @param {{ cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: import("./watch.js").KeepSignIn, pick?: typeof pickRoute, fetchOf?: (route: Route) => typeof fetch }} o
+ *   `cookieOf`: the Cookie header the machine's partition sends that origin; `keepSignIn`: the sign-in an answer sent
+ *   again, kept there (watch.js `storeSignIn`)
  * @returns {(m: Machine, f?: For) => Promise<Reached | Unreached>}
  */
-export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }) {
+export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pickRoute, fetchOf = routeFetch }) {
   /**
    * The machine reached as this window's full device there — or, where `f` takes them, by the person's tailnet login or
    * through a tunnel —; else what stands in the way.
@@ -84,13 +88,15 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
     const open = async (path, init = {}) => {
       const cookie = await cookieOf(m.partition, origin).catch(() => "");
       // The caller's heads first: the sign-in and the page's mark are this module's, never a caller's.
-      return fetchOf(route)(`${origin}/api${path}`, {
+      const r = await fetchOf(route)(`${origin}/api${path}`, {
         method: init.method || "GET",
         headers: { ...(init.headers || {}), "x-filament-ui": "1", ...(cookie ? { cookie } : {}), ...(init.body !== undefined ? { "content-type": "application/json" } : {}) },
         ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
         redirect: "manual",
         signal: init.signal ?? AbortSignal.timeout(CALL_MS),
       });
+      keepSentSignIn(r, m.partition, origin, keepSignIn);
+      return r;
     };
     /** @type {Send} */
     const send = async (path, init = {}) => {
@@ -112,9 +118,9 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
       return stop(`${m.name} did not answer: ${e?.message || e}.`, "quiet");
     }
     const gone = `This app's sign-in on ${m.name} is gone — revoked there, or signed out: pair it again with Add a machine and a code from its Settings › Remote access.`;
-    // One that went unused there past its days is refused so (services/devices.js UNUSED_DAYS): it pairs again.
+    // One that went unused there past its days is refused so, and how many it says (services/devices.js UNUSED_DAYS): it pairs again.
     if (me.status === 403 && me.json?.lapsed === true)
-      return stop(`This app's sign-in on ${m.name} ran out: it went unused there for 90 days. Pair it again with Add a machine and a code from its Settings › Remote access.`);
+      return stop(`This app's sign-in on ${m.name} ran out: it went unused there ${unusedFor(me.json)}. Pair it again with Add a machine and a code from its Settings › Remote access.`);
     if (me.status === 401 || me.status === 403) return stop(gone);
     if (me.status !== 200) return stop(`${m.name} answered ${String(me.json?.error || `HTTP ${me.status}`)}.`);
     const who = String(me.json?.who ?? "");

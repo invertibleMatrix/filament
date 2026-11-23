@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CALLS_MOST, DESK_MODES, DESK_OPS, createDesk, frameOf } from "../desktop/lib/desk.js";
+import { createFleet, signInSent, storeSignIn } from "../desktop/lib/watch.js";
 import { MODES } from "../src/ui/harness/composer/mode.js";
 
 const PRINT = "AB".repeat(32);
@@ -109,6 +110,63 @@ const until = async (fn, what) => {
     await new Promise((r) => setTimeout(r, 5));
   }
 };
+
+// (fails before: yes — x11: the app reaches another machine by Node's fetch, and the sign-in its Filament sent again on
+// those calls went nowhere: one the desk and the watch used, its page never opened, ran out at 400 days)
+test("a sign-in a machine sends again on the desk's and the watch's calls is kept in its partition, there and wherever else the partition holds it; a sign-out or another cookie is not", async () => {
+  const at = Date.UTC(2026, 10, 23);
+  const again = "__Host-filament_device=fdt_again; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000; Secure";
+  assert.deepEqual(signInSent(["theme=dark; Path=/", again], at), { name: "__Host-filament_device", value: "fdt_again", expirationDate: at / 1000 + 34_560_000 });
+  assert.equal(signInSent(["filament_device=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"], at), null, "a sign-out's");
+  assert.equal(signInSent(["filament_devices=fdt_x; Max-Age=60", "filament_device=fdt_x; Path=/"], at), null, "another name; none that lasts");
+  assert.equal(signInSent([], at), null);
+
+  // Kept at the address it answered at, and where the partition holds that same sign-in — another's stays as it is.
+  /** @type {any[]} */
+  const set = [];
+  const ses = {
+    cookies: {
+      get: async () => [
+        { name: "__Host-filament_device", value: "fdt_again", domain: "mac.tail1234.ts.net", secure: true },
+        { name: "filament_device", value: "fdt_again", domain: "127.0.0.1", secure: false },
+        { name: "__Host-filament_device", value: "fdt_other", domain: "old.example", secure: true },
+        { name: "__Host-filament_device", value: "fdt_again", domain: "192.0.2.9", secure: true },
+        { name: "theme", value: "fdt_again", domain: "192.0.2.10", secure: true },
+      ],
+      set: async (/** @type {any} */ d) => void set.push(d),
+    },
+  };
+  await storeSignIn(ses, "https://192.0.2.9:20343", { name: "__Host-filament_device", value: "fdt_again", expirationDate: 99 });
+  assert.deepEqual(set.map((d) => [d.url, d.name, d.secure]), [["https://192.0.2.9:20343", "__Host-filament_device", true], ["https://mac.tail1234.ts.net", "__Host-filament_device", true], ["http://127.0.0.1", "filament_device", false]]);
+  assert.ok(set.every((d) => d.value === "fdt_again" && d.expirationDate === 99 && d.httpOnly === true && d.sameSite === "strict" && d.path === "/"));
+
+  // The desk's calls and the watch's each hand it on, for that machine's partition at the address it answered at.
+  /** @type {any[]} */
+  const handed = [];
+  const keepSignIn = async (/** @type {string} */ partition, /** @type {string} */ origin, /** @type {any} */ c) => void handed.push([partition, origin, c.name, c.value]);
+  const there = scripted({ on: (method, path) => (path === "/runs?limit=50" ? answer(200, { runs: [] }) : null) });
+  /** @type {any} */
+  const withAgain = async (/** @type {string} */ u, /** @type {any} */ init) => {
+    const r = await there.fetchImpl(u, init);
+    const h = new Headers(r.headers);
+    h.append("set-cookie", again);
+    return new Response(r.body, { status: r.status, headers: h });
+  };
+  const pick = async (/** @type {any} */ m) => ({ route: m.routes[0], name: m.name, version: "9", tried: [] });
+  const desk = createDesk({ machines: () => [kept()], cookieOf: async () => COOKIE, keepSignIn, pick, fetchOf: () => withAgain, tell: () => {}, tab: "desk-test" });
+  assert.equal((await desk.call({ op: "me", machine: "m-mac" })).ok, true);
+  await until(() => handed.length > 0, "the desk's sign-in kept");
+  assert.deepEqual(handed[0], ["persist:machine-m-mac", "https://192.0.2.9:20343", "__Host-filament_device", "fdt_again"]);
+  handed.length = 0;
+  let t = 1_000_000;
+  const fleet = createFleet({ machines: () => [kept()], cookieOf: async () => COOKIE, keepSignIn, pick, fetchOf: () => withAgain, now: () => t });
+  await fleet.look();
+  await new Promise((r) => setImmediate(r));
+  t += 10_000;
+  await fleet.look();
+  await until(() => handed.length > 0, "the watch's sign-in kept");
+  assert.deepEqual(handed[0], ["persist:machine-m-mac", "https://192.0.2.9:20343", "__Host-filament_device", "fdt_again"]);
+});
 
 // (fails before: yes — s1e: there was no desk bridge)
 test("the table alone: an operation not in it, a path, a name off the prototype, a machine not kept or This computer, a field that does not fit — refused here, nothing sent", async () => {
@@ -554,7 +612,7 @@ test("main.js: the desk's bridge heard from Filament's own page in the harness w
   assert.match(main, /machineBrowsers\.sync\(\);\n\s+desk\.sync\(\);/, "its streams follow the machines kept, at each look");
   assert.match(main, /machineBrowsers\.destroy\(\);\n\s+desk\.close\(\);/, "and end as the app does");
   const agents = readFileSync(new URL("../desktop/lib/machine-agents.js", import.meta.url), "utf8");
-  assert.match(agents, /const reachThere = createReach\(\{ cookieOf, pick, fetchOf \}\);/);
+  assert.match(agents, /const reachThere = createReach\(\{ cookieOf, keepSignIn, pick, fetchOf \}\);/);
   assert.doesNotMatch(agents, /fetchOf\(route\)\(/, "one way to reach a machine");
   const preload = readFileSync(new URL("../desktop/machine-preload.cjs", import.meta.url), "utf8");
   assert.doesNotMatch(preload, /desk-call|desk-event/, "another machine's page has no desk bridge");

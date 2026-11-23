@@ -194,14 +194,16 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
   const tunneled = kept("Desk PC", now - day);
   const sealed = kept("Laptop", now - day, "view");
   const agents = kept("Filament agents on Box", now - 300 * day, "agent");
-  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, tunneled.row, sealed.row, { ...agents.row, of: old.row.id }] }));
+  const called = kept("Tablet", now - 50 * day);
+  const here = kept("This PC's browser", now - 50 * day);
+  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, tunneled.row, sealed.row, { ...agents.row, of: old.row.id }, called.row, { ...here.row, here: true }] }));
   const shim = await startApp({ dataDir });
   try {
     const { port } = shim;
     // Unused past its days: refused in words that say so, by cookie or Bearer, and its page sends it to pairing.
     for (const h of /** @type {Record<string, string>[]} */ ([{ cookie: `filament_device=${old.token}` }, { authorization: `Bearer ${old.token}` }])) {
       const no = await ask(port, "/api/state", { headers: { ...FAR, ...h } });
-      assert.deepEqual([no.status, no.json.error, no.json.lapsed, no.json.pair], [403, LAPSED_WORDS, true, "/ui/pair.html"], JSON.stringify(h));
+      assert.deepEqual([no.status, no.json.error, no.json.lapsed, no.json.days, no.json.pair], [403, LAPSED_WORDS, true, 90, "/ui/pair.html"], JSON.stringify(h));
     }
     assert.match(LAPSED_WORDS, /went unused here for 90 days, so its pairing ran out: pair it again/);
     const sent = await ask(port, "/ui/harness.html", { headers: { ...FAR, cookie: `filament_device=${old.token}` } });
@@ -231,6 +233,21 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
     assert.equal((await ask(port, "/ui/harness.html", { headers: plain })).headers["set-cookie"], undefined, "a day apart at the most");
     const over = { ...FAR, "x-forwarded-proto": "https", cookie: `__Host-filament_device=${sealed.token}` };
     assert.deepEqual((await ask(port, "/ui/harness.html", { headers: over })).headers["set-cookie"], [`__Host-filament_device=${sealed.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000; Secure`]);
+    // (fails before: yes — x11: the desktop app reaches another machine by calls alone, and the admin API sent no cookie
+    // again; a browser here was this computer, its cookie never sent again) The API's answers send it again too, the
+    // pages' and the API's one count; and a browser here, this computer itself, has its cookie sent again and its day moved on.
+    const tablet = { ...FAR, cookie: `filament_device=${called.token}` };
+    const api = await ask(port, "/api/state", { headers: tablet });
+    assert.equal(api.status, 200);
+    assert.deepEqual(api.headers["set-cookie"], [`filament_device=${called.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
+    assert.equal((await ask(port, "/api/state", { headers: tablet })).headers["set-cookie"], undefined, "a day apart at the most");
+    assert.equal((await ask(port, "/ui/harness.html", { headers: tablet })).headers["set-cookie"], undefined, "its pages too");
+    const mine = await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${here.token}` } });
+    assert.deepEqual(mine.headers["set-cookie"], [`filament_device=${here.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
+    assert.equal((await ask(port, "/api/remote/me", { headers: { cookie: `filament_device=${here.token}` } })).json.who, "local", "this computer still");
+    const seenOf = async (/** @type {string} */ name) => (await ask(port, "/api/remote/devices")).json.devices.find((/** @type {any} */ d) => d.name === name)?.lastSeenAt;
+    assert.ok((await seenOf("This PC's browser")) > now - day, "a browser here: its day moved on");
+    assert.ok((await seenOf("Tablet")) > now - day);
     // (fails before: yes — the review of s4f: a lapsed device could not sign itself out, so pairing again — which signs
     // the old one out first — left it standing, and its machine's agents' device tied to it) Lapsed, it still signs
     // itself out, its agents' device with it; a token no device has signs nothing out.

@@ -59,20 +59,21 @@ const refusal = (r) => String(r.json?.error || `HTTP ${r.status}`);
 const gone = (r) => r.status === 404 || r.status === 409;
 
 /**
- * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, store: Store,
+ * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: import("./watch.js").KeepSignIn, store: Store,
  *   pick?: typeof pickRoute, fetchOf?: (route: Route) => typeof fetch, log?: (line: string) => void, ownName?: () => string }} o
  *   `machines`: the machines the window keeps, read now; `cookieOf`: the Cookie header the machine's partition sends that
- *   origin; `store`: this Filament's machine store (services/machines `createMachines`); `ownName`: this machine's name, as
+ *   origin; `keepSignIn`: the sign-in an answer sent again, kept there (watch.js `storeSignIn`); `store`: this Filament's
+ *   machine store (services/machines `createMachines`); `ownName`: this machine's name, as
  *   its Settings › Remote access › This machine says it — the machine's chats from this Filament's agents are said to be
  *   from it, not from the app's device there ("Filament app on DESKTOP-1")
  */
-export function createMachineAgents({ machines, cookieOf, store, pick = pickRoute, fetchOf = routeFetch, log = () => {}, ownName = () => "" }) {
+export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pick = pickRoute, fetchOf = routeFetch, log = () => {}, ownName = () => "" }) {
   /** @param {Machine} m @param {Partial<AgentsRow>} o @returns {AgentsRow} */
   const rowOf = (m, o) => ({ id: m.id, name: m.name, on: false, models: false, full: false, kept: false, ready: false, words: null, ...o });
   /** The agents' device kept here for a machine, or null: one `filament connect` connected is no agents'. @param {Machine} m */
   const keptOf = (m) => store.list().find((x) => x.machine.id.toLowerCase() === m.id && x.device.scope === "agent") ?? null;
 
-  const reachThere = createReach({ cookieOf, pick, fetchOf });
+  const reachThere = createReach({ cookieOf, keepSignIn, pick, fetchOf });
   /**
    * The machine reached as this window's full device there (lib/reach.js), or the row that says what stands in the way.
    * @param {Machine} m @param {import("./reach.js").For} [f]  who reaches it: Settings' switch, or the new-chat menu

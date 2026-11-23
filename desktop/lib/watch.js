@@ -287,6 +287,59 @@ export const REPICK_MS = 60_000;
 /** The fetch a route is read with: the network's over its pinned certificate alone, any other Node's own. @param {Route} route */
 export const routeFetch = (route) => (route.kind === "lan" ? pinnedFetch(String(/** @type {any} */ (route).fingerprint)) : fetch);
 
+/** A device's sign-in, as a machine's Filament sets it (src/http/guards.js `DEVICE_COOKIE`), under either of its names. */
+export const SIGN_IN_COOKIE = /^(__Host-)?filament_device$/;
+/**
+ * @typedef {{ name: string, value: string, expirationDate: number }} SignIn
+ *   a device's sign-in as a machine sent it again: its cookie's name, its value as sent, and when it ends (seconds since 1970)
+ * @typedef {(partition: string, origin: string, c: SignIn) => Promise<void>} KeepSignIn
+ */
+/**
+ * The sign-in an answer of a machine's sent again (src/http/guards.js `cookieAgain`), out of its Set-Cookie lines: null
+ * where none came, or one that ends it (a sign-out's, Max-Age 0). No other cookie of the answer's is read.
+ * @param {readonly string[]} lines @param {number} [now] @returns {SignIn | null}
+ */
+export function signInSent(lines, now = Date.now()) {
+  for (const line of lines) {
+    const [pair = "", ...attrs] = String(line).split(";");
+    const eq = pair.indexOf("=");
+    const name = pair.slice(0, Math.max(eq, 0)).trim();
+    if (eq < 1 || !SIGN_IN_COOKIE.test(name)) continue;
+    const value = pair.slice(eq + 1).trim();
+    const age = Number(attrs.map((a) => /^\s*max-age\s*=\s*(\d+)\s*$/i.exec(a)?.[1]).find(Boolean) ?? 0);
+    return value && age > 0 ? { name, value, expirationDate: Math.floor(now / 1000) + age } : null;
+  }
+  return null;
+}
+/**
+ * A sign-in sent again, kept in a machine's partition (`ses`, Electron's session): at the address it answered at, and
+ * wherever else the partition holds that same sign-in — the rail gives a pairing the machine's other ways (lib/rail.js) —,
+ * so a way taken again later finds it standing. Its name, path and flags as a machine's Filament sets them.
+ * @param {{ cookies: { get: (filter: object) => Promise<any[]>, set: (details: object) => Promise<void> } }} ses
+ * @param {string} origin @param {SignIn} c
+ */
+export async function storeSignIn(ses, origin, c) {
+  const at = new Map([[`${c.name} ${new URL(origin).hostname}`, { url: origin, name: c.name }]]);
+  for (const k of await ses.cookies.get({})) {
+    const host = String(k?.domain || "").replace(/^\./, "");
+    if (SIGN_IN_COOKIE.test(String(k?.name)) && k.value === c.value && host && !at.has(`${k.name} ${host}`))
+      at.set(`${k.name} ${host}`, { url: `${k.secure ? "https" : "http"}://${host}`, name: String(k.name) });
+  }
+  for (const { url, name } of at.values()) {
+    const secure = name.startsWith("__Host-");
+    await ses.cookies.set({ url, name, value: c.value, path: "/", secure, httpOnly: true, sameSite: "strict", expirationDate: c.expirationDate }).catch(() => {});
+  }
+}
+/**
+ * A machine's answer read for the sign-in it sent again, handed to `keep` for that machine's partition at the address
+ * it answered at; nothing waits on its keeping.
+ * @param {Response} r @param {string} partition @param {string} origin @param {KeepSignIn} keep @param {number} [now]
+ */
+export function keepSentSignIn(r, partition, origin, keep, now = Date.now()) {
+  const c = signInSent(r.headers?.getSetCookie?.() ?? [], now);
+  if (c) void Promise.resolve().then(() => keep(partition, origin, c)).catch(() => {});
+}
+
 /** Whether two routes are one way: its kind, its address and its pin. @param {Route} a @param {Route} b */
 const sameRoute = (a, b) => a.kind === b.kind && a.url === b.url && (/** @type {any} */ (a).fingerprint ?? null) === (/** @type {any} */ (b).fingerprint ?? null);
 
@@ -302,12 +355,13 @@ const sameRoute = (a, b) => a.kind === b.kind && a.url === b.url && (/** @type {
  * waits on no machine longer than `FLEET_WAIT_MS`, and one whose look threw — on rows it does not read — did not
  * answer. A machine back after an outage learns what came meanwhile (`OUTAGE_MS`): no flood. One removed — or
  * disconnected (`off`), its ways not even asked — is told of nothing more, nor written to. Nothing here answers, starts or sends but a chat's unread mark (`markUnread`).
- * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, pick?: typeof pickRoute,
+ * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: KeepSignIn, pick?: typeof pickRoute,
  *   fetchOf?: (route: Route) => typeof fetch, now?: () => number, wait?: (ms: number) => Promise<unknown> }} o
  *   `machines`: the machines kept, read now; `cookieOf`: the Cookie header the machine's partition sends that origin (""
- *   where it holds none); `wait`: a tick's wait on the looks under way
+ *   where it holds none); `keepSignIn`: the sign-in a machine's answer sent again, kept in its partition (`storeSignIn`),
+ *   so one in use never runs out though its page is never opened; `wait`: a tick's wait on the looks under way
  */
-export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = routeFetch, now = Date.now, wait = (ms) => new Promise((r) => void setTimeout(r, ms).unref?.()) }) {
+export function createFleet({ machines, cookieOf, keepSignIn = async () => {}, pick = pickRoute, fetchOf = routeFetch, now = Date.now, wait = (ms) => new Promise((r) => void setTimeout(r, ms).unref?.()) }) {
   /**
    * id → the machine as last read, the way it is reached (null: none answered as it yet), its pick on its way, its
    * watch, its state and what it said last, its look under way and one landed that no tick has said yet, how the last
@@ -341,6 +395,7 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       redirect: "manual",
       signal: AbortSignal.timeout(CALL_MS),
     });
+    keepSentSignIn(r, k.machine.partition, origin, keepSignIn, now());
     if (!r.ok) {
       void r.body?.cancel().catch(() => {});
       throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });

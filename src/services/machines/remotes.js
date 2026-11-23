@@ -467,8 +467,10 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
       /** @type {any} */
       const j = await jsonOf(r, row.name);
       if (j?.grant) throw new CliError(`${row.name} lets this device in no further: ${refusalWords(j, r.status)}`, EXIT.failed, j);
-      // One that went unused there past its days (services/devices.js UNUSED_DAYS): nothing was revoked, it pairs again.
-      if (j?.lapsed === true) throw new CliError(`${row.name} takes this device no more: it went unused there for 90 days, so its pairing ran out. Connect again with the link its Settings › Remote access shows (filament connect <link>).`, EXIT.failed);
+      // One that went unused there past its days, and how many it says (services/devices.js UNUSED_DAYS): nothing was
+      // revoked, it pairs again.
+      const unused = Number.isInteger(j?.days) && j.days > 0 ? `for ${j.days} days` : "too long";
+      if (j?.lapsed === true) throw new CliError(`${row.name} takes this device no more: it went unused there ${unused}, so its pairing ran out. Connect again with the link its Settings › Remote access shows (filament connect <link>).`, EXIT.failed);
       throw new CliError(`${row.name} no longer knows this device — revoked there, or signed out: connect again with the link its Settings › Remote access shows (filament connect <link>).`, EXIT.failed);
     }
     if (!r.ok) throw new CliError(`${row.name} answered HTTP ${r.status}`, EXIT.failed);

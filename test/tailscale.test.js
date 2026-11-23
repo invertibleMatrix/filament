@@ -6,7 +6,11 @@
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CLI_MS,
   DOWNLOAD,
@@ -752,6 +756,41 @@ describe("Filament served on the tailnet, end to end", () => {
       // A code made here links the tailnet too, with no fingerprint.
       const pair = await (await fetch(`${shim.url}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "view" }) })).json();
       assert.deepEqual(pair.links, [`https://${NAME}/ui/pair.html#code=${encodeURIComponent(pair.code)}`]);
+    } finally {
+      await shim.stop();
+    }
+  });
+
+  // (fails before: yes — x11: a browser your trusted login let in was taken by its login alone, so the device it was
+  // paired as never moved its day — Settings said it expired while in use — and its cookie was never sent again)
+  test("your own login carrying a device's cookie keeps that device in use: its day moves on, its cookie is sent again, and it is still your login", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "filament-tailnet-device-"));
+    const token = `fdt_${randomBytes(32).toString("base64url")}`;
+    const seen = Date.now() - 50 * 86_400_000;
+    const row = { id: randomUUID(), name: "Laptop", scope: "full", kind: "browser", hash: createHash("sha256").update(token).digest("hex"), grants: {}, createdAt: seen, lastSeenAt: seen, lastSeenFrom: null, revokedAt: null };
+    writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, devices: [row] }));
+    const ts = fakeTailscale();
+    const shim = await startApp({ dataDir, configure: (c) => void (c.server.tailscale = { serve: true, trustOwnLogin: true, port: 0 }), overrides: { tailnet: { cli: () => "ts", exec: ts.exec } } });
+    try {
+      const door = (await (await fetch(`${shim.url}/api/remote/tailscale`)).json()).listening.port;
+      const served = { host: NAME, "x-forwarded-for": "100.101.102.103", "x-forwarded-proto": "https", "x-forwarded-host": NAME, "tailscale-user-login": OWNER, cookie: `__Host-filament_device=${token}` };
+      /** @param {string} path @returns {Promise<{ status: number, cookie: string[] | undefined, body: any }>} */
+      const viaTailnet = (path) =>
+        new Promise((resolve, reject) => {
+          const r = http.get({ host: "127.0.0.1", port: door, path, headers: served, agent: false }, (res) => {
+            let body = "";
+            res.on("data", (c) => (body += c));
+            res.on("end", () => resolve({ status: Number(res.statusCode), cookie: res.headers["set-cookie"], body: body.startsWith("{") ? JSON.parse(body) : null }));
+          });
+          r.on("error", reject);
+        });
+      const me = await viaTailnet("/api/remote/me");
+      assert.deepEqual([me.status, me.body?.who], [200, "tailnet"], "your login still");
+      assert.deepEqual(me.cookie, [`__Host-filament_device=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000; Secure`], "its cookie sent again");
+      assert.equal((await viaTailnet("/ui/harness.html")).cookie, undefined, "a day apart at the most, the pages' and the API's one count");
+      const listed = (await (await shim.api("/api/remote/devices")).json()).devices.find((/** @type {any} */ d) => d.name === "Laptop");
+      assert.ok(listed.lastSeenAt > seen + 49 * 86_400_000, "its day moved on");
+      assert.ok(listed.expiresAt > Date.now() + 89 * 86_400_000, "so it lapses 90 days from now");
     } finally {
       await shim.stop();
     }

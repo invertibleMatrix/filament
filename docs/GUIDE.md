@@ -235,12 +235,15 @@ in its details the one to compare. On the other machine, open a link in a browse
 browser it does not know to the pairing page, and type the code there. Over https the pairing page asks you to compare
 the browser's certificate details with the fingerprint (the link's, where you opened one). The browser is paired: it
 keeps a cookie of its own (HttpOnly, SameSite=Strict, and Secure over https), which Filament sends it again as its pages
-open, once a day at the most, so a browser in use never lets it run out.
+open and its calls are answered, once a day at the most, whoever lets it in — the device itself, your tailnet login, or
+this computer through an SSH tunnel —, so a browser in use never lets it run out. The desktop app keeps it as each
+machine sends it again, so a machine it only watches and works from the desk, its page never opened, keeps its sign-in too.
 
 **Unused devices expire.** A browser or command line that goes 90 days without reaching this Filament is let in no
 more: its page goes to the pairing page, which says its pairing ran out, and `filament --machine` and the desktop app
 say the same — pair it again with a new code. Expiring revokes nothing: the device stays listed until you revoke it,
 or pair it again, which signs the old one out (and its machine's agents' device with it). Each use moves its day on,
+whichever way it comes in (a browser your tailnet login lets in moves the day of the device whose cookie it carries),
 and Settings › Remote access says, beside when it was last seen, when it expires if unused (*expires Feb 21, 2027 if
 unused*). The 90 days count from your first start of the Filament that brought this, at the
 earliest, so devices paired before are not let go the day you update. Another machine's agents' device never expires:

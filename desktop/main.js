@@ -29,7 +29,7 @@ import { CARD_SIZE, cardHears, cardPlace, downPage, downWords, harnessRoute, tra
 import { alertNote, backNote, balloonOf, noteLine, restartingNote, tickNote, updateNote, updateOutNote } from "./lib/notes.js";
 import { createUpdater, installArgs, kindOf, releasesRepoOf, repoOf, STORE_PAGES } from "./lib/updates.js";
 import { installDeb, readySquirrel, relaunchOf, replaceAppImage } from "./lib/install-update.js";
-import { WATCH_MS, chatRoute, createFleet, createWatch } from "./lib/watch.js";
+import { WATCH_MS, chatRoute, createFleet, createWatch, storeSignIn } from "./lib/watch.js";
 import { keepSettings, readSettings } from "./lib/settings.js";
 import { appIdOf, logonItem, oldAppIdOf, oldLogonEntry } from "./lib/logon.js";
 import { iconsOf } from "./lib/icons.js";
@@ -1476,9 +1476,14 @@ async function run() {
   const watch = createWatch({ call: (path, init = {}) => ask(`/api${path}`, init).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))), outageMs: Infinity });
   /** The Cookie header a machine's partition sends an origin: its sign-in there, read by main alone. @param {string} partition @param {string} url */
   const cookieOf = async (partition, url) => (await session.fromPartition(partition).cookies.get({ url })).map((c) => `${c.name}=${c.value}`).join("; ");
+  /**
+   * The sign-in a machine sent again on a call made here, kept in its partition (lib/watch.js `storeSignIn`): one this app
+   * uses by its calls alone never runs out. @type {import("./lib/watch.js").KeepSignIn}
+   */
+  const keepSignIn = (partition, origin, c) => storeSignIn(session.fromPartition(partition), origin, c);
   // Each machine kept beside this computer, its own watch (the owner's remote Filament of 11-06, Part 3), read with the
   // sign-in its partition's session holds: the window open or not.
-  const fleet = createFleet({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf });
+  const fleet = createFleet({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, keepSignIn });
   // This Filament's agents on each of them (the remote-agents plan's f-ui): Settings › Remote access's switch, its calls
   // made here with that sign-in, the agents' device's token kept in this Filament's machine store — never the page's.
   // Its own name goes with them (the Filament here keeps it in machine.json, services/machine.js): that machine says its
@@ -1490,7 +1495,7 @@ async function run() {
       return "";
     }
   };
-  const agentsThere = createMachineAgents({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, store: createMachines({ dataDir }), log: (line) => log.line(line), ownName });
+  const agentsThere = createMachineAgents({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, keepSignIn, store: createMachines({ dataDir }), log: (line) => log.line(line), ownName });
   // Each machine let use this app's browser (b-remote): its link to that machine's browser host, made here with the same
   // sign-in, and its chats' pages here — a profile of that machine's, the same guards as this computer's pages; their
   // localhost that machine's, through a proxy over the link (b-tunnel); and nothing of this computer's own: its loopback
@@ -1598,6 +1603,7 @@ async function run() {
     machines: () => readKept(machinesFile),
     pick: pickHeld,
     cookieOf,
+    keepSignIn,
     tell: (f) => {
       const w = windows.get("harness");
       if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk-event", f);

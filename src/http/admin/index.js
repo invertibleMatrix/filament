@@ -7,9 +7,9 @@
 // server-locals the areas need.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { BACK_PATH } from "../../app/sessions/mcp-sign-in.js";
-import { agentsDevice, countOwnerless, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
+import { agentsDevice, cookieAgain, cookieDevice, countOwnerless, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
 import { CLAIM_PATH, SIGN_OUT_PATH, VIEW_FOLDER_ROWS, agentBodyRefusal, agentFileRefusal, agentFolderRefusal, agentHeaderRefusal, agentRefusal, aliasedPath, copiesRefusal, remoteRoutes, viewFolderRefusal, viewReads } from "./remote.js";
-import { LAPSED_WORDS, fullControl } from "../../services/devices.js";
+import { LAPSED_WORDS, UNUSED_DAYS, fullControl } from "../../services/devices.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { createRouter } from "../router.js";
 import { systemRoutes } from "./system.js";
@@ -108,13 +108,14 @@ export function createAdminHandler(a) {
     // Read once, and taken out of the request whatever the row: the desktop app's key (guards.js `pressRefusal`).
     const pressNo = pressRefusal(req, who, a.devices || null);
     const claim = method === "POST" && path === CLAIM_PATH;
-    // One whose device went unused past its days is told so (`lapsed`): nothing was revoked, it pairs again. It may
+    // One whose device went unused past its days is told so (`lapsed`, and how many: `days`, which its pages, the app and
+    // the command line say): nothing was revoked, it pairs again. It may
     // still sign itself out — the desktop app and `filament connect` do so as they pair again —, so the device it
     // replaces goes, and its machine's agents' device with it (the review of s4f).
     const lapsed = who ? null : lapsedDevice(req, a.devices || null);
     if (!who && !claim && !(lapsed && method === "POST" && path === SIGN_OUT_PATH))
       return sendJson(res, 403, lapsed
-        ? { error: LAPSED_WORDS, lapsed: true, pair: PAIR_PAGE }
+        ? { error: LAPSED_WORDS, lapsed: true, days: UNUSED_DAYS, pair: PAIR_PAGE }
         : { error: "admin API answers this machine, a paired device, or server.adminToken: pair this device from Settings on the machine it reaches", pair: PAIR_PAGE });
     // A device's request ends as the device does, revoked or signed out — every stream it follows (a run's events, the
     // claims, the events feed, a turn's words) at once, whichever row answers it (the hunt of sec-revoke: a run's
@@ -125,6 +126,14 @@ export function createAdminHandler(a) {
       if (res.headersSent) return void res.destroy();
       setTimeout(() => void (res.writableEnded || res.destroy()), REVOKED_GRACE_MS).unref?.();
     }));
+    // A device's cookie is sent again on its calls too, a day apart at the most (guards.js `cookieAgain`), whoever lets it
+    // in: the desktop app reaches another machine by calls alone, its pages opened seldom or never. Not on the claim nor
+    // the sign-out, which set their own.
+    if (who && !claim && path !== SIGN_OUT_PATH) {
+      const named = who.kind === "device" ? who.device : cookieDevice(req, a.devices || null);
+      const again = named ? cookieAgain(req, named.id) : "";
+      if (again) res.setHeader("set-cookie", again);
+    }
     const h = lowerHeaders(req.headers);
     const origin = h.origin;
     if (method === "GET") {
