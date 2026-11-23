@@ -101,6 +101,9 @@ export function createReach({ cookieOf, pick = pickRoute, fetchOf = routeFetch }
       return stop(`${m.name} did not answer: ${e?.message || e}.`, "quiet");
     }
     const gone = `This app's sign-in on ${m.name} is gone — revoked there, or signed out: pair it again with Add a machine and a code from its Settings › Remote access.`;
+    // One that went unused there past its days is refused so (services/devices.js UNUSED_DAYS): it pairs again.
+    if (me.status === 403 && me.json?.lapsed === true)
+      return stop(`This app's sign-in on ${m.name} ran out: it went unused there for 90 days. Pair it again with Add a machine and a code from its Settings › Remote access.`);
     if (me.status === 401 || me.status === 403) return stop(gone);
     if (me.status !== 200) return stop(`${m.name} answered ${String(me.json?.error || `HTTP ${me.status}`)}.`);
     const who = String(me.json?.who ?? "");

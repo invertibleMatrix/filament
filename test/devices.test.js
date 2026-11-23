@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CODE_ALPHABET, CODE_TTL_MS, GUESS_WINDOW_MS, GUESSES_IN_ALL, GUESSES_PER_SOURCE, OPEN_CODES, TOKEN_PREFIX, createDevices, normalCode } from "../src/services/devices.js";
+import { CODE_ALPHABET, CODE_TTL_MS, GUESS_WINDOW_MS, GUESSES_IN_ALL, GUESSES_PER_SOURCE, OPEN_CODES, TOKEN_PREFIX, UNUSED_MS, createDevices, normalCode } from "../src/services/devices.js";
 
 /** A store on a clock the test moves. @param {string | null} [dataDir] */
 const world = (dataDir = null) => {
@@ -237,6 +237,74 @@ test("a claim from a machine's app keeps that machine's id, lowercased, across a
       assert.equal("machine" in got.device, false, JSON.stringify(machine));
     }
     assert.equal(createDevices({ dataDir: dir }).get(app.device.id)?.machine, ID.toLowerCase(), "read back");
+  }));
+
+// (fails before: yes — s4f: a device's token was good until it was revoked, however long it went unused)
+test("a person's device unused 90 days is taken no more and says so, unrevoked; each use moves its day on; a command line's too; an agents' device never lapses", () =>
+  inDir((dir) => {
+    const { clock, devices } = world(dir);
+    const t0 = clock.t;
+    const got = devices.claim(devices.startPairing({ scope: "full" }).code, { name: "Laptop" });
+    const cli = devices.claim(devices.startPairing({ scope: "view" }).code, { name: "Script", kind: "cli" });
+    assert.ok(got.ok && cli.ok);
+    assert.deepEqual([got.device.expiresAt, cli.device.expiresAt], [t0 + UNUSED_MS, t0 + UNUSED_MS], "counted from its pairing");
+    const agents = devices.mintAgents(got.device.id, { from: "Laptop" });
+    assert.ok(agents.ok);
+    assert.equal(agents.device.expiresAt, null, "an agents' device never lapses");
+    // A day short of it: let in, and its days counted from now.
+    clock.t = t0 + UNUSED_MS - 1;
+    assert.equal(devices.verify(got.token)?.expiresAt, clock.t + UNUSED_MS);
+    assert.equal(devices.lapsed(got.token), null, "in use: not lapsed");
+    // The command line's, unused all along, lapses at its day; the browser's goes on.
+    clock.t = t0 + UNUSED_MS;
+    assert.equal(devices.verify(cli.token), null);
+    assert.deepEqual([devices.lapsed(cli.token)?.id, devices.lapsed(cli.token)?.revokedAt], [cli.device.id, null], "said lapsed, never revoked");
+    assert.equal(devices.get(cli.device.id)?.revokedAt, null);
+    assert.ok(devices.verify(got.token), "the one used goes on");
+    // The agents' device works however long it goes unused.
+    clock.t += 3 * UNUSED_MS;
+    assert.equal(devices.verify(got.token), null);
+    assert.equal(devices.lapsed(got.token)?.id, got.device.id);
+    assert.equal(devices.verify(agents.token)?.id, agents.device.id);
+    assert.equal(devices.lapsed(agents.token), null);
+    // Revoked, it is neither: no token of it is taken, and it never lapses.
+    assert.equal(devices.revoke(cli.device.id)?.expiresAt, null);
+    assert.equal(devices.lapsed(cli.token), null);
+    assert.equal(devices.lapsed("nope"), null);
+    assert.equal(devices.lapsed(`${TOKEN_PREFIX}wrong`), null);
+    // The list says when each lapses: the browser's from its last use.
+    assert.deepEqual(devices.list().map((d) => [d.name, d.expiresAt]), [
+      ["Laptop", t0 + 2 * UNUSED_MS],
+      ["Script", null],
+      ["Filament agents on Laptop", null],
+    ]);
+  }));
+
+// (fails before: yes — s4f: a version that lapses devices would let go, the day it starts, every device unused that long)
+test("the days count from the first start that counts them: a devices.json from before keeps each device its full 90 days; a floor a clock set ahead wrote counts from now", () =>
+  inDir((dir) => {
+    const { clock, devices } = world(dir);
+    const got = devices.claim(devices.startPairing().code, { name: "Old tablet" });
+    assert.ok(got.ok);
+    const file = join(dir, "devices.json");
+    const j = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(j.unusedFrom, clock.t, "kept with the devices");
+    // Written before the days were counted: no floor, the device unused two windows over.
+    const { unusedFrom: _floor, ...before } = j;
+    writeFileSync(file, JSON.stringify(before));
+    clock.t += 2 * UNUSED_MS;
+    const later = createDevices({ dataDir: dir, now: () => clock.t });
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).unusedFrom, clock.t, "the first start that counts them keeps its own time at once");
+    assert.equal(later.lapsed(got.token), null, "not let go the day the new version starts");
+    assert.equal(later.get(got.device.id)?.expiresAt, clock.t + UNUSED_MS);
+    // Unused through the window from that start, it lapses — the floor read back, not set anew.
+    clock.t += UNUSED_MS;
+    const after = createDevices({ dataDir: dir, now: () => clock.t });
+    assert.equal(after.verify(got.token), null);
+    assert.equal(after.lapsed(got.token)?.name, "Old tablet");
+    // A floor in the future — a clock set ahead wrote it — counts from now, so no device is kept past its days by it.
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), unusedFrom: clock.t + 10 * UNUSED_MS }));
+    assert.equal(createDevices({ dataDir: dir, now: () => clock.t }).get(got.device.id)?.expiresAt, clock.t + UNUSED_MS);
   }));
 
 test("a code as typed: upper case, letters and digits alone", () => {

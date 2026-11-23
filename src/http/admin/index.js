@@ -7,9 +7,9 @@
 // server-locals the areas need.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { BACK_PATH } from "../../app/sessions/mcp-sign-in.js";
-import { agentsDevice, doorRefused, endsWithDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
-import { CLAIM_PATH, VIEW_FOLDER_ROWS, agentBodyRefusal, agentFileRefusal, agentFolderRefusal, agentHeaderRefusal, agentRefusal, aliasedPath, copiesRefusal, remoteRoutes, viewFolderRefusal, viewReads } from "./remote.js";
-import { fullControl } from "../../services/devices.js";
+import { agentsDevice, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
+import { CLAIM_PATH, SIGN_OUT_PATH, VIEW_FOLDER_ROWS, agentBodyRefusal, agentFileRefusal, agentFolderRefusal, agentHeaderRefusal, agentRefusal, aliasedPath, copiesRefusal, remoteRoutes, viewFolderRefusal, viewReads } from "./remote.js";
+import { LAPSED_WORDS, fullControl } from "../../services/devices.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { createRouter } from "../router.js";
 import { systemRoutes } from "./system.js";
@@ -99,8 +99,14 @@ export function createAdminHandler(a) {
     // Read once, and taken out of the request whatever the row: the desktop app's key (guards.js `pressRefusal`).
     const pressNo = pressRefusal(req, who, a.devices || null);
     const claim = method === "POST" && path === CLAIM_PATH;
-    if (!who && !claim)
-      return sendJson(res, 403, { error: "admin API answers this machine, a paired device, or server.adminToken: pair this device from Settings on the machine it reaches", pair: PAIR_PAGE });
+    // One whose device went unused past its days is told so (`lapsed`): nothing was revoked, it pairs again. It may
+    // still sign itself out — the desktop app and `filament connect` do so as they pair again —, so the device it
+    // replaces goes, and its machine's agents' device with it (the review of s4f).
+    const lapsed = who ? null : lapsedDevice(req, a.devices || null);
+    if (!who && !claim && !(lapsed && method === "POST" && path === SIGN_OUT_PATH))
+      return sendJson(res, 403, lapsed
+        ? { error: LAPSED_WORDS, lapsed: true, pair: PAIR_PAGE }
+        : { error: "admin API answers this machine, a paired device, or server.adminToken: pair this device from Settings on the machine it reaches", pair: PAIR_PAGE });
     // A device's request ends as the device does, revoked or signed out — every stream it follows (a run's events, the
     // claims, the events feed, a turn's words) at once, whichever row answers it (the hunt of sec-revoke: a run's
     // events went on following) —, and another machine's agents' as their grant `agents` is switched off. An answer not

@@ -11,7 +11,7 @@ import { guard } from "./guard.js";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, parse, relative, resolve, sep } from "node:path";
-import { DEVICE_COOKIE, PAIR_PAGE, SECURE_DEVICE_COOKIE, callerAddress, drives, forwardedHttps, isLoopback, sealedWay } from "../guards.js";
+import { DEVICE_COOKIE_DAYS, PAIR_PAGE, callerAddress, deviceCookie, drives, forwardedHttps, isLoopback, lapsedDevice, sealedWay } from "../guards.js";
 import { printOf } from "../../core/x509.js";
 import { allowThroughFirewall, firewallVerdict, readFirewall } from "../../services/lan-tls.js";
 import { lowerHeaders } from "../../core/headers.js";
@@ -61,8 +61,8 @@ export const VIEW_ROUTES = Object.freeze([
   "/files/tree", "/files/read", "/git/status", "/git/log", "/git/branches",
 ]);
 const viewRows = new Set(VIEW_ROUTES);
-/** The paths below are under /api. */
-const SIGN_OUT_PATH = "/remote/sign-out";
+/** The paths below are under /api. A device that lapsed unused may still sign itself out (index.js). */
+export const SIGN_OUT_PATH = "/remote/sign-out";
 /**
  * Whether a view-only device may make this request: a GET whose row (its pattern, as the router matched it) it reads,
  * and the one write that is its own — signing itself out. No row matched: nothing.
@@ -539,19 +539,14 @@ export const tailnetLink = (ts, code) => (ts?.address ? `${ts.address}${PAIR_PAG
 
 /** How long a read of Windows Firewall stands before the next is asked for: a few seconds of PowerShell each. */
 const FIREWALL_READ_MS = 15_000;
-/** How long a device's cookie lasts: 400 days, the most a browser keeps one. Revoking it is what ends it sooner. */
-const COOKIE_DAYS = 400;
-
 /**
  * Whether the page reached this Filament over https: its own socket, or a proxy on this machine that says so (tailscale
  * serve). Only then is its cookie Secure — plain http on the LAN would never send one back.
  * @param {import("node:http").IncomingMessage} req
  */
 const overHttps = (req) => !!(/** @type {any} */ (req.socket)?.encrypted) || (isLoopback(req) && forwardedHttps(req));
-/** Over https the cookie is a `__Host-` one (guards.js `SECURE_DEVICE_COOKIE`). @param {string} value @param {number} maxAge @param {boolean} secure */
-const cookie = (value, maxAge, secure) => `${secure ? SECURE_DEVICE_COOKIE : DEVICE_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
-/** The cookies a sign-out takes away: the plain one, and over https the `__Host-` one too. @param {boolean} secure */
-const cookiesGone = (secure) => (secure ? [cookie("", 0, true), cookie("", 0, false)] : [cookie("", 0, false)]);
+/** The cookies a sign-out takes away: the plain one, and over https the `__Host-` one too (guards.js `deviceCookie`). @param {boolean} secure */
+const cookiesGone = (secure) => (secure ? [deviceCookie("", 0, true), deviceCookie("", 0, false)] : [deviceCookie("", 0, false)]);
 /** The scopes a pairing is for: a device drives (`full`) or reads (`view`). */
 const SCOPES = ["full", "view"];
 /**
@@ -668,10 +663,13 @@ export function remoteRoutes(a) {
           return sendJson(r.res, 403, { error: `pairing goes over https${spoiled ? ", and this code came over plain http, so it is closed" : ""}: on the machine Filament runs on, turn on Settings › Remote access › Reach this machine on my network, open the https address it shows and make a new code`, https: true });
         }
         const page = !!lowerHeaders(r.req.headers).origin;
+        // The device this one replaces, where the claim carries the token of one that lapsed unused: it goes once this is paired.
+        const was = lapsedDevice(r.req, devices);
         const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine });
         if (!got.ok) return sendJson(r.res, got.unsaved ? 500 : got.retryAt ? 429 : 403, { error: got.why, ...(got.retryAt ? { retryAt: got.retryAt } : {}) }, got.retryAt ? { "retry-after": String(Math.max(1, Math.ceil((got.retryAt - Date.now()) / 1000))) } : {});
-        a.log?.("info", `remote: ${got.device.name} paired (${got.device.scope}, ${got.device.kind}) from ${callerAddress(r.req) || "an unknown address"}`);
-        if (page) return sendJson(r.res, 200, { device: got.device, machine: machine() }, { "set-cookie": cookie(got.token, COOKIE_DAYS * 86_400, overHttps(r.req)), "cache-control": "no-store" });
+        a.log?.("info", `remote: ${got.device.name} paired (${got.device.scope}, ${got.device.kind}) from ${callerAddress(r.req) || "an unknown address"}${was ? `, replacing ${was.name}, which went unused` : ""}`);
+        if (was) devices.revoke(was.id);
+        if (page) return sendJson(r.res, 200, { device: got.device, machine: machine() }, { "set-cookie": deviceCookie(got.token, DEVICE_COOKIE_DAYS * 86_400, overHttps(r.req)), "cache-control": "no-store" });
         return sendJson(r.res, 200, { device: got.device, machine: machine(), token: got.token }, { "cache-control": "no-store" });
       }),
     ],
@@ -743,14 +741,16 @@ export function remoteRoutes(a) {
     // sends it nowhere a page from before would not open. `desk`: what it does for another machine's desk (`DESK`).
     ["GET", "/remote/me", (r) => sendJson(r.res, 200, { who: r.who?.kind ?? null, ...(r.who?.kind === "device" ? { device: r.who.device } : {}), ...(r.who?.kind === "tailnet" ? { login: r.who.login } : {}), machine: machine(), pages: PAGES, desk: DESK })],
     [
-      // A device signs itself out: its token stops working at once, and its cookie goes.
+      // A device signs itself out: its token stops working at once, and its cookie goes. One that lapsed unused too
+      // (guards.js `lapsedDevice`): pairing again signs the one it replaces out.
       "POST",
       SIGN_OUT_PATH,
       guard((r) => {
         if (!devices) return none(r);
-        if (r.who?.kind !== "device") return sendJson(r.res, 400, { error: "only a paired device signs out; this is no device" });
-        devices.revoke(r.who.device.id);
-        a.log?.("info", `remote: ${r.who.device.name} signed out`);
+        const own = r.who?.kind === "device" ? r.who.device : r.who ? null : lapsedDevice(r.req, devices);
+        if (!own) return sendJson(r.res, 400, { error: "only a paired device signs out; this is no device" });
+        devices.revoke(own.id);
+        a.log?.("info", `remote: ${own.name} signed out`);
         return sendJson(r.res, 200, { ok: true }, { "set-cookie": cookiesGone(overHttps(r.req)) });
       }),
     ],

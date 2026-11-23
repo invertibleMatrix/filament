@@ -6,12 +6,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { readFileSync } from "node:fs";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startApp } from "./helpers/app.js";
 import { VIEW_ROUTES, pairLinks, viewReads } from "../src/http/admin/remote.js";
 import { cookiesOf, deviceTokenOf, callerAddress, hostAllowed, sealedWay, whoIs } from "../src/http/guards.js";
 import { lanAddresses, lanIps, lanNames } from "../src/services/lan-tls.js";
-import { createDevices } from "../src/services/devices.js";
+import { LAPSED_WORDS, createDevices } from "../src/services/devices.js";
 
 const FAR = { "x-forwarded-for": "100.101.102.103" };
 
@@ -169,6 +172,77 @@ test("the CLI claims with no Origin and gets a Bearer token once; https through 
     const held = await ask(port, "/api/remote/claim", { method: "POST", headers: { "x-forwarded-for": "100.64.9.9" }, body: { code: "AAAA-AAAA" } });
     assert.equal(held.status, 429);
     assert.ok(Number(held.headers["retry-after"]) > 0 && held.json.retryAt > Date.now());
+  } finally {
+    await shim.stop();
+  }
+});
+
+// (fails before: yes — s4f: a device's token was good however long it went unused, and its cookie, set once at the
+// claim, ran out at 400 days in a browser used every day)
+test("a device unused 90 days is refused in words that say to pair again, its page sent to pairing; one in use has its cookie sent again, a day apart at the most", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "filament-lapse-"));
+  const now = Date.now();
+  const day = 86_400_000;
+  /** A device as devices.json keeps it, with the token that opens it. @param {string} name @param {number} seen @param {string} [scope] */
+  const kept = (name, seen, scope = "full") => {
+    const token = `fdt_${randomBytes(32).toString("base64url")}`;
+    return { token, row: { id: randomUUID(), name, scope, kind: "browser", hash: createHash("sha256").update(token).digest("hex"), grants: {}, createdAt: seen, lastSeenAt: seen, lastSeenFrom: null, revokedAt: null } };
+  };
+  const old = kept("Old tablet", now - 100 * day);
+  const older = kept("Old phone", now - 120 * day);
+  const fresh = kept("Phone", now - day);
+  const sealed = kept("Laptop", now - day, "view");
+  const agents = kept("Filament agents on Box", now - 300 * day, "agent");
+  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, sealed.row, { ...agents.row, of: old.row.id }] }));
+  const shim = await startApp({ dataDir });
+  try {
+    const { port } = shim;
+    // Unused past its days: refused in words that say so, by cookie or Bearer, and its page sends it to pairing.
+    for (const h of /** @type {Record<string, string>[]} */ ([{ cookie: `filament_device=${old.token}` }, { authorization: `Bearer ${old.token}` }])) {
+      const no = await ask(port, "/api/state", { headers: { ...FAR, ...h } });
+      assert.deepEqual([no.status, no.json.error, no.json.lapsed, no.json.pair], [403, LAPSED_WORDS, true, "/ui/pair.html"], JSON.stringify(h));
+    }
+    assert.match(LAPSED_WORDS, /went unused here for 90 days, so its pairing ran out: pair it again/);
+    const sent = await ask(port, "/ui/harness.html", { headers: { ...FAR, cookie: `filament_device=${old.token}` } });
+    assert.deepEqual([sent.status, sent.headers.location], [302, "/ui/pair.html"]);
+    // A token no device has is refused as any stranger is: nothing says it lapsed.
+    const stranger = await ask(port, "/api/state", { headers: { ...FAR, cookie: "filament_device=fdt_nobody" } });
+    assert.deepEqual([stranger.status, stranger.json.lapsed], [403, undefined]);
+    // Listed still, unrevoked, past its day; the agents' device never lapses and is let in.
+    const list = (await ask(port, "/api/remote/devices")).json.devices;
+    const row = list.find((/** @type {any} */ d) => d.name === "Old tablet");
+    assert.equal(row.revokedAt, null);
+    assert.ok(row.expiresAt <= Date.now(), "past its day");
+    assert.equal(list.find((/** @type {any} */ d) => d.name === "Filament agents on Box").expiresAt, null);
+    assert.equal((await ask(port, "/api/remote/me", { headers: { ...FAR, authorization: `Bearer ${agents.token}` } })).json.who, "device");
+    // A Bearer is no cookie: none is sent; nor to this computer, which is let in as itself.
+    assert.equal((await ask(port, "/ui/harness.html", { headers: { ...FAR, authorization: `Bearer ${fresh.token}` } })).headers["set-cookie"], undefined);
+    assert.equal((await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${fresh.token}` } })).headers["set-cookie"], undefined);
+    // In use: its page sends its cookie again, under the name it came by, then not again that day.
+    const plain = { ...FAR, cookie: `filament_device=${fresh.token}` };
+    const first = await ask(port, "/ui/harness.html", { headers: plain });
+    assert.equal(first.status, 200);
+    assert.deepEqual(first.headers["set-cookie"], [`filament_device=${fresh.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
+    assert.equal((await ask(port, "/ui/harness.html", { headers: plain })).headers["set-cookie"], undefined, "a day apart at the most");
+    const over = { ...FAR, "x-forwarded-proto": "https", cookie: `__Host-filament_device=${sealed.token}` };
+    assert.deepEqual((await ask(port, "/ui/harness.html", { headers: over })).headers["set-cookie"], [`__Host-filament_device=${sealed.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000; Secure`]);
+    // (fails before: yes — the review of s4f: a lapsed device could not sign itself out, so pairing again — which signs
+    // the old one out first — left it standing, and its machine's agents' device tied to it) Lapsed, it still signs
+    // itself out, its agents' device with it; a token no device has signs nothing out.
+    const own = { origin: `http://127.0.0.1:${port}` };
+    const out = await ask(port, "/api/remote/sign-out", { method: "POST", headers: { ...FAR, ...own, cookie: `filament_device=${old.token}` }, body: {} });
+    assert.equal(out.status, 200);
+    assert.deepEqual(out.headers["set-cookie"], ["filament_device=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"]);
+    const revokedOf = async (/** @type {string} */ name) => (await ask(port, "/api/remote/devices")).json.devices.find((/** @type {any} */ d) => d.name === name)?.revokedAt;
+    assert.ok((await revokedOf("Old tablet")) > 0);
+    assert.ok((await revokedOf("Filament agents on Box")) > 0, "its agents' device with it");
+    assert.equal((await ask(port, "/api/remote/sign-out", { method: "POST", headers: { ...FAR, ...own, cookie: "filament_device=fdt_nobody" }, body: {} })).status, 403);
+    // A browser whose pairing lapsed claims a new code: the device it replaces goes; another's stays.
+    const code = (await ask(port, "/api/remote/pair", { method: "POST", body: { scope: "full" } })).json.code;
+    const again = await ask(port, "/api/remote/claim", { method: "POST", headers: { ...FAR, ...own, cookie: `filament_device=${older.token}` }, body: { code, name: "Old phone again" } });
+    assert.equal(again.status, 200);
+    assert.ok((await revokedOf("Old phone")) > 0, "the one it replaces");
+    assert.deepEqual([await revokedOf("Old phone again"), await revokedOf("Phone")], [null, null]);
   } finally {
     await shim.stop();
   }

@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { fakeH, textOf, buttonsOf } from "./helpers/fake-dom.js";
-import { renderRemote, leftWords, deviceWords, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS, onTailnet, qrSvg, QR_MODULE, QR_TAILNET_WORDS, QR_LAN_WORDS } from "../src/ui/harness/settings/remote.js";
+import { renderRemote, leftWords, deviceWords, expiryWords, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS, onTailnet, qrSvg, QR_MODULE, QR_TAILNET_WORDS, QR_LAN_WORDS } from "../src/ui/harness/settings/remote.js";
 import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
@@ -789,6 +789,14 @@ test("the words: time left, a device's line", () => {
   assert.deepEqual([leftWords(300_000), leftWords(61_500), leftWords(999), leftWords(-5)], ["5:00", "1:02", "0:01", "0:00"]);
   assert.equal(deviceWords({ kind: "cli", scope: "full", lastSeenAt: T0 - 3 * 3_600_000, lastSeenFrom: null }, T0), "Command line · full · seen 3 h ago");
   assert.equal(deviceWords({ kind: "browser", scope: "view", lastSeenAt: null }, T0), "Browser · view-only · not seen yet");
+  // (fails before: yes — s4f: nothing said a device lapses unused)
+  const at = Date.UTC(2027, 1, 21, 12);
+  const day = new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  assert.equal(expiryWords(at, at - 1), `expires ${day} if unused`);
+  assert.equal(deviceWords({ kind: "browser", scope: "full", lastSeenAt: at - 3_600_000, lastSeenFrom: "192.0.2.4", expiresAt: at }, at - 60_000), `Browser · full · seen 59 min ago from 192.0.2.4 · expires ${day} if unused`);
+  assert.equal(deviceWords({ kind: "cli", scope: "view", lastSeenAt: null, expiresAt: at }, at), "Command line · view-only · not seen yet · expired: unused 90 days, pair it again");
+  assert.equal(deviceWords({ kind: "browser", scope: "full", lastSeenAt: null, revokedAt: at - 60_000, expiresAt: null }, at), "Browser · full · revoked 1 min ago", "revoked: nothing lapses");
+  assert.deepEqual([expiryWords(null, at), expiryWords(undefined, at)], ["", ""], "an agents' device, or a Filament from before");
 });
 
 test("the pairing page: the code a link's fragment carries, this device's name from its browser, a refusal in words", () => {
@@ -808,7 +816,8 @@ test("the pairing page: the code a link's fragment carries, this device's name f
 /**
  * The pairing page over a fake document: its elements by id, the address, its history and the window's events, and a
  * server that answers who it is, who the caller is, and the claim.
- * @param {{ hash?: string, me?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said
+ * @param {{ hash?: string, me?: any, refused?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said;
+ *   `refused`: the admin gate's refusal of a caller it does not know, as it says it
  */
 const pairPage = async (o = {}) => {
   /** @type {Record<string, any>} */
@@ -826,7 +835,7 @@ const pairPage = async (o = {}) => {
   const fetchImpl = /** @type {any} */ (async (/** @type {string} */ path, /** @type {any} */ init) => {
     const reply = (/** @type {number} */ status, /** @type {any} */ body) => ({ ok: status < 400, status, json: async () => body });
     if (path === "/.well-known/filament") return reply(200, { name: "Workstation" });
-    if (path === "/api/remote/me") return o.me ? reply(200, o.me) : reply(403, { error: "admin API answers…", pair: "/ui/pair.html" });
+    if (path === "/api/remote/me") return o.me ? reply(200, o.me) : reply(403, o.refused ?? { error: "admin API answers…", pair: "/ui/pair.html" });
     if (path === "/api/remote/claim") {
       posted.push(JSON.parse(init.body));
       const c = o.claim ?? { status: 200, body: { device: { name: "Chrome on macOS" } } };
@@ -936,6 +945,11 @@ test("the pairing page: a link's code read and taken off the address, a link ope
   const tailnet = await pairPage({ me: { who: "tailnet", login: "owner@example.com" } });
   assert.equal(tailnet.el("pair-lead").textContent, "This browser is signed in to Tailscale as owner@example.com, whom Workstation trusts: opening Filament…");
   assert.deepEqual(tailnet.loc.went, ["/ui/harness.html"]);
+  // (fails before: yes — s4f: a browser whose pairing lapsed unused met the page as one never paired)
+  const lapsed = await pairPage({ refused: { error: "this device went unused here for 90 days…", lapsed: true, pair: "/ui/pair.html" } });
+  assert.equal(lapsed.el("pair-lead").textContent, "This browser went unused on Workstation for 90 days, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.");
+  assert.equal(lapsed.el("pair-form").hidden, false, "the form stays, to pair again");
+  assert.equal((await pairPage()).el("pair-lead").textContent, "", "one never paired: the page's own lead");
 });
 
 // (fails before: yes — the harness and the console were served to any browser that reached the port)

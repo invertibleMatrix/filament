@@ -224,7 +224,17 @@ link with no warning, while one on the network's address shows its browser's cer
 in its details the one to compare. On the other machine, open a link in a browser — or open Filament's address, which sends a
 browser it does not know to the pairing page, and type the code there. Over https the pairing page asks you to compare
 the browser's certificate details with the fingerprint (the link's, where you opened one). The browser is paired: it
-keeps a cookie of its own (HttpOnly, SameSite=Strict, and Secure over https) for 400 days, until the device is revoked.
+keeps a cookie of its own (HttpOnly, SameSite=Strict, and Secure over https), which Filament sends it again as its pages
+open, once a day at the most, so a browser in use never lets it run out.
+
+**Unused devices expire.** A browser or command line that goes 90 days without reaching this Filament is let in no
+more: its page goes to the pairing page, which says its pairing ran out, and `filament --machine` and the desktop app
+say the same — pair it again with a new code. Expiring revokes nothing: the device stays listed until you revoke it,
+or pair it again, which signs the old one out (and its machine's agents' device with it). Each use moves its day on,
+and Settings › Remote access says, beside when it was last seen, when it expires if unused (*expires Feb 21, 2027 if
+unused*). The 90 days count from your first start of the Filament that brought this, at the
+earliest, so devices paired before are not let go the day you update. Another machine's agents' device never expires:
+Revoke ends it.
 A command line pairs with `filament connect <link>`: it trusts the certificate the link names and no other, so nothing
 reaches a machine that answers with another; given an https address without the link, it connects where an authority
 signed the certificate (tailscale serve's), and otherwise says the certificate's fingerprint and sends nothing until you

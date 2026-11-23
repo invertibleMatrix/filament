@@ -13,7 +13,7 @@ import { handleCountTokens } from "../app/count-tokens.js";
 import { handleEmbeddings } from "../app/embeddings.js";
 import { listModels } from "../app/models.js";
 import { createRouter } from "./router.js";
-import { PAIR_PAGE, readBody, checkInboundAuth, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, whoIs } from "./guards.js";
+import { PAIR_PAGE, readBody, checkInboundAuth, cookieAgain, endsWithDevice, hostAllowed, hostNameOf, modelsDevice, onTailnetDoor, whoIs } from "./guards.js";
 import { originAllowed } from "./memory-mcp.js";
 import { isHouseCall } from "../services/house.js";
 import { lendModels, modelsLentTo } from "../services/devices.js";
@@ -216,10 +216,19 @@ export function createFrontDoor({
    * paired device —; anyone else's browser is sent to the pairing page from any page, by any spelling of its address
    * (static.js judges the file the disk opened), and a link's #code= goes with it (a browser keeps a fragment across a
    * redirect that names none; the owner's remote Filament of 11-06). The files pages are built of and the pairing page
-   * are served to anyone: they hold nothing of the person's.
+   * are served to anyone: they hold nothing of the person's. A device's browser is sent its cookie again, a day apart at
+   * the most (guards.js `cookieAgain`), so a browser in use never lets it run out.
    * @param {any} r @param {string} path
    */
-  const page = (r, path) => serveStatic(r.res, path, ownPort(), whoIs(r.req, config.get().server, devices) ? {} : { stranger: PAIR_PAGE });
+  const page = (r, path) => {
+    const who = whoIs(r.req, config.get().server, devices);
+    if (!who) return serveStatic(r.res, path, ownPort(), { stranger: PAIR_PAGE });
+    const again = who.kind === "device" ? cookieAgain(r.req, who.device.id, cookieSent) : "";
+    if (again) r.res.setHeader("set-cookie", again);
+    return serveStatic(r.res, path, ownPort());
+  };
+  /** When each device's cookie was sent again (`page`), by its id. @type {Map<string, number>} */
+  const cookieSent = new Map();
   /** The port Filament listens on now. */
   const ownPort = () => (deps.selfPort ? deps.selfPort() : config.get().server.port);
   /** Where Filament reaches itself now (`selfAddress`): the address a refused page is pointed at instead. */

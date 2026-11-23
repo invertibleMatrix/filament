@@ -244,6 +244,34 @@ export const deviceTokenOf = (req) => {
   return bearer.startsWith(DEVICE_TOKEN) ? bearer : "";
 };
 /**
+ * How long a device's cookie lasts: 400 days, the most a browser keeps one. It is sent again as the device's pages are
+ * opened (`cookieAgain`), so one in use never runs out; unused, its pairing lapses sooner (services/devices.js
+ * UNUSED_DAYS), and revoking it ends it at once.
+ */
+export const DEVICE_COOKIE_DAYS = 400;
+/** How often a device's cookie is sent again at the most: a day apart, for each device. */
+const COOKIE_AGAIN_MS = 86_400_000;
+/**
+ * A device's cookie: over https a `__Host-` one (`SECURE_DEVICE_COOKIE`), plain http on loopback the plain one.
+ * @param {string} value @param {number} maxAge  seconds; 0 takes it away @param {boolean} secure
+ */
+export const deviceCookie = (value, maxAge, secure) => `${secure ? SECURE_DEVICE_COOKIE : DEVICE_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+/**
+ * A device's cookie sent again, its DEVICE_COOKIE_DAYS counted afresh: the one its page came with, under the name it came
+ * by, a day apart at the most for each device (`sent`, by its id — what was sent when). "" where none is owed: the device
+ * came by a Bearer, or its cookie was sent again within the day.
+ * @param {import("node:http").IncomingMessage} req  one `whoIs` let in as that device @param {string} id  the device's
+ * @param {Map<string, number>} sent @param {number} [at]
+ */
+export function cookieAgain(req, id, sent, at = Date.now()) {
+  const jar = cookiesOf(req);
+  const secure = !!jar[SECURE_DEVICE_COOKIE];
+  const value = jar[SECURE_DEVICE_COOKIE] || jar[DEVICE_COOKIE];
+  if (!value || at - (sent.get(id) || 0) < COOKIE_AGAIN_MS) return "";
+  sent.set(id, at);
+  return deviceCookie(value, DEVICE_COOKIE_DAYS * 86_400, secure);
+}
+/**
  * Where a request came from, as a limiter counts it and a device's last seen says it: the address a proxy on this
  * machine says it handed on, else the socket's. Only a proxy on this machine is believed: another machine's request
  * names whatever it likes, and its socket is what it is. Of X-Forwarded-For, the last: a proxy appends the address it
@@ -312,6 +340,15 @@ export function deviceCaller(req, devices = null) {
   const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
   const device = token ? devices?.verify(token, callerAddress(req)) : null;
   return device ? { kind: "device", device, scope: device.scope } : null;
+}
+/**
+ * The person's device a request's token belongs to that went unused past its days (services/devices.js `lapsed`), taken
+ * over a sealed way as `deviceCaller` takes one — its refusal says to pair it again —; null for any other.
+ * @param {import("node:http").IncomingMessage} req @param {import("../services/devices.js").DeviceStore | null} [devices]
+ */
+export function lapsedDevice(req, devices = null) {
+  const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
+  return token ? devices?.lapsed(token) ?? null : null;
 }
 /**
  * The header this computer's press carries the desktop app's key in (`pressRefusal`): its harness page sends it on its

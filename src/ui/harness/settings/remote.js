@@ -5,7 +5,8 @@
 // its https address, what Tailscale asks for, and trusting your own tailnet login; a pairing started here: a code good for five minutes
 // and one claim, counted down, and a link for each address another machine reaches this Filament at — the tailnet's
 // first —, each with its QR code for a phone's camera (vendor/qr, loaded once a code is made), for a full
-// device or a view-only one; and the devices paired, each with when it was last seen, Revoke and, once revoked, Forget —
+// device or a view-only one; and the devices paired, each with when it was last seen and when it expires unused (90
+// days on from its last use, `expiryWords`), Revoke and, once revoked, Forget —
 // another machine's agents' device under the full device that minted it, with a switch for each thing they may do here
 // (the remote-agents plan's f-ui). Read from another machine, pairing is this machine's alone, the device list is a full
 // device's, and the device it is signs itself out. In the desktop app, This computer's page adds another machine to its
@@ -63,13 +64,22 @@ const agoWords = (ms) => {
 };
 
 /**
- * A paired device's line: what it is, what it may do, and when it was last seen and from where — or when it was revoked.
- * @param {{ kind?: string, scope?: string, lastSeenAt?: number | null, lastSeenFrom?: string | null, revokedAt?: number | null }} d @param {number} now
+ * When a person's device lapses unused, in words (services/devices.js `expiresAt`, moved on by each use): "" where it
+ * never does — an agents' device, a revoked one. @param {number | null | undefined} at @param {number} now
+ */
+export const expiryWords = (at, now) =>
+  typeof at !== "number" ? "" : at <= now ? "expired: unused 90 days, pair it again" : `expires ${new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} if unused`;
+
+/**
+ * A paired device's line: what it is, what it may do, and when it was last seen and from where, and when it lapses
+ * unused (`expiryWords`) — or when it was revoked.
+ * @param {{ kind?: string, scope?: string, lastSeenAt?: number | null, lastSeenFrom?: string | null, revokedAt?: number | null, expiresAt?: number | null }} d @param {number} now
  */
 export function deviceWords(d, now) {
   const what = d.scope === "agent" ? "Agents" : `${d.kind === "cli" ? "Command line" : "Browser"} · ${d.scope === "view" ? "view-only" : "full"}`;
   if (d.revokedAt) return `${what} · revoked ${agoWords(now - d.revokedAt)}`;
-  return `${what} · ${d.lastSeenAt ? `seen ${agoWords(now - d.lastSeenAt)}${d.lastSeenFrom ? ` from ${d.lastSeenFrom}` : ""}` : "not seen yet"}`;
+  const ends = expiryWords(d.expiresAt, now);
+  return `${what} · ${d.lastSeenAt ? `seen ${agoWords(now - d.lastSeenAt)}${d.lastSeenFrom ? ` from ${d.lastSeenFrom}` : ""}` : "not seen yet"}${ends ? ` · ${ends}` : ""}`;
 }
 
 /**
@@ -1098,8 +1108,11 @@ export function renderRemote(body, cb = {}, io = {}) {
           : m("button", { class: "ghost sm danger", type: "button", onclick: () => void (a ? revoke(d, name, true) : revoke(d)) }, "Revoke")));
   }
 
-  /** When a device was last seen, in a few words. @param {any} d */
-  const seenWords = (d) => (d.lastSeenAt ? `seen ${agoWords(now() - d.lastSeenAt)}` : "not seen yet");
+  /** When a device was last seen, and when it lapses unused (`expiryWords`), in a few words. @param {any} d */
+  const seenWords = (d) => {
+    const ends = expiryWords(d.expiresAt, now());
+    return `${d.lastSeenAt ? `seen ${agoWords(now() - d.lastSeenAt)}` : "not seen yet"}${ends ? ` · ${ends}` : ""}`;
+  };
   /** A line under a line's title; `cls` " is-warn" where it warns. @param {string} text @param {string} [cls] @param {string} [title] */
   const lineOf = (text, cls = "", title = "") => m("span", { class: `nset-preset-line rset-line${cls}`, ...(title ? { title } : {}) }, text);
   /**

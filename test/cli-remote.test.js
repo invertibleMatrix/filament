@@ -370,3 +370,26 @@ test("pinnedFetch: ended already, no connection is made", async () => {
     server.close();
   }
 });
+
+// (fails before: yes — s4f: a device that lapsed unused there was said revoked or signed out)
+test("a machine that takes this command line's device no more because it went unused says so: connect again, nothing was revoked", async () => {
+  const { keepRemote } = await import("../src/services/machines/remotes.js");
+  const dataDir = mkdtempSync(join(tmpdir(), "cli-lapsed-"));
+  const id = "1a8abe5b-0000-4000-8000-000000000002";
+  try {
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify({ server: { encryptSecrets: false } }));
+    keepRemote(dataDir, { url: "https://192.0.2.7:20343", machine: { id, name: "Studio" }, device: { id: "dev-cli", name: "Laptop", scope: "full" }, token: "fdt_old" });
+    /** @param {number} status @param {any} body */
+    const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    /** @param {any} refusal @returns {typeof fetch} */
+    const studio = (refusal) =>
+      /** @type {any} */ (async (/** @type {string} */ url) => (new URL(url).pathname === "/.well-known/filament" ? json(200, { id, name: "Studio", version: "0.9.90" }) : json(403, refusal)));
+    await assert.rejects(
+      connectRemote(dataDir, "Studio", { fetchImpl: studio({ error: "this device went unused here for 90 days…", lapsed: true, pair: "/ui/pair.html" }) }),
+      (/** @type {any} */ e) => e.message === "Studio takes this device no more: it went unused there for 90 days, so its pairing ran out. Connect again with the link its Settings › Remote access shows (filament connect <link>)." && e.code === EXIT.failed,
+    );
+    await assert.rejects(connectRemote(dataDir, "Studio", { fetchImpl: studio({ error: "admin API answers…", pair: "/ui/pair.html" }) }), /Studio no longer knows this device — revoked there, or signed out/);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});

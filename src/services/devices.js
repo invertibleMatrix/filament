@@ -9,6 +9,9 @@
 // Another machine's agents have a device of their own (the remote-agents plan's f-grant), apart from the person's: no
 // code pairs it — a full device mints it for its own machine (`mintAgents`) — and its grants say what they may do here,
 // each off until this machine's managers switch it on. It goes with the full device it was minted by.
+// A person's device unused for UNUSED_DAYS is taken no more (`verify`), and says so (`lapsed`): it stays listed,
+// unrevoked, until it is paired again or revoked. The days are counted from the first start that counted them at the
+// earliest (`unusedFrom`), so a device paired before is not let go the day this version starts. Agents' devices never lapse.
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,6 +32,11 @@ export const GUESSES_IN_ALL = 20;
 const SEEN_WRITE_MS = 60_000;
 /** What a device token starts with: a log or a pasted line names it as Filament's. */
 export const TOKEN_PREFIX = "fdt_";
+/** How long a person's device — full or view, a browser or a command line — goes unused before its token is taken no more. */
+export const UNUSED_DAYS = 90;
+export const UNUSED_MS = UNUSED_DAYS * 86_400_000;
+/** What a caller whose device lapsed so is told (`lapsed`; http/admin/index.js): it pairs again, nothing was revoked. */
+export const LAPSED_WORDS = `this device went unused here for ${UNUSED_DAYS} days, so its pairing ran out: pair it again with a code from Settings › Remote access on the machine it reaches`;
 /**
  * A Filament's id as a claim says it (services/machine.js: a UUID), lowercased; "" for anything else. Settings ›
  * Remote access shows by it which machine a device's app runs on; nothing is let in or granted by it.
@@ -66,7 +74,10 @@ export const FULL_HOLDS = Object.freeze(/** @type {(keyof Grants)[]} */ (["unask
  * a page whose clock is not the server's counts it right.
  * @typedef {{ id: string, scope: Scope, expiresAt: number, leftMs: number }} OpenCode
  */
-/** A device as said to anyone: the kept one without its hash. @typedef {Omit<KeptDevice, "hash">} Device */
+/**
+ * A device as said to anyone: the kept one without its hash, and when it lapses unused (`expiresAt`, moved on by each
+ * use; null where it never does — an agents' device, a revoked one). @typedef {Omit<KeptDevice, "hash"> & { expiresAt: number | null }} Device
+ */
 
 /**
  * A scope as kept: `full` and `agent` named so, anything else reads (the review of 882809c20: a scope that was neither —
@@ -82,8 +93,14 @@ const grantsOf = (g) => ({ agents: g?.agents === true, models: g?.models === tru
 export const normalCode = (s) => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 /** @param {string} token */
 const hashOf = (token) => createHash("sha256").update(token).digest("hex");
-/** Its grants a copy: what a caller does with them changes nothing kept. @param {KeptDevice} d @returns {Device} */
-const shown = ({ hash: _hash, ...d }) => ({ ...d, grants: { ...d.grants } });
+/**
+ * When a device lapses unused (`UNUSED_MS` past its last use, or its pairing, or `from`, whichever is latest), or null
+ * where it never does: an agents' device, a revoked one.
+ * @param {Pick<KeptDevice, "scope" | "revokedAt" | "lastSeenAt" | "createdAt">} d @param {number} from  the store's `unusedFrom`
+ */
+const expiryOf = (d, from) => (d.scope === "agent" || d.revokedAt != null ? null : Math.max(d.lastSeenAt || 0, d.createdAt || 0, from) + UNUSED_MS);
+/** Its grants a copy: what a caller does with them changes nothing kept. @param {KeptDevice} d @param {number} from  the store's `unusedFrom` @returns {Device} */
+const shown = ({ hash: _hash, ...d }, from) => ({ ...d, grants: { ...d.grants }, expiresAt: expiryOf(d, from) });
 
 /**
  * The model calls another machine's chats send this machine's models (the remote-agents plan's m-door), each with the
@@ -149,9 +166,17 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
   const file = dataDir ? join(dataDir, "devices.json") : null;
   /** @type {KeptDevice[]} */
   let devices = [];
+  /** Since when unused days are counted at the earliest: the first start that counted them, as the file keeps it. */
+  let unusedFrom = now();
+  /** The file was read and kept no `unusedFrom`: written now, so the next start counts from this one. */
+  let floorUnkept = false;
   if (file)
     try {
       const j = JSON.parse(readFileSync(file, "utf8"));
+      const kept = Number(j?.unusedFrom);
+      // One a clock set ahead wrote counts from now: a device is never kept past its days by it.
+      if (Number.isFinite(kept) && kept > 0) unusedFrom = Math.min(kept, unusedFrom);
+      else floorUnkept = true;
       devices = (Array.isArray(j?.devices) ? j.devices : [])
         .filter((/** @type {any} */ d) => d && typeof d.id === "string" && /^[0-9a-f]{64}$/.test(String(d.hash)))
         .map((/** @type {any} */ d) => ({ id: d.id, name: cleanName(d.name) || "A device", scope: scopeOf(d.scope), kind: String(d.kind || "browser"), hash: d.hash, grants: grantsOf(d.grants), createdAt: Number(d.createdAt) || 0, lastSeenAt: d.lastSeenAt ?? null, lastSeenFrom: d.lastSeenFrom ?? null, revokedAt: d.revokedAt ?? null, ...(typeof d.pairing === "string" ? { pairing: d.pairing } : {}), ...(typeof d.of === "string" ? { of: d.of } : {}), ...(typeof d.from === "string" && cleanName(d.from) ? { from: cleanName(d.from) } : {}), ...(machineIdOf(d.machine) ? { machine: machineIdOf(d.machine) } : {}), ...(d.pressless === true ? { pressless: /** @type {true} */ (true) } : {}) }));
@@ -178,7 +203,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     try {
       // Written beside the file, then put in its place; readable by this account alone where the system says so.
       const tmp = `${file}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ version: 1, devices }, null, 1), { mode: 0o600 });
+      writeFileSync(tmp, JSON.stringify({ version: 1, unusedFrom, devices }, null, 1), { mode: 0o600 });
       renameSync(tmp, file);
       for (const d of devices) written.set(d.id, d.lastSeenAt || 0);
       return "";
@@ -186,6 +211,21 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
       log("warn", `[devices] could not keep the paired devices: ${e.message}`);
       return String(e?.message || e);
     }
+  };
+  if (floorUnkept) save();
+  /** A device as said to anyone (`shown`). @param {KeptDevice} d */
+  const told = (d) => shown(d, unusedFrom);
+  /** Whether a person's device went unused past its days. @param {KeptDevice} d */
+  const lapsedNow = (d) => {
+    const at = expiryOf(d, unusedFrom);
+    return at != null && now() >= at;
+  };
+  /** The unrevoked device a token belongs to, lapsed or not; undefined for none. @param {unknown} token */
+  const holderOf = (token) => {
+    const t = String(token ?? "");
+    if (!t.startsWith(TOKEN_PREFIX)) return undefined;
+    const h = hashOf(t);
+    return devices.find((x) => x.revokedAt == null && same(x.hash, h));
   };
 
   /** @type {Set<(id: string) => void>} what hears a device revoked (`onRevoke`) */
@@ -291,7 +331,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         codes = [...codes, hit];
         return { ok: false, why: `Filament could not keep this device (${why}): nothing was paired. Try the code again.`, unsaved: true };
       }
-      return { ok: true, token, device: shown(d) };
+      return { ok: true, token, device: told(d) };
     },
     /**
      * A device for a full device's machine's agents, linked to it (`of`) and named for it, its token handed out this
@@ -319,7 +359,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         return { ok: false, why: `Filament could not keep the agents' device (${why}): none was made. Try again.`, unsaved: true };
       }
       if (before) heard(before);
-      return { ok: true, token, device: shown(d) };
+      return { ok: true, token, device: told(d) };
     },
     /**
      * An agents' device's grants, the ones named set and the rest as they were — or null where `id` is no agents'
@@ -343,30 +383,37 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         } catch (/** @type {any} */ e) {
           log("warn", `[devices] ${d.name}'s grants were set, and what it held was not told: ${String(e?.message || e).slice(0, 160)}`);
         }
-      return { ...shown(d), ...(unsaved ? { unsaved } : {}) };
+      return { ...told(d), ...(unsaved ? { unsaved } : {}) };
     },
     /**
-     * The device a token belongs to, unrevoked, or null; its last-seen moves, written once a minute at the most.
+     * The device a token belongs to, unrevoked and not lapsed (`lapsed`), or null; its last-seen moves, written once a
+     * minute at the most.
      * @param {unknown} token @param {string} [from]
      * @returns {Device | null}
      */
     verify(token, from = "") {
-      const t = String(token ?? "");
-      if (!t.startsWith(TOKEN_PREFIX)) return null;
-      const h = hashOf(t);
-      const d = devices.find((x) => x.revokedAt == null && same(x.hash, h));
-      if (!d) return null;
+      const d = holderOf(token);
+      if (!d || lapsedNow(d)) return null;
       d.lastSeenAt = now();
       if (from) d.lastSeenFrom = from;
       if (d.lastSeenAt - (written.get(d.id) || 0) >= SEEN_WRITE_MS) save();
-      return shown(d);
+      return told(d);
+    },
+    /**
+     * The person's device a token belongs to that went unused UNUSED_DAYS, which `verify` takes no more — its refusal
+     * says so (LAPSED_WORDS) — or null. It stays listed and unrevoked: paired again, or revoked by the person.
+     * @param {unknown} token @returns {Device | null}
+     */
+    lapsed(token) {
+      const d = holderOf(token);
+      return d && lapsedNow(d) ? told(d) : null;
     },
     /** Every device, the revoked ones too, newest first. @returns {Device[]} */
-    list: () => devices.map(shown).sort((a, b) => b.createdAt - a.createdAt),
+    list: () => devices.map(told).sort((a, b) => b.createdAt - a.createdAt),
     /** @param {string} id @returns {Device | null} */
     get: (id) => {
       const d = devices.find((x) => x.id === id);
-      return d ? shown(d) : null;
+      return d ? told(d) : null;
     },
     /** @param {string} id @param {unknown} name @returns {Device | null} */
     rename(id, name) {
@@ -374,7 +421,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
       if (!d) return null;
       d.name = cleanName(name) || d.name;
       save();
-      return shown(d);
+      return told(d);
     },
     /**
      * A device's token stops working at once, and what it holds open ends (`onRevoke`); the device stays listed as
@@ -393,7 +440,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         unsaved = save();
         for (const x of gone) heard(x);
       }
-      return { ...shown(d), ...(unsaved ? { unsaved } : {}) };
+      return { ...told(d), ...(unsaved ? { unsaved } : {}) };
     },
     /**
      * Hear each device revoked — by this machine, or signing itself out, an agents' device with its full device or
