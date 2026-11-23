@@ -558,7 +558,8 @@ export async function makeWorktree(folder, name, { refuse = () => null, orFree =
   if (branch.code !== 0) return { ok: false, error: `git did not make the branch ${name}: ${firstLine(branch.err || branch.out || branch.error)}` };
   const add = await gitWithoutHooks(["worktree", "add", plan.folder, name], { cwd: plan.main, timeoutMs: CHECKOUT_MS });
   if (add.code !== 0) {
-    const said = firstLine(add.err || add.out || add.error || `git worktree add exited ${add.code}`);
+    // Its time ran out or it was stopped: that, before what git had said up to then.
+    const said = firstLine(add.error || add.err || add.out || `git worktree add exited ${add.code}`);
     const dropped = await gitWithoutHooks(["branch", "-D", name], { cwd: plan.main });
     const stays = dropped.code === 0 ? "" : `; the branch ${name} it made stays (${firstLine(dropped.err || dropped.error)})`;
     return { ok: false, error: `git did not make the worktree: ${said}${stays}` };

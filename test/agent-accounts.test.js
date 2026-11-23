@@ -1643,20 +1643,28 @@ describe("Claude's plan usage through /usage: Check now and a turn's end ask a t
   });
 
   test("an ask whose answer never comes is let go of after usageWaitMs: Check now answers without the plan's windows", async () => {
-    const bridge = new AcpBridge({});
-    // Long enough for the throwaway agent to start and be asked, under a loaded machine's slow start too.
-    bridge.usageWaitMs = 4000;
     const upstream = { id: "stuck", name: "Stuck", type: "acp", acp: claude("stuck", { FAKE_ACP_AUTH: "max", FAKE_ACP_USAGE: JSON.stringify(USAGE), FAKE_ACP_USAGE_MS: "60000" }) };
-    try {
-      const t0 = Date.now();
-      assert.deepEqual(await bridge.checkAccount(upstream), { read: false, said: "Couldn't read Claude's plan's usage: it gave no answer in 4 s." });
-      assert.ok(Date.now() - t0 < 15_000, `Check now answered in ${Date.now() - t0} ms, not at the agent's word`);
-      const [ask] = asked("stuck");
-      assert.ok(ask, "it was asked");
-      await until(() => !alive(ask.pid), "the throwaway agent to be let go of");
-      assert.deepEqual([bridge.accounts.get("stuck")?.identity?.label, bridge.accounts.get("stuck")?.windows], ["Claude Max", []]);
-    } finally {
-      bridge.shutdown();
+    // The limit counts from the throwaway agent's start (bridge.js `USAGE_WAIT_MS`), and a loaded machine's start can
+    // take all of it, so that nothing was asked: that start is no part of what is tried here, which is tried again with
+    // a limit twice as long.
+    for (let limit = 4000; ; limit *= 2) {
+      const bridge = new AcpBridge({});
+      bridge.usageWaitMs = limit;
+      const was = asked("stuck").length;
+      try {
+        const t0 = Date.now();
+        const got = await bridge.checkAccount(upstream);
+        const ask = asked("stuck")[was];
+        if (!ask && limit < 32_000) continue;
+        assert.deepEqual(got, { read: false, said: `Couldn't read Claude's plan's usage: it gave no answer in ${limit / 1000} s.` });
+        assert.ok(Date.now() - t0 < limit + 11_000, `Check now answered in ${Date.now() - t0} ms, not at the agent's word`);
+        assert.ok(ask, "it was asked");
+        await until(() => !alive(ask.pid), "the throwaway agent to be let go of");
+        assert.deepEqual([bridge.accounts.get("stuck")?.identity?.label, bridge.accounts.get("stuck")?.windows], ["Claude Max", []]);
+        return;
+      } finally {
+        bridge.shutdown();
+      }
     }
   });
 

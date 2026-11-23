@@ -3,7 +3,7 @@
 // the error that stopped it — on Windows a line-ending warning for each file it touched — and every reader under
 // src/adapters/git took the first line of what it said, each with a copy of the idiom: a note said "LF will be replaced
 // by CRLF the next time Git touches it" where git had said why it failed. The one function says the first line that is
-// neither a warning nor a hint of git's, else the first.
+// neither a warning nor a hint of git's nor its progress, else the first.
 // The repository here is a throwaway under the temp folder — never this one.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -43,6 +43,10 @@ test("the line that says why: the first that is neither a warning nor a hint of 
   assert.equal(firstLine(`${CRLF}\n\n`), CRLF, "warnings alone: the first");
   assert.equal(firstLine("EPERM: operation not permitted, rename 'a' -> 'b'"), "EPERM: operation not permitted, rename 'a' -> 'b'", "a line of anything else is said as it is");
   assert.equal(firstLine(`a warning: in the middle of a line\nfatal: later`), "a warning: in the middle of a line", "a warning is one by how its line begins");
+  // (fails before: yes — "git did not make the worktree: Preparing worktree (checking out 'fix-login-2')", in a full
+  // suite of 11-23) What git says it does before it fails is no more why than a warning is.
+  assert.equal(firstLine("Preparing worktree (checking out 'fix-login-2')\nUpdating files:  50% (1/2)\nfatal: could not create directory of '.git/worktrees/fix-login-2': Permission denied"), "fatal: could not create directory of '.git/worktrees/fix-login-2': Permission denied");
+  assert.equal(firstLine("Preparing worktree (new branch 'x')"), "Preparing worktree (new branch 'x')", "its progress alone: the first");
   assert.equal(firstLine(`fatal: ${"x".repeat(300)}`).length, 200);
   assert.deepEqual([firstLine(""), firstLine(null), firstLine(undefined)], ["", "", ""]);
 });

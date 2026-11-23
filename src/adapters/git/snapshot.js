@@ -220,10 +220,11 @@ function launcherEnv(env, { prefix, mingw, msystem }) {
 }
 /**
  * The line of what git said that says why it failed, for a note, 200 characters of it: its multi-line hints are for a
- * terminal, not a record. The first line that is neither a warning nor a hint of git's, else the first: git says its
- * warnings before the error that stopped it — on Windows one for each file whose line ends it would change
- * (`warning: in the working copy of 'a.txt', LF will be replaced by CRLF…`) —, and the first line alone would give a
- * note the warning in the error's place. The first such line, not the first `fatal:`: what a program git ran said of
+ * terminal, not a record. The first line that is neither a warning nor a hint of git's nor its progress (`PROGRESS`),
+ * else the first: git says its warnings before the error that stopped it — on Windows one for each file whose line ends
+ * it would change (`warning: in the working copy of 'a.txt', LF will be replaced by CRLF…`) —, and a worktree's add says
+ * what it prepares, and the first line alone would give a note those words in the error's place. The first such line,
+ * not the first `fatal:`: what a program git ran said of
  * itself (a filter that is not there, ssh that reached nobody) comes before git's own last word, and says more. The
  * one reader of a failure's words for every file of this folder; an error's message of anything else is one line, or
  * said by its first, as it reads.
@@ -231,8 +232,10 @@ function launcherEnv(env, { prefix, mingw, msystem }) {
  */
 export const firstLine = (s) => {
   const lines = String(s || "").split(/\r?\n/);
-  return (lines.find((l) => l.trim() && !/^(warning|hint): /.test(l)) ?? lines[0]).slice(0, 200);
+  return (lines.find((l) => l.trim() && !/^(warning|hint): /.test(l) && !PROGRESS.test(l)) ?? lines[0]).slice(0, 200);
 };
+/** Git's words on what it is doing, which it says on its error stream before any failure: a worktree's add, a checkout's. */
+const PROGRESS = /^(Preparing worktree \(|Updating files: |HEAD is now at )/;
 /** The command an invocation runs, for its words: the first argument past any `-c name=value`. @param {string[]} args */
 const commandOf = (args) => {
   let i = 0;

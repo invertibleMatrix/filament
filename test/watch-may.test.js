@@ -394,7 +394,10 @@ describe("a watcher's turn in the chat that proposed it, on a real Filament: Fil
     // Switch on, the person's press: its line says what the watcher may do, the chat it guides by its name.
     const on = await shim.api(`${at}/routines/${encodeURIComponent(guide)}/on`, { method: "POST", body: { at: row(guide).at } });
     assert.equal(on.status, 200, await on.clone().text());
-    assert.equal(spaces.get(project).log.at(-1)?.text, `You switched on the watcher “Guide”: it listens from now and wakes Lead in a turn held to reading, and may guide ${name}.`);
+    // The newest line but a chat's turns' (`key` "finished:<chat>"): an earlier test's turn is said there a moment after
+    // it ends (app/space-news.js).
+    const said = spaces.get(project).log.filter((/** @type {any} */ e) => !String(e.key || "").startsWith("finished:")).at(-1)?.text;
+    assert.equal(said, `You switched on the watcher “Guide”: it listens from now and wakes Lead in a turn held to reading, and may guide ${name}.`);
   });
 });
 

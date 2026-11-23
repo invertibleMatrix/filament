@@ -120,6 +120,12 @@ describe("a Space's presses, on one Filament whose app holds its key", () => {
   /** The calls the stand-in servers took since the log was last emptied. @returns {any[]} */
   const calls = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
   const lines = () => spaces.get(P).log.map((/** @type {any} */ e) => e.text);
+  /**
+   * Filament's line that a chat finished a turn, there: written a moment after the turn's end (app/space-news.js
+   * `NEWS_SETTLE_MS`), so a test that starts a turn waits for it, and no later test counts it as its own.
+   * @param {string} chain
+   */
+  const toldOf = (chain) => until(() => spaces.get(P).log.some((/** @type {any} */ e) => e.by?.kind === "filament" && e.by.chain === chain), `its chat's line in What happened`, { timeoutMs: 30_000 });
   /** A routine proposed by a chat's agent, with a connection's tool it acts through unasked. @param {string} title */
   const proposed = (title) => {
     const f = routineFields({ title, when: "weekdays 09:00", text: "Answer who tagged me.", acts: ["mcp__ci__post_message"] }, { create: true });
@@ -167,6 +173,7 @@ describe("a Space's presses, on one Filament whose app holds its key", () => {
     landed(await call(`/projects/${encodeURIComponent(P)}/settings`, { method: "POST", body: { patch: { plugins: { mcp: servers } } } }), "the project's servers");
     landed(await call(`/sessions/${encodeURIComponent(chat)}/turns`, { method: "POST", body: { content: "make ci", stream: false } }), "the turn that publishes");
     D = String((await until(async () => (await call(`/space/${encodeURIComponent(P)}`)).json.dashboards?.[0] || null, "the dashboard's draft in the Space")).name);
+    await toldOf(chat);
     setPressKey(KEY);
   });
   after(async () => {
@@ -222,6 +229,7 @@ describe("a Space's presses, on one Filament whose app holds its key", () => {
     assert.equal(routine(id).model, BYPASS);
     landed(await call(`${at}/model`, { method: "POST", body: { model: "agent/brain-model", effort: "high" } }), "a plain model");
     assert.equal(routine(id).model, "agent/brain-model");
+    await toldOf(String(ran.chain));
   });
 
   // (fails before: yes — a draft an agent wrote was sent to Slack by its own shell, with no Send of the person's)

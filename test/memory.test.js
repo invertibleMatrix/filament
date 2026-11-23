@@ -759,6 +759,8 @@ test("dashboard endpoints: status, sessions, recall, remember reaches the engine
   const none = await fetch(`http://127.0.0.1:${port}/api/memory/items/999999/history`); assert.equal(none.status, 404); assert.match((await none.json()).error, /no memory i999999/);
   const filed = await (await fetch(`http://127.0.0.1:${port}/api/memory/remember`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "the pq project deploys on fridays", project: "pq" }) })).json();
   assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memory/items/${filed.itemId}/history`)).json()).project, "pq", "filed in the project the dashboard named");
+  // Searched once the engine holds it, as the first: its copy goes by the outbox.
+  await until(() => ops().some((o) => o.op === "remember" && o.args.content === "the pq project deploys on fridays"), "the engine to receive the project's remember");
   const scoreOf = async (body) => (await (await fetch(`http://127.0.0.1:${port}/api/memory/recall`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json()).results.find((x) => x.id === filed.id)?.score;
   const everywhere = await scoreOf({ query: "pq project deploys fridays" });
   const inPq = await scoreOf({ query: "pq project deploys fridays", project: "pq" });

@@ -235,6 +235,8 @@ describe("whose a commit is, by Filament's loop: a real Filament, a real reposit
 describe("whose a commit is, by a coding agent's run: what each bridge's real events give the keeper the commit watch asks", () => {
   const base = mkdtempSync(join(tmpdir(), "filament-commit-own-agents-"));
   const projDir = join(base, "project");
+  // Claude's `~slowtool` runs until this file is there: the test holds it open, so how long it ran is the test's.
+  const toolGate = join(base, "slowtool.gate");
   /** @type {Awaited<ReturnType<typeof startApp>>} */
   let shim;
   /** @type {import("../src/app/watchers/own-times.js").OwnTimes} */
@@ -252,7 +254,7 @@ describe("whose a commit is, by a coding agent's run: what each bridge's real ev
       configure: (/** @type {any} */ cfg) => {
         cfg.upstreams = [
           // Claude's shape: its raw messages beside its updates, each call's tool named and its input whole.
-          { id: "claude", name: "claude", type: "acp", acp: acp({ FAKE_ACP_CLAUDE: "1", FAKE_ACP_TOOL_MS: "300" }) },
+          { id: "claude", name: "claude", type: "acp", acp: acp({ FAKE_ACP_CLAUDE: "1", FAKE_ACP_TOOL_GATE: toolGate }) },
           // An ACP agent with none of Claude's marks: a call is its kind and its title.
           { id: "plain", name: "plain", type: "acp", acp: acp({}) },
           { id: "codex", name: "Codex", type: "codex", acp: { command: process.execPath, args: [FAKE_CODEX], env: { FAKE_CODEX_CALLS: join(base, "codex.jsonl") }, cwdDefault: projDir, permissions: "allow-all" } },
@@ -303,9 +305,14 @@ describe("whose a commit is, by a coding agent's run: what each bridge's real ev
   };
 
   test("Claude Code (ACP): a command it runs is one from its own message to its end; git log, read as the gate reads it, is none — and its turn is judged by its commands alone", async () => {
-    const runs = await ran("claude/haiku", "~slowtool please");
+    // Its command held open 300 ms from the moment its start is on the bus, which is when the keeper times it from: its
+    // time is at least that, however late the start was read off the agent's pipe.
+    const hold = /** @type {any} */ (shim.app).events.subscribe("*", (/** @type {any} */ p, /** @type {any} */ entry) => {
+      if (String(entry?.topic || "").startsWith("run:") && p?.type === "tool-start" && p.id === "st_b1") setTimeout(() => writeFileSync(toolGate, ""), 300);
+    });
+    const runs = await ran("claude/haiku", "~slowtool please").finally(hold);
     assert.deepEqual([runs.calls, runs.commands], [["st_b1"], ["st_b1"]], "npm test: a command");
-    assert.ok(oneWithin(own.timesOf(runs.id), runs) >= 250, "for as long as it ran");
+    assert.ok(oneWithin(own.timesOf(runs.id), runs) >= 300, "for as long as it ran");
     const reads = await ran("claude/haiku", "~early please");
     assert.deepEqual([reads.calls, reads.commands], [["e_b1"], []], "git log -1: read as only reading, no command");
     assert.deepEqual(own.timesOf(reads.id), [], "its turn's run was heard, so no time of the turn's: none of its own");
