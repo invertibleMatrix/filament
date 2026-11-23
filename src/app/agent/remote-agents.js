@@ -841,10 +841,11 @@ export function createRemoteAgents({ machines, wait = pause }) {
       if (!takes(c, "back")) throw backFailed("refused", `${m.name} sends no change back yet: update Filament there`);
       const stop = signal ?? new AbortController().signal;
       const stopped = () => backFailed("cut", `what changed in its copy on ${m.name} was not brought here: ${stop.reason?.name === "TimeoutError" ? "it took longer than it may" : "it was stopped"}`);
-      /** @param {any} e */
+      /** One that still runs there when the asks run out says so (`runs`): a wait for its turn's end mends it. @param {any} e */
       const lost = (e) => {
         const status = Number(e?.status) || 0;
-        return backFailed(status === 404 || status === 410 ? "gone" : REFUSED_FOR_GOOD.includes(status) || forGood(e) ? "refused" : "cut", `what changed in its copy on ${m.name} did not come back: ${refusedWords(m, e)}`);
+        const failed = backFailed(status === 404 || status === 410 ? "gone" : REFUSED_FOR_GOOD.includes(status) || forGood(e) ? "refused" : "cut", `what changed in its copy on ${m.name} did not come back: ${refusedWords(m, e)}`);
+        return status === 409 && e?.body?.runs === true ? Object.assign(failed, { runs: true }) : failed;
       };
       // A 409 that no wait mends: a copy of the person's whose chat there is another, or none yet (services/transfers.js
       // `back`); one while a turn still runs there (`runs`) is asked again.

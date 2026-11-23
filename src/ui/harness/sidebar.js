@@ -31,6 +31,7 @@ import { menu, confirmDialog, dialog, tooltip, popover, toast } from "./lib/ui.j
 import { chipTone, createNow } from "./now-list.js";
 import { awayWords, deskGroups, deskListKey, deskMarks, deskProjects, deskRoute, ownKeysOf, readDesk } from "./lib/desk.js";
 import { createDeskInbox } from "./desk-inbox.js";
+import { createDeskWork } from "./desk-work.js";
 import { holdersWhileSent, teamLine } from "./lib/now.js";
 import { barHold, notePlaces, playMoves } from "./bar-flight.js";
 import { WORDS } from "./lib/words.js";
@@ -290,6 +291,21 @@ export function createSidebar(host, cb, rail = null) {
   };
   /** The desk's inbox — another machine's asks answered under its row in Needs you (desk-inbox.js) —, made with the desk below. @type {ReturnType<typeof createDeskInbox> | null} */
   let inbox = null;
+  /**
+   * Run on's chats whose changes wait on their machine, and Bring back (desk-work.js): where the app tells this page the
+   * desk, as the inbox is. A mark that moves draws Now's cards, and the rows under the projects where they are listed.
+   */
+  const work = typeof (/** @type {any} */ (globalThis).filamentMachines?.onDesk) === "function"
+    ? createDeskWork({
+      api,
+      toast,
+      dialog,
+      onChange: () => {
+        now.refresh();
+        if (deskListed()) draw();
+      },
+    })
+    : null;
   /** Another machine's chat shown in place beside the bar (lib/desk-guest.js): its row is the mark, no chat of this computer's. @type {{ machine: string, chain: string | null } | null} */
   let guestAt = null;
   const now = createNow({
@@ -328,8 +344,9 @@ export function createSidebar(host, cb, rail = null) {
     more: () => deskNow(),
     onOpenMore: (r) => { railPop?.close(); openThere(r); },
     onSeenMore: (rows) => { seenThere(rows); now.refresh(); },
-    askCards: (r, mk, w) => inbox?.cardsOf(r, mk, w) || [],
-    asksKey: () => inbox?.key() || "",
+    // Under another machine's row: its waiting asks, and what its Run on chat changed there that waits to come back.
+    askCards: (r, mk, w) => [...(inbox?.cardsOf(r, mk, w) || []), ...(work?.cardsOf(r, mk) || [])],
+    asksKey: () => `${inbox?.key() || ""}|${work?.key() || ""}`,
     named: namedSince,
   });
 
@@ -414,6 +431,7 @@ export function createSidebar(host, cb, rail = null) {
         desk = readDesk(d);
         syncInbox();
         now.refresh();
+        work?.sync(desk);
         // Their chats stand under the projects too: the list drawn again where what it shows of them moved — not at each
         // word their agents say, which Now alone draws (the review of s1b).
         if (deskDrawn !== deskListNow()) draw();
@@ -2128,6 +2146,8 @@ export function createSidebar(host, cb, rail = null) {
         h("span", { class: "row-title-line" }, h("span", { class: "sess-title" }, c.title)),
         h("span", { class: `row-from desk-on c-${c.machine.color}` },
           h("span", { class: "row-where-ic", html: glyphOf(c.machine.icon) }), h("span", { class: "row-where-text" }, c.from ? `${c.machine.name} · from ${c.from}` : c.machine.name))),
+      // A Run on chat's changes that wait to come back here: pressed, Bring back (desk-work.js).
+      work?.pill(c.machine.id, c.there.chain) ?? null,
       ageEl(c.when ? new Date(c.when).toISOString() : ""));
   }
 

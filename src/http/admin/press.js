@@ -696,6 +696,7 @@ export const PRESS_TABLE = [
   ["POST /remote-work", ALWAYS],
   ["POST /remote-work/:id/chat", WORDS],
   ["POST /remote-work/:id/back", ALWAYS],
+  ["POST /remote-work/:id/check", READS],
   ["DELETE /remote-work/:id", NARROWS],
 ];
 

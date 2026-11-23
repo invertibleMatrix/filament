@@ -25,11 +25,17 @@ export const WORKS_MAX = 200;
  * and `cwd`, this folder in it, where the chat starts; `chat`, the chat started there ("" until named); `back`, the last
  * capture brought here; `applied`, the last one applied to the folder, which the next is measured from; `left`, what
  * stayed here of the send, or there of the last bring back, with why; `state`: `placed` (no chat named yet), `running`
- * (a chat named), `brought` (its change applied), `gone` (its copy there went).
+ * (a chat named), `brought` (its change applied), `gone` (its copy there went); `waiting`, what its chat changed there
+ * that the folder has not taken yet, as the last look found it (`check`: the capture, how many files, how many of them
+ * would stop an apply), null where it found none; `checkedAt`, that look's moment here; `seen`, the chat's newest
+ * moment there, by that machine's clock, as the desk saw it at that look.
  * @typedef {{ id: string, machine: { id: string, name: string }, folder: string, repo: string, project: string, base: string,
  *   copy: { id: string, folder: string }, cwd: string, chat: string, back: string, applied: string, left: { path: string, why: string }[],
- *   files: number, bytes: number, madeAt: number, broughtAt: number, state: "placed" | "running" | "brought" | "gone" }} RemoteWork
+ *   files: number, bytes: number, madeAt: number, broughtAt: number, state: "placed" | "running" | "brought" | "gone",
+ *   waiting: WorkWaiting | null, checkedAt: number, seen: number }} RemoteWork
  */
+/** What waits to come back, as a look found it. @typedef {{ at: string, files: number, conflicts: number }} WorkWaiting */
+/** A file that would come back, as a look or a bring back says it. @typedef {{ path: string, status: string, added: number, removed: number }} WorkFile */
 /**
  * What the person is asked before a send (remote-agents.js `SendAsk`, its `untracked` the first `SAID_MAX`), and more:
  * `untrackedCount`, all of them; `fresh` (the first `SAID_MAX`) and `freshCount`, the files in no commit that no yes of
@@ -40,7 +46,7 @@ export const WORKS_MAX = 200;
 /** The person's yes to a send: the `id` of the ask they answered. @typedef {{ ask: string }} WorkAllow */
 /** What the person said yes to, by machine and repository: the files in no commit that went on it, and Git LFS's. @typedef {{ untracked: string[], lfs: boolean }} WorkYes */
 
-/** The most files an ask names: the rest are counted. */
+/** The most files an ask names, or a look at what waits: the rest are counted. */
 export const SAID_MAX = 200;
 
 /** An error with the status a route answers it by. @param {number} status @param {string} words @param {Record<string, unknown>} [more] */
@@ -111,8 +117,40 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
     const r = await git(["ls-files", "-z", ":(attr:filter=lfs)"], { cwd: repo });
     return r.code === 0 ? String(r.out).split("\0").filter(Boolean).length : 0;
   };
-  /** A record as said: a copy. @param {RemoteWork} w */
-  const said = (w) => ({ ...w, machine: { ...w.machine }, copy: { ...w.copy }, left: w.left.map((l) => ({ ...l })) });
+  /** A record as said: a copy. @param {RemoteWork} w @returns {RemoteWork} */
+  const said = (w) => ({ ...w, machine: { ...w.machine }, copy: { ...w.copy }, left: w.left.map((l) => ({ ...l })), waiting: w.waiting ? { ...w.waiting } : null, checkedAt: w.checkedAt || 0, seen: w.seen || 0 });
+  /** @param {{ path: string, status: string, added: number, removed: number }} f @returns {WorkFile} */
+  const fileOf = (f) => ({ path: f.path, status: f.status, added: f.added, removed: f.removed });
+  /**
+   * The record's copy captured there and taken in here (remote-agents.js `takeBack`), from what this repository holds of
+   * it, and held under its `back` ref; its copy gone said (410), one whose chat's turn still runs there (409 `runs`).
+   * @param {RemoteWork} w @param {AbortSignal | null} signal
+   */
+  const capture = async (w, signal) => {
+    if (!w.chat) throw refused(409, `no chat of yours was named for its copy on ${w.machine.name} yet: start one there first`);
+    if (!existsSync(w.repo)) throw refused(410, `${w.repo}, the folder it went from, is gone from this machine: nothing can come back into it`);
+    const no = may(w.repo);
+    if (no) throw refused(403, no);
+    /** @type {Awaited<ReturnType<typeof remote.takeBack>>} */
+    let got;
+    try {
+      got = await remote.takeBack(w.machine.id, { copy: w.copy.id, chat: w.chat, repo: w.repo, base: w.base, haves: [w.back, w.applied].filter(Boolean), signal });
+    } catch (/** @type {any} */ e) {
+      if (e?.kind === "gone") {
+        w.state = "gone";
+        w.waiting = null;
+        save();
+      }
+      if (e?.runs) throw refused(409, `${w.machine.name} is still working in your chat there: bring its changes back once its turn ends`, { kind: "runs" });
+      throw refused(e?.kind === "gone" ? 410 : e?.kind === "refused" ? 422 : 503, String(e?.message || e), { kind: e?.kind || "cut" });
+    }
+    if (got.commit !== w.back) {
+      w.back = got.commit;
+      await hold(w.repo, w.id, "back", got.commit);
+      save();
+    }
+    return got;
+  };
   /** @param {string} id */
   const find = (id) => {
     const w = works.find((x) => x.id === String(id));
@@ -195,7 +233,7 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
       }
       const id = randomUUID();
       /** @type {RemoteWork} */
-      const w = { id, machine: out.machine, folder, repo: out.repo, project: out.project, base: out.commit, copy: out.copy, cwd: out.cwd, chat: "", back: "", applied: "", left: out.left, files: out.files, bytes: out.bytes, madeAt: now(), broughtAt: 0, state: "placed" };
+      const w = { id, machine: out.machine, folder, repo: out.repo, project: out.project, base: out.commit, copy: out.copy, cwd: out.cwd, chat: "", back: "", applied: "", left: out.left, files: out.files, bytes: out.bytes, madeAt: now(), broughtAt: 0, state: "placed", waiting: null, checkedAt: 0, seen: 0 };
       await hold(out.repo, id, "copy", out.commit);
       works.push(w);
       await trim();
@@ -222,8 +260,9 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
      * where the last apply left it (`applied`, else the commit sent): as uncommitted edits, nothing committed, the index
      * and HEAD untouched. A file both changed that cannot come through stops it, nothing written (`conflicts`), until the
      * person's `choices` (by path: `yours`, `its`, `both`) or an `overlap` way name one for each, for the capture they
-     * saw (`at`, as `conflicts` came with it: one taken since says `moved`). → what came in and what stayed there;
-     * refused in words, with a status (410 where its copy there went).
+     * saw (`at`, as `conflicts` or a look came with it: one taken since says `moved`, `at` alone too — what the person
+     * was shown is what comes). → what came in and what stayed there; refused in words, with a status (410 where its
+     * copy there went).
      * @param {string} id
      * @param {{ choices?: Readonly<Record<string, import("../adapters/git/worktree.js").ApplyChoice>>, overlap?: import("../adapters/git/worktree.js").OverlapWay | null, at?: string, signal?: AbortSignal | null }} [o]
      * @returns {Promise<{ ok: true, work: RemoteWork, unchanged: boolean, files: { path: string, status: string, added: number, removed: number }[], came: { path: string, how: string }[], left: { path: string, why: string }[] }
@@ -232,33 +271,18 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
     back(id, { choices = {}, overlap = null, at = "", signal = null } = {}) {
       return inTurn(String(id), async () => {
         const w = find(id);
-        if (!w.chat) throw refused(409, `no chat of yours was named for its copy on ${w.machine.name} yet: start one there first`);
-        if (!existsSync(w.repo)) throw refused(410, `${w.repo}, the folder it went from, is gone from this machine: nothing can come back into it`);
-        const no = may(w.repo);
-        if (no) throw refused(403, no);
-        /** @type {Awaited<ReturnType<typeof remote.takeBack>>} */
-        let got;
-        try {
-          got = await remote.takeBack(w.machine.id, { copy: w.copy.id, chat: w.chat, repo: w.repo, base: w.base, haves: [w.back, w.applied].filter(Boolean), signal });
-        } catch (/** @type {any} */ e) {
-          if (e?.kind === "gone") {
-            w.state = "gone";
-            save();
-          }
-          throw refused(e?.kind === "gone" ? 410 : e?.kind === "refused" ? 422 : 503, String(e?.message || e), { kind: e?.kind || "cut" });
-        }
+        const got = await capture(w, signal);
         const from = w.applied || w.base;
-        if (got.commit !== w.back) {
-          w.back = got.commit;
-          await hold(w.repo, w.id, "back", got.commit);
-          save();
-        }
         // The copy as the folder had it last: nothing to bring. One put back there as it went, after an apply, brings
         // that back (its `unchanged` capture is the commit sent).
-        if (got.commit === from) return { ok: /** @type {const} */ (true), work: said(w), unchanged: true, files: [], came: [], left: got.left };
-        // The choices name files of the capture the person saw (`at`): one taken since is shown again with what stops it
-        // now, nothing written.
-        if ((Object.keys(choices).length || overlap) && at !== got.commit) {
+        if (got.commit === from) {
+          w.waiting = null;
+          save();
+          return { ok: /** @type {const} */ (true), work: said(w), unchanged: true, files: [], came: [], left: got.left };
+        }
+        // The capture the person saw (`at`, which choices name always): one taken since is shown again with what stops it
+        // now, nothing written — what they were shown is what comes, or nothing does.
+        if ((at || Object.keys(choices).length || overlap) && at !== got.commit) {
           const now = await previewApply(w.repo, { base: from, head: got.commit }).catch(() => null);
           return { ok: /** @type {const} */ (false), work: said(w), conflicts: now?.conflicts ?? [], moved: true, at: got.commit, left: got.left, error: `it changed again on ${w.machine.name} since those choices: choose again for what stops it now` };
         }
@@ -268,10 +292,34 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
         w.broughtAt = now();
         w.state = "brought";
         w.left = got.left;
+        w.waiting = null;
         await hold(w.repo, w.id, "applied", got.commit);
         save();
         log("info", `[remote-work] ${applied.files.length} files of ${w.project} came back from ${w.machine.name}`);
-        return { ok: /** @type {const} */ (true), work: said(w), unchanged: false, files: applied.files.map((f) => ({ path: f.path, status: f.status, added: f.added, removed: f.removed })), came: applied.came, left: got.left };
+        return { ok: /** @type {const} */ (true), work: said(w), unchanged: false, files: applied.files.map(fileOf), came: applied.came, left: got.left };
+      });
+    },
+    /**
+     * A look at what the record's chat changed there that the folder has not taken yet: captured and taken in here as a
+     * bring back's is, and what its apply would do read (`previewApply`) — nothing written to the folder. Kept on the
+     * record (`waiting`, null where nothing waits), with the chat's newest moment there the desk saw (`seen`), so the
+     * desk looks again only once it moves. → the files (the first `SAID_MAX`, all counted), how each would come in
+     * (`came`), those that would stop an apply, the capture (`at`) and what stayed there; refused as a bring back is (409
+     * `runs` while a turn of it runs).
+     * @param {string} id @param {{ seen?: number, signal?: AbortSignal | null }} [o]
+     * @returns {Promise<{ work: RemoteWork, unchanged: boolean, files: WorkFile[], count: number, came: { path: string, how: string }[], conflicts: import("../adapters/git/worktree.js").ApplyConflict[], at: string, left: { path: string, why: string }[] }>}
+     */
+    check(id, { seen = 0, signal = null } = {}) {
+      return inTurn(String(id), async () => {
+        const w = find(id);
+        const got = await capture(w, signal);
+        const from = w.applied || w.base;
+        const p = got.commit === from ? null : await previewApply(w.repo, { base: from, head: got.commit });
+        w.checkedAt = now();
+        if (seen > 0) w.seen = seen;
+        w.waiting = p?.files.length ? { at: got.commit, files: p.files.length, conflicts: p.conflicts.length } : null;
+        save();
+        return { work: said(w), unchanged: !w.waiting, files: (p?.files ?? []).slice(0, SAID_MAX).map(fileOf), count: p?.files.length ?? 0, came: (p?.came ?? []).slice(0, SAID_MAX), conflicts: p?.conflicts ?? [], at: got.commit, left: got.left };
       });
     },
     /**

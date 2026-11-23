@@ -368,6 +368,7 @@ POST /api/qoder/*/logout
 POST /api/remote-work
 POST /api/remote-work/*/back
 POST /api/remote-work/*/chat
+POST /api/remote-work/*/check
 POST /api/remote/agent-device
 POST /api/remote/claim
 POST /api/remote/devices/*/copies/clear

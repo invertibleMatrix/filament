@@ -137,13 +137,26 @@ test("Run on between two Filaments: asked first, sent with its uncommitted work,
     assert.match(wrongBody.error, /another chat's/);
     await here.api(`/api/remote-work/${work.id}/chat`, { method: "POST", body: { chat: chat.id } });
 
-    // Nothing changed there: nothing comes.
+    // Nothing changed there: nothing waits, nothing comes.
+    const look = (/** @type {any} */ body = {}) => here.api(`/api/remote-work/${work.id}/check`, { method: "POST", body });
+    const quiet = await (await look({ seen: 1000 })).json();
+    assert.deepEqual([quiet.unchanged, quiet.work.waiting, quiet.work.seen], [true, null, 1000], JSON.stringify(quiet));
     const none = await (await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: {} })).json();
     assert.equal(none.unchanged, true, JSON.stringify(none));
 
-    // What the chat changed there comes back as uncommitted edits; the person's own change stays.
+    // What the chat changed there waits, a look says — nothing written here —, and comes back as uncommitted edits; the
+    // person's own change stays.
     writeFileSync(join(work.cwd, "src", "a.js"), "one\ntwo, there\nthree\nfour\nfive\nsix\nseven\n");
     writeFileSync(join(work.cwd, "src", "c.js"), "new there\n");
+    // (fails before: yes — the remote desk's s2d: nothing said what waited there until a bring back took it)
+    const waits = await look({ seen: 2000 });
+    const waiting = await waits.json();
+    assert.equal(waits.status, 200, JSON.stringify(waiting));
+    assert.deepEqual([waiting.unchanged, waiting.count, waiting.files.map((/** @type {any} */ f) => f.path).sort(), waiting.conflicts], [false, 2, ["src/a.js", "src/c.js"], []]);
+    assert.deepEqual(waiting.work.waiting, { at: waiting.at, files: 2, conflicts: 0 });
+    assert.equal(existsSync(join(dir, "src", "c.js")), false, "a look writes nothing here");
+    assert.deepEqual((await (await here.api("/api/remote-work")).json()).works.find((/** @type {any} */ w) => w.id === work.id)?.waiting, { at: waiting.at, files: 2, conflicts: 0 }, "listed with what waits");
+    assert.equal((await look({ seen: -1 })).status, 400);
     const back = await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: {} });
     const brought = await back.json();
     assert.equal(back.status, 200, JSON.stringify(brought));
@@ -153,18 +166,26 @@ test("Run on between two Filaments: asked first, sent with its uncommitted work,
     assert.equal(textOf(join(dir, "src", "b.js")), "b, changed here\n");
     assert.equal(gitIn(dir, "rev-parse", "HEAD"), head, "uncommitted: HEAD untouched");
     assert.match(gitIn(dir, "status", "--porcelain"), /^\s?M src\/a\.js$/m);
-    assert.equal(brought.work.state, "brought");
+    assert.deepEqual([brought.work.state, brought.work.waiting], ["brought", null]);
+    assert.equal((await (await look()).json()).unchanged, true, "a second round brings only what changed since: nothing yet");
 
     // Both change one line: choices, nothing written; then its version, as chosen. A change of the person's elsewhere in
     // the file is merged with it all the same.
     writeFileSync(join(work.cwd, "src", "a.js"), "one\ntwo, there\nthree\nfour, there\nfive\nsix\nseven\n");
     writeFileSync(join(dir, "src", "a.js"), "one\ntwo, there\nthree\nfour, here\nfive\nsix\nseven\n");
+    const second = await (await look()).json();
+    assert.deepEqual([second.count, second.conflicts.map((/** @type {any} */ c) => c.path), second.work.waiting.conflicts], [1, ["src/a.js"], 1], "only the new change, and what would stop it");
+    // (fails before: yes — the review of s2d: a bring back with nothing to choose took whatever was there by then) A
+    // capture named alone brings that capture or nothing: one taken since says so.
+    const other = await (await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: { at: "0".repeat(40) } })).json();
+    assert.deepEqual([other.ok, other.moved, other.at], [false, true, second.at]);
     const stopped = await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: {} });
     const conflict = await stopped.json();
     assert.equal(stopped.status, 409, JSON.stringify(conflict));
     assert.deepEqual(conflict.conflicts.map((/** @type {any} */ c) => c.path), ["src/a.js"]);
     assert.equal(textOf(join(dir, "src", "a.js")), "one\ntwo, there\nthree\nfour, here\nfive\nsix\nseven\n", "nothing written");
     assert.match(conflict.at, /^[0-9a-f]{40}$/);
+    assert.equal(conflict.at, second.at, "the look's capture is the bring back's: choices made on a look's conflicts hold");
     // Choices for a capture it changed since: said, nothing written; then for the one now.
     writeFileSync(join(work.cwd, "src", "a.js"), "one\ntwo, there\nthree\nfour, there again\nfive\nsix\nseven\n");
     const movedOn = await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: { choices: { "src/a.js": "its" }, at: conflict.at } });

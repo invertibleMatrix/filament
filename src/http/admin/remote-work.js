@@ -95,7 +95,8 @@ export function remoteWorkRoutes(a) {
     // `{ choices?, overlap?, at? }`: what its chat changed there brought back and applied to the folder as uncommitted
     // edits → `{ work, unchanged, files, came, left }`; 409 with `conflicts` and `at` where a file stops it, nothing
     // written, until `choices` (by path: yours, its, both) or `overlap` (markers, mine) names a way for each, with that
-    // `at` (one changed there since says `moved`); 410 where its copy went.
+    // `at`; `at` alone, a look's, brings that capture or nothing (one changed there since says `moved`); 410 where its
+    // copy went.
     [
       "POST",
       "/remote-work/:id/back",
@@ -112,6 +113,24 @@ export function remoteWorkRoutes(a) {
         try {
           const out = await s.back(decodeURIComponent(r.params.id), { choices, overlap: b.overlap ?? null, at: b.at ?? "", signal: stopOnClose(r) });
           return sendJson(r.res, out.ok ? 200 : 409, out);
+        } catch (e) {
+          return refusal(r, e);
+        }
+      }),
+    ],
+    // `{ seen? }`: a look at what its chat changed there that the folder has not taken → `{ work, unchanged, files, count,
+    // conflicts, at, left }`, nothing written to the folder; `seen`, the chat's newest moment there as the desk saw it,
+    // kept on the record (`work.seen`), so the desk looks again once it moves. 409 `runs` while a turn of it runs there.
+    [
+      "POST",
+      "/remote-work/:id/check",
+      guard(async (r) => {
+        const s = store(r);
+        if (!s) return;
+        const b = (await r.json()) ?? {};
+        if (b.seen != null && !(Number.isSafeInteger(b.seen) && b.seen >= 0)) return sendJson(r.res, 400, { error: "seen is the chat's newest moment there, in ms" });
+        try {
+          return sendJson(r.res, 200, await s.check(decodeURIComponent(r.params.id), { seen: b.seen ?? 0, signal: stopOnClose(r) }));
         } catch (e) {
           return refusal(r, e);
         }

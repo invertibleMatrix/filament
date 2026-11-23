@@ -935,6 +935,20 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .desk-ask-none { font-size: var(--text-ui-xs); color: var(--color-foreground-subtle); }
 .desk-ask-words { width: 100%; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); font: inherit; font-size: var(--text-ui-xs); color: var(--color-foreground); }
 .desk-ask-said { font-size: var(--text-ui-xs); color: var(--color-sys-red-text); overflow-wrap: anywhere; }
+/* Bring back (desk-work.js): a Run on chat's changes that wait on its machine — a card under its row in Now, a pill on its row under its project, and its dialog. */
+.desk-back { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.desk-back-pill { flex: none; height: 18px; margin-right: 4px; padding: 0 6px; border: 1px solid color-mix(in oklab, var(--color-sys-blue) 45%, var(--color-border)); border-radius: 9px; background: color-mix(in oklab, var(--color-sys-blue) 10%, transparent); font: inherit; font-size: var(--text-ui-xs); color: var(--color-sys-blue-text); cursor: pointer; white-space: nowrap; }
+.desk-back-pill:hover { background: color-mix(in oklab, var(--color-sys-blue) 18%, transparent); }
+.desk-back-pill:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: 1px; }
+.desk-work-files, .desk-work-stops { display: grid; gap: 2px; max-height: 14em; margin: 0; padding: 0; overflow: auto; list-style: none; font-size: var(--text-ui-sm); }
+.desk-work-files li { display: grid; grid-template-columns: 1.5em minmax(0, 1fr) auto; gap: 6px; align-items: baseline; }
+.desk-work-st { font-family: var(--mono); color: var(--color-foreground-subtle); }
+.desk-work-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-work-n, .desk-work-more, .desk-work-left { color: var(--color-foreground-subtle); font-size: var(--text-ui-xs); }
+.desk-work-stop { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.desk-work-pick { height: 26px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); font: inherit; font-size: var(--text-ui-xs); color: var(--color-foreground); }
+.desk-work-said:empty { display: none; }
+.desk-work-said { font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); }
 .now-earlier { display: block; margin: 2px 0 0 37px; padding: 2px 4px; border: 0; background: none; font: inherit; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); cursor: pointer; border-radius: 4px; }
 .now-earlier:hover { color: var(--color-foreground); }
 @media (prefers-reduced-motion: reduce) { .now-gspin svg, .now-under-spin svg { animation: none; } }
