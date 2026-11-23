@@ -131,7 +131,7 @@ test("/api/events?only= sends those topics alone: another machine's desk hears h
 });
 
 // (fails before: yes — a coding agent's question reached another machine's desk only at its next look)
-test("a coding agent's question that waits is said on `turns` by its chat and the ask's id, opened and settled; a lead's or one that does not wait is not", (t) => {
+test("a coding agent's question that waits is said on `turns` by its chat and the ask's id, opened and settled, and so is the card an agent's turn waits on for a command on another machine; a lead's, one that does not wait or one with no id of its own is not", (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), "llmshim-ask-events-"));
   t.after(() => rmSync(dataDir, { recursive: true, force: true }));
   const bus = createEventBus();
@@ -145,12 +145,18 @@ test("a coding agent's question that waits is said on `turns` by its chat and th
   bus.publish("run:r1", { type: "ask", id: "q1", waits: true, kind: "question", question: "which way?" });
   bus.publish("run:r1", { type: "ask", id: "q2", waits: true, kind: "lead" });
   bus.publish("run:r1", { type: "ask", id: "q3", waits: false, kind: "question" });
-  bus.publish("run:r2", { type: "ask", id: "q1", waits: true, kind: "question" });
+  // (fails before: yes — x4: an agent's turn's card for a command on another machine was said nowhere) Its own id
+  // (agent/loop.js `askThere`); a card that waits in place with none (a worker's call) is the run's alone.
+  bus.publish("run:r2", { type: "ask", id: "there-1", waits: true, kind: "permission" });
+  bus.publish("run:r2", { type: "ask", waits: true, kind: "permission", tool: "bash" });
   bus.publish("run:r3", { type: "ask", id: "q1", waits: true, kind: "question" });
   bus.publish("run:r1", { type: "ask-end", id: "q1" });
+  bus.publish("run:r2", { type: "ask-end", id: "there-1" });
   assert.deepEqual(said, [
     { type: "ask", chainId: "c1", id: "r1.q1", open: true },
+    { type: "ask", chainId: "c2", id: "r2.there-1", open: true },
     { type: "ask", chainId: "c1", id: "r1.q1", open: false },
+    { type: "ask", chainId: "c2", id: "r2.there-1", open: false },
   ]);
   assert.ok(!JSON.stringify(said).includes("which way"), "its words stay in the run");
   runs.endRun("r1", { status: "done" });

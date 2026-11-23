@@ -300,6 +300,50 @@ describe("a background command on another machine", () => {
     }
   });
 
+  // (fails before: yes — the card the chat's own turn waited on for a command there was in no list of its asks, nor said
+  // on the events feed: another machine's desk, which answers a chat's asks by its list, never saw it)
+  test("the card is one of the chat's asks: listed by GET /sessions/:id/asks as the chat's, said open and settled on the events feed, answered by POST …/asks/:ask/answer", async () => {
+    /** @type {any[]} */
+    const frames = [];
+    const off = /** @type {any} */ (two.here.app).events.subscribe("turns", (/** @type {any} */ p) => p?.type === "ask" && frames.push(p));
+    try {
+      const id = await chat("edit");
+      const asks = async () => (await (await two.here.api(`/api/sessions/${encodeURIComponent(id)}/asks`)).json()).asks;
+      const { res, runId } = await start(id, "CASE:there TAG:q1 make the file there");
+      const card = await askOf(runId);
+      const askId = `${runId}.${card.id}`;
+      const [listed] = await asks();
+      assert.deepEqual(
+        [listed?.id, listed?.kind, listed?.from, listed?.runId, listed?.command, listed?.options.map((/** @type {any} */ o) => o.id)],
+        [askId, "permission", "chat", runId, leaves("q1"), ["allow", "deny"]],
+      );
+      assert.equal(listed.form.judged.tool, "bash_background on Workstation");
+      assert.ok(frames.some((f) => f.chainId === id && f.id === askId && f.open === true), "said open on the feed");
+      const at = `/api/sessions/${encodeURIComponent(id)}/asks/${encodeURIComponent(askId)}/answer`;
+      const yes = await two.here.api(at, { method: "POST", body: { allow: true } });
+      assert.equal(yes.status, 200, await yes.clone().text());
+      assert.deepEqual(await yes.json(), { ok: true, id: askId, from: "chat" });
+      await res.text();
+      assert.equal(existsSync(join(thereRepo, "ran-q1.txt")), true, "it ran there on the answer");
+      assert.ok(frames.some((f) => f.chainId === id && f.id === askId && f.open === false), "said settled on the feed");
+      assert.deepEqual(await asks(), [], "listed no more");
+      const again = await two.here.api(at, { method: "POST", body: { allow: true } });
+      assert.equal(again.status, 409, await again.clone().text());
+      // Deny with words, by the list's id: nothing runs there, and the agent reads why.
+      const id2 = await chat("edit");
+      const second = await start(id2, "CASE:there TAG:q2 make the file there");
+      const card2 = await askOf(second.runId);
+      const no = await two.here.api(`/api/sessions/${encodeURIComponent(id2)}/asks/${encodeURIComponent(`${second.runId}.${card2.id}`)}/answer`, { method: "POST", body: { choice: "deny", words: "not from the desk" } });
+      assert.equal(no.status, 200, await no.clone().text());
+      await second.res.text();
+      assert.equal(existsSync(join(thereRepo, "ran-q2.txt")), false);
+      assert.match(String(seen("q2", 1)?.last), /Not run on Workstation: the person denied it — "not from the desk"\./);
+    } finally {
+      off();
+      await mode("auto");
+    }
+  });
+
   // (fails before: yes — there was no ask there to answer; this guards that only the person's press answers it)
   test("the words in this chat's run answer nothing, nor is its model asked while it waits; words with no press deny it", async () => {
     await mode("ask");

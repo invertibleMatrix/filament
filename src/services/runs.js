@@ -899,10 +899,11 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
         dropOldest(entry, k);
       }
     }
-    // A coding agent's question that waits for the person, opened or settled (the remote desk of 11-22): said on the
-    // events feed by its chat and its id as the chat's asks name it (http/admin/sessions.js `agentAsks`) — its words stay
-    // in the run —, so another machine's desk reads the chat's asks again at once, not at its next look.
-    const askOf = entry.meta.kind === "coding-agent" && (evt.type === "ask" || evt.type === "ask-end") ? String(entry.meta.meta?.chain || "") : "";
+    // A coding agent's question that waits for the person, opened or settled (the remote desk of 11-22), and the card the
+    // chat's own agent waits on for a command on another machine (agent/loop.js `askThere`): said on the events feed by
+    // its chat and its id as the chat's asks name it (http/admin/sessions.js `agentAsks`) — its words stay in the run —,
+    // so another machine's desk reads the chat's asks again at once, not at its next look.
+    const askOf = (entry.meta.kind === "coding-agent" || entry.meta.kind === "agent-turn") && (evt.type === "ask" || evt.type === "ask-end") ? String(entry.meta.meta?.chain || "") : "";
     const ask = /** @type {any} */ (evt);
     // Its listeners' failure is theirs: the run's own followers below hear the event all the same.
     if (askOf && typeof ask.id === "string" && ask.id && (ask.type === "ask-end" || (ask.waits === true && ask.kind !== "lead")))

@@ -90,12 +90,13 @@ const idOf = (r, name) => {
  * An ask waiting in a chat (the remote-agents plan's f-answer), as GET /sessions/:id/asks lists it and
  * POST /sessions/:id/asks/:ask/answer answers it. Its id is made of what its event already carries — the run log puts
  * its run's `runId` on every event: the chat's own turn's pause is its run's id (the turn that paused, `paused.requestId`);
- * a coding agent's question is `<runId>.<id>`, its run's and its own (`q1`); a sub-agent's is `<agentId>.<ask>`, its
- * number among the sub-agent's questions. So an id names one ask once: a later turn's `q1`, or a sub-agent's next ask,
- * is another. `from`: "chat", "coding-agent", or the sub-agent's id. `options`: the answers it is answered by, each by
- * its id (`choice`); `words`: whether words may answer it — alone, for a question of the chat's or a sub-agent's,
- * whose choice is its answer; beside a choice in a coding agent's form, a permission's press or a plan's go. `form`: a
- * coding agent's form whole, which `outcome` and `answers` answer as its run's own route does.
+ * a coding agent's question is `<runId>.<id>`, its run's and its own (`q1`), and so is the card the chat's own turn
+ * waits on for a command on another machine (`there-1`); a sub-agent's is `<agentId>.<ask>`, its number among the
+ * sub-agent's questions. So an id names one ask once: a later turn's `q1`, or a sub-agent's next ask, is another.
+ * `from`: "chat", "coding-agent", or the sub-agent's id. `options`: the answers it is answered by, each by its id
+ * (`choice`); `words`: whether words may answer it — alone, for a question of the chat's or a sub-agent's, whose choice
+ * is its answer; beside a choice in a form, a permission's press or a plan's go. `form`: a coding agent's form whole,
+ * or a command card's for another machine, which `outcome` and `answers` answer as its run's own route does.
  * @typedef {{ id: string, kind: string, from: string, runId: string | null, tool: string, question: string, command?: string,
  *   options: { id: string, label: string, description?: string }[], words: boolean, at: number | null, form?: any }} Ask
  */
@@ -263,11 +264,14 @@ export function sessionRoutes(a) {
   /** A coding agent's form's one question, where it asks one that takes one choice: its choices answer it. @param {any} f */
   const oneQuestion = (f) => (Array.isArray(f?.questions) && f.questions.length === 1 && !f.questions[0].several ? f.questions[0] : null);
   /**
-   * The questions the chat's coding agent's turn waits on (HarnessV3-ACP AC2-4): asked on its run (`ask` that `waits`,
-   * by its id) and not ended there (`ask-end`). A worker's question to its lead is its sub-agent's, listed with it.
+   * The questions the chat's coding agent's turn waits on (HarnessV3-ACP AC2-4), and the cards its own agent's turn waits
+   * on for a command on another machine (agent/loop.js `askThere`, `there-N`, the chat's: `from` "chat"): asked on its run
+   * (`ask` that `waits`, by its id) and not ended there (`ask-end`). A worker's question to its lead is its sub-agent's,
+   * listed with it. Each carries its form, which answers it.
    * @param {any} run  the run's meta, as `runningIn` lists it @returns {Ask[]}
    */
   const agentAsks = (run) => {
+    const from = run.kind === "coding-agent" ? "coding-agent" : "chat";
     const id = String(run.id);
     const evts = runs?.events(id, { since: Math.max(0, (Number(run.events) || 0) - ASK_EVENTS), limit: ASK_EVENTS, types: ["ask", "ask-end"] })?.events || [];
     const ended = new Set(evts.filter((e) => e.type === "ask-end").map((e) => String(e.id)));
@@ -280,7 +284,7 @@ export function sessionRoutes(a) {
           ? one.choices.map((/** @type {any} */ c) => ({ id: String(c.id), label: String(c.label || c.id), ...(c.description ? { description: String(c.description) } : {}) }))
           : !f.questions?.length && f.kind in FORM_OPTIONS ? /** @type {any} */ (FORM_OPTIONS)[f.kind].map((/** @type {any} */ o) => ({ ...o })) : [];
         const command = String(f.judged?.command || "");
-        return { id: `${id}.${e.id}`, kind: String(e.kind || f.kind || "question"), from: "coding-agent", runId: id, tool: String(e.tool || "ask"), question: String(e.question || ""), ...(command ? { command } : {}), options, words: !!one?.words, at: Number(e.ts) || null, form: f };
+        return { id: `${id}.${e.id}`, kind: String(e.kind || f.kind || "question"), from, runId: id, tool: String(e.tool || "ask"), question: String(e.question || ""), ...(command ? { command } : {}), options, words: !!one?.words, at: Number(e.ts) || null, form: f };
       });
   };
   /**
@@ -307,7 +311,7 @@ export function sessionRoutes(a) {
     const out = [];
     const own = ownAsk(chainId);
     if (own) out.push(own);
-    for (const run of runs?.runningIn?.(chainId) || []) if (run.kind === "coding-agent") out.push(...agentAsks(run));
+    for (const run of runs?.runningIn?.(chainId) || []) if (run.kind === "coding-agent" || run.kind === "agent-turn") out.push(...agentAsks(run));
     for (const s of subagents?.list(chainId) || []) if (s.status === "running" && s.progress?.asking) out.push(subagentAsk(s, s.progress.asking));
     return out;
   };
@@ -1091,10 +1095,10 @@ export function sessionRoutes(a) {
         const noAnswer = `a question is answered by a choice of its options' ids${ask.options.length ? ` (${ask.options.map((o) => o.id).join(", ")})` : ""} or its words`;
         // The chat's own question, or a sub-agent's, takes its choice or its words: a choice's own words are its answer, so
         // words beside one are refused, nothing answered — never cut. A coding agent's form takes both, as its route does.
-        if (ask.kind === "question" && ask.from !== "coding-agent" && choice && words)
+        if (ask.kind === "question" && !ask.form && choice && words)
           return sendJson(r.res, 400, { error: "a question is answered by its choice or its words, not both: a choice's own words are its answer, and words beside one would go unread" });
-        // The chat's own turn's: the answer's turn goes on in it, its press the house's (turn.js `allowOf`).
-        if (ask.from === "chat") {
+        // The chat's own turn's pause: the answer's turn goes on in it, its press the house's (turn.js `allowOf`).
+        if (ask.from === "chat" && !ask.form) {
           if (ask.kind === "permission" && allow === null) return sendJson(r.res, 400, { error: noPress });
           const content = ask.kind === "permission" ? words || (allow ? "yes" : "no") : choice?.label || words;
           if (!content) return sendJson(r.res, 400, { error: noAnswer });
@@ -1112,8 +1116,9 @@ export function sessionRoutes(a) {
         const done = () => sendJson(r.res, 200, { ok: true, id: ask.id, from: ask.from });
         const dot = ask.id.lastIndexOf(".");
         const [head, tail] = [ask.id.slice(0, dot), ask.id.slice(dot + 1)];
-        // A coding agent's: its form's answer, checked against its question where the run waits on it.
-        if (ask.from === "coding-agent") {
+        // A form's — a coding agent's question, or the card the chat's own turn waits on for a command on another machine:
+        // its answer, checked against its question where the run waits on it.
+        if (ask.form) {
           const f = ask.form || {};
           const one = oneQuestion(f);
           const picked = typeof b.allow === "boolean" && f.judged ? (b.allow ? "allow" : "deny") : choice?.id || "";
