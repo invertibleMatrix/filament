@@ -308,6 +308,17 @@ use it meanwhile, or **Update this app**, which opens Settings › About here. I
 together. `filament connect`, `--machine` and Add a machine say the same, and send nothing; `filament disconnect` still
 signs out there, so its sign-in stops.
 
+A machine reached more than one way is reached by the best that answers, by where its address is: this computer
+itself first (another Filament here, a tunnel you hold), then the home network, the tailnet, an SSH tunnel, and an
+address on the internet. All are asked at once; an SSH tunnel and an internet address only once nothing better
+answered within a second and a half, or every better way failed. When a better way comes back — the home network after
+a day on the tailnet — the machine's page moves there by itself once nothing is lost by it: no turn at work on that
+machine, no files attached in its box and not sent, no window of its page open, and nothing typed, pressed or scrolled
+in its page for half a minute, or its page out of sight. What the page kept for its tab — a draft, messages queued — goes with it, as it does
+when the way it was on stops answering. The app's own watch of the machine takes the better way within a minute too,
+and keeps the way it has where none better answers; an SSH tunnel brought up while its ways were asked that no page or
+watch took, and none asked for since, ends after two minutes.
+
 **Every machine in one list.** Once another machine is kept, This computer's left bar lists every machine's chats,
 not its own alone. Now's **Needs you**, **Working** and **Done** hold the other machines' rows among this computer's,
 the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere, in

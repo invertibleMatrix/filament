@@ -14,6 +14,18 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const rectOf = (r) => ({ x: Number(r?.x) || 0, y: Number(r?.y) || 0, width: Number(r?.width) || 0, height: Number(r?.height) || 0 });
 
+// Its page came to a new address of its machine's — opened, or moved to a better way (lib/rail.js `carryFor`): what it
+// kept for this tab where it was — its drafts, its queued messages, the lines waiting for its server — put in place
+// here before its own scripts run, else nothing; whatever this address kept from an earlier visit is let go, so nothing
+// sent since comes back. A reload at the same address keeps its own.
+try {
+  const carried = ipcRenderer.sendSync("filament:machines-carry");
+  if (Array.isArray(carried)) {
+    sessionStorage.clear();
+    for (const [k, v] of carried) sessionStorage.setItem(String(k), String(v));
+  }
+} catch {}
+
 contextBridge.exposeInMainWorld("filamentMachines", {
   /** The popover opened under the chip, at its rectangle in the page's pixels. @param {{ x: number, y: number, width: number, height: number }} rect */
   open: (rect) => ipcRenderer.send("filament:machines-open", rectOf(rect)),

@@ -13,7 +13,7 @@
 import { FOLD_TAIL, blankFold, chainsWithThreads, foldEvents, nowRows, runsToFold } from "../../src/ui/harness/lib/now.js";
 import { readAgents } from "../../src/ui/harness/lib/agents-since.js";
 import { pinnedFetch } from "../../src/cli/pinned.js";
-import { machineWatch, pickRoute } from "./machines.js";
+import { machineWatch, pickRoute, rankOf } from "./machines.js";
 
 /** How often the app watches. */
 export const WATCH_MS = 10_000;
@@ -281,6 +281,8 @@ const OWED_MOST = 50;
  * included (the review of p3-watch).
  */
 export const FLEET_WAIT_MS = 3000;
+/** How often a machine reached by a way not its best has all its ways asked again: a better one back is taken. */
+export const REPICK_MS = 60_000;
 
 /** The fetch a route is read with: the network's over its pinned certificate alone, any other Node's own. @param {Route} route */
 export const routeFetch = (route) => (route.kind === "lan" ? pinnedFetch(String(/** @type {any} */ (route).fingerprint)) : fetch);
@@ -290,12 +292,13 @@ const sameRoute = (a, b) => a.kind === b.kind && a.url === b.url && (/** @type {
 
 /**
  * Every machine the window keeps beside this computer, watched as this computer is (the owner's remote Filament of 11-06,
- * Part 3): one watch each (`createWatch`), the window open or not, its view shown or not. Its calls go to the first of
+ * Part 3): one watch each (`createWatch`), the window open or not, its view shown or not. Its calls go to the best of
  * its ways where that machine's own id answers (`pickRoute`, cookie-less, over the pinned certificate on the network),
  * with the sign-in its partition's session holds — the rail's pairing put it there (`cookieOf`) — over Node's fetch,
  * pinned as the pick was: never through the partition's own network, whose certificate check is the rail's (lib/rail.js
  * `arm`). The way is asked again before each look, so the sign-in goes only where the machine answered as itself just
- * now, and only while the machine still lists it; one that stopped answering is picked anew aside from the tick. A tick
+ * now, and only while the machine still lists it; one that stopped answering is picked anew aside from the tick, and
+ * one not its best each `REPICK_MS`, so the home network back after the tailnet is taken again. A tick
  * waits on no machine longer than `FLEET_WAIT_MS`, and one whose look threw — on rows it does not read — did not
  * answer. A machine back after an outage learns what came meanwhile (`OUTAGE_MS`): no flood. One removed — or
  * disconnected (`off`), its ways not even asked — is told of nothing more, nor written to. Nothing here answers, starts or sends but a chat's unread mark (`markUnread`).
@@ -312,8 +315,9 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
    * (chain → unread).
    * @typedef {{ machine: Machine, route: Route | null, picking: Promise<void> | null, why: string | null, watch: ReturnType<typeof createWatch>,
    *   watched: import("./machines.js").Watched | null, last: MachineLook | null, looking: Promise<void> | null, landed: MachineLook | null, failed: number | null,
-   *   owed: Map<string, boolean>, gap: boolean }} Kept
-   *   `gap`: its last pick found it on a wire this app does not speak — offline at once, as the window says it
+   *   owed: Map<string, boolean>, gap: boolean, pickedAt?: number }} Kept
+   *   `gap`: its last pick found it on a wire this app does not speak — offline at once, as the window says it;
+   *   `pickedAt`: when its ways were last all asked
    * @type {Map<string, Kept>}
    */
   const kept = new Map();
@@ -367,18 +371,27 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
     return k;
   };
 
-  /** The machine's ways asked, aside from the tick: the first where it answers as itself is the one its calls take. @param {Kept} k */
-  const pickFor = (k) => {
+  /**
+   * The machine's ways asked, aside from the tick: the best where it answers as itself is the one its calls take. With
+   * `better` — its way still answering, a better one sought — only a way better than the one it holds then is taken:
+   * none answering, or a worse one, leaves its way and what it said as they are.
+   * @param {Kept} k @param {{ better?: boolean }} [o]
+   */
+  const pickFor = (k, { better = false } = {}) => {
     if (k.picking) return;
+    k.pickedAt = now();
     k.picking = pick(k.machine)
       .then(
         (r) => {
           if (kept.get(k.machine.id) !== k) return;
+          if (better && k.route && !(r.route && rankOf(r.route) < rankOf(k.route))) return;
           k.route = r.route;
           k.why = r.route ? null : (r.tried.at(-1)?.why ?? null);
           k.gap = !r.route && !!r.update;
         },
-        (/** @type {any} */ e) => void (k.why = String(e?.message || e)),
+        (/** @type {any} */ e) => {
+          if (!(better && k.route)) k.why = String(e?.message || e);
+        },
       )
       .finally(() => void (k.picking = null));
   };
@@ -416,6 +429,9 @@ export function createFleet({ machines, cookieOf, pick = pickRoute, fetchOf = ro
       pickFor(k);
       return said(k, { answered: false });
     }
+    // A better way than its own kept (the home network back after the tailnet): its ways asked again, aside, each
+    // `REPICK_MS` — its calls take that one once it answers, and keep their own where none better does.
+    if (m.routes.some((r) => rankOf(r) < rankOf(route)) && now() - (k.pickedAt || 0) >= REPICK_MS) pickFor(k, { better: true });
     k.failed = null;
     /** @type {Look | null} */
     let look = null;

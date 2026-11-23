@@ -10,7 +10,7 @@ import https from "node:https";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINES_FILE, MACHINE_COLORS, MACHINE_ICONS, RECONNECT_MS, addMachine, colorOf, iconOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, readHere, readKept, readMachines, removeMachine, renameMachine, routeOf, setMachineBrowser, setMachineLook, setMachineOff, slotOfInput } from "../desktop/lib/machines.js";
+import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINES_FILE, MACHINE_COLORS, MACHINE_ICONS, RANKS, RECONNECT_MS, addMachine, colorOf, iconOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, rankOf, readHere, readKept, readMachines, removeMachine, renameMachine, routeOf, setMachineBrowser, setMachineLook, setMachineOff, slotOfInput } from "../desktop/lib/machines.js";
 import { ICONS } from "../src/ui/harness/lib/icons.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 
@@ -235,7 +235,7 @@ describe("which route a view loads", () => {
     { kind: "lan", url: "https://192.168.0.9:20343", fingerprint: PRINT },
   ] };
 
-  test("each route in order, asked who answers there: nothing listening, another machine, no Filament and a kind this app does not know are passed over and said why; the machine's own id is taken", async () => {
+  test("each route asked who answers there, all at once, the best first: nothing listening, another machine, no Filament and a kind this app does not know are passed over and said why, in their order; the machine's own id is taken", async () => {
     /** @type {string[]} */
     const asked = [];
     const answers = /** @type {Record<string, any>} */ ({
@@ -253,7 +253,7 @@ describe("which route a view loads", () => {
       { url: "https://box.tail1234.ts.net", why: "this app does not know a tailscale route: update it" },
       { url: "http://localhost:20311", why: "what answers at http://localhost:20311 is no Filament (HTTP 404)" },
     ]);
-    assert.deepEqual(asked, ["url http://localhost:20310/.well-known/filament", "lan https://192.168.0.7:20343/.well-known/filament", "url http://localhost:20311/.well-known/filament", "lan https://192.168.0.9:20343/.well-known/filament"], "a route the app does not know is never asked");
+    assert.deepEqual(asked, ["url http://localhost:20310/.well-known/filament", "url http://localhost:20311/.well-known/filament", "lan https://192.168.0.7:20343/.well-known/filament", "lan https://192.168.0.9:20343/.well-known/filament"], "this computer's ways, then the network's; a route the app does not know is never asked");
     const none = await pickRoute(BOX, { ask: async () => Promise.reject(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" })) });
     assert.equal(none.route, null);
     assert.equal(none.tried.length, 5);
@@ -268,7 +268,7 @@ describe("which route a view loads", () => {
 
   // (fails before: yes — the remote desk of 11-22, s4c: a machine on a wire this app does not speak was taken, and failed
   // oddly after)
-  test("the machine on a wire this app does not speak is no way to it: which side to update, and where it answered; no other route asked", async () => {
+  test("the machine on a wire this app does not speak is no way to it: which side to update, and where it answered best; no other way taken", async () => {
     /** @type {string[]} */
     const asked = [];
     const at = (/** @type {any} */ json) => (/** @type {any} */ route, /** @type {string} */ path) => (asked.push(`${route.url}${path}`), Promise.resolve({ status: 200, json }));
@@ -279,9 +279,93 @@ describe("which route a view loads", () => {
     const gone = await pickRoute(BOX, { ask: at({ id: "m-box", name: "DESKTOP-1", version: "9.0.0", protocol: 9, protocolLowest: 9 }) });
     assert.equal(gone.route, null);
     assert.deepEqual(gone.update, { side: "here", route: BOX.routes[0] });
-    assert.deepEqual(gone.tried, [{ url: String(BOX.routes[0].url), why: "Workstation runs Filament 9.0.0, too new for this app: update this app." }]);
+    assert.deepEqual(gone.tried, [
+      { url: String(BOX.routes[0].url), why: "Workstation runs Filament 9.0.0, too new for this app: update this app." },
+      { url: "https://box.tail1234.ts.net", why: "this app does not know a tailscale route: update it" },
+    ]);
     assert.deepEqual([gone.name, gone.version], ["DESKTOP-1", "9.0.0"]);
-    assert.deepEqual(asked, [`${BOX.routes[0].url}/.well-known/filament`], "its other routes reach the same Filament: none asked");
+    assert.equal(asked.length, 4, "its ways asked at once; the best one's answer says it");
+  });
+
+  // (fails before: yes — s4a: its routes were asked one after another in the order kept, the first that answered taken —
+  // a tailnet address added first stayed over the home network, and one that did not answer held every other back)
+  test("how good a way is: this computer, the home network, the tailnet, an SSH tunnel, the internet, a kind this app does not know", () => {
+    const of = (/** @type {any} */ r) => rankOf(r);
+    assert.deepEqual(
+      [
+        of({ kind: "url", url: "http://127.0.0.1:20310" }),
+        of({ kind: "lan", url: "https://192.168.0.9:20343", fingerprint: PRINT }),
+        of({ kind: "url", url: "https://box.tail1234.ts.net" }),
+        of({ kind: "url", url: "https://100.101.102.103:20343" }),
+        of({ kind: "url", url: "https://[fd7a:115c:a1e0::1]:20343" }),
+        of({ kind: "ssh", url: "http://127.0.0.1:5555", alias: "box", port: 20300 }),
+        of({ kind: "url", url: "https://box.example.com" }),
+        of({ kind: "url", url: "https://100.128.0.1" }),
+        of({ kind: "relay", url: "https://relay.example.com" }),
+      ],
+      [RANKS.here, RANKS.lan, RANKS.tailnet, RANKS.tailnet, RANKS.tailnet, RANKS.ssh, RANKS.internet, RANKS.internet, RANKS.unknown],
+    );
+  });
+  // (fails before: yes — the review of s4a: every network listener's route ranked as the home network's, one kept at a
+  // tailnet or public address too, and a typed address on the home network as the internet's)
+  test("a way is ranked by where its address is, the network listener's as any other", () => {
+    const lan = (/** @type {string} */ url) => rankOf({ kind: "lan", url, fingerprint: PRINT });
+    const url = (/** @type {string} */ u) => rankOf({ kind: "url", url: u });
+    assert.equal(lan("https://100.101.102.103:20343"), RANKS.tailnet, "the listener at the tailnet's address");
+    assert.equal(lan("https://box.tail1234.ts.net:20343"), RANKS.tailnet);
+    assert.equal(lan("https://203.0.113.7:20343"), RANKS.internet, "the listener at a public address: the internet's");
+    assert.equal(lan("https://[2001:db8::7]:20343"), RANKS.internet);
+    assert.equal(lan("https://studio.local:20343"), RANKS.lan, "a name it was paired at: the home network's");
+    assert.equal(lan("https://10.0.0.4:20343"), RANKS.lan);
+    assert.equal(lan("https://[fd12:3456::4]:20343"), RANKS.lan);
+    for (const at of ["https://192.168.1.20:20343", "https://10.1.2.3", "https://172.16.0.9", "https://172.31.255.1", "https://169.254.3.4", "https://[fe80::1]"]) assert.equal(url(at), RANKS.lan, at);
+    for (const at of ["https://172.32.0.1", "https://11.0.0.1", "https://192.169.0.1", "https://studio.local", "https://8.8.8.8"]) assert.equal(url(at), RANKS.internet, at);
+  });
+
+  test("the best that answers is taken, a better one still asked waited on a moment; those that cost more asked once the cheaper ones are slow or failed; the asks still under way let go", async () => {
+    const lan = { kind: "lan", url: "https://192.168.0.9:20343", fingerprint: PRINT };
+    const tail = { kind: "url", url: "https://box.tail1234.ts.net" };
+    const ssh = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "box", port: 20300 };
+    const web = { kind: "url", url: "https://box.example.com" };
+    /** @type {import("../desktop/lib/machines.js").Machine} */
+    const M = { id: "m-box", name: "Workstation", partition: "persist:machine-m-box", addedAt: T0, routes: [tail, web, ssh, lan] };
+    const me = { status: 200, json: { id: "m-box", name: "Workstation" } };
+    const after = (/** @type {number} */ ms, /** @type {any} */ v) => new Promise((r) => setTimeout(() => r(v), ms));
+    /** @type {string[]} */
+    let asked = [];
+    /** @type {AbortSignal[]} */
+    let signals = [];
+    /** @param {Record<string, () => Promise<any>>} by */
+    const askBy = (by) => /** @type {any} */ (async (/** @type {any} */ r, /** @type {string} */ _p, /** @type {any} */ o) => (asked.push(r.url), signals.push(o.signal), by[r.url]?.() ?? Promise.reject(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }))));
+    /** @type {string[]} */
+    let held = [];
+    const hold = async (/** @type {any} */ r) => (held.push(r.alias), null);
+    const reset = () => void ((asked = []), (signals = []), (held = []));
+
+    // The home network answers after the tailnet, within the wait: the home network's.
+    let got = await pickRoute(M, { hold, headStartMs: 200, betterMs: 300, ask: askBy({ [tail.url]: () => after(5, me), [lan.url]: () => after(60, me) }) });
+    assert.deepEqual(got.route, lan);
+    assert.deepEqual(asked, [lan.url, tail.url], "the cheaper ways asked at once, the best first");
+    assert.deepEqual(held, [], "nothing held: a cheaper way answered first");
+    assert.ok(signals.every((s) => s.aborted), "the asks still under way let go");
+    // The home network slower than the wait: the tailnet's, and a later look moves to it.
+    reset();
+    got = await pickRoute(M, { hold, headStartMs: 200, betterMs: 30, ask: askBy({ [tail.url]: () => after(5, me), [lan.url]: () => after(400, me) }) });
+    assert.deepEqual(got.route, tail);
+    // Both slow: those that cost more asked once the head start passed, and the better of them taken.
+    reset();
+    const t0 = Date.now();
+    got = await pickRoute(M, { hold, headStartMs: 50, betterMs: 30, ask: askBy({ [tail.url]: () => after(2000, me), [lan.url]: () => after(2000, me), [ssh.url]: () => after(5, me), [web.url]: () => after(5, me) }) });
+    assert.deepEqual([got.route, held], [ssh, ["box"]]);
+    assert.ok(Date.now() - t0 < 1500, `taken without the slow ones' answers: ${Date.now() - t0} ms`);
+    // The cheaper ones failed at once: those that cost more asked then, no head start waited out.
+    reset();
+    const t1 = Date.now();
+    got = await pickRoute(M, { hold, headStartMs: 5000, ask: askBy({ [web.url]: () => Promise.resolve(me) }) });
+    assert.deepEqual(got.route, web);
+    assert.ok(Date.now() - t1 < 1000, `${Date.now() - t1} ms`);
+    assert.deepEqual(got.tried.map((t) => t.url), [tail.url, ssh.url, lan.url], "each passed over, in their order");
+    assert.match(got.tried[1].why, /through the tunnel/);
   });
 
   test("on the network: asked over the pinned certificate alone, cookie-less — another certificate ends it before a byte is sent", async () => {

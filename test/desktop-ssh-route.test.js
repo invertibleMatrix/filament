@@ -428,12 +428,14 @@ describe("the tunnels", () => {
     const BOX = { kind: "ssh", url: "http://127.0.0.1:5556", alias: "box", port: 20300 };
     r.step = comesUp(r);
     await r.t.hold(ROUTE);
+    r.t.chosen(ROUTE);
     await r.t.hold(BOX);
     r.t.only([ROUTE.url]);
     assert.equal(r.spawned[1].c.killed, 0, "held just now — an Add sheet's check —: kept a while");
     r.tick(120_001);
+    r.t.chosen(ROUTE);
     r.t.only([ROUTE.url]);
-    assert.deepEqual([r.spawned[0].c.killed, r.spawned[1].c.killed], [0, 1], "kept: stays; the other ended");
+    assert.deepEqual([r.spawned[0].c.killed, r.spawned[1].c.killed], [0, 1], "kept, a pick taking it: stays; the other ended");
     assert.ok(r.lines.includes("ssh: the tunnel to box ended: no machine kept goes through it"));
     r.listening.clear();
     r.step = () => {};
@@ -444,6 +446,54 @@ describe("the tunnels", () => {
     assert.deepEqual(r.spawned.map((s) => s.c.killed), [1, 1, 1], "every ssh ended, the one starting too");
     assert.equal(await r.t.hold(ROUTE), "The app is closing.");
     assert.equal(r.spawned.length, 3, "nothing started after");
+  });
+
+  // (fails before: yes — s4a: its machine's ways asked at once, a tunnel brought up for a pick that a better way won
+  // stood on, an idle ssh, as long as the machine was kept)
+  test("a kept route's tunnel that no pick took and none asked for ends once its grace is past; one picks take — a page or the watch on it, every few seconds — stays; up again, it is weighed anew", async () => {
+    const r = rig();
+    const BOX = { kind: "ssh", url: "http://127.0.0.1:5556", alias: "box", port: 20300 };
+    r.step = comesUp(r);
+    await r.t.hold(ROUTE);
+    await r.t.hold(BOX);
+    r.t.chosen(BOX);
+    r.t.chosen({ ...ROUTE, url: "http://127.0.0.1:9999" });
+    r.tick(60_000);
+    r.t.chosen(BOX);
+    r.t.only([ROUTE.url, BOX.url]);
+    assert.deepEqual([r.spawned[0].c.killed, r.spawned[1].c.killed], [0, 0], "within its grace");
+    r.tick(60_001);
+    r.t.only([ROUTE.url, BOX.url]);
+    assert.deepEqual([r.spawned[0].c.killed, r.spawned[1].c.killed], [1, 0], "no pick took it: ended; the one picks take stays");
+    assert.ok(r.lines.includes("ssh: the tunnel to filtest ended: no pick has taken it of late"));
+    // Held again — the better way gone —, it comes up anew, and the picks that take it keep it.
+    r.listening.clear();
+    await r.t.hold(ROUTE);
+    assert.equal(r.spawned.length, 3);
+    for (let i = 0; i < 60; i++) {
+      r.tick(10_000);
+      r.t.chosen(ROUTE);
+      r.t.only([ROUTE.url, BOX.url]);
+    }
+    assert.equal(r.spawned[2].c.killed, 0, "ten minutes of picks taking it");
+    // (fails before: yes — the review of s4a: a tunnel a pick took once stood on for good, an idle ssh, once its page and
+    // the watch moved to a better way) Picks no longer taking it: it ends once its grace is past.
+    r.tick(120_001);
+    r.t.only([ROUTE.url, BOX.url]);
+    assert.equal(r.spawned[2].c.killed, 1, "its page and watch on a better way");
+    // (fails before: yes — the review of s4a: one its machine's ways were still asked through — its Filament there down,
+    // a better way gone — ended under them) Asked for of late: it stays until none asked for it in its grace.
+    const q = rig();
+    q.step = comesUp(q);
+    await q.t.hold(ROUTE);
+    q.tick(100_000);
+    await q.t.hold(ROUTE);
+    q.tick(20_001);
+    q.t.only([ROUTE.url]);
+    assert.deepEqual([q.spawned.length, q.spawned[0].c.killed], [1, 0], "held 20 s ago, over the one up");
+    q.tick(100_000);
+    q.t.only([ROUTE.url]);
+    assert.equal(q.spawned[0].c.killed, 1);
   });
 });
 
@@ -458,7 +508,8 @@ describe("kept and picked", () => {
   });
 
   test("picked: its tunnel held before it is asked; refused, its words and the next way; up with no Filament, said; another machine through it, wrong", async () => {
-    const M = { id: "m-box", name: "Workstation", routes: [ROUTE, { kind: "url", url: "http://localhost:20310" }], partition: "", addedAt: null };
+    // Its other way an address on the internet: an SSH tunnel is the better of the two.
+    const M = { id: "m-box", name: "Workstation", routes: [ROUTE, { kind: "url", url: "https://box.example.com" }], partition: "", addedAt: null };
     /** @type {string[]} */
     const order = [];
     const got = await pickRoute(M, {
@@ -466,7 +517,8 @@ describe("kept and picked", () => {
       ask: async (r, p) => (order.push(`ask ${r.url}${p}`), { status: 200, json: { id: "m-box", name: "Workstation" } }),
     });
     assert.deepEqual(got.route, ROUTE);
-    assert.deepEqual(order, ["hold filtest", "ask http://127.0.0.1:5555/.well-known/filament"]);
+    assert.ok(order.indexOf("hold filtest") < order.indexOf("ask http://127.0.0.1:5555/.well-known/filament"), order.join(", "));
+    assert.ok(order.includes("hold filtest"));
     const no = await pickRoute(M, { hold: async () => "filtest refused your SSH keys", ask: async (r) => (r.kind === "ssh" ? assert.fail("asked with no tunnel") : { status: 200, json: { id: "m-box" } }) });
     assert.deepEqual(no.tried, [{ url: ROUTE.url, why: "filtest refused your SSH keys" }]);
     assert.equal(no.route?.kind, "url");
@@ -527,7 +579,8 @@ describe("kept and picked", () => {
 test("the app holds the tunnels: the rail's pick, the tray's watch and the Add sheet's check through them; one no machine kept goes through ended; all ended as the app quits", () => {
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
   assert.match(main, /const tunnels = createTunnels\(\{ log: \(line\) => log\.line\(line\), kept: \(\) => readKept\(machinesFile\)\.flatMap\(\(m\) => m\.routes\) \}\);/);
-  assert.match(main, /const pickHeld = \(m\) => pickRoute\(m, \{ hold: \(route\) => tunnels\.hold\(route\) \}\);/);
+  // A tunnel a pick took is marked so: one that lost to a better way ends (`only`).
+  assert.match(main, /const pickHeld = \(m\) =>\s+pickRoute\(m, \{ hold: \(route\) => tunnels\.hold\(route\) \}\)\.then\(\(r\) => \{\s+if \(r\.route\?\.kind === "ssh"\) tunnels\.chosen\(r\.route\);\s+return r;\s+\}\);/);
   assert.match(main, /createRail\(\{[\s\S]*?pick: pickHeld,\s+check: \(input\) => checkMachine\(input, \{ ssh: tunnels \}\),[\s\S]*?\}\);/);
   assert.match(main, /createFleet\(\{\s+machines: \(\) => readKept\(machinesFile\),\s+pick: pickHeld,/);
   // A disconnected machine's tunnel let go too (the owner's of 11-08).

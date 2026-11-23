@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BLUR_CLICK_MS, CARD_ACTS, CARD_SIZE, cardHears, cardPlace, downPage, downWords, harnessRoute, trayClick } from "../desktop/lib/card.js";
 import { alertNote, backNote, balloonOf, endedNote, FAILOVER_QUIET_MS, needsNote, noteLine, restartingNote, spaceNote, tickNote } from "../desktop/lib/notes.js";
-import { chatRoute, createFleet, createWatch, LONG_MS, OUTAGE_MS, SPACE_MS, WATCH_MS } from "../desktop/lib/watch.js";
+import { chatRoute, createFleet, createWatch, LONG_MS, OUTAGE_MS, REPICK_MS, SPACE_MS, WATCH_MS } from "../desktop/lib/watch.js";
 import { swatchBitmap, trayRows, trayTip } from "../desktop/lib/tray.js";
 import { railRows, railState } from "../desktop/lib/rail.js";
 import { RECONNECT_MS } from "../desktop/lib/machines.js";
@@ -744,6 +744,90 @@ describe("every machine, watched", () => {
     const got = await fleet.look();
     assert.deepEqual(got.map((m) => [m.id, m.status, m.why]), [["m-box", "offline", why], ["m-mac", "online", null]]);
     assert.ok(!x.asked.some((a) => a.kind === "lan"), "nothing sent to it");
+  });
+
+  // (fails before: yes — s4a: a machine reached over the tailnet stayed on it once the home network was back, for as
+  // long as the tailnet answered)
+  test("a machine reached by a way not its best has all its ways asked again each REPICK_MS, aside, and its calls take the better one once it answers; one on its best is never asked so", async () => {
+    let t = 5_000_000;
+    const x = fleetOf();
+    /** @type {import("../desktop/lib/machines.js").Machine} */
+    const BOTH = { id: "m-box", name: "Studio", partition: "persist:machine-m-box", addedAt: 0, routes: [{ kind: "lan", url: "https://192.168.0.10:20343", fingerprint: `${"AB:".repeat(31)}CD` }, { kind: "url", url: "https://mac.tail1234.ts.net" }] };
+    let home = false;
+    /** @type {string[]} */
+    const picked = [];
+    const pick = async (/** @type {any} */ m) => {
+      picked.push(m.routes.map((/** @type {any} */ r) => r.kind).join(" "));
+      const route = m.routes.find((/** @type {any} */ r) => r.kind !== "lan" || home) ?? null;
+      return route ? { route, name: m.name, version: "1", tried: [] } : { route: null, name: null, version: null, tried: [{ url: m.routes[0].url, why: "nothing listens" }] };
+    };
+    const fleet = createFleet({ machines: () => [BOTH], cookieOf, pick, fetchOf: x.fetchOf, now: () => t });
+    const tick = async (ms = WATCH_MS) => {
+      t += ms;
+      await fleet.look();
+      for (let i = 0; i < 6; i++) await settle();
+    };
+    const t0 = t;
+    await tick(0);
+    await tick();
+    const ways = () => x.asked.filter((a) => a.url === "/api/runs?limit=50").map((a) => a.kind);
+    assert.deepEqual(ways(), ["url"], "the home network down: over the tailnet");
+    // The home network back: its ways asked again once REPICK_MS passed since the last time — not before —, and its calls go there.
+    home = true;
+    while (t - t0 + WATCH_MS < REPICK_MS) await tick();
+    assert.equal(picked.filter((p) => p === "lan url").length, 1, "not before REPICK_MS");
+    assert.equal(ways().at(-1), "url");
+    await tick();
+    await tick();
+    assert.equal(picked.filter((p) => p === "lan url").length, 2);
+    assert.equal(ways().at(-1), "lan");
+    // On its best way: never asked so again.
+    for (let i = 0; i < 4; i++) await tick(REPICK_MS);
+    assert.equal(picked.filter((p) => p === "lan url").length, 2);
+    assert.equal(ways().at(-1), "lan");
+  });
+
+  // (fails before: yes — the review of s4a: a re-pick that found nothing better — none answering in its time, the way
+  // it had again — put its calls on that, or on none, the machine offline while its way still answered)
+  test("a re-pick that finds no better way leaves the machine's calls on the way they had, and what it said", async () => {
+    let t = 7_000_000;
+    const x = fleetOf();
+    /** @type {import("../desktop/lib/machines.js").Machine} */
+    const BOTH = { id: "m-box", name: "Studio", partition: "persist:machine-m-box", addedAt: 0, routes: [{ kind: "lan", url: "https://192.168.0.10:20343", fingerprint: `${"AB:".repeat(31)}CD` }, { kind: "url", url: "https://mac.tail1234.ts.net" }] };
+    /** What all its ways asked at once finds: the way at that place in its list, or none in time. @type {number | null} */
+    let finds = 1;
+    let picks = 0;
+    const pick = async (/** @type {any} */ m) => {
+      // Its own way asked alone answers throughout.
+      if (m.routes.length === 1) return { route: m.routes[0], name: m.name, version: "1", tried: [] };
+      picks++;
+      const route = finds === null ? null : m.routes[finds];
+      return route ? { route, name: m.name, version: "1", tried: [] } : { route: null, name: null, version: null, tried: [{ url: m.routes[1].url, why: "no answer in time" }] };
+    };
+    const fleet = createFleet({ machines: () => [BOTH], cookieOf, pick, fetchOf: x.fetchOf, now: () => t });
+    /** @type {any[]} */
+    let got = [];
+    const tick = async (ms = WATCH_MS) => {
+      t += ms;
+      got = await fleet.look();
+      for (let i = 0; i < 6; i++) await settle();
+    };
+    await tick(0);
+    await tick();
+    const ways = () => x.asked.filter((a) => a.url === "/api/runs?limit=50").map((a) => a.kind);
+    assert.deepEqual([picks, ways()], [1, ["url"]]);
+    for (const found of [null, 1]) {
+      finds = found;
+      await tick(REPICK_MS);
+      await tick();
+      assert.equal(picks, found === null ? 2 : 3, "its ways asked again");
+      assert.equal(ways().at(-1), "url", `${found === null ? "none" : "the same way"} found: its calls where they were`);
+      assert.deepEqual(got.map((m) => [m.status, m.why]), [["online", null]]);
+    }
+    finds = 0;
+    await tick(REPICK_MS);
+    await tick();
+    assert.equal(ways().at(-1), "lan", "a better one: taken");
   });
 
   test("a machine that stops answering as itself: nothing more goes there, its way is picked anew, and it is back without a flood; one that refuses the sign-in says so; one removed is forgotten", async () => {

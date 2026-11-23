@@ -10,7 +10,9 @@
 // with the SSH alias and Filament's port on that machine. A kind this app does not know is kept as written and passed
 // over. Before a view loads a route — before any cookie goes there — `pickRoute` asks who answers at it, cookie-less, an
 // SSH route's tunnel brought up first (`hold`), and takes it only where the machine's own id answers (and, on the
-// network, over the pinned certificate alone). `machineWatch` says each machine online, reconnecting or offline; `slotOfInput`
+// network, over the pinned certificate alone): its ways all asked at once, the best that answers taken (`rankOf`: this
+// computer, the home network, the tailnet, an SSH tunnel, the internet), those that cost more given a head start
+// (`HEAD_START_MS`). `machineWatch` says each machine online, reconnecting or offline; `slotOfInput`
 // maps Ctrl+1..9 (⌘ on a Mac) to the machines' slots. A machine may be kept disconnected (`off`, the owner's of 11-08):
 // listed, its ways and its sign-in kept, but nothing asked of it — no look, no page, no notification — until it is
 // connected again (`setMachineOff`). A machine may use this app's browser (`browser`, b-remote): the agent's pages for
@@ -38,6 +40,10 @@ export const MAX_MACHINES = 32;
 export const RECONNECT_MS = 30_000;
 /** How long one route is given to say who answers there. */
 export const ASK_MS = 5000;
+/** How long the ways that cost more — an SSH tunnel to bring up, an address on the internet — wait on a better one to answer before they are asked too. */
+export const HEAD_START_MS = 1500;
+/** How long a better way still being asked is waited on once a worse one answered as the machine. */
+export const BETTER_MS = 1000;
 
 /**
  * @typedef {{ kind: "url", url: string }} UrlRoute  an address reached as it is: an SSH tunnel's localhost, tailscale serve's https
@@ -390,13 +396,15 @@ const ANSWER_MAX = 1024 * 1024;
 
 /**
  * What a route says of who answers there, cookie-less: its /.well-known/filament — over the pinned certificate alone on
- * the network, where another certificate ends the connection before a byte is sent. Injected in tests.
- * @typedef {(route: Route, path: string, o: { timeoutMs: number }) => Promise<{ status: number, json: any }>} Ask
+ * the network, where another certificate ends the connection before a byte is sent. `signal`: the ask let go of, a
+ * better way having answered. Injected in tests.
+ * @typedef {(route: Route, path: string, o: { timeoutMs: number, signal?: AbortSignal }) => Promise<{ status: number, json: any }>} Ask
  * @type {Ask}
  */
-export const askRoute = async (route, path, { timeoutMs }) => {
+export const askRoute = async (route, path, { timeoutMs, signal }) => {
   const f = route.kind === "lan" ? pinnedFetch(String(route.fingerprint)) : fetch;
-  const r = await f(`${route.url}${path}`, { signal: AbortSignal.timeout(timeoutMs), credentials: "omit", redirect: "manual" });
+  const ends = AbortSignal.timeout(timeoutMs);
+  const r = await f(`${route.url}${path}`, { signal: signal ? AbortSignal.any([ends, signal]) : ends, credentials: "omit", redirect: "manual" });
   // Past ANSWER_MAX it is read no further, and the route is passed over in words.
   const text = await bodyText(r, ANSWER_MAX, "it", `GET ${path}`);
   let json = null;
@@ -427,51 +435,157 @@ function tunnelWords(e, ssh, timeoutMs) {
   return `no Filament answers on ${ssh.alias} at port ${ssh.port} through the tunnel: is it running there, and does its SSH server let a port be forwarded (AllowTcpForwarding)?`;
 }
 
+/** Whether a host is the tailnet's: a MagicDNS name, or a Tailscale address (100.64.0.0/10, fd7a:115c:a1e0::/48). @param {string} h */
+const onTailnet = (h) => {
+  if (h.endsWith(".ts.net") || /^fd7a:115c:a1e0:/i.test(h)) return true;
+  const m = /^100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(h);
+  return !!m && Number(m[1]) >= 64 && Number(m[1]) <= 127;
+};
+
+/** What a route is ranked as, the best first (`rankOf`). */
+export const RANKS = Object.freeze({ here: 0, lan: 1, tailnet: 2, ssh: 3, internet: 4, unknown: 5 });
+/** The rank from which a way costs more — an SSH tunnel to bring up, someone else's servers on the way —: given a head start. */
+const DEAR = RANKS.ssh;
+
+/** Whether a host is an address of a network of one's own: a private, link-local or loopback IPv4 or IPv6 address. @param {string} h */
+const ownNetwork = (h) => {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(h);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  return /^(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):/i.test(h) || h === "::1";
+};
+/** Whether a host is an address, not a name. @param {string} h */
+const isAddress = (h) => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":");
+
 /**
- * The route a machine's view loads: its routes in order, each asked who answers there (`ask`), the first where the
- * machine's own id answers — another machine at an address, or no Filament, is passed over, and said why. An SSH
- * route's tunnel is brought up first (`hold`: null, or why not); with none to hold it, it is asked as it is. A kind this
- * app does not know is passed over. Null `route` where none answers, with each route's why — `wrong` where another
- * machine answered there. The machine answering on a wire this app does not speak (services/machine.js `protocolGap`)
- * is no way to it either, and no other route is asked: `update` says which side must update, and the route where it
- * answered — its own page still opens there, at the person's word (lib/rail.js `updatePage`).
- * @param {Machine} machine @param {{ ask?: Ask, timeoutMs?: number, hold?: (route: Route) => Promise<string | null> }} [o]
+ * How good a way to a machine a route is, the best first, by where its address is: this computer itself (plain http,
+ * which a route holds on its loopback alone — another Filament here, a tunnel held by hand), the home network (a
+ * private address, or the network listener's at a name), the tailnet (a *.ts.net name or a Tailscale address), an SSH
+ * tunnel this app holds, the internet (any other address, through whoever serves it), a kind this app does not know.
+ * The network listener's route goes by its address as any other: one kept at the machine's tailnet address is the
+ * tailnet's. @param {Route} route @returns {number}
+ */
+export function rankOf(route) {
+  if (route?.kind === "ssh") return RANKS.ssh;
+  if (route?.kind !== "url" && route?.kind !== "lan") return RANKS.unknown;
+  try {
+    const u = new URL(String(route.url));
+    if (u.protocol === "http:") return RANKS.here;
+    const h = bare(u.hostname);
+    if (onTailnet(h)) return RANKS.tailnet;
+    if (ownNetwork(h)) return RANKS.lan;
+    // A name the network listener was paired at is one of the home network's (a router's, mDNS's).
+    return route.kind === "lan" && !isAddress(h) ? RANKS.lan : RANKS.internet;
+  } catch {
+    return RANKS.unknown;
+  }
+}
+
+/**
+ * The route a machine's view loads: its routes all asked at once who answers there (`ask`), the best (`rankOf`, then
+ * their order) where the machine's own id answers — another machine at an address, or no Filament, is passed over, and
+ * said why. It is taken once every better one failed, or `betterMs` after it answered while a better one is still asked
+ * (a later look moves to that one, lib/rail.js); the asks still under way are let go of. Those that cost more — an SSH
+ * route, whose tunnel is brought up first (`hold`: null, or why not; with none to hold it, it is asked as it is), an
+ * address on the internet — are asked once `headStartMs` passed with no answer, or every better one failed. A kind this
+ * app does not know is passed over. Null `route` where none answers, with each route's why in their order — `wrong`
+ * where another machine answered there. The machine answering on a wire this app does not speak (services/machine.js
+ * `protocolGap`) is no way to it either: `update` says which side must update, and the route where it answered — its
+ * own page still opens there, at the person's word (lib/rail.js `updatePage`).
+ * @param {Machine} machine @param {{ ask?: Ask, timeoutMs?: number, hold?: (route: Route) => Promise<string | null>, headStartMs?: number, betterMs?: number }} [o]
  * @returns {Promise<{ route: Route | null, name: string | null, version: string | null, tried: Tried[], update?: Update }>}
  */
-export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, hold } = {}) {
-  /** @type {Tried[]} */
-  const tried = [];
-  for (const route of machine.routes) {
-    const url = String(route.url ?? "");
-    if (route.kind !== "url" && route.kind !== "lan" && route.kind !== "ssh") {
-      tried.push({ url, why: `this app does not know a ${route.kind} route: update it` });
-      continue;
-    }
-    const ssh = route.kind === "ssh" ? /** @type {SshRoute} */ (route) : null;
-    if (ssh && hold) {
-      const why = await hold(ssh);
-      if (why) {
-        tried.push({ url, why });
-        continue;
+export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, hold, headStartMs = HEAD_START_MS, betterMs = BETTER_MS } = {}) {
+  /** Why each route was passed over, by its place. @type {(Tried | null)[]} */
+  const fails = machine.routes.map(() => null);
+  /** What answered as the machine, by its place. @type {Map<number, { route: Route, name: string | null, version: string | null, side: "there" | "here" | null }>} */
+  const found = new Map();
+  const ways = machine.routes.map((route, i) => ({ route, i, rank: rankOf(route) }));
+  for (const w of ways)
+    if (w.route.kind !== "url" && w.route.kind !== "lan" && w.route.kind !== "ssh") fails[w.i] = { url: String(w.route.url ?? ""), why: `this app does not know a ${w.route.kind} route: update it` };
+  const order = ways.filter((w) => !fails[w.i]).sort((a, b) => a.rank - b.rank || a.i - b.i);
+  /** @type {Set<number>} */
+  const started = new Set();
+  /** @type {Set<number>} */
+  const settled = new Set();
+  const letGo = new AbortController();
+  return new Promise((resolve) => {
+    let done = false;
+    // Weighed once each cheaper way is under way: one whose ask threw at once does not start the dearer ones early.
+    let begun = false;
+    // Once a worse way answered, a better one still asked is waited on `betterMs` at most.
+    let patient = true;
+    let waiting = false;
+    /** @type {ReturnType<typeof setTimeout>[]} */
+    const timers = [];
+    /** @param {number} ms @param {() => void} fn */
+    const later = (ms, fn) => {
+      const t = setTimeout(fn, ms);
+      t.unref?.();
+      timers.push(t);
+    };
+    const tried = () => /** @type {Tried[]} */ (fails.filter(Boolean));
+    /** @param {Awaited<ReturnType<typeof pickRoute>>} r */
+    const end = (r) => {
+      if (done) return;
+      done = true;
+      for (const t of timers) clearTimeout(t);
+      letGo.abort();
+      resolve(r);
+    };
+    const settle = () => {
+      if (done || !begun) return;
+      for (const w of order) {
+        const got = found.get(w.i);
+        if (got && !got.side) return end({ route: got.route, name: got.name, version: got.version, tried: tried() });
+        if (got?.side) {
+          fails[w.i] = { url: String(got.route.url ?? ""), why: gapWords(got.side, { name: machine.name, version: got.version }) };
+          return end({ route: null, name: got.name, version: got.version, tried: tried(), update: { side: got.side, route: got.route } });
+        }
+        if (settled.has(w.i) || (!patient && found.size)) continue;
+        // A better way is still asked; one not asked yet costs more, and every better one failed: those asked now.
+        if (!started.has(w.i)) dear();
+        return;
       }
-    }
-    try {
-      const { status, json } = await ask(route, "/.well-known/filament", { timeoutMs });
-      if (status !== 200 || typeof json?.id !== "string") tried.push({ url, why: `what answers at ${url} is no Filament (HTTP ${status})` });
-      else if (!machine.local && String(json.id).toLowerCase() !== machine.id) tried.push({ url, why: `${url} is ${String(json.name || json.id)} (${json.id}), not ${machine.name}: nothing was sent there`, wrong: true });
-      else {
-        const name = typeof json.name === "string" ? json.name : null;
-        const version = typeof json.version === "string" ? json.version : null;
-        const side = protocolGap(json);
-        if (!side) return { route, name, version, tried };
-        tried.push({ url, why: gapWords(side, { name: machine.name, version }) });
-        return { route: null, name, version, tried, update: { side, route } };
+      end({ route: null, name: null, version: null, tried: tried() });
+    };
+    /** @param {{ route: Route, i: number }} w */
+    const run = async ({ route, i }) => {
+      started.add(i);
+      const url = String(route.url ?? "");
+      const ssh = route.kind === "ssh" ? /** @type {SshRoute} */ (route) : null;
+      try {
+        const why = ssh && hold ? await hold(ssh) : null;
+        if (why) fails[i] = { url, why };
+        else if (!done) {
+          const { status, json } = await ask(route, "/.well-known/filament", { timeoutMs, signal: letGo.signal });
+          if (status !== 200 || typeof json?.id !== "string") fails[i] = { url, why: `what answers at ${url} is no Filament (HTTP ${status})` };
+          else if (!machine.local && String(json.id).toLowerCase() !== machine.id) fails[i] = { url, why: `${url} is ${String(json.name || json.id)} (${json.id}), not ${machine.name}: nothing was sent there`, wrong: true };
+          else found.set(i, { route, name: typeof json.name === "string" ? json.name : null, version: typeof json.version === "string" ? json.version : null, side: protocolGap(json) });
+        }
+      } catch (/** @type {any} */ e) {
+        fails[i] = { url, why: ssh ? tunnelWords(e, ssh, timeoutMs) : failWords(e, route, timeoutMs) };
       }
-    } catch (/** @type {any} */ e) {
-      tried.push({ url, why: ssh ? tunnelWords(e, ssh, timeoutMs) : failWords(e, route, timeoutMs) });
-    }
-  }
-  return { route: null, name: null, version: null, tried };
+      settled.add(i);
+      settle();
+      if (!done && found.has(i) && !waiting) {
+        waiting = true;
+        later(betterMs, () => {
+          patient = false;
+          settle();
+        });
+      }
+    };
+    const dear = () => {
+      for (const w of order) if (w.rank >= DEAR && !started.has(w.i)) void run(w);
+    };
+    for (const w of order) if (w.rank < DEAR) void run(w);
+    later(headStartMs, () => void (!done && !found.size && dear()));
+    begun = true;
+    settle();
+  });
 }
 
 /**

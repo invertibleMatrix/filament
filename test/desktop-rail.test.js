@@ -11,7 +11,7 @@ import { join } from "node:path";
 import vm from "node:vm";
 import { LOCAL_ID, colorOf, localMachine, partitionOf } from "../desktop/lib/machines.js";
 import { ICONS } from "../src/ui/harness/lib/icons.js";
-import { GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageState, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, updatePage, zoomRows } from "../desktop/lib/rail.js";
+import { CARRY_MAX, GUEST_MOVES, LOOK_EVERY_MS, MAC_LEFT, TYPED_MS, UNDRAG_COLUMN_CSS, UNDRAG_CSS, WIN_RIGHT, certVerdict, createRail, harnessAt, lentFrame, pageKept, pageState, READ_PAGE, railRows, railState, remotePrefs, showAsk, switchLayout, unreachablePage, updatePage, zoomRows } from "../desktop/lib/rail.js";
 import { BAR_H } from "../desktop/lib/frame.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 import { PEER_BYTES, PEER_MS, PEERS_MAX, cappedJson, tailnetFilaments } from "../desktop/lib/tailnet-peers.js";
@@ -243,6 +243,15 @@ function fakeContents() {
       this.scripts.push(code);
       return this.claim();
     },
+    /** Its page as the app reads it in a world of its own (lib/rail.js `readPage`): none unless a test says. @type {string | null} */
+    storage: null,
+    /** @type {[number, string][]} */
+    isolated: [],
+    /** @param {number} world @param {{ code: string }[]} scripts */
+    executeJavaScriptInIsolatedWorld(world, scripts) {
+      this.isolated.push([world, scripts[0].code]);
+      return Promise.resolve(this.storage);
+    },
     zoom: 1,
     getZoomFactor() {
       return this.zoom;
@@ -286,9 +295,9 @@ function fakeContents() {
 /**
  * @param {{ kept?: any[], answers?: Record<string, any>, zoom?: number, inserts?: string[], check?: any, keep?: any, claim?: () => Promise<any>,
  *   menu?: (rows: any[]) => void, confirm?: (q: any) => Promise<boolean>, ownId?: () => string | null, peers?: () => Promise<any>,
- *   waiting?: (id: string) => number, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void }} [o]
+ *   waiting?: (id: string) => number, busy?: (id: string) => boolean, platform?: string, browserOf?: (id: string) => any, onGuest?: (g: any) => void, updateHere?: () => void }} [o]
  */
-function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, platform = "win32", browserOf, onGuest, updateHere } = {}) {
+function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ ({}), zoom = 1, inserts = /** @type {string[]} */ ([]), check, keep, claim, menu, confirm, ownId, peers, waiting, busy, platform = "win32", browserOf, onGuest, updateHere } = {}) {
   let list = [localMachine(ORIGIN), ...kept];
   /** @type {any[]} */
   const views = [];
@@ -379,8 +388,10 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
           async get(q) {
             return this.jar.filter((/** @type {any} */ k) => !k.url || k.url === q.url);
           },
-          /** @param {any} k */
+          /** One of the same address and name replaced, as Electron's. @param {any} k */
           async set(k) {
+            const at = this.jar.findIndex((/** @type {any} */ x) => x.url === k.url && x.name === k.name);
+            if (at >= 0) this.jar.splice(at, 1);
             this.jar.push(k);
           },
         },
@@ -403,6 +414,7 @@ function rig({ kept = [BOX, MAC], answers = /** @type {Record<string, any>} */ (
     platform,
     tint: (c) => void tinted.push(c),
     ...(waiting ? { waiting } : {}),
+    ...(busy ? { busy } : {}),
     ...(check ? { check } : {}),
     ...(keep ? { keep } : {}),
     ...(menu ? { menu } : {}),
@@ -750,33 +762,136 @@ describe("the rail, run", () => {
     assert.equal(failed.destroyed, true, "its page did not load");
   });
 
-  test("its address stops answering and another does: moved there; an earlier one back is no reason to load it anew", async () => {
-    // Opened over the SSH tunnel's address, its first route.
-    const t = rig({ answers: { "m-box": answered(BOX.routes[0]) } });
+  // (fails before: yes — s4a: a better way back — this computer's own after the tailnet, the home network after it — was
+  // no reason to move, and a page that moved lost what it kept for this tab: its drafts, its queued messages)
+  test("its address stops answering and another does: moved there; a better one back: moved there once nothing is lost — no turn at work there, no hand on it of late or out of sight, no files held —; what it kept for this tab goes with it", async () => {
+    let working = false;
+    const kept = (/** @type {[string, string][]} */ pairs, held = "") => JSON.stringify({ held, pairs });
+    // Opened over this computer's own address, its best way: its first load starts from nothing.
+    const t = rig({ answers: { "m-box": answered(BOX.routes[0]) }, busy: () => working });
     await t.settle();
     t.r.select("m-box");
     await t.settle();
     const v = t.viewOf("persist:machine-m-box");
-    assert.deepEqual(v.webContents.loads, ["http://localhost:20310/ui/harness.html"]);
+    const frame = (/** @type {string} */ url) => ({ url, parent: null });
+    const LOCAL = "http://localhost:20310/ui/harness.html";
+    const TAIL = "https://box.tail1234.ts.net/ui/harness.html";
+    assert.deepEqual(v.webContents.loads, [LOCAL]);
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(LOCAL)), [], "its first load there: nothing carried");
+    assert.equal(t.r.carryFor(v.webContents, frame(LOCAL)), null, "loaded again there: what it kept there is its own");
     await t.tick();
     assert.equal(v.webContents.loads.length, 1, "still answering there: it stays");
-    // The tunnel closed, the tailnet's address answers: moved there.
-    t.answers["m-box"] = { route: BOX.routes[1], name: null, version: null, tried: [{ url: "http://localhost:20310", why: "nothing listens at http://localhost:20310" }] };
+    // Its address closed, the tailnet's answers: moved there, what its page kept for this tab with it.
+    v.webContents.storage = kept([["filament.draft", "half a thought"]]);
+    const gone = { route: BOX.routes[1], name: null, version: null, tried: [{ url: "http://localhost:20310", why: "nothing listens at http://localhost:20310" }] };
+    t.answers["m-box"] = gone;
     await t.tick();
-    assert.deepEqual(v.webContents.loads, ["http://localhost:20310/ui/harness.html", "https://box.tail1234.ts.net/ui/harness.html"]);
+    assert.deepEqual(v.webContents.loads, [LOCAL, TAIL]);
     assert.equal(t.guarded.find((x) => x.contents === v.webContents).o.originOf(), "https://box.tail1234.ts.net", "its own origin moves with it");
-    // The tunnel back, asked first: its own address asked too, and while it answers the page stays where it is.
+    assert.ok(v.webContents.isolated.length && v.webContents.isolated.every(([w]) => w > 0), "read in a world of the app's own, none of the page's scripts in it");
+    assert.equal(t.r.carryFor(v.webContents, frame(LOCAL)), null, "for its page at the address it moved to alone");
+    assert.equal(t.r.carryFor(t.win.webContents, frame(TAIL)), null, "for its own view alone");
+    assert.equal(t.r.carryFor(v.webContents, { url: TAIL, parent: {} }), null, "for its main frame alone");
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(TAIL)), [["filament.draft", "half a thought"]], "handed to its page there");
+    assert.equal(t.r.carryFor(v.webContents, frame(TAIL)), null, "once: loaded again there, it keeps its own");
+    // Its own address back — the better way — while a turn is at work there: its own address asked too, and while it
+    // answers the page stays where it is.
+    working = true;
     /** @type {string[][]} */
     const asked = [];
     t.answers["m-box"] = (/** @type {any} */ m) => (asked.push(m.routes.map((r) => r.url)), answered(m.routes[0]));
     await t.tick();
     assert.equal(v.webContents.loads.length, 2);
     assert.deepEqual(asked, [["http://localhost:20310", "https://box.tail1234.ts.net"], ["https://box.tail1234.ts.net"]]);
+    // The turn ended, and the person's hand on it just now — a key, a press, a scroll —: left as it is. A pointer
+    // passing over it is no hand on it.
+    working = false;
+    for (const type of ["keyDown", "mouseDown", "mouseWheel"]) {
+      t.later(TYPED_MS);
+      v.webContents.emit("input-event", {}, { type });
+      await t.tick();
+      assert.equal(v.webContents.loads.length, 2, type);
+    }
+    t.later(TYPED_MS);
+    v.webContents.emit("input-event", {}, { type: "mouseMove" });
+    // Files attached and not sent — which no reload keeps —: left as it is, its own address answering.
+    v.webContents.storage = kept([["filament.draft", "a whole thought"]], "files");
+    await t.tick();
+    assert.equal(v.webContents.loads.length, 2, "files held in it");
+    // (fails before: yes — the review of s4a: a pane its page popped out, where the person worked, closed under them) A
+    // window of its page's open, which a move closes: left as it is.
+    v.webContents.storage = kept([["filament.draft", "a whole thought"]]);
+    /** @type {Function[]} */
+    const closing = [];
+    const pane = { destroyed: false, isDestroyed() { return this.destroyed; }, destroy() { this.destroyed = true; }, on(/** @type {string} */ ev, /** @type {Function} */ fn) { if (ev === "closed") closing.push(fn); } };
+    t.guarded.find((x) => x.contents === v.webContents).o.onChild(pane);
+    await t.tick();
+    assert.deepEqual([v.webContents.loads.length, pane.destroyed], [2, false], "a window of its open");
+    // The files sent and the window closed: moved to the better way, what it kept with it.
+    closing.forEach((fn) => fn());
+    await t.tick();
+    assert.equal(v.webContents.loads.at(-1), LOCAL);
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(LOCAL)), [["filament.draft", "a whole thought"]], "where it loaded before: what it kept since, never what that address kept then");
+    // Its page cannot be read: off a way that stopped answering it moves all the same, starting from nothing there; to a
+    // better way it does not.
+    v.webContents.storage = null;
+    t.answers["m-box"] = gone;
+    await t.tick();
+    assert.equal(v.webContents.loads.at(-1), TAIL);
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(TAIL)), [], "its move off a way that stopped answering, unread: it starts from nothing there");
+    t.answers["m-box"] = (/** @type {any} */ m) => answered(m.routes[0]);
+    await t.tick();
+    assert.equal(v.webContents.loads.at(-1), TAIL, "unread: no move to a better way");
+    // Out of sight it moves back whatever was pressed in it last.
+    v.webContents.storage = kept([["filament.queue", "[]"]]);
+    t.r.select(LOCAL_ID);
+    v.webContents.emit("input-event", {}, { type: "keyDown" });
+    await t.tick();
+    assert.equal(v.webContents.loads.at(-1), LOCAL, "out of sight: moved");
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(LOCAL)), [["filament.queue", "[]"]]);
+    // (fails before: yes — the review of s4a: what the page kept went to whoever answered at its address) Another
+    // machine answers at its address: the page moves, nothing of it read or carried.
+    t.r.select("m-box");
+    v.webContents.storage = kept([["filament.draft", "for Workstation alone"]]);
+    const reads = v.webContents.isolated.length;
+    t.answers["m-box"] = { route: BOX.routes[1], name: null, version: null, tried: [{ url: "http://localhost:20310", why: "http://localhost:20310 is Laptop (m-other), not Workstation: nothing was sent there", wrong: true }] };
+    await t.tick();
+    assert.equal(v.webContents.loads.at(-1), TAIL);
+    assert.equal(v.webContents.isolated.length, reads, "not read");
+    assert.deepEqual(t.r.carryFor(v.webContents, frame(TAIL)), []);
     // (fails before: yes — the review of p3-shell: its own address behind the one that answered was never asked, and the
-    // page stood on a dead address, the rail saying connected.) The tailnet's address gone, the tunnel answering: moved.
+    // page stood on a dead address, the rail saying connected.) On the tailnet, a turn at work there, its address gone
+    // and the better one answering: moved all the same — its own gone, no reason to stay.
+    working = true;
     t.answers["m-box"] = (/** @type {any} */ m) => (m.routes.length === 1 ? { route: null, name: null, version: null, tried: [{ url: m.routes[0].url, why: "no answer" }] } : answered(m.routes[0]));
     await t.tick();
-    assert.deepEqual(v.webContents.loads.at(-1), "http://localhost:20310/ui/harness.html");
+    assert.equal(v.webContents.loads.at(-1), LOCAL);
+  });
+
+  test("a page as it is read: whether it holds files, its keys and values, strings each, within a bound; anything else none", () => {
+    assert.deepEqual(pageKept(JSON.stringify({ held: "", pairs: [["a", "1"], ["b", ""]] })), { held: false, pairs: [["a", "1"], ["b", ""]] });
+    assert.deepEqual(pageKept(JSON.stringify({ held: "files", pairs: [] })), { held: true, pairs: [] });
+    for (const bad of [null, 7, "not json", JSON.stringify([["a", "1"]]), JSON.stringify({ pairs: [] }), JSON.stringify({ held: "", pairs: [["a"]] }), JSON.stringify({ held: "", pairs: [["a", 1]] }), JSON.stringify({ held: "", pairs: [["a", "x".repeat(CARRY_MAX)]] })])
+      assert.equal(pageKept(bad), null, String(bad).slice(0, 40));
+  });
+
+  // (fails before: yes — the review of s4a: a message queued in the second before the read was written to the tab after
+  // it, and not carried)
+  test("a page read: its queues written first, at once — the harness hears it —, then what it holds and its storage", () => {
+    const store = new Map([["filament.draft", "a"]]);
+    const page = {
+      Event: class {
+        /** @param {string} type */
+        constructor(type) {
+          this.type = type;
+        }
+      },
+      dispatchEvent: (/** @type {any} */ e) => (e.type === "filament:keep" && store.set("filament.queue", "[1]"), true),
+      document: { documentElement: { dataset: { filamentHeld: "files" } } },
+      sessionStorage: { get length() { return store.size; }, key: (/** @type {number} */ i) => [...store.keys()][i], getItem: (/** @type {string} */ k) => store.get(k) ?? null },
+    };
+    assert.deepEqual(pageKept(vm.runInNewContext(READ_PAGE, page)), { held: true, pairs: [["filament.draft", "a"], ["filament.queue", "[1]"]] });
+    assert.match(readFileSync(new URL("../src/ui/harness/app.js", import.meta.url), "utf8"), /\naddEventListener\("filament:keep", \(\) => keepQueues\(true\)\);\n/);
   });
 
   test("Ctrl+1..9 from any page of the window shows that slot's machine; other keys are the page's", async () => {
@@ -1447,6 +1562,50 @@ describe("adding a machine", () => {
     assert.equal(same.sessions["persist:machine-m-box.1"], undefined);
   });
 
+  // (fails before: yes — the review of s4a: the way a machine is reached became the best that answers, not the one it
+  // was paired at, and the sign-in made there stood there alone — its home network's ended by the pairing, or never had,
+  // and the machine showed signed out; and the sign-in its other ways held stood on at the machine with nothing here
+  // holding it once they took the new one)
+  test("paired again at a way of its: the sign-in its other ways held brought there for the claim to sign out; the one made given its pinned and tailnet ways, and an internet one where a sign-in stood — none to plain http, nothing sent", async () => {
+    const TAIL = "https://box.tail1234.ts.net";
+    const HOME = "https://192.168.0.9:20343";
+    const WEB = "https://box.example.com";
+    const KEPT = "https://studio.example.org";
+    const kept = machine("m-box", "Workstation", [{ kind: "lan", url: HOME, fingerprint: "AA:BB" }, { kind: "url", url: TAIL }, { kind: "url", url: "http://127.0.0.1:5555" }, { kind: "url", url: WEB }, { kind: "url", url: KEPT }]);
+    /** @type {any} */
+    let ses = null;
+    /** @type {string[]} */
+    let atClaim = [];
+    const sign = (/** @type {string} */ url, /** @type {string} */ value, more = {}) => ({ url, name: "__Host-filament_device", value, path: "/", secure: true, httpOnly: true, sameSite: "strict", ...more });
+    const t = rig({
+      kept: [kept],
+      check: async () => ({ ok: true, url: TAIL, code: "ABCD-EFGH", fingerprint: "", route: { kind: "url", url: TAIL }, machine: { id: "m-box", name: "Workstation", version: "" } }),
+      // The claim signs out the sign-in it is sent with, and its answer sets the one it made, as the machine's Filament does.
+      claim: async () => {
+        atClaim = (await ses.cookies.get({ url: TAIL })).map((/** @type {any} */ k) => k.value);
+        await ses.cookies.set(sign(TAIL, "fdt_new", { expirationDate: 2e9 }));
+        return { status: 200, body: { machine: { id: "m-box" } } };
+      },
+      keep: { add: (/** @type {any} */ m) => m, remove: () => false },
+    });
+    await t.settle();
+    t.r.select("m-box");
+    await t.settle();
+    ses = t.sessions["persist:machine-m-box"];
+    await ses.cookies.set(sign(HOME, "fdt_old", { expirationDate: 1e9 }));
+    await ses.cookies.set(sign(KEPT, "fdt_old"));
+    assert.equal((await t.r.add({ op: "pair", link: TAIL })).ok, true);
+    await t.settle();
+    const view = t.views.find((/** @type {any} */ v) => v.prefs.partition === "persist:machine-m-box" && v.webContents.scripts.length);
+    assert.match(view.webContents.scripts.at(-1), /^fetch\("\/api\/remote\/sign-out"/, "the claim signs out first");
+    assert.deepEqual(atClaim, ["fdt_old"], "with the sign-in its other ways held");
+    const at = (/** @type {string} */ url) => ses.cookies.jar.filter((/** @type {any} */ k) => k.url === url);
+    assert.deepEqual(at(HOME), [sign(HOME, "fdt_new", { expirationDate: 2e9 })], "the home network's: the one made");
+    assert.deepEqual(at(TAIL), [sign(TAIL, "fdt_new", { expirationDate: 2e9 })], "where it was made: as made");
+    assert.deepEqual(at(KEPT).map((/** @type {any} */ k) => k.value), ["fdt_new"], "an internet way where one stood: the one made");
+    assert.deepEqual([at(WEB), at("http://127.0.0.1:5555")], [[], []], "an internet way where none stood, and plain http: none");
+  });
+
   // (fails before: yes — the id was read after the claim, and the rail's room too)
   test("refused before any claim: an id that is none, this computer's own Filament, a full window, another machine than Continue showed — no view, nothing sent", async () => {
     const at = (/** @type {string} */ id) => async () => ({ ...BOXC, machine: { id, name: "Studio", version: "" } });
@@ -1841,6 +2000,36 @@ test("the app's page's bridge hands the app every step's fields, Pair's machine 
     ["filament:rail-add", { op: "check", link: "https://box.tail1234.ts.net", code: "", fingerprint: "" }],
     ["filament:rail-tailnet", null],
   ]);
+});
+
+// (fails before: yes — the review of s4a: what a page carried was put back untested, and the answer main gives it too)
+test("a machine's page loading: what main hands it is its tab's storage before its own scripts run, the address's own let go; none handed, its own kept; main always answers", () => {
+  const src = readFileSync(new URL("../desktop/machine-preload.cjs", import.meta.url), "utf8");
+  const run = (/** @type {() => any} */ answer, /** @type {Record<string, string>} */ had) => {
+    const store = new Map(Object.entries(had));
+    /** @type {string[]} */
+    const asked = [];
+    /** @type {string[]} */
+    const bridges = [];
+    const sessionStorage = { clear: () => store.clear(), setItem: (/** @type {string} */ k, /** @type {string} */ v) => void store.set(k, v) };
+    const electron = {
+      contextBridge: { exposeInMainWorld: (/** @type {string} */ k) => void bridges.push(k) },
+      ipcRenderer: { sendSync: (/** @type {string} */ ch) => (asked.push(ch), answer()), send() {}, on() {}, invoke: async () => null },
+    };
+    vm.runInNewContext(src, { require: (/** @type {string} */ m) => (m === "electron" ? electron : null), sessionStorage });
+    return { store: Object.fromEntries(store), asked, bridges };
+  };
+  const old = { "filament.queue.s1": '["sent since"]', "filament.draft": "from its last visit" };
+  assert.deepEqual(run(() => [["filament.draft", "half a thought"]], old), { store: { "filament.draft": "half a thought" }, asked: ["filament:machines-carry"], bridges: ["filamentMachines", "filamentBrowser"] });
+  assert.deepEqual(run(() => [], old).store, {}, "nothing carried: what the address kept let go");
+  assert.deepEqual(run(() => null, old).store, old, "loaded again where it last loaded: its own");
+  const lost = run(() => {
+    throw new Error("main went");
+  }, old);
+  assert.deepEqual([lost.store, lost.bridges], [old, ["filamentMachines", "filamentBrowser"]], "no answer: its own, its bridges made all the same");
+  // Main answers each ask, whatever the rail says or throws: a sync ask left unanswered holds the page.
+  const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+  assert.match(main, /ipcMain\.on\("filament:machines-carry", \(e\) => \{\s+let pairs = null;\s+try \{\s+pairs = rail\?\.carryFor\(e\.sender, e\.senderFrame\) \?\? null;\s+\} catch \{\}\s+e\.returnValue = pairs;\s+\}\);/);
 });
 
 // (fails before: yes — the owner's of 11-08: another machine's page had no bridge, so no chip and no title bar)

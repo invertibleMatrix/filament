@@ -360,6 +360,17 @@ export const saveDraft = (chat, text) => {
  */
 const keptFiles = new Map();
 /**
+ * Whether the page holds files attached and not sent, which a reload would lose: said on its root element
+ * (`data-filament-held`) for the desktop app, which moves a machine's page to a better way to it only while it holds
+ * none (desktop/lib/rail.js `readPage`).
+ */
+const sayHeld = () => {
+  try {
+    if (keptFiles.size) document.documentElement.dataset.filamentHeld = "files";
+    else delete document.documentElement.dataset.filamentHeld;
+  } catch {}
+};
+/**
  * The files attached in a chat's box and not sent, kept as its words are (`draftFor`): another chat's never go with its
  * send. The Start's show only in the folder they were attached in.
  * @param {{ chainId?: string | null, cwd?: string } | null | undefined} chat @returns {any[]}
@@ -376,10 +387,14 @@ export const draftFilesFor = (chat) => {
  */
 export const saveDraftFiles = (chat, files) => {
   const key = draftKey(chat);
-  if (files.length) return void keptFiles.set(key, { files: files.slice(), cwd: chat?.chainId ? "" : chat?.cwd || "" });
+  if (files.length) {
+    keptFiles.set(key, { files: files.slice(), cwd: chat?.chainId ? "" : chat?.cwd || "" });
+    return sayHeld();
+  }
   const kept = keptFiles.get(key);
   if (!chat?.chainId && kept?.cwd && placeOf(kept.cwd) !== placeOf(chat?.cwd)) return;
   keptFiles.delete(key);
+  sayHeld();
 };
 
 /** @param {string | null} id */

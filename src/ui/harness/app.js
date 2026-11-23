@@ -7358,6 +7358,9 @@ function keepQueues(always = false) {
   }
 }
 addEventListener("pagehide", () => keepQueues(true));
+// The desktop app about to read the tab's storage, the page moving to a better way to its machine (desktop/lib/rail.js
+// `READ_PAGE`): written now, not up to a second late.
+addEventListener("filament:keep", () => keepQueues(true));
 setInterval(() => keepQueues(), QUEUE_KEEP_MS);
 
 

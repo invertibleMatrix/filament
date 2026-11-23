@@ -17,7 +17,7 @@ import { samePrint } from "../../src/core/x509.js";
 import { pinHolds, sameKey } from "../../src/services/machines/key-pins.js";
 import { esc, markTile } from "./card.js";
 import { BAR_H, overlayColors } from "./frame.js";
-import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_ICONS, MAX_MACHINES, colorOf, iconOf, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, slotOfInput } from "./machines.js";
+import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_ICONS, MAX_MACHINES, colorOf, iconOf, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, RANKS, rankOf, slotOfInput } from "./machines.js";
 import { glyphOf } from "../../src/ui/harness/lib/icons.js";
 import { CLAIM_FROM, checkMachine, claimOutcome, claimScript, deviceNameHere } from "./add-machine.js";
 import { cleanName } from "../../src/services/machine.js";
@@ -339,7 +339,8 @@ button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radiu
 
 /**
  * @typedef {{ view: any, at: string | null, page?: string, shown: string, opening: boolean, popups: Set<any>, wanted?: { hash: string, asked: number } | null,
- *   only?: string, chat?: string, moves?: number, update?: import("./machines.js").Update | null, updating?: boolean }} RemoteView
+ *   only?: string, chat?: string, moves?: number, update?: import("./machines.js").Update | null, updating?: boolean,
+ *   typed?: number, carry?: [string, string][] | null, loadedAt?: string }} RemoteView
  *   `at`: the origin its page is Filament's at, null while it shows the app's own page; `page`: the harness's address
  *   it was sent to there, its hash left out; `shown`: the app's page shown, as last drawn; `popups`: the windows its
  *   pages opened, in its partition — closed with it; `wanted`: the address of its harness it opens at next, asked for
@@ -347,7 +348,9 @@ button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radiu
  *   shows a chat alone by (`only=chat&theme=…`, `showChat`), "" for its whole page; `chat`: the chat it shows so, as its
  *   address last said; `moves`: the chats it was moved to so since its page was made; `update`: the machine answers on a
  *   wire this app does not speak, and which side is to update (`updatePage`); `updating`: its own page opened all the
- *   same, at the person's Open its page — kept until it speaks this app's wire
+ *   same, at the person's Open its page — kept until it speaks this app's wire; `typed`: when the person's hand was last
+ *   on it; `carry`: what its page kept for this tab where it last loaded (`loadedAt`), read as it moved, handed to its
+ *   page at the next address it loads at (`carryFor`)
  */
 
 /**
@@ -355,6 +358,50 @@ button{margin-top:8px;font:inherit;font-weight:600;padding:6px 14px;border-radiu
  * within it opens there; later, the person has moved on, and its page opens where it would.
  */
 export const WANTED_MS = 60_000;
+/**
+ * How long a page shown is left as it is after the person's hand was on it — a key, a press, a scroll —: it moves to a
+ * better way only once they paused.
+ */
+export const TYPED_MS = 30_000;
+/** The most of what a page kept for its tab that goes with it, in characters: the browser keeps about 5 MB an address. */
+export const CARRY_MAX = 6_000_000;
+/** The isolated world a page is read in as it moves: none of the page's own scripts reach it. */
+const CARRY_WORLD = 1061;
+/**
+ * What reads a page in that world, in a line of JSON: what it holds that a reload would lose (its root's
+ * `data-filament-held`: files attached and not sent, src/ui/harness/state.js), and its storage for this tab, its keys
+ * and values — its queues written there first, at once (`filament:keep`, which src/ui/harness/app.js hears).
+ */
+export const READ_PAGE = "dispatchEvent(new Event('filament:keep')); JSON.stringify({ held: document.documentElement.dataset.filamentHeld || '', pairs: Array.from({ length: sessionStorage.length }, (_, i) => { const k = sessionStorage.key(i); return [k, sessionStorage.getItem(k)]; }) })";
+/** A device's sign-in, as a machine's Filament sets it (src/http/guards.js `DEVICE_COOKIE`), and its name over https. */
+const SIGN_IN = /^(__Host-)?filament_device$/;
+const SIGN_IN_HTTPS = "__Host-filament_device";
+const SIGN_IN_PLAIN = "filament_device";
+/** The person's hand on a page — not a pointer passing over it. */
+const HAND = /^(mouseDown|mouseWheel|contextMenu|rawKeyDown|keyDown|char|touchStart|gestureScrollBegin|pointerDown)$/;
+
+/**
+ * A page as read in `CARRY_WORLD`: whether it holds what a reload would lose (`held`), and what it kept for its tab —
+ * its sessionStorage: drafts, queued messages, lines waiting for its server —, strings each, `CARRY_MAX` at most. Null
+ * for anything else.
+ * @param {unknown} said @returns {{ held: boolean, pairs: [string, string][] } | null}
+ */
+export function pageKept(said) {
+  if (typeof said !== "string" || said.length > CARRY_MAX * 2) return null;
+  let v;
+  try {
+    v = JSON.parse(said);
+  } catch {
+    return null;
+  }
+  if (!v || typeof v !== "object" || typeof v.held !== "string" || !Array.isArray(v.pairs)) return null;
+  let size = 0;
+  for (const p of v.pairs) {
+    if (!Array.isArray(p) || p.length !== 2 || typeof p[0] !== "string" || typeof p[1] !== "string") return null;
+    size += p[0].length + p[1].length;
+  }
+  return size <= CARRY_MAX ? { held: !!v.held, pairs: /** @type {[string, string][]} */ (v.pairs) } : null;
+}
 
 /**
  * The machines of one harness window, over Electron's pieces handed in: `View` (WebContentsView), `sessionOf` (a
@@ -364,8 +411,10 @@ export const WANTED_MS = 60_000;
  * `guard(contents, { originOf, prefs })` (the app's own guard over a page: what it may open, keep, ask), `grants(session,
  * originOf)` (its permission handlers). Each other machine's view is made the first time it is shown, its route picked
  * (`pickRoute`) and its harness opened there, or the app's page saying why not; then each is asked every
- * `LOOK_EVERY_MS` while one is kept: one that answers again is opened, and a page whose address stopped answering moves
- * to one that answers.
+ * `LOOK_EVERY_MS` while one is kept: one that answers again is opened, a page whose address stopped answering moves
+ * to one that answers, and one where a better way answers (machines.js `rankOf`: the home network back after the
+ * tailnet) moves there once nothing is lost by it — no turn at work there (`busy`), and the page out of sight or no key
+ * pressed in it for `TYPED_MS`. A page that moves takes what it kept for this tab with it (`carryFor`).
  * @param {{ win: any, View: any, sessionOf: (partition: string) => any, railPage: string, railPreload: string, machinePreload?: string,
  *   machines: () => Machine[], localWatched: () => Watched, look: () => { dark: boolean, colors: { color: string, symbolColor: string } | null },
  *   guard: (contents: any, o: { originOf: () => string | null, prefs: object, onChild: (child: any) => void }) => void, grants: (ses: any, originOf: () => string | null) => void,
@@ -374,20 +423,21 @@ export const WANTED_MS = 60_000;
  *     look?: (id: string, look: { color?: string | null, icon?: string | null }) => unknown },
  *   check?: typeof checkMachine, deviceName?: () => string, claimMs?: number, menu?: (rows: MenuRow[]) => void, confirm?: (q: { title: string, detail: string, yes: string }) => Promise<boolean>,
  *   ownId?: () => string | null | Promise<string | null>, peers?: () => Promise<import("./tailnet-peers.js").TailnetLook>,
- *   waiting?: (id: string) => number, tint?: (colors: { color: string, symbolColor: string } | null) => void,
+ *   waiting?: (id: string) => number, busy?: (id: string) => boolean, tint?: (colors: { color: string, symbolColor: string } | null) => void,
  *   browserOf?: (id: string) => { lift: (win: any) => void, parkAll: (win: any) => void } | null, onGuest?: (g: { id: string, hash: string | null }) => void,
  *   updateHere?: () => void }} o
  *   `keep`: the machines kept, added, removed, disconnected and connected again, and their colour and icon chosen
  *   (lib/machines.js over the app's file); `menu`: a machine's own menu, at the pointer; `confirm`: the app's question before a machine goes; `ownId`: this computer's own Filament's id, which
  *   is never added as another machine; `peers`: the tailnet's machines that answer as a Filament; `waiting`: each
- *   machine's chats that wait on you, as the app's watch last saw them; `tint`: the window's controls dressed in the
+ *   machine's chats that wait on you, as the app's watch last saw them; `busy`: a machine where a turn is at work, or
+ *   not known — its page not moved to a better way meanwhile; `tint`: the window's controls dressed in the
  *   colours of the machine's page that shows — null, This computer's; `browserOf`: a machine's chats' pages this app
  *   holds (lib/machine-browser.js), drawn over its view's Browser pane — put back on top as its view comes to the front,
  *   parked as it goes from sight; `onGuest`: the chat shown in place moved — its address there as its page went to it,
  *   null as it stopped showing there (`showChat`); `updateHere`: this app's update taken up, asked by a machine's update
  *   page (`updatePage`)
  */
-export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {} }) {
+export function createRail({ win, View, sessionOf, railPage, railPreload, machinePreload = "", machines, localWatched, look, guard, grants, pick = pickRoute, log = () => {}, now = Date.now, every = setInterval, stopEvery = clearInterval, platform = process.platform, keep = { add: () => { throw new Error("no machines file"); }, remove: () => false, off: () => null }, check = checkMachine, deviceName = deviceNameHere, claimMs = 20_000, menu = () => {}, confirm = async () => false, ownId = () => null, peers = () => tailnetFilaments(), waiting = () => 0, busy = () => false, tint = () => {}, browserOf = () => null, onGuest = () => {}, updateHere = () => {} }) {
   const wc = win.webContents;
   /** @type {Machine[]} */
   let list = [];
@@ -544,6 +594,57 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       log(`rail: this window's sign-in not carried to ${to} (${String(e?.message || e)})`);
     }
   };
+  /** A partition's sign-in at an address, as its cookie: null where it holds none. @param {any} ses @param {string} url */
+  const signInAt = async (ses, url) => /** @type {any[]} */ ((await ses.cookies?.get({ url })) || []).find((k) => SIGN_IN.test(String(k?.name))) ?? null;
+  /**
+   * A kept machine paired again at an address its partition holds no sign-in at — a way this pairing adds —: the sign-in
+   * its other ways hold, brought there first, so the claim signs it out (claimScript `again`) and none is left standing
+   * on the machine with nothing here holding it. It goes to the address the person pairs at, checked as the machine.
+   * @param {string} from  the partition the machine had @param {string} to  the one it is paired in @param {string} url
+   * @param {readonly import("./machines.js").Route[]} routes  the ways it had
+   */
+  const signInFor = async (from, to, url, routes) => {
+    try {
+      if (await signInAt(sessionOf(to), url)) return;
+      const there = new URL(url).origin;
+      for (const r of routes) {
+        const at = originOfRoute(r);
+        const old = at && at !== there ? await signInAt(sessionOf(from), at) : null;
+        if (!old) continue;
+        const secure = there.startsWith("https:");
+        await sessionOf(to).cookies.set({ url: there, name: secure ? SIGN_IN_HTTPS : SIGN_IN_PLAIN, value: old.value, path: "/", secure, httpOnly: true, sameSite: "strict", ...(old.expirationDate ? { expirationDate: old.expirationDate } : {}) });
+        return;
+      }
+    } catch (/** @type {any} */ e) {
+      log(`rail: this window's sign-in not brought to ${url} (${String(e?.message || e)})`);
+    }
+  };
+  /**
+   * This window's sign-in made at the address a machine was paired at, given its other https addresses in its
+   * partition: the way it is reached is the best that answers, not the one paired at (machines.js `rankOf`), and each
+   * holds the sign-in made now — never one the claim ended, or one this partition never had. An address on the internet,
+   * whose answer as the machine proves less than a pinned certificate or the tailnet's, gets it only where a sign-in
+   * stood already. Nothing is sent: a cookie goes out only where a page or the watch opens that address, once the
+   * machine answered there as itself. Plain http gets none — an SSH tunnel's end on this computer, whose every port a
+   * cookie there would go to.
+   * @param {string} partition @param {string} url  where it was paired @param {readonly import("./machines.js").Route[]} routes
+   */
+  const shareSignIn = async (partition, url, routes) => {
+    try {
+      const ses = sessionOf(partition);
+      const from = new URL(url).origin;
+      const got = await signInAt(ses, url);
+      if (!got) return;
+      for (const r of routes) {
+        const at = originOfRoute(r);
+        if (!at || at === from || !at.startsWith("https:")) continue;
+        if (rankOf(r) > RANKS.tailnet && !(await signInAt(ses, at))) continue;
+        await ses.cookies.set({ url: at, name: SIGN_IN_HTTPS, value: got.value, path: "/", secure: true, httpOnly: true, sameSite: "strict", ...(got.expirationDate ? { expirationDate: got.expirationDate } : {}) });
+      }
+    } catch (/** @type {any} */ e) {
+      log(`rail: this window's sign-in not given its machine's other ways (${String(e?.message || e)})`);
+    }
+  };
 
   /**
    * The windows a machine's pages opened, closed: they are that machine's, its cookie in them — they go with its view,
@@ -648,13 +749,59 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     v.update = null;
     v.updating = false;
     const at = originOfRoute(r.route);
-    if (was === null || tried.some((t) => originOfRoute(t) === was)) return openAt(v, r.route);
+    const unmoved = () => still() && v.at === was && !pairing.has(m.id) && (pairings.get(m.id) || 0) === epoch;
+    /**
+     * The page moved to the way that answered, what it kept for this tab with it — read where it was, handed to its
+     * page at the next address it loads at, before its own scripts run (`carryFor`) —; not where it moved or went
+     * meanwhile. `calmly`: a move to a better way, made only where the page was read and holds nothing a reload loses;
+     * else where the page's own address answers as another machine, nothing of it goes. → whether it moved.
+     * @param {import("./machines.js").Route} route @param {{ calmly?: boolean, wrong?: boolean }} [o]
+     */
+    const moveTo = async (route, { calmly = false, wrong = false } = {}) => {
+      const read = was !== null && !v.shown && !wrong ? await readPage(v, was) : null;
+      if (calmly && (!read || read.held)) return false;
+      if (!unmoved()) return false;
+      v.carry = read ? read.pairs : null;
+      if (calmly) log(`rail: machine ${m.id}'s page moves to a better way, ${at}`);
+      openAt(v, route);
+      return true;
+    };
+    if (was === null) return openAt(v, r.route);
+    const failed = tried.filter((t) => originOfRoute(t) === was);
+    if (failed.length) return void (await moveTo(r.route, { wrong: failed.some((t) => t.wrong) }));
     if (was === at) return;
-    // Its address comes after the one that answered first: asked itself, and the page moves only where it no longer
-    // answers as the machine — an earlier route back is no reason to load it anew; its own gone, no reason to stay.
     const own = m.routes.find((x) => originOfRoute(x) === was);
+    // A better way than its page's answers — the home network back after the tailnet —: moved there once nothing is
+    // lost by it (`calm`, and nothing held in its page).
+    if (own && rankOf(r.route) < rankOf(own) && calm(m.id, v) && (await moveTo(r.route, { calmly: true }))) return;
+    // Its own address asked itself, and the page moves only where it no longer answers as the machine — a better route
+    // back while it is at work is no reason to load it anew; its own gone, no reason to stay.
     const answers = own ? await pick({ ...m, routes: [own] }).then((x) => !!x.route, () => false) : false;
-    if (!answers && still() && v.at === was && !pairing.has(m.id) && (pairings.get(m.id) || 0) === epoch) openAt(v, r.route);
+    if (!answers && unmoved()) await moveTo(r.route);
+  };
+  /**
+   * Whether a page may move to a better way now: no turn at work on its machine (`busy`, which a reload would cut from
+   * sight), no window of its page's open (they close as it moves), and the page out of sight or the person's hand off it
+   * for `TYPED_MS`. @param {string} id @param {RemoteView} v
+   */
+  const calm = (id, v) => !busy(id) && !v.popups.size && (showing() !== id || now() - (v.typed || 0) >= TYPED_MS);
+  /**
+   * A page at `at` read in a world of the app's own (`CARRY_WORLD`, `pageKept`) — none where it shows another address,
+   * or does not say within 2 s. @param {RemoteView} v @param {string} at
+   * @returns {Promise<{ held: boolean, pairs: [string, string][] } | null>}
+   */
+  const readPage = async (v, at) => {
+    try {
+      const c = v.view.webContents;
+      if (new URL(String(c.getURL?.() || "")).origin !== at || typeof c.executeJavaScriptInIsolatedWorld !== "function") return null;
+      /** @type {ReturnType<typeof setTimeout> | undefined} */
+      let timer;
+      const late = new Promise((r) => void (timer = setTimeout(() => r(null), 2000)));
+      const said = await Promise.race([c.executeJavaScriptInIsolatedWorld(CARRY_WORLD, [{ code: READ_PAGE }]), late]).finally(() => clearTimeout(timer));
+      return pageKept(said);
+    } catch {
+      return null;
+    }
   };
 
   /** @param {Machine} m @returns {RemoteView} */
@@ -677,6 +824,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       },
     });
     view.webContents.on("before-input-event", keys);
+    // The person's hand on it — a key, a press, a scroll —: its page left where it is a while (`calm`).
+    view.webContents.on("input-event", (/** @type {any} */ _e, /** @type {any} */ input) => void (HAND.test(String(input?.type)) && (v.typed = now())));
     // Its chat shown alone moved — a chat of its own opened there, its history gone back —: This computer's list follows
     // it. Its page's own address alone, at its Filament.
     const moved = (/** @type {string} */ url) => {
@@ -1065,6 +1214,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       drop(id);
       await carryCookies(had.partition, partition, c.url);
     }
+    if (had) await signInFor(had.partition, partition, c.url, had.routes);
     const v = viewOf(m);
     v.opening = true;
     v.at = c.url;
@@ -1116,6 +1266,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       return { ok: false, words: `Paired, but not kept: ${String(e?.message || e)}` };
     }
     log(`rail: machine ${id} paired at ${c.url}${anew ? `, in ${partition}` : ""}`);
+    void shareSignIn(partition, c.url, m.routes);
     sync();
     // The partition it left, and the old certificate's yes in it, cleared.
     if (anew && had) {
@@ -1378,6 +1529,30 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
           return null;
         }
         return { id, bounds: v.view.getBounds() };
+      }
+      return null;
+    },
+    /**
+     * What a machine's page loading starts from (machine-preload.cjs, before the page's own scripts run), asked by that
+     * view's main frame at the address its page was opened at alone: loaded again where it last loaded, nothing — what
+     * it kept there is its own (null); at another address, what it kept where it last loaded, read as it moved, else
+     * nothing at all (`[]`) — never what this address kept from an earlier visit, which the page may have sent since.
+     * Null for any other page. @param {any} sender @param {any} frame @returns {[string, string][] | null}
+     */
+    carryFor: (sender, frame) => {
+      if (!frame || frame.parent) return null;
+      for (const v of views.values()) {
+        if (!alive(v.view) || v.view.webContents !== sender) continue;
+        let origin = "";
+        try {
+          origin = new URL(String(frame.url)).origin;
+        } catch {}
+        if (!origin || origin !== v.at) return null;
+        const carry = v.carry;
+        const from = v.loadedAt;
+        v.carry = null;
+        v.loadedAt = origin;
+        return from === origin ? null : (carry ?? []);
       }
       return null;
     },

@@ -205,7 +205,8 @@ export const listSsh = ({ platform = process.platform, exec = execFile } = {}) =
 
 /**
  * @typedef {{ route: SshRoute, child: any, exited: boolean, err: string, pending: Promise<string | null> | null,
- *   failedAt: number, fails: number, why: string | null, heldAt: number }} Tunnel
+ *   failedAt: number, fails: number, why: string | null, heldAt: number, upAt: number, chosenAt: number }} Tunnel
+ *   `upAt`: when it last came up; `chosenAt`: when a pick last took its route (`chosen`)
  */
 
 /**
@@ -215,7 +216,9 @@ export const listSsh = ({ platform = process.platform, exec = execFile } = {}) =
  * the Add sheet's. Closed, or its place taken by another route's, a start under way stops: no ssh is left behind it.
  * `routeFor` makes a route for an alias and a port, at the local port a tunnel or a kept machine has for them already,
  * else a free one no kept route has. `only` ends the tunnels of routes no longer kept, but one held in the last
- * `graceMs` — an Add sheet's check, not kept yet. `close` ends them all, as the app quits.
+ * `graceMs` — an Add sheet's check, not kept yet —, and a kept route's that no pick took (`chosen`) and none asked for
+ * in `graceMs`: a better way answers, one its machine's ways were asked for or one its page and watch moved off.
+ * `close` ends them all, as the app quits.
  * @param {{ spawn?: (file: string, args: string[], o: object) => any, probe?: (port: number) => Promise<boolean>,
  *   cli?: () => string, log?: (line: string) => void, now?: () => number, holdMs?: number, retryMs?: number,
  *   retryMaxMs?: number, every?: number, wait?: (ms: number) => Promise<void>, free?: () => Promise<number>,
@@ -331,6 +334,8 @@ export function createTunnels({
         t.failedAt = 0;
         t.fails = 0;
         t.why = null;
+        t.upAt = now();
+        t.chosenAt = 0;
         return null;
       }
       if (now() >= until) {
@@ -354,7 +359,7 @@ export function createTunnels({
       let t = tunnels.get(key);
       if (!t || t.route.alias !== alias || t.route.port !== port) {
         if (t) stop(t);
-        t = { route: { kind: "ssh", url: key, alias, port }, child: null, exited: false, err: "", pending: null, failedAt: 0, fails: 0, why: null, heldAt: 0 };
+        t = { route: { kind: "ssh", url: key, alias, port }, child: null, exited: false, err: "", pending: null, failedAt: 0, fails: 0, why: null, heldAt: 0, upAt: 0, chosenAt: 0 };
         tunnels.set(key, t);
       }
       t.heldAt = now();
@@ -377,15 +382,31 @@ export function createTunnels({
       }
       throw new Error("No port on this computer is free for a tunnel.");
     },
+    /**
+     * A pick took the route (machines.js `pickRoute`): its tunnel is one a page, a look or a link goes through.
+     * @param {any} route
+     */
+    chosen(route) {
+      const t = tunnels.get(String(route?.url ?? ""));
+      if (t) t.chosenAt = now();
+    },
     /** @param {string[]} urls  the kept routes' @param {{ graceMs?: number }} [o] */
     only(urls, { graceMs = 120_000 } = {}) {
       const keep = new Set(urls);
-      for (const [key, t] of tunnels)
-        if (!keep.has(key) && now() - t.heldAt > graceMs && !t.pending) {
+      for (const [key, t] of tunnels) {
+        if (t.pending) continue;
+        if (!keep.has(key) && now() - t.heldAt > graceMs) {
           stop(t);
           tunnels.delete(key);
           log(`ssh: the tunnel to ${t.route.alias} ended: no machine kept goes through it`);
+        } else if (keep.has(key) && t.child && t.upAt && [t.upAt, t.heldAt, t.chosenAt].every((at) => now() - at > graceMs)) {
+          // Asked for of late — its machine's ways still weighed through it, its Filament there down — or taken by a
+          // pick of late — a page or the watch on it, which ask it every few seconds —, it stays.
+          stop(t);
+          tunnels.delete(key);
+          log(`ssh: the tunnel to ${t.route.alias} ended: no pick has taken it of late`);
         }
+      }
     },
     /** Every tunnel ended, as the app quits; a start under way stops at its next step. */
     close() {

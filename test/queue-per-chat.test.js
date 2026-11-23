@@ -524,7 +524,7 @@ describe("the page's wiring", () => {
     const keep = app.slice(app.indexOf("function keepQueues(always = false) {"), app.indexOf('addEventListener("pagehide"'));
     assert.match(keep, /for \(const chat of state\.chats\.values\(\)\) \{\s+const held = chat\.live\?\.held\.texts\(\) \|\| \[\];\s+if \(!chat\.chainId \|\| \(!chat\.queue && !held\.length\)\) continue;\s+const items = \[\.\.\.queueOf\(chat\)\.items, \.\.\.held\];/, "the queue, then what was held for the run: the order they would have gone in");
     assert.match(keep, /if \(!always && was && was\.length === items\.length && was\.every\(\(it, i\) => it === items\[i\]\)\) continue;\s+kept\.keep\(String\(chat\.chainId\), items\);\s+keptNow\.set\(chat, items\);/, "written where it changed");
-    assert.match(app, /addEventListener\("pagehide", \(\) => keepQueues\(true\)\);\nsetInterval\(\(\) => keepQueues\(\), QUEUE_KEEP_MS\);/, "afresh as the page goes, and each second as it runs");
+    assert.match(app, /addEventListener\("pagehide", \(\) => keepQueues\(true\)\);\n(\/\/ [^\n]*\n)+addEventListener\("filament:keep", \(\) => keepQueues\(true\)\);\nsetInterval\(\(\) => keepQueues\(\), QUEUE_KEEP_MS\);/, "afresh as the page goes, as the desktop app reads the tab to carry it to a better way, and each second as it runs");
     assert.match(app, /const QUEUE_KEEP_MS = 1000;/);
     const send = app.slice(app.indexOf("async function sendMessage("), app.indexOf("const typed = text;"));
     assert.match(send, /if \(queued\) keepQueues\(\);/, "a message its queue sends is out of the tab's copy before it goes: a crash never brings it back to send twice");

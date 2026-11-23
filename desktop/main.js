@@ -89,8 +89,15 @@ const memLog = createLog(join(own, "memory.log"));
  * them, and as the app quits.
  */
 const tunnels = createTunnels({ log: (line) => log.line(line), kept: () => readKept(machinesFile).flatMap((m) => m.routes) });
-/** A machine's way picked, its SSH tunnel brought up first. @param {import("./lib/machines.js").Machine} m */
-const pickHeld = (m) => pickRoute(m, { hold: (route) => tunnels.hold(route) });
+/**
+ * A machine's way picked, its SSH tunnel brought up first; one taken is marked so, and one that came up and lost to a
+ * better way ends (lib/ssh-route.js `only`). @param {import("./lib/machines.js").Machine} m
+ */
+const pickHeld = (m) =>
+  pickRoute(m, { hold: (route) => tunnels.hold(route) }).then((r) => {
+    if (r.route?.kind === "ssh") tunnels.chosen(r.route);
+    return r;
+  });
 /** How often the app looks at Filament for alerts — and, attached to one started elsewhere, whether it still answers. */
 const LOOK_MS = 5000;
 /**
@@ -479,8 +486,25 @@ async function run() {
     if (id) rail?.tintFrom(id, c);
   });
   ipcMain.on("filament:frame-area", (e, r) => void (rail?.hearsPage(e.sender, e.senderFrame) === LOCAL_ID && rail.frameArea(r)));
+  // A machine's page loading at the better way it moved to (machine-preload.cjs): what it kept for this tab where it
+  // was, from that view's main frame alone (lib/rail.js `carryFor`). Always answered: its page waits on it.
+  ipcMain.on("filament:machines-carry", (e) => {
+    let pairs = null;
+    try {
+      pairs = rail?.carryFor(e.sender, e.senderFrame) ?? null;
+    } catch {}
+    e.returnValue = pairs;
+  });
   /** How many of a machine's chats wait on you, as the watch last saw them: its row in the popover, the chips' counts. @param {string} id */
   const waitingOn = (id) => Number(machineRows.find((m) => m.id === id)?.needs) || 0;
+  /**
+   * Whether a turn is at work on a machine, as the watch last saw it — or not known yet: its page is not moved to a
+   * better way meanwhile (lib/rail.js `busy`). @param {string} id
+   */
+  const busyOn = (id) => {
+    const n = workingOn.get(id);
+    return n === undefined || n > 0;
+  };
   /** Another machine's pages in the app — the window's views of it, by their partition: one of its harness's marks its own unread. @type {Map<Electron.WebContents, string>} */
   const remotePages = new Map();
   /** Whether a page of that partition's machine's harness is open here. @param {string} partition */
@@ -671,6 +695,7 @@ async function run() {
         machines: () => readMachines(machinesFile, origin).map((m) => (m.local ? { ...m, ...hereLook() } : m)),
         localWatched,
         waiting: waitingOn,
+        busy: busyOn,
         // The window's controls dressed as the page showing's top row: another machine's as it asked, else This computer's.
         tint: (c) => {
           if (process.platform === "darwin" || w.isDestroyed()) return;
@@ -1194,6 +1219,8 @@ async function run() {
   let needsCount = 0;
   /** Each machine as the watch last saw it, This computer first: the tray's rows and the popover's counts. @type {import("./lib/tray.js").MachineRow[]} */
   let machineRows = [];
+  /** How many turns are at work on each other machine, as its last look said (`busyOn`). @type {Map<string, number>} */
+  const workingOn = new Map();
   /** The tray's menu as last painted. @type {Electron.Menu | null} */
   let trayMenu = null;
   // An update is offered where the app runs its own Filament alone (`installUpdate`).
@@ -1645,6 +1672,9 @@ async function run() {
       const [w, others] = await Promise.all([up && !only ? watch.look().catch(() => null) : null, fleet.look({ only }).catch(() => [])]);
       if (quitting) return;
       if (w) needsCount = w.needs;
+      // The turns at work on each, where its look landed: a machine not read since keeps what it said last.
+      for (const o of others) if (o.look) workingOn.set(o.id, o.look.works);
+      for (const id of [...workingOn.keys()]) if (!kept.some((k) => k.id === id && !k.off)) workingOn.delete(id);
       // Each machine in the window's order, in its colour; one disconnected says so and counts nothing — the fleet watches it not.
       const rows = [
         { id: LOCAL_ID, name: LOCAL_NAME, local: true, status: localWatched().status, needs: up ? needsCount : 0, color: colorNow(LOCAL_ID) },

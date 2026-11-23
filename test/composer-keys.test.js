@@ -585,6 +585,24 @@ describe("the files attached in a chat's box are that chat's", () => {
     assert.deepEqual(drafts.draftFilesFor(chat).map((f) => f.name), ["notes.txt"], "the session's box has them");
     assert.deepEqual(drafts.draftFilesFor({ chainId: null, cwd: "C:/made" }), [], "the Start's does not");
   });
+
+  // (fails before: yes — the review of s4a: the desktop app moved a machine's page to a better way to it with files in a
+  // box, which the page's reload there lost)
+  test("the page's root says it holds files attached and not sent while any box holds some, for the desktop app to leave it where it is", async () => {
+    const fresh = /** @type {typeof import("../src/ui/harness/state.js")} */ (await import(`../src/ui/harness/state.js?held=${Date.now()}`));
+    // The stub's root is every test's: what the tests before said on it is let go.
+    const root = /** @type {any} */ (doc.document).documentElement;
+    delete root.dataset.filamentHeld;
+    const one = { chainId: "s-held-1", cwd: "C:/work" };
+    const two = { chainId: "s-held-2", cwd: "C:/work" };
+    fresh.saveDraftFiles(one, [NOTES]);
+    assert.equal(root.dataset.filamentHeld, "files");
+    fresh.saveDraftFiles(two, [NOTES]);
+    fresh.saveDraftFiles(one, []);
+    assert.equal(root.dataset.filamentHeld, "files", "another box still holds some");
+    fresh.saveDraftFiles(two, []);
+    assert.equal(root.dataset.filamentHeld, undefined, "sent or taken out: none held");
+  });
 });
 
 describe("the page's shortcuts where you type", () => {
