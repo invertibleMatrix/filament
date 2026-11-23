@@ -138,6 +138,7 @@ GET /api/prompts
 GET /api/providers
 GET /api/qoder/*/status
 GET /api/remote-work
+GET /api/remote-work/places
 GET /api/remote/devices
 GET /api/remote/lan
 GET /api/remote/me

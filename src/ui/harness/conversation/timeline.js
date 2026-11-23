@@ -928,8 +928,10 @@ function pausePointer(turn, words, onGo) {
  *   onHeld?: (c: { patch: Record<string, any> }) => void,
  *   start?: import("./empty.js").StartHooks, spaceOf?: (cwd: string) => { name: string, own: boolean } | null,
  *   otherMachines?: () => Promise<{ machines: import("./empty.js").OtherMachine[] } | null>,
- *   machineNames?: () => Promise<{ machines: import("./empty.js").OtherMachine[] } | null>, openOn?: (machine: string, cwd: string) => void }} cb
- *   `otherMachines`, `machineNames`, `openOn`: the new chat's menu's other machines, and a new chat on one (empty.js)
+ *   machineNames?: () => Promise<{ machines: import("./empty.js").OtherMachine[] } | null>, openOn?: (machine: string, cwd: string) => void,
+ *   runOn?: import("./empty.js").RunOnHooks, alsoOn?: (cwd: string) => string[] }} cb
+ *   `otherMachines`, `machineNames`, `openOn`: the new chat's menu's other machines, and a new chat on one (empty.js);
+ *   `runOn`, `alsoOn`: where the new chat runs, and the machines a project is on too (empty.js)
  */
 export function createTimeline(host, cb) {
   const scroller = h("div", { class: "transcript" });
@@ -947,6 +949,8 @@ export function createTimeline(host, cb) {
     ...(cb.otherMachines ? { otherMachines: cb.otherMachines } : {}),
     ...(cb.machineNames ? { machineNames: cb.machineNames } : {}),
     ...(cb.openOn ? { openOn: cb.openOn } : {}),
+    ...(cb.runOn ? { runOn: cb.runOn } : {}),
+    ...(cb.alsoOn ? { alsoOn: cb.alsoOn } : {}),
   });
   const nav = createNavigator({
     onJump: (i) => jumpTo(i),
@@ -2419,6 +2423,11 @@ export function createTimeline(host, cb) {
 
     /** The Spaces moved: the chip's line on the Space its folder works in, said again. */
     refreshSpace() {
+      empty.paintChip();
+    },
+
+    /** A Run on send ended (app.js `runOnFirst`): the chip says where the draft runs now. */
+    refreshRunOn() {
       empty.paintChip();
     },
 

@@ -17,6 +17,7 @@ import { state, recentFolders, rememberFolder, forgetFolder } from "../state.js"
 import { createStartBoard } from "./start-board.js";
 import { createWorksIn } from "./works-in.js";
 import { whose } from "../lib/words.js";
+import { AUTO, HERE, chipWords } from "../lib/run-on.js";
 
 const leafOf = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 /** A folder as the project id compares it: forward slashes, no trailing one, lower case. @param {unknown} p */
@@ -154,16 +155,27 @@ export function knownFolders() {
 export const VIEW_ONLY_START_WORDS = "This device is view-only: it reads this Filament's chats and starts none. Open a chat from the list to read it.";
 
 /**
+ * Run on (the remote desk's s2c), as the Start asks it of the page: whether it stands (the desktop app's desk, a folder
+ * chosen), the draft's choice (`get`, `set`: This computer "", a machine's id, or Auto), the machines as this computer
+ * reads them for the folder (`places`, kept a moment; `tried`: a read of them ended, answered or not), the chats at
+ * work on each (`running`) and the chat's model, which Auto weighs, and Settings › Remote access, where a machine's Run
+ * on is switched on.
+ * @typedef {{ on: () => boolean, get: () => string, set: (choice: string, name: string) => void, places: (folder: string, fresh?: boolean) => Promise<import("../lib/run-on.js").Places | null>,
+ *   known: (folder: string) => import("../lib/run-on.js").Places | null, tried: (folder: string) => boolean, running: () => ReadonlyMap<string, number>, model: () => string, settings: () => void }} RunOnHooks
+ */
+
+/**
  * @param {{ getFolder: () => string, setFolder: (p: string) => void, onToast?: (msg: string, kind?: string) => void,
  *   chatOf?: () => any, onHeld?: (c: { patch: Record<string, any> }) => void, start?: StartHooks,
  *   spaceOf?: (cwd: string) => { name: string, own: boolean } | null,
  *   otherMachines?: () => Promise<{ machines: OtherMachine[] } | null>, machineNames?: () => Promise<{ machines: OtherMachine[] } | null>,
- *   openOn?: (machine: string, cwd: string) => void }} cb
+ *   openOn?: (machine: string, cwd: string) => void, runOn?: RunOnHooks, alsoOn?: (cwd: string) => string[] }} cb
  *   `spaceOf`: the Space a chat in a folder works in (the left bar's `spaceFor`); `otherMachines`: the machines the
  *   desktop app keeps beside this computer, each with its projects as it lists them, read by the app with its sign-in
  *   there (null where no app answers: a browser's page, another machine's); `machineNames`: the same machines by name
  *   alone, nothing asked of them, at once; `openOn`: a new chat on one of them, in a folder of its own, opened in its
- *   page (pk-list, the owner's of 11-10)
+ *   page (pk-list, the owner's of 11-10); `runOn`: where the new chat runs (`RunOnHooks`); `alsoOn`: the other machines
+ *   that have a project's repository, by their names, as the desk lists their chats
  * @returns {{ el: HTMLElement, refresh: () => void, paintChip: () => void, paintStart: () => void, placesMoved: (msg: any) => void, draftChanged: () => void }}
  */
 export function createEmptyState(cb) {
@@ -240,6 +252,7 @@ export function createEmptyState(cb) {
     spaceLine.hidden = !sp;
     paintKept();
     spaceLine.textContent = sp ? `This chat works in ${sp.own ? `${sp.name}, a Space of yours` : `${whose(sp.name)} Space`}, whichever agent you pick: it can add tasks, note what it did in What happened, and make or change its apps.` : "";
+    paintRunOn();
   };
 
   // The menu opens at the press, from what the page knows — the folders it remembers, each folded into the project the
@@ -290,7 +303,7 @@ export function createEmptyState(cb) {
           type: "check",
           key: keyOf(f.cwd),
           label: f.name || leafOf(f.cwd),
-          desc: f.name ? f.cwd : undefined,
+          desc: [f.name ? f.cwd : "", alsoOnWords(f.cwd)].filter(Boolean).join(" · ") || undefined,
           icon: "folder",
           checked: keyOf(f.cwd) === here,
           onClick: () => {
@@ -379,6 +392,86 @@ export function createEmptyState(cb) {
     filter();
   };
 
+  /** The other machines a project's repository is on too, for its row. @param {string} cwd */
+  const alsoOnWords = (cwd) => {
+    const names = cb.alsoOn?.(cwd) || [];
+    return names.length ? `also on ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}` : "";
+  };
+
+  // --- Run on (the remote desk's s2c) -----------------------------------------------------------------------------
+  // Beside the project: where the chat runs. Its choice is the draft's, never changed at send time; Auto's pick is said
+  // on the chip, and why on its hover.
+  const runOnLabel = h("span", { class: "chooser-label" }, "This computer");
+  const runOnIcon = h("span", { class: "chooser-ic", html: ICONS.monitor });
+  const runOnChip = h("button", { class: "chooser-chip run-on-chip", type: "button", "aria-label": "Run on" }, runOnIcon, runOnLabel, h("span", { class: "chooser-chev", html: ICONS.chevronDown }));
+  const runOnLead = h("span", { class: "chooser-lead run-on-lead" }, "on");
+  /**
+   * What the chip says now, from the machines as last read; a read the chip needs is asked once for the folder, and one
+   * that came back with nothing is said, not asked again (a send reads them anew). A draft with no folder has no chip,
+   * and runs on this computer: a choice it held goes.
+   */
+  const paintRunOn = () => {
+    const r = cb.runOn;
+    const folder = cb.getFolder();
+    if (r && !folder && r.on() && r.get() !== HERE) r.set(HERE, "");
+    const shown = !!r && r.on() && !!folder && !viewOnly();
+    runOnChip.classList.toggle("hidden", !shown);
+    runOnLead.classList.toggle("hidden", !shown);
+    if (!shown || !r) return;
+    const choice = r.get();
+    const known = r.known(folder);
+    const failed = !known && r.tried(folder);
+    if (choice && !known && !failed) void r.places(folder).then(() => cb.getFolder() === folder && paintRunOn());
+    const words = chipWords(choice, known, { running: r.running(), model: r.model(), name: cb.chatOf?.()?.runOnName || "" });
+    runOnLabel.textContent = words.label;
+    runOnChip.title = choice && failed ? "Your machines could not be read: a send reads them again" : words.title;
+    setHtml(runOnIcon, choice === HERE ? ICONS.monitor : ICONS.network);
+  };
+  runOnChip.onclick = async (e) => {
+    e.stopPropagation();
+    const r = cb.runOn;
+    const folder = cb.getFolder();
+    if (!r || !folder) return;
+    /** @param {import("../lib/run-on.js").Places | null} places @param {boolean} [failed]  a read of them came back with nothing */
+    const items = (places, failed = false) => {
+      const choice = r.get();
+      const auto = places ? chipWords(AUTO, places, { running: r.running(), model: r.model() }) : null;
+      return [
+        { type: "check", key: "here", label: "This computer", icon: "monitor", checked: choice === HERE, onClick: () => pick(HERE, "") },
+        { type: "check", key: "auto", label: "Auto", desc: auto ? auto.title : "Picks the idlest of your machines that has this project", icon: "sparkles", checked: choice === AUTO, onClick: () => pick(AUTO, "") },
+        { type: "separator" },
+        { type: "label", label: "Your machines" },
+        ...(places
+          ? places.machines.length
+            ? places.machines.map((p) => ({
+                type: "check",
+                key: `m:${p.id}`,
+                label: p.name,
+                desc: chipWords(p.id, places, { running: r.running(), model: r.model() }).title,
+                icon: "network",
+                checked: choice === p.id,
+                onClick: () => pick(p.id, p.name),
+              }))
+            : [{ key: "none", label: "No machine is kept for this Filament's agents", icon: "network", disabled: true }]
+          : failed
+            ? [{ key: "unread", label: "Your machines could not be read", desc: "Open this menu again to read them anew", icon: "network", disabled: true }]
+            : [{ key: "reading", label: "Reading your machines…", icon: "network", disabled: true }]),
+        { type: "separator" },
+        { key: "settings", label: "Switch Run on on for a machine…", desc: "Settings › Remote access, on that machine's line", icon: "settings", onClick: () => r.settings() },
+      ];
+    };
+    const m = menu(items(r.known(folder)), { anchor: runOnChip, side: "top", align: "start", width: 320 });
+    if (!m.el.isConnected) return;
+    const places = await r.places(folder, true);
+    if (m.el.isConnected && cb.getFolder() === folder) m.set(items(places, !places));
+    paintRunOn();
+  };
+  /** A choice held on the draft. @param {string} choice @param {string} name */
+  const pick = (choice, name) => {
+    cb.runOn?.set(choice, name);
+    paintRunOn();
+  };
+
   function openFolderDialog() {
     const input = h("input", { class: "zc-input", type: "text", placeholder: pathExample(state.platform), spellcheck: "false" });
     const browse = h("button", { class: "ghost sm", type: "button" }, "Browse…");
@@ -409,7 +502,7 @@ export function createEmptyState(cb) {
   // Where in the folder's repository the chat works (HarnessV4_Git_Plan step 5): the Start's second question, and the
   // folder's path and branch in the sentence. A choice moves what the Start board weighs (GWC-118).
   const worksIn = createWorksIn({ chat: () => cb.chatOf?.() || null, folder: () => cb.getFolder(), text: () => cb.start?.text() || "", changed: () => ask(0) });
-  const chooser = h("div", { class: "chooser" }, h("span", { class: "chooser-lead" }, "Start a new chat in"), chip, worksIn.where);
+  const chooser = h("div", { class: "chooser" }, h("span", { class: "chooser-lead" }, "Start a new chat in"), chip, runOnLead, runOnChip, worksIn.where);
   const el = h("div", { class: "empty-chat" },
     greet,
     chooser,

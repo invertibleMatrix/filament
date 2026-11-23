@@ -11,6 +11,11 @@ import { store } from "../lib/store.js";
  * @property {string | null} chainId  the session — the archive chain — once it exists (created at the first send, or opened)
  * @property {Promise<string> | null} [making]  the session being made for the chat's first send (app.js `ensureSession`): a send meanwhile waits for it, and makes none of its own
  * @property {Promise<string | null> | null} [picking]  the folder asked for where the chat's folder is not on this machine (app.js `readySession`): a send that met the same folder waits for it, and opens no picker of its own
+ * @property {string} [runOn]  where a new chat runs (Run on, the remote desk's s2c): "" this computer, "auto", or another machine's id — held until its first send, which starts it there (app.js `runOnFirst`)
+ * @property {string} [runOnName]  that machine's name, as the chip says it before its machines are read
+ * @property {boolean} [runOnBusy]  its first send is under way there: another Enter is refused, in words
+ * @property {{ machine: string, name: string, chat: string, work: any, folder: string }} [runOnStarted]  a chat started
+ *   there for it whose first message did not go: the next send from the folder, to that machine, goes to it
  * @property {string} cwd  the project folder this chat works in (per chat, not per message)
  * @property {string | null} [projectId]  the project the archive filed its session in at its create (app.js `makeSession`, GW-D54), before the list names it
  * @property {{ branch: string, counts: any } | null} [git]  the project's git status, for the status panel

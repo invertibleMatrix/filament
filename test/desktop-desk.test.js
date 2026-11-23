@@ -114,7 +114,7 @@ const until = async (fn, what) => {
 test("the table alone: an operation not in it, a path, a name off the prototype, a machine not kept or This computer, a field that does not fit — refused here, nothing sent", async () => {
   const there = scripted();
   const { desk } = deskOver(there, { machines: () => [kept(), { ...kept({ id: "local", name: "This computer" }), local: true }] });
-  assert.deepEqual([...DESK_OPS].sort(), ["answer", "asks", "chats", "create", "holders", "live-state", "mode", "search", "stop", "turn"]);
+  assert.deepEqual([...DESK_OPS].sort(), ["answer", "asks", "chats", "create", "holders", "live-state", "me", "mode", "search", "stop", "turn"]);
   for (const op of ["fetch", "/sessions", "GET /memory/sessions", "__proto__", "constructor", "toString", "hasOwnProperty", ""]) {
     const a = await desk.call({ op, machine: "m-mac", path: "/remote/devices" });
     assert.equal(a.ok, false, op);
@@ -242,6 +242,8 @@ test("through a tunnel or by the tailnet login an answer — always a press — 
     assert.deepEqual([mode.press, mode.status, there.sent().at(-1)?.method], [true, 403, "PATCH"], who);
     assert.match(String(mode.words), /^Mac mini refused it: this asks less, and needs a press of yours in Filament's app\. Pair this machine again as Full/);
     assert.equal((await desk.call({ op: "holders", machine: "m-mac" })).ok, true, `${who}: a read goes`);
+    // Who this window is there (Run on asks before it sends a copy, run-on.js `copyRefusal`).
+    assert.deepEqual((await desk.call({ op: "me", machine: "m-mac" })).json, { who, device: null }, `${who}: who it is there`);
     // A message is no press: it goes, and the machine says what it makes of it.
     const turn = await desk.call({ op: "turn", machine: "m-mac", chat: "c1", content: "hi" });
     assert.deepEqual([turn.press, there.sent().at(-1)?.path], [undefined, "/sessions/c1/turns"], `${who}: a turn goes`);
@@ -253,6 +255,8 @@ test("through a tunnel or by the tailnet login an answer — always a press — 
   const a = await deskOver(off, { machines: () => [kept({ off: true })] }).desk.call({ op: "holders", machine: "m-mac" });
   assert.deepEqual([a.ok, a.away], [false, "off"]);
   assert.deepEqual(off.calls, []);
+  // A paired Full device says its id there, and nothing else of the device.
+  assert.deepEqual((await deskOver(scripted()).desk.call({ op: "me", machine: "m-mac" })).json, { who: "device", device: "d-window" });
 });
 
 test("a turn: its message as the person's, a sendId of its own, its stream let go once it begins — the turn goes on there; an answer that never came is never sent again", async () => {

@@ -35,6 +35,22 @@ export function remoteWorkRoutes(a) {
   return [
     // Every Run on kept here, newest first.
     ["GET", "/remote-work", guard((r) => store(r) && sendJson(r.res, 200, { works: a.remoteWork.list() }))],
+    // `?folder=`: where a chat in it may run → `{ here, machines, last }` (app/remote-work.js `places`), for Run on's
+    // chip and its Auto; each machine asked for a few seconds at most.
+    [
+      "GET",
+      "/remote-work/places",
+      guard(async (r) => {
+        const s = store(r);
+        if (!s) return;
+        const folder = String(r.url.searchParams.get("folder") ?? "").trim();
+        if (!folder) return sendJson(r.res, 400, { error: "folder is the folder the chat would start in here" });
+        const v = folderVerdict(a.config.get(), folder, { person: true });
+        if (v.why === "missing" || v.why === "empty") return sendJson(r.res, 400, { error: `the folder does not exist on this machine: ${folder}` });
+        if (!v.ok) return sendJson(r.res, 403, { error: v.why === "outside" ? outsideRootsWords(folder) : `${folder} is no folder a chat may work in here` });
+        return sendJson(r.res, 200, await s.places(v.root));
+      }),
+    ],
     // `{ machine, folder, allow? }`: the folder's repository sent to the machine and placed there for a chat of yours →
     // `{ work }`, its `cwd` the folder the chat starts in there; 409 with `ask` where the person is asked first, and
     // `allow` (`{ ask }`, that ask's id) is their yes.

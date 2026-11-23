@@ -692,6 +692,7 @@ export const PRESS_TABLE = [
   // remote-work.js: Run on. A send carries the person's project to another machine, and a bring back writes into
   // their folder what a chat there changed: presses both. Naming the chat started there allows no call.
   ["GET /remote-work", READS],
+  ["GET /remote-work/places", READS],
   ["POST /remote-work", ALWAYS],
   ["POST /remote-work/:id/chat", WORDS],
   ["POST /remote-work/:id/back", ALWAYS],

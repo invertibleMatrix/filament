@@ -555,8 +555,9 @@ describe("the page's wiring", () => {
     // beside; two are /plan's, the owner's of 11-05: a team's own chat, a turn that waits for an answer; one is a card's
     // answer, or a way on's, while a message waits for the chat; one is a view-only device's page, p4-view-ui; two are
     // a thread's brief sent again, which is no note into a turn and waits in no queue: while a turn runs, a message
-    // waits or room is made, and where a turn began as the chat was made ready)
-    assert.deepEqual([(send.match(/return refuse\(/g) || []).length, (ready.match(/return no\(/g) || []).length], [14, 5]);
+    // waits or room is made, and where a turn began as the chat was made ready; one is Run on's, the remote desk's s2c: a
+    // first message on another machine goes as plain words)
+    assert.deepEqual([(send.match(/return refuse\(/g) || []).length, (ready.match(/return no\(/g) || []).length], [15, 5]);
     assert.match(send, /followElsewhere\(chat\);\s+refusal = "A turn was already running in this chat";\s+return false;/, "the chat's own turn, found running");
     assert.match(ready, /if \(!picked\) return no\("No project folder was chosen", false\);/, "the person closed the folder's modal: no toast, the queue still says why");
     // (fails before: yes — the owner's of 10-30: "Work outside a project", then a send, opened the folder's modal) A chat

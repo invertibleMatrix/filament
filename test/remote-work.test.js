@@ -94,6 +94,22 @@ test("Run on between two Filaments: asked first, sent with its uncommitted work,
     assert.equal(gitIn(dir, "rev-parse", `${WORK_REF_PREFIX}${work.id}/copy`), work.base, "the commit it went at, held here");
     assert.equal(gitIn(dir, "rev-parse", "HEAD"), head, "nothing committed here");
 
+    // Where a chat in it may run: this folder dirty at its HEAD; the machine answers and takes a chat of yours, what Run
+    // on's grant alone reads none of unsaid; the machine it went to last.
+    const places = await (await here.api(`/api/remote-work/places?folder=${encodeURIComponent(dir)}`)).json();
+    assert.deepEqual([places.here?.head, places.here?.dirty], [head, true]);
+    const place = places.machines.find((/** @type {any} */ m) => m.name === name);
+    assert.deepEqual([place?.answers, place?.personCopy, place?.models, place?.clones], [true, true, null, null], JSON.stringify(place));
+    assert.ok(place?.maker && place.maker === minted.device.of, "the full device the chat in a copy starts from: the one that made this Filament's agents' device there");
+    assert.equal(places.last, work.machine.id);
+    assert.equal((await here.api("/api/remote-work/places")).status, 400);
+    // Agents on there too: its load, its memory and its models are read — and no clone, this folder having no remote.
+    const grants = (/** @type {any} */ g) => there.api(`/api/remote/devices/${encodeURIComponent(minted.device.id)}`, { method: "PATCH", body: { grants: g } });
+    assert.equal((await grants({ copies: true, agents: true })).status, 200);
+    const full = (await (await here.api(`/api/remote-work/places?folder=${encodeURIComponent(dir)}`)).json()).machines.find((/** @type {any} */ m) => m.name === name);
+    assert.ok(typeof full?.cpus === "number" && typeof full.memTotal === "number" && Array.isArray(full.models) && full.clones === null, JSON.stringify(full));
+    assert.equal((await grants({ copies: true, agents: false })).status, 200);
+
     // Not asked again; asked again for a new file in no commit.
     assert.equal((await sendTo(null)).status, 200, "the same files: no ask");
     writeFileSync(join(dir, "draft.md"), "new\n");

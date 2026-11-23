@@ -136,6 +136,12 @@ const OPS = Object.freeze(
     },
     /** Its chats at work now, and what else runs. */
     holders: () => ({ method: "GET", path: "/sessions/holders" }),
+    /**
+     * Who this window is there: a device (its id), the person's tailnet login, or this computer through a tunnel — a
+     * chat of the person's in a copy placed for it starts from the device that made this Filament's agents' device there
+     * alone (Run on, the remote desk's s2c).
+     */
+    me: () => ({ method: "GET", path: "/remote/me", shape: (/** @type {any} */ j) => ({ who: typeof j?.who === "string" ? said(j.who, 20) : null, device: typeof j?.device?.id === "string" && ID.test(j.device.id) ? j.device.id : null }) }),
     /** The asks waiting in a chat. @param {any} p */
     asks: (p) => onChat(p, (chat) => ({ method: "GET", path: `/sessions/${enc(chat)}/asks` })),
     /** A chat's live state: its turn at work, and what came after a run of its (`after`). @param {any} p */

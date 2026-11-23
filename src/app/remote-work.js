@@ -47,7 +47,7 @@ export const SAID_MAX = 200;
 const refused = (status, words, more = {}) => Object.assign(new Error(words), { status, ...more });
 
 /**
- * @param {{ dataDir: string | null, remote: Pick<ReturnType<typeof import("./agent/remote-agents.js").createRemoteAgents>, "placeForPerson" | "takeBack">,
+ * @param {{ dataDir: string | null, remote: Pick<ReturnType<typeof import("./agent/remote-agents.js").createRemoteAgents>, "placeForPerson" | "takeBack" | "placesFor">,
  *   may?: (repo: string) => string, inRepo?: (<T>(repo: string, fn: () => Promise<T>) => Promise<T>) | null,
  *   now?: () => number, log?: (level: string, line: string) => void }} o
  *   `may`: why a repository may not be sent nor written by a bring back here, "" where it may (a chat's folder, as its
@@ -135,6 +135,17 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
     get: (id) => {
       const w = works.find((x) => x.id === String(id));
       return w ? said(w) : null;
+    },
+    /**
+     * Where a chat in the folder may run (Run on's chip and its Auto): the folder in git and each machine as
+     * `remote.placesFor` reads them, and the machine its repository last went to from here (`last`), Auto's tie-break.
+     * @param {string} folder
+     */
+    async places(folder) {
+      const [p, found] = await Promise.all([remote.placesFor({ folder }), repoOf(folder).catch(() => null)]);
+      const key = found?.repo ? repoKey(found.repo) : "";
+      const newest = key ? works.filter((w) => repoKey(w.repo) === key).sort((a, b) => b.madeAt - a.madeAt)[0] : null;
+      return { ...p, last: newest?.machine.id ?? null };
     },
     /**
      * Run on: the folder `folder` is in sent to the machine `machine` names and placed there for the person's chat. A

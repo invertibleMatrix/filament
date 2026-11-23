@@ -30,7 +30,8 @@ import { createStatusCapsule, createStatusPanel } from "./conversation/status-pa
 import { waitingOn } from "./conversation/waiting-on.js";
 import { createChargeBand } from "./conversation/in-charge.js";
 import { turnNow } from "./lib/overview.js";
-import { deskRoute } from "./lib/desk.js";
+import { deskRoute, mergeKey } from "./lib/desk.js";
+import { HERE, placeFor, readPlaces, runOnSend } from "./lib/run-on.js";
 import { cancelledWords } from "./lib/come-back.js";
 import { setTabTitle, setTitleLead, notifyRunEnded, ensureNotificationPermission } from "./notify.js";
 import { createPopped, followSwitch, followable, mainLine, popBridgeOf, popTabOf } from "./panes/pop-out.js";
@@ -2525,6 +2526,210 @@ async function sendAsked(chat, turn, o = {}) {
 
 /** The words a new chat's box was given back from before, as they were: the Start says so until they change. */
 let keptBack = "";
+/**
+ * Run on's reads of the machines (GET /api/remote-work/places), by folder: each kept `RUN_ON_KEPT_MS` for the chip, one
+ * read at a time; a send reads them again.
+ * @type {Map<string, { at: number, value: import("./lib/run-on.js").Places | null, p: Promise<import("./lib/run-on.js").Places | null> | null }>}
+ */
+const runOnReads = new Map();
+const RUN_ON_KEPT_MS = 30_000;
+/** A folder as Run on's reads key it. @param {string} folder */
+const runOnKey = (folder) => String(folder || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+/**
+ * The machines a chat in the folder may run on, as this computer reads them — kept a moment, `fresh` asked again.
+ * Null where they could not be read. @param {string} folder @param {boolean} [fresh]
+ */
+function runOnPlaces(folder, fresh = false) {
+  const k = runOnKey(folder);
+  const had = runOnReads.get(k);
+  if (had?.p) return had.p;
+  if (had && !fresh && Date.now() - had.at < RUN_ON_KEPT_MS) return Promise.resolve(had.value);
+  const p = api(`/remote-work/places?folder=${encodeURIComponent(folder)}`)
+    .then((r) => readPlaces(r))
+    .catch(() => null)
+    .then((value) => {
+      runOnReads.set(k, { at: Date.now(), value, p: null });
+      return value;
+    });
+  runOnReads.set(k, { at: had?.at || 0, value: had?.value ?? null, p });
+  return p;
+}
+/** The chats at work on each other machine, as the desk's Now says them: Auto weighs them. @returns {Map<string, number>} */
+function runOnRunning() {
+  try {
+    return new Map(sidebar.deskMachines().map((m) => [m.id, m.rows.works.length]));
+  } catch {
+    return new Map();
+  }
+}
+/**
+ * Run on's hooks for the Start (empty.js `RunOnHooks`): the draft's choice, held on it — the chat shown, before its first
+ * send —; the machines; Settings › Remote access, where a machine's Run on is switched on.
+ * @type {import("./conversation/empty.js").RunOnHooks}
+ */
+const runOnHooks = {
+  on: () => {
+    const c = chatOf(state.currentId);
+    return !!c && !c.chainId && !c.making;
+  },
+  get: () => chatOf(state.currentId)?.runOn || HERE,
+  set: (choice, name) => {
+    const c = chatOf(state.currentId);
+    // A send under way goes where it was sent.
+    if (!c || c.chainId || c.runOnBusy) return;
+    c.runOn = choice;
+    c.runOnName = name;
+    // A chat started there whose message did not go is the person's, in the desk's list: another choice is no longer it.
+    if (c.runOnStarted && c.runOnStarted.machine !== choice) delete c.runOnStarted;
+  },
+  places: (folder, fresh) => runOnPlaces(folder, fresh),
+  known: (folder) => runOnReads.get(runOnKey(folder))?.value ?? null,
+  tried: (folder) => runOnReads.has(runOnKey(folder)) && !runOnReads.get(runOnKey(folder))?.p,
+  running: () => runOnRunning(),
+  model: () => {
+    try {
+      return composer.modelName() || "";
+    } catch {
+      return "";
+    }
+  },
+  settings: () => {
+    location.hash = routeFor("settings", { section: "remote" });
+  },
+};
+/**
+ * A new chat's first message run on another machine (Run on, the remote desk's s2c): the machine the draft's choice
+ * names — Auto's pick read again now, a machine named never swapped for another —, then `runOnSend`: its clean clone, or
+ * a copy of this folder sent with your work, asked first; the chat started there, the message sent, the chat opened in
+ * place. The draft here is spent once the chat stands there; until then the message is back in the box, and why said
+ * — in this chat's box: where the person went to another chat meanwhile, its draft keeps it. A chat started there whose
+ * message did not go takes the next send (`runOnStarted`).
+ * @param {any} chat @param {string} text @param {any[]} attachments
+ * @returns {Promise<boolean | undefined>}  false, refused; undefined, it went, or the words wait in the chat's draft
+ */
+async function runOnFirst(chat, text, attachments) {
+  if (chat.runOnBusy) return refuse("Your chat is starting on another machine: send this in it once it opens");
+  if (attachments?.length) return refuse("Run on sends your words alone with the first message: send it, then attach the files in the chat there");
+  const folder = folderIn.value.trim() || chat.cwd || "";
+  if (!folder) return refuse("Run on sends a project to the machine: choose its folder first");
+  const call = /** @type {any} */ (globalThis).filamentMachines?.call;
+  if (typeof call !== "function") return refuse("Run on starts a chat on another machine from the desktop app alone");
+  const shown = () => chatOf(state.currentId) === chat;
+  /** Its words kept in the chat's draft, above what was typed there since. */
+  const keep = () => {
+    const since = draftFor(chat).trim();
+    saveDraft(chat, since && since !== text.trim() ? `${text}\n\n${since}` : text);
+  };
+  /** Refused after a wait: said in the box shown, else kept in the chat's draft. @param {string} words */
+  const no = (words) => {
+    if (shown()) return refuse(words);
+    keep();
+    toast(`${words}. Your message waits in that chat's box`, "err");
+    return undefined;
+  };
+  chat.runOnBusy = true;
+  try {
+    const model = composer.modelName() || "";
+    const kept = chat.runOnStarted;
+    const started = kept && kept.machine === chat.runOn && runOnKey(kept.folder) === runOnKey(folder) ? kept : null;
+    const places = started ? null : await runOnPlaces(folder, true);
+    const at = started ? { place: /** @type {any} */ ({ id: started.machine, name: started.name }) } : placeFor(chat.runOn, places, { running: runOnRunning(), model });
+    if ("words" in at) return no(at.words);
+    toast(started ? `Sending your message to your chat on ${at.place.name}…` : `Starting your chat on ${at.place.name}…`);
+    const out = await runOnSend(
+      { place: at.place, here: places?.here ?? null, folder, text, model, mode: composer.permissionMode?.() || "", started: started && { chat: started.chat, work: started.work } },
+      {
+        api,
+        call: (/** @type {any} */ p) => call(p),
+        allow: (/** @type {any} */ ask) => allowRunOnSend(ask),
+        // Opened in place where the person still looks at this chat; else the desk's list has it.
+        open: (m, chain) => (shown() ? sidebar.openOnMachine(m, deskRoute({ chain, thread: null })) : toast(`Your chat started on ${m.name}: it is in the list`)),
+      },
+    );
+    /** The chat stands there: the chip names its machine, and the next send from this Start goes to it. @param {{ chat: string, work: any }} s */
+    const standing = (s) => {
+      chat.runOnStarted = { machine: at.place.id, name: at.place.name, chat: s.chat, work: s.work, folder };
+      chat.runOn = at.place.id;
+      chat.runOnName = at.place.name;
+      sidebar.load();
+    };
+    if (!out.ok) {
+      if (out.started) standing(out.started);
+      return no(out.words);
+    }
+    if (out.unsure) {
+      // It may have gone: the chat there, opened, says. The words wait in this Start, should it not have.
+      standing(out);
+      return no(`Your chat started on ${at.place.name}, and its answer to your message never came: ${out.unsure}. Look in the chat there: if it did not go, send your words again from here and they go to that chat`);
+    }
+    // The chat stands there: the draft here is spent, its words with it, and the Start says This computer again.
+    saveDraft(chat, "");
+    delete chat.runOn;
+    delete chat.runOnName;
+    delete chat.runOnStarted;
+    sidebar.load();
+    return undefined;
+  } finally {
+    chat.runOnBusy = false;
+    if (shown()) transcript.refreshRunOn();
+  }
+}
+
+/**
+ * The person's yes before Run on sends a project (POST /api/remote-work's 409 `ask`, app/remote-work.js `WorkAsk`): the
+ * machine, the project, how many files and how much, those in no commit (the first named), what stays here and why, and
+ * the files Git LFS keeps, whose content stays here. Send alone sends it. @param {any} ask @returns {Promise<boolean>}
+ */
+function allowRunOnSend(ask) {
+  const n = (/** @type {unknown} */ v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const bytes = n(ask?.bytes);
+  const size = bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  const list = (/** @type {unknown} */ v, /** @type {number} */ count) => {
+    const all = Array.isArray(v) ? v.map(String) : [];
+    const more = Math.max(0, count - Math.min(all.length, 6));
+    return `${all.slice(0, 6).join(", ")}${more ? `, and ${more} more` : ""}`;
+  };
+  const fresh = n(ask?.freshCount);
+  const left = Array.isArray(ask?.left) ? ask.left : [];
+  const lines = [
+    `${n(ask?.files)} files, ${size}, go to ${String(ask?.machine || "that machine")}, your uncommitted work with them, for your chat to work in there.`,
+    fresh ? `${fresh} of them ${fresh === 1 ? "is" : "are"} in no commit here, and ${fresh === 1 ? "goes" : "go"} on your yes: ${list(ask?.fresh, fresh)}.` : "",
+    left.length ? `What stays here: ${left.slice(0, 6).map((/** @type {any} */ l) => `${String(l?.path)} (${String(l?.why)})`).join("; ")}${left.length > 6 ? `; and ${left.length - 6} more` : ""}.` : "",
+    n(ask?.lfs) ? `Git LFS keeps ${n(ask.lfs)} file${n(ask.lfs) === 1 ? "" : "s"} of it, whose content stays here: a build there that needs ${n(ask.lfs) === 1 ? "it" : "them"} fails.` : "",
+    "Asked once for this project and machine, and again for a new file in no commit.",
+  ].filter(Boolean);
+  return new Promise((resolve) => {
+    let answered = false;
+    /** @param {boolean} yes */
+    const answer = (yes) => {
+      if (answered) return;
+      answered = true;
+      d.close();
+      resolve(yes);
+    };
+    const d = dialog({
+      title: `Send ${String(ask?.project || "this project")} to ${String(ask?.machine || "that machine")}?`,
+      body: h("div", { class: "flex flex-col gap-2" }, ...lines.map((l) => h("p", {}, l))),
+      actions: [
+        { label: "Cancel", variant: "outline", onClick: () => answer(false) },
+        { label: "Send", onClick: () => answer(true) },
+      ],
+      onClose: () => answer(false),
+    });
+  });
+}
+
+/** The other machines a project's repository is on too, by their names, as the desk lists their chats. @param {string} cwd */
+function alsoOnMachines(cwd) {
+  try {
+    const k = runOnKey(cwd);
+    const p = (state.projects || []).find((x) => runOnKey(x?.cwd) === k);
+    const key = mergeKey(p?.remoteKey);
+    return key ? sidebar.deskMachines().filter((m) => m.recent.some((c) => c.merge === key)).map((m) => m.name) : [];
+  } catch {
+    return [];
+  }
+}
 /** The Space a chat in a folder works in, as the left bar knows it once it is made (`sidebar.spaceFor`). @type {(cwd: string) => { name: string, own: boolean } | null} */
 let spaceForFolder = () => null;
 const transcript = createTimeline(shell.convFrame, {
@@ -2540,6 +2745,9 @@ const transcript = createTimeline(shell.convFrame, {
         openOn: (/** @type {string} */ machine, /** @type {string} */ cwd) => void /** @type {any} */ (window).filamentApp.openOn?.(machine, routeFor("home", { folder: cwd })),
       }
     : {}),
+  // Run on (the remote desk's s2c): where a new chat runs, beside its project — the app's own page alone, whose desk
+  // bridge starts a chat on another machine as this window's device there.
+  ...(typeof (/** @type {any} */ (globalThis).filamentMachines?.call) === "function" ? { runOn: runOnHooks, alsoOn: (/** @type {string} */ cwd) => alsoOnMachines(cwd) } : {}),
   onFork: (chat, turn, opts) => forkModal(chat, turn, opts),
   // Rewind in place (the Designer's design of 10-27): Rewind on your message's hover and the files card's Undo open
   // the confirm; Undo on the rewind's line takes it back; Show them opens its turns, greyed.
@@ -3438,6 +3646,8 @@ async function askAgents({ tags, question, changes = null, files, models }) {
   // An agent asked is handed pictures and text: a PDF goes with a message to the chat.
   const pdf = files.find((a) => a.kind === "pdf");
   if (pdf) return refuse(pdfRefused(pdf.name));
+  // A chat to run on another machine starts there with a message: agents are asked in it once it opens.
+  if (!chat.chainId && (chat.runOn || chat.runOnBusy)) return refuse("Run on starts the chat there with a message: send your first message, then ask your agents in the chat there");
   // A chat with no session yet: the session is made as a first message makes it (AG-24). No message of it reaches the
   // main agent, so the question's first line is its name — and the page's list of its agents follows it from here.
   if (!chat.chainId) {
@@ -7650,6 +7860,14 @@ async function sendMessage(text, attachments, modifier, { allow = null, modeSwit
     chat.roomWait = true;
     if (!queued && !away) toast(queueOf(chat).paused ? "A compaction is being written for this chat — your message waits in the queue, paused: Continue sends it once the compaction is done" : "A compaction is being written for this chat — your message waits in the queue, and goes once it is done");
     return "queue";
+  }
+  // Run on another machine (the remote desk's s2c): a new chat's first message from the box starts its chat there and
+  // opens it in place; nothing is made here. It goes as plain words: what this page would make of a command, a brief or
+  // the agents it names is not sent there.
+  if (!away && fresh && !chat.chainId && !chat.making && (chat.runOn || chat.runOnBusy)) {
+    if (brief || flowAsk != null || planAsk != null || goalAsk || forkAsk != null || useCards.length || useTeamRows.length)
+      return refuse("Run on sends plain words as the chat's first message: once the chat opens there, send /flow, /plan, /goal, /steer-fork or @names in it", true, false);
+    return runOnFirst(chat, text, attachments);
   }
   const ready = away ? readyAway(chat) : await readySession(chat, { opens: fresh });
   if (!ready) return false;

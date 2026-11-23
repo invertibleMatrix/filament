@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { remoteOf, cloneOf } from "../../adapters/git/inspect.js";
 import { git, repoOf } from "../../adapters/git/snapshot.js";
 import { BACK_PREFIX, bundleSnapshot, digestOf, importBack } from "../../adapters/git/send.js";
@@ -348,6 +348,14 @@ export const BACK_MAX_BYTES = 2 * 1024 ** 3;
 /** @param {BackFailure} kind @param {string} words */
 const backFailed = (kind, words) => Object.assign(new Error(words), { kind });
 
+/**
+ * A machine where a chat of the person's may run, as Run on weighs it (`placesFor`): whether it answers and why not
+ * (`words`), whether it takes a chat of the person's in a copy, the full device there that made this Filament's agents'
+ * device (`maker`), its CPUs and their load (`load1`, else `busy` percent), its memory, the models that answer there,
+ * and its clones of the folder's repository; null what it did not say.
+ * @typedef {{ id: string, name: string, answers: boolean, words: string | null, personCopy: boolean, maker: string | null, cpus: number | null, load1: number | null, busy: number | null,
+ *   memFree: number | null, memTotal: number | null, models: string[] | null, clones: { path: string, head: string | null, branch: string | null, dirty: boolean | null }[] | null }} RunOnPlace
+ */
 /**
  * What the person is asked before a project's first copy goes to a machine: the machine, the project, how many files
  * and bytes go, which of them are in no commit of the project (`untracked`), and what stays here,
@@ -749,6 +757,57 @@ export function createRemoteAgents({ machines, wait = pause }) {
       const sep = at.includes("\\") ? "\\" : "/";
       const cwd = out.sub ? `${at.replace(/[\\/]+$/, "")}${sep}${out.sub.split("/").join(sep)}` : at;
       return { machine: out.machine, project: out.project, repo: out.repo, commit: out.commit, sub: out.sub, files: out.files, bytes: out.bytes, left: out.left, copy: { id: String(placed.copy), folder: at }, cwd, reused: placed.reused === true };
+    },
+    /**
+     * Where a chat of the person's may run (Run on, the remote desk's s2c): this folder in git (`here`: its remote, HEAD,
+     * branch, whether it is dirty), and each machine kept for this Filament's agents, asked in parallel (`ANSWER_MS`
+     * each) — whether it answers, whether it takes a chat of the person's in a copy (`personCopy`), what it has to work
+     * with now (GET /machine/caps: its CPUs and their load, its memory free), the models that answer there, and its
+     * clones of this folder's repository, found by its remote. What a machine lets this Filament's agents read alone
+     * there (Run on's grant alone reads none of the three) is null. Never throws: one that does not answer says why.
+     * @param {{ folder?: string | null }} [o]
+     * @returns {Promise<{ here: { remote: string | null, head: string | null, branch: string | null, dirty: boolean | null, sub: string } | null, machines: RunOnPlace[] }>}
+     */
+    async placesFor({ folder = null } = {}) {
+      const h = folder ? await hereOf(folder).catch(() => null) : null;
+      const remote = h?.remote ?? (folder ? ((await remoteOf(folder).catch(() => null))?.url ?? null) : null);
+      // This folder within its repository, as a clone there is entered: by git's names, with forward slashes.
+      const top = h ? ((await repoOf(/** @type {string} */ (folder)).catch(() => null))?.repo ?? null) : null;
+      const rel = top && folder ? relative(top, folder) : "";
+      const sub = rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel.split(sep).join("/") : "";
+      const machines = await Promise.all(
+        kept().map(async (m) => {
+          const base = { id: m.machine.id, name: m.name, maker: null, cpus: null, load1: null, busy: null, memFree: null, memTotal: null, models: null, clones: null };
+          try {
+            const c = await clientOf(m);
+            /** @param {string} path @returns {Promise<any>} */
+            const ask = (path) => c.get(path, { timeoutMs: ANSWER_MS }).catch(() => null);
+            const [me, caps, models, clones] = await Promise.all([ask("/remote/me"), ask("/machine/caps"), ask("/models"), remote ? ask(`/clones?remote=${encodeURIComponent(remote)}`) : null]);
+            const cpu = caps?.cpu || {};
+            return /** @type {RunOnPlace} */ ({
+              ...base,
+              answers: true,
+              words: null,
+              personCopy: takes(c, "person-copy"),
+              // The full device there that made this Filament's agents' device: a copy placed for the person is its
+              // chat's alone (services/copies.js `ownedAt`), so the window that starts the chat must be it.
+              maker: typeof me?.device?.of === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(me.device.of) ? me.device.of : null,
+              cpus: num(cpu.count),
+              load1: num(cpu.load1),
+              busy: num(cpu.busyPercent),
+              memFree: num(caps?.memory?.freeBytes),
+              memTotal: num(caps?.memory?.totalBytes),
+              models: models ? answering(models).slice(0, 300).map((x) => fieldThere(x?.id, 200)) : null,
+              clones: Array.isArray(clones?.clones)
+                ? clones.clones.slice(0, 20).map((/** @type {any} */ x) => ({ path: fieldThere(x?.path, 400), head: /^[0-9a-f]{40,64}$/.test(String(x?.head)) ? String(x.head) : null, branch: x?.branch ? fieldThere(x.branch, 200) : null, dirty: typeof x?.dirty === "boolean" ? x.dirty : null }))
+                : null,
+            });
+          } catch (/** @type {any} */ e) {
+            return /** @type {RunOnPlace} */ ({ ...base, answers: false, words: e?.grant ? `${m.name} lets no chat of yours run there: switch Run on on for this machine in Settings › Remote access on ${m.name}` : wordsThere(e?.message || e, ERROR_CHARS), personCopy: false });
+          }
+        }),
+      );
+      return { here: h ? { remote: h.remote, head: h.head, branch: h.branch, dirty: h.dirty, sub } : remote ? { remote, head: null, branch: null, dirty: null, sub: "" } : null, machines };
     },
     /**
      * What a sub-agent changed in its copy on the machine `which` names, brought into this repository (cp-back): captured
