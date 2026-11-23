@@ -10,7 +10,7 @@ import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
 import { X509Certificate, createPrivateKey } from "node:crypto";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp } from "./helpers/app.js";
@@ -18,7 +18,11 @@ import { LAN_DIR, LAN_PORT, WSL_NAT_WORDS, createLanListener, firewallVerdict, l
 import { HERE_ALONE_WORDS, lanDoor } from "../src/http/front-door.js";
 import { artifactsListener, artifactsPort } from "../src/http/artifacts.js";
 import { validateConfig } from "../src/services/config/store.js";
-import { samePrint } from "../src/core/x509.js";
+import { keyPrintOf, printOf, samePrint } from "../src/core/x509.js";
+import { pinnedFetch } from "../src/services/machines/pinned.js";
+import { KEY_PINS_FILE, keyFor, sameKey } from "../src/services/machines/key-pins.js";
+import { dialSocket } from "../desktop/lib/pinned-socket.js";
+import { wsAcceptKey } from "../src/http/ws.js";
 import { createRouter } from "../src/http/router.js";
 import { remoteRoutes } from "../src/http/admin/remote.js";
 import { createDevices } from "../src/services/devices.js";
@@ -77,11 +81,29 @@ test("the certificate is made the first time and kept: one fingerprint across st
     } finally {
       rmSync(odd, { recursive: true, force: true });
     }
+    // (fails before: yes — s4g: a renewal made a new key, and every device pinned to the old one paired again)
     const late = lanIdentity(dir, { now: first.notAfter - 29 * 86_400_000, nets: NETS });
-    assert.equal(late.made, true, "within a month of its end: made anew");
+    assert.deepEqual([late.made, late.renewed], [true, true], "within a month of its end: renewed");
     assert.notEqual(late.fingerprint, first.fingerprint);
+    assert.equal(late.keyPrint, first.keyPrint, "by the same key");
+    assert.equal(late.key, first.key);
+    assert.equal(late.keyPrint, keyPrintOf(first.cert));
+    assert.ok(new X509Certificate(late.cert).validTo !== x.validTo, "a new span");
+    // New key: a key made anew, and the certificate with it.
+    const fresh = lanIdentity(dir, { nets: NETS, newKey: true });
+    assert.deepEqual([fresh.made, fresh.renewed], [true, false]);
+    assert.notEqual(fresh.keyPrint, first.keyPrint);
+    assert.deepEqual([lanIdentity(dir, { nets: NETS }).made, lanIdentity(dir, { nets: NETS }).keyPrint], [false, fresh.keyPrint], "kept as made");
+    // (fails before: yes — the review of s4g: a certificate that does not read cut every device off, its key good)
     writeFileSync(join(dir, LAN_DIR, "cert.pem"), "not a certificate");
-    assert.equal(lanIdentity(dir, { nets: NETS }).made, true, "what does not read is made anew");
+    const unread = lanIdentity(dir, { nets: NETS });
+    assert.deepEqual([unread.made, unread.renewed, unread.keyPrint], [true, true, fresh.keyPrint], "a certificate that does not read: renewed by the key beside it");
+    rmSync(join(dir, LAN_DIR, "cert.pem"));
+    assert.deepEqual([lanIdentity(dir, { nets: NETS }).renewed, lanIdentity(dir, { nets: NETS }).keyPrint], [true, fresh.keyPrint], "none at all: the same");
+    writeFileSync(join(dir, LAN_DIR, "key.pem"), "not a key");
+    const keyless = lanIdentity(dir, { nets: NETS });
+    assert.deepEqual([keyless.made, keyless.renewed], [true, false], "a key that does not read: made anew, by a new key");
+    assert.notEqual(keyless.keyPrint, fresh.keyPrint);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -214,6 +236,94 @@ test("the listener: on at its port with the kept certificate; its door keeps the
   } finally {
     await listener.close();
     busy.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// (fails before: yes — s4g: a renewed certificate had a new key, and every pinned connection was refused until the
+// device paired again)
+test("a renewal keeps the key: a fetch and a socket pinned to the first certificate learned its key and take the renewed one; New key's is refused, the listener serving it at once on its port", async () => {
+  const dir = scratch();
+  // A socket's handshake answered, as Filament's own sockets answer it (src/http/ws.js).
+  const upgrade = (/** @type {any} */ req, /** @type {any} */ socket) =>
+    void socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${wsAcceptKey(String(req.headers["sec-websocket-key"]))}\r\n\r\n`);
+  const listener = createLanListener({ dataDir: dir, handler: (_req, res) => void res.end("ok"), upgrade, host: "127.0.0.1", nets: () => ({}), name: () => "Workstation" });
+  /** The app's socket to it, pinned to `pin`: whether it opened, or why it closed. @param {string} pin @returns {Promise<true | string>} */
+  const dial = (pin) =>
+    new Promise((resolve) => {
+      const s = dialSocket({ url: `wss://127.0.0.1:${listener.state().listening?.port}/api/browser/host`, pin, onOpen: () => (resolve(true), s.close()), onClose: (c) => resolve(c.why) });
+    });
+  try {
+    await listener.apply({ enabled: true, port: 0 });
+    const port = Number(listener.state().listening?.port);
+    const first = String(listener.state().fingerprint);
+    const url = `https://127.0.0.1:${port}/ui/harness.html`;
+    const pinned = pinnedFetch(first);
+    assert.equal(await (await pinned(url)).text(), "ok", "the first certificate: its key learned");
+    assert.equal(samePrint(keyFor(first), lanIdentity(dir).keyPrint), true);
+    assert.equal(await dial(first), true);
+    // Renewed on disk a month before its end, and served as the listener starts again.
+    const renewed = lanIdentity(dir, { now: Number(listener.state().notAfter) - 29 * 86_400_000, nets: {} });
+    assert.equal(renewed.renewed, true);
+    await listener.apply({ enabled: false });
+    await listener.apply({ enabled: true, port });
+    assert.equal(listener.state().fingerprint, renewed.fingerprint);
+    assert.equal(await (await pinnedFetch(first)(url)).text(), "ok", "renewed: taken by its key");
+    assert.equal(await dial(first), true, "the app's socket too");
+    assert.equal(sameKey(first, renewed.fingerprint), true, "and learned under its own fingerprint");
+    // New key: served at once, on the port it had, and refused by the pin.
+    const fresh = await listener.newKey();
+    assert.equal(fresh.ok, true);
+    assert.deepEqual([listener.state().listening?.port, listener.state().fingerprint], [port, /** @type {any} */ (fresh).fingerprint]);
+    await assert.rejects(pinnedFetch(first)(url), (/** @type {any} */ e) => e?.code === "FILAMENT_PIN" || e?.cause?.code === "FILAMENT_PIN" || /not the one this command line pinned/.test(String(e?.message)));
+    assert.match(String(await dial(first)), /not the one this app paired with/);
+  } finally {
+    await listener.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// (fails before: yes — s4g: there was no book of keys) Kept in the data folder named, read by another process's book.
+test("the key book: kept in the data folder it is told, learned only from a connection the pin itself made, read by another process", async () => {
+  const dir = scratch();
+  try {
+    const a = lanIdentity(join(dir, "a"), { nets: {} });
+    const renewed = lanIdentity(join(dir, "a"), { now: a.notAfter - 29 * 86_400_000, nets: {} });
+    const other = lanIdentity(join(dir, "b"), { nets: {} });
+    const book = await import(`../src/services/machines/key-pins.js?book=${Date.now()}`);
+    book.usePinBook(dir);
+    const peer = (/** @type {string} */ pem) => {
+      const x = new X509Certificate(pem);
+      return { fingerprint256: x.fingerprint256, raw: x.raw };
+    };
+    assert.equal(book.pinHolds(a.fingerprint, peer(renewed.cert)), false, "no key learned yet: a renewal is refused");
+    assert.equal(book.pinHolds(a.fingerprint, peer(other.cert)), false);
+    assert.equal(book.keyFor(a.fingerprint), "", "nothing learned from a certificate the pin did not name");
+    assert.equal(book.pinHolds(a.fingerprint, peer(a.cert)), true);
+    assert.equal(book.keyFor(a.fingerprint), a.keyPrint);
+    assert.equal(book.pinHolds(a.fingerprint, peer(renewed.cert)), true);
+    assert.equal(book.pinHolds(a.fingerprint, peer(other.cert)), false, "another key: refused still");
+    assert.equal(book.pinHolds(a.fingerprint, null), false);
+    const kept = JSON.parse(readFileSync(join(dir, KEY_PINS_FILE), "utf8"));
+    assert.deepEqual(Object.keys(kept.keys).sort(), [a.fingerprint, renewed.fingerprint].sort());
+    // Another process: its own book reads the file.
+    const there = await import(`../src/services/machines/key-pins.js?there=${Date.now()}`);
+    assert.equal(there.keyFor(a.fingerprint), "", "no book named: this process alone");
+    there.usePinBook(dir);
+    assert.equal(there.pinHolds(a.fingerprint, peer(renewed.cert)), true);
+    // (fails before: yes — the review of s4g: a stranger's many certificates put a pin in use out of the book) One in use
+    // is kept newest: 600 others learned around its uses leave it; one not used since goes.
+    const many = await import(`../src/services/machines/key-pins.js?many=${Date.now()}`);
+    const print = (/** @type {number} */ n) => printOf(n.toString(16).padStart(64, "0"));
+    many.learnKey(a.fingerprint, a.keyPrint);
+    many.learnKey(other.fingerprint, other.keyPrint);
+    for (let i = 1; i <= 600; i++) {
+      many.learnKey(print(i), print(i + 10_000));
+      if (i % 100 === 0) assert.equal(many.pinHolds(a.fingerprint, peer(a.cert)), true);
+    }
+    assert.equal(many.keyFor(a.fingerprint), a.keyPrint, "in use: kept");
+    assert.equal(many.keyFor(other.fingerprint), "", "unused since: put out");
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -450,6 +560,16 @@ test("on the network, a device pairs over https: a stranger is sent to the pairi
     const art = Number(new URL(String(far.json.artifacts.page).replace("{name}", "x")).port);
     assert.ok(art > 0 && art !== port, "the artifacts' own port");
     assert.deepEqual([allowed, fw.firewall.open], [[port, art], true]);
+    // (fails before: yes — s4g: no New key) A new key is made from this computer alone, served at once on its port.
+    const refusedKey = await askTls(port, "/api/remote/lan/new-key", { method: "POST", headers: { ...as, ...own }, body: {} });
+    assert.deepEqual([refusedKey.status, refusedKey.json?.error], [403, "a new key cuts off every machine and command line paired over the network: make it on the machine Filament runs on"]);
+    assert.ok(samePrint((await askTls(art, "/", { headers: FAR })).fp, net0.fingerprint), "the artifacts' address serves the same pair");
+    const keyed = await (await shim.api("/api/remote/lan/new-key", { method: "POST", body: {} })).json();
+    assert.notEqual(keyed.fingerprint, net0.fingerprint);
+    assert.equal(keyed.listening.port, port, "on the port it had");
+    assert.ok(samePrint((await askTls(port, "/ui/pair.html", { headers: FAR })).fp, keyed.fingerprint), "the new certificate served");
+    // (fails before: yes — the review of s4g: the artifacts' address served the old key until Filament started again)
+    assert.ok(samePrint((await askTls(art, "/", { headers: FAR })).fp, keyed.fingerprint), "its artifacts' address too, on its port");
     // Turned off in the configuration: it closes, and the loopback listener stays.
     const cfg = (await (await shim.api("/api/state")).json()).config;
     assert.deepEqual(cfg.server.lan, { enabled: true, port: 0 });

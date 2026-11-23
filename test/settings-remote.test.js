@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { fakeH, textOf, buttonsOf } from "./helpers/fake-dom.js";
-import { renderRemote, leftWords, deviceWords, expiryWords, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS, onTailnet, qrSvg, QR_MODULE, QR_TAILNET_WORDS, QR_LAN_WORDS } from "../src/ui/harness/settings/remote.js";
+import { renderRemote, leftWords, deviceWords, expiryWords, NEW_KEY_WORDS, linksOf, RAN_OUT_UNREAD_WORDS, SEARCH_ROWS, onTailnet, qrSvg, QR_MODULE, QR_TAILNET_WORDS, QR_LAN_WORDS } from "../src/ui/harness/settings/remote.js";
 import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
@@ -72,7 +72,7 @@ const button = (el, name) => {
  * `devicesFail`: whether the list's read fails now, as a restart or a dropped connection fails it. `devicesHold`: a
  * promise the list's answer, made as it is asked, waits for before it lands (none: at once); `pairHold`, a code's.
  * @param {{ state?: Record<string, any>, devices?: any[], devicesRefused?: boolean, devicesFail?: () => boolean, devicesHold?: () => Promise<unknown> | null, pairHold?: () => Promise<unknown> | null, links?: string[], confirm?: boolean, skew?: number, codes?: { id: string, scope: string, leftMs: number }[],
- *   lan?: { enabled?: boolean, state: (cfg: { enabled: boolean, port: number }, fresh: boolean) => any, allow?: () => any },
+ *   lan?: { enabled?: boolean, state: (cfg: { enabled: boolean, port: number }, fresh: boolean) => any, allow?: () => any, newKey?: () => any },
  *   tailnet?: { serve?: boolean, trustOwnLogin?: boolean, state: (cfg: { serve: boolean, trustOwnLogin: boolean, port: number }, fresh: boolean) => any, retry?: (cfg: any) => any }, app?: any, qr?: () => Promise<any> }} [o]
  *   `app`: the desktop app's bridge, where the page runs in it. `qr`: the QR encoder's load (none: the vendored one, at once)
  */
@@ -135,6 +135,7 @@ async function open(o = {}) {
     if (o.tailnet && (path === "/remote/tailscale" || path === "/remote/tailscale?fresh=1")) return o.tailnet.state({ ...tailscale }, path.endsWith("fresh=1"));
     if (o.tailnet?.retry && path === "/remote/tailscale/retry" && method === "POST") return o.tailnet.retry({ ...tailscale });
     if (o.lan?.allow && path === "/remote/lan/firewall" && method === "POST") return o.lan.allow();
+    if (o.lan?.newKey && path === "/remote/lan/new-key" && method === "POST") return o.lan.newKey();
     if (path === "/remote/devices") {
       if (o.devicesRefused) throw Object.assign(new Error("refused"), { status: 403, body: { error: "a view-only device manages no devices" } });
       if (o.devicesFail?.()) {
@@ -546,7 +547,9 @@ test("On my network: off until turned on; on, its port, its addresses and the ce
       return { on: true, port: cfg.port, listening: { port: cfg.port }, error: null, fingerprint: FP, addresses: [`https://192.168.1.20:${cfg.port}`, `https://10.0.0.7:${cfg.port}`], platform: "win32", firewall: fw };
     },
     allow: () => ((fw = { open: true, fix: false, words: "Windows Firewall lets the machines on this network reach port 20343." }), { ok: true, firewall: fw }),
+    newKey: () => ({ fingerprint: NEW_FP }),
   };
+  const NEW_FP = `${"CD:".repeat(31)}EF`;
   const p = await open({ lan });
   assert.deepEqual(labels(p.body), ["This machine", "Reach this machine on my network", "New code"], "off: the switch alone");
   /** @type {() => void} */
@@ -559,7 +562,7 @@ test("On my network: off until turned on; on, its port, its addresses and the ce
   held = null;
   go();
   await settle();
-  assert.deepEqual(labels(p.body), ["This machine", "Reach this machine on my network", "Port", "Addresses", "Certificate", "Windows Firewall", "New code"]);
+  assert.deepEqual(labels(p.body), ["This machine", "Reach this machine on my network", "Port", "Addresses", "Certificate", "Certificate key", "Windows Firewall", "New code"]);
   assert.equal(button(p.body, "Reach this machine on my network").attrs["aria-checked"], "true");
   assert.match(textOf(rowOf(p.body, "Addresses")), /https:\/\/192\.168\.1\.20:20343\|.*https:\/\/10\.0\.0\.7:20343/);
   assert.ok(textOf(rowOf(p.body, "Certificate")).includes(FP));
@@ -575,6 +578,18 @@ test("On my network: off until turned on; on, its port, its addresses and the ce
   button(rowOf(p.body, "Windows Firewall"), "Check again").attrs.onclick();
   await settle();
   assert.equal(fresh.at(-1), true, "Check again reads the firewall afresh");
+  // (fails before: yes — s4g: there was no way to make the key anew) New key, on this computer, once the person said so.
+  assert.match(textOf(rowOf(p.body, "Certificate key")), /Renewing the certificate keeps its key, so paired devices go on/);
+  button(rowOf(p.body, "Certificate key"), "New key…").attrs.onclick();
+  await settle();
+  assert.ok(p.calls.some(([m, path]) => m === "POST" && path === "/remote/lan/new-key"));
+  assert.ok(textOf(rowOf(p.body, "Certificate")).includes(NEW_FP), "the new certificate's fingerprint");
+  assert.ok(p.toasts.some(([m]) => m === "A new key and certificate: pair each device again"), JSON.stringify(p.toasts));
+  assert.match(NEW_KEY_WORDS, /Every machine and command line paired over the network pinned the old one: each stops reaching this machine there until it pairs again with a new code\./);
+  const kept = await open({ lan: { ...lan, enabled: true }, confirm: false });
+  button(rowOf(kept.body, "Certificate key"), "New key…").attrs.onclick();
+  await settle();
+  assert.ok(!kept.calls.some(([, path]) => path === "/remote/lan/new-key"), "said no: nothing asked");
   // A port another program holds: said, and nothing more drawn for it.
   busy = true;
   button(p.body, "Reach this machine on my network").attrs.onclick();
@@ -590,6 +605,7 @@ test("On my network: off until turned on; on, its port, its addresses and the ce
   const far = await open({ lan: { ...lan, enabled: true }, state: { viewer: "remote", device: { id: "d1", name: "Laptop", scope: "full" } } });
   assert.match(textOf(rowOf(far.body, "Windows Firewall")), /Allow it on Workstation itself: Windows asks the person there to confirm\./);
   assert.ok(!buttonsOf(rowOf(far.body, "Windows Firewall")).some((b) => textOf(b) === "Allow"));
+  assert.ok(!labels(far.body).includes("Certificate key"), "a new key is made on this computer alone");
   // A view-only device sees none of it.
   const view = await open({ lan: { ...lan, enabled: true }, devicesRefused: true, state: { viewer: "remote", device: { id: "d2", name: "Phone", scope: "view" } } });
   assert.ok(!labels(view.body).includes("Reach this machine on my network"));

@@ -14,6 +14,7 @@
 // this computer's Filament restarts. `createRail` runs it over Electron's pieces, handed in; it imports no Electron.
 import { X509Certificate } from "node:crypto";
 import { samePrint } from "../../src/core/x509.js";
+import { pinHolds, sameKey } from "../../src/services/machines/key-pins.js";
 import { esc, markTile } from "./card.js";
 import { BAR_H, overlayColors } from "./frame.js";
 import { COLOR_HEX, ICON_WORDS, LOCAL_ID, LOCAL_NAME, MACHINE_COLORS, MACHINE_ICONS, MAX_MACHINES, colorOf, iconOf, idOf, machineInSlot, machineWatch, partitionGen, partitionOf, pickRoute, pinsFor, slotOfInput } from "./machines.js";
@@ -214,21 +215,23 @@ export function remotePrefs(machine) {
 
 /**
  * A machine's partition's word on a certificate (Electron's `setCertificateVerifyProc`): on a host its network routes
- * pin, the pinned certificate alone (0) and any other refused (-2) — its cookie goes nowhere else; any other host
- * Chromium's own check (-3), as any site's (tailscale serve's certificate an authority signed).
+ * pin, the pinned certificate alone (0) — or one its key signed since, as the machine renewed it
+ * (services/machines/key-pins.js) — and any other refused (-2): its cookie goes nowhere else; any other host Chromium's
+ * own check (-3), as any site's (tailscale serve's certificate an authority signed).
  * @param {Machine} machine @param {{ hostname: string, certificate?: { data?: string } }} request
  * @returns {0 | -2 | -3}
  */
 export function certVerdict(machine, request) {
   const pins = pinsFor(machine, request.hostname);
   if (!pins.length) return -3;
-  let print = "";
+  /** @type {X509Certificate} */
+  let x;
   try {
-    print = new X509Certificate(String(request.certificate?.data || "")).fingerprint256;
+    x = new X509Certificate(String(request.certificate?.data || ""));
   } catch {
     return -2;
   }
-  return pins.some((p) => samePrint(p, print)) ? 0 : -2;
+  return pins.some((p) => pinHolds(p, { fingerprint256: x.fingerprint256, raw: x.raw })) ? 0 : -2;
 }
 
 /** A route's origin, or null. @param {any} route */
@@ -1051,7 +1054,8 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     // comes along, so the claim signs it out first.
     const host = new URL(c.url).hostname;
     const reached = !!had?.routes.some((r) => originOfRoute(r) !== null && new URL(String(r.url)).hostname === host);
-    const anew = !!had && !!c.fingerprint && reached && !pinsFor(had, host).some((fp) => samePrint(fp, c.fingerprint));
+    // One its key signed since — the machine renewed it — is no certificate anew (key-pins.js).
+    const anew = !!had && !!c.fingerprint && reached && !pinsFor(had, host).some((fp) => samePrint(fp, c.fingerprint) || sameKey(fp, c.fingerprint));
     const partition = had ? (anew ? partitionOf(id, partitionGen(id, had.partition) + 1) : had.partition) : partitionOf(id);
     /** @type {Machine} */
     const m = { id, name: c.machine.name, routes: [c.route, ...(had?.routes || []).filter((r) => !same(r))], partition, addedAt: had?.addedAt ?? null };

@@ -11,7 +11,8 @@ import tls from "node:tls";
 import { isIP } from "node:net";
 import { randomBytes } from "node:crypto";
 import { WsDecoder, wsAcceptKey } from "../../src/http/ws.js";
-import { printOf, samePrint } from "../../src/core/x509.js";
+import { printOf } from "../../src/core/x509.js";
+import { pinHolds } from "../../src/services/machines/key-pins.js";
 
 /** How long the connection and its handshake may take before the dial fails. */
 export const DIAL_MS = 10_000;
@@ -92,8 +93,10 @@ export function dialSocket({ url, headers = {}, pin = "", onOpen = () => {}, onM
       const s = tls.connect({ host: u.hostname, port, ...(isIP(u.hostname) ? {} : { servername: u.hostname }), rejectUnauthorized: !pin });
       s.once("secureConnect", () => {
         if (!pin) return done(null, s);
-        const got = s.getPeerCertificate()?.fingerprint256 || "";
-        if (samePrint(got, pin)) return done(null, s);
+        const peer = s.getPeerCertificate();
+        const got = peer?.fingerprint256 || "";
+        // The pinned certificate, or one its key signed since (a renewal: key-pins.js).
+        if (pinHolds(pin, peer)) return done(null, s);
         s.destroy();
         done(Object.assign(new Error(`the certificate at ${u.host} is ${printOf(got) || "none"}, not the one this app paired with (${printOf(pin)}): nothing was sent`), { code: "FILAMENT_PIN" }));
       });

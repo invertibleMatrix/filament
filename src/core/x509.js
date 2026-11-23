@@ -6,7 +6,7 @@
 // of any server certificate (a subjectAltName, serverAuth, SHA-256, 825 days at the most), so Safari, like Chrome and
 // Firefox, lets the person go on past its warning. Trust comes from pinning, never a CA: the client compares the
 // certificate's SHA-256 fingerprint (`fingerprintOf`) with the one the machine itself shows.
-import { X509Certificate, randomBytes, sign } from "node:crypto";
+import { X509Certificate, createHash, randomBytes, sign } from "node:crypto";
 
 /** The longest a server certificate may last that Apple's TLS checks take: 825 days. */
 export const MAX_DAYS = 825;
@@ -111,6 +111,13 @@ export const printOf = (fp) => (String(fp || "").replace(/[^0-9a-f]/gi, "").toUp
 
 /** A certificate's SHA-256 fingerprint (`AB:CD:…`), from its PEM or DER. @param {string | Buffer} cert */
 export const fingerprintOf = (cert) => new X509Certificate(cert).fingerprint256;
+
+/**
+ * The SHA-256 of a certificate's public key (its SubjectPublicKeyInfo), written as a fingerprint is (`AB:CD:…`): the
+ * same for every certificate its key signs, so one renewed with the same key keeps it (services/lan-tls.js `lanIdentity`,
+ * services/machines/key-pins.js). @param {string | Buffer} cert  its PEM or DER
+ */
+export const keyPrintOf = (cert) => printOf(createHash("sha256").update(new X509Certificate(cert).publicKey.export({ type: "spki", format: "der" })).digest("hex"));
 
 /** Whether two fingerprints are one, however each is written (colons, spaces, case); an empty one is none. @param {string} a @param {string} b */
 export const samePrint = (a, b) => {

@@ -119,6 +119,17 @@ describe("another machine's view", () => {
     assert.equal(certVerdict(box, { hostname: "192.168.0.9", certificate: { data: "not a certificate" } }), -2);
     assert.equal(certVerdict(box, { hostname: "192.168.0.9" }), -2);
     assert.equal(certVerdict(box, { hostname: "box.tail1234.ts.net", certificate: { data: other.cert } }), -3, "a host no pin names: as any site");
+    // (fails before: yes — s4g: a certificate the machine renewed was refused, and the window paired again) Renewed by
+    // the same key, learned at the pinned one's check above: taken; a new key's is not.
+    const renewed = lanIdentity(dir, { now: id.notAfter - 29 * 86_400_000 });
+    assert.equal(renewed.renewed, true);
+    assert.equal(certVerdict(box, { hostname: "192.168.0.9", certificate: { data: renewed.cert } }), 0, "its key, renewed");
+    const anew = lanIdentity(dir, { newKey: true });
+    assert.equal(certVerdict(box, { hostname: "192.168.0.9", certificate: { data: anew.cert } }), -2, "a new key: refused");
+    // A pin never met here has no key learned: its renewal is refused until it is met once.
+    const third = lanIdentity(join(dir, "third"), { name: "Third" });
+    const unmet = machine("m-third", "Third", [{ kind: "lan", url: "https://192.168.0.10:20343", fingerprint: third.fingerprint }]);
+    assert.equal(certVerdict(unmet, { hostname: "192.168.0.10", certificate: { data: lanIdentity(join(dir, "third"), { now: third.notAfter - 29 * 86_400_000 }).cert } }), -2);
   });
   // (fails before: yes — the owner's of 11-08: with no rail, a machine that cannot be reached would leave no way back)
   test("one that cannot be reached: the app's own page, each why escaped; its top row drags the window; its one script Switch machine's press, where the view's bridge is", () => {

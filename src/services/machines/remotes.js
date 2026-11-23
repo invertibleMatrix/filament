@@ -15,6 +15,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { ANSWER_MAX, CliError, EXIT, bodyText, clientAt, redirectRefusal, redirected, refusalWords } from "./client.js";
 import { certificateAt, pinnedFetch } from "./pinned.js";
+import { usePinBook } from "./key-pins.js";
 import { cleanName, gapWords, protocolGap } from "../machine.js";
 import { isSealed, loadKey, open, seal } from "../config/secrets.js";
 import { printOf } from "../../core/x509.js";
@@ -234,6 +235,8 @@ export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire
  */
 export async function connectTo(dataDir, link, { code: typed = "", name = "", fingerprint: given = "", fetchImpl, certificate = certificateAt } = {}) {
   const { url, code, fingerprint: linked } = pairingOf(link, typed);
+  // The keys behind the certificates pinned are learned in this data folder (key-pins.js).
+  usePinBook(dataDir);
   if (!code) throw new CliError(`no code: open Settings › Remote access on that machine (or run \`filament pair\` there) and give its link, or the address and the code`, EXIT.usage);
   if (url.startsWith("http:") && !onThisMachine(url)) throw new CliError(plainWords(url), EXIT.usage);
   const pin = url.startsWith("https:") ? printOf(given || linked) : "";
@@ -443,6 +446,7 @@ export function remoteNamed(dataDir, which, { agents = false } = {}) {
  */
 export async function connectRemote(dataDir, which, { fetchImpl: given, signal, timeoutMs = 5000, agents = false, anyWire = false } = {}) {
   let row = remoteNamed(dataDir, which, { agents });
+  usePinBook(dataDir);
   // One connected over plain http to another machine, before Filament took https alone: its token goes there no more.
   if (row.url.startsWith("http:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again (filament connect <link>).`, EXIT.failed);
   // A token still sealed: this data folder's secret.key does not open it, and the sealed text is no token to send.
@@ -491,6 +495,7 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
  */
 export async function modelsWayOf(dataDir, which, { agents = false, connectMs = 0 } = {}) {
   const row = remoteNamed(dataDir, which, { agents });
+  usePinBook(dataDir);
   if (!row.url.startsWith("https:"))
     throw new CliError(
       onThisMachine(row.url)

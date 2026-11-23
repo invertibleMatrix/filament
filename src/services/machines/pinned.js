@@ -2,7 +2,8 @@
 // A fetch pinned to one certificate (the owner's remote Filament of 11-06, Part 2): the network's listener on another
 // machine serves a certificate no authority vouches for (services/lan-tls.js), so the command line and this Filament's
 // own calls to its machines (index.js) trust the one whose SHA-256 fingerprint they were given — by the pairing's link,
-// which came from that machine's own Settings, or by --fingerprint — and no other: any other certificate ends the
+// which came from that machine's own Settings, or by --fingerprint — and the ones its key signs as it is renewed
+// (key-pins.js), no other: any other certificate ends the
 // connection before a byte of the request is sent, the device token included. Names are not read: a machine's address
 // changes, its certificate does not. Answers a real Response, so the client reads it as it reads fetch's: its JSON, its
 // text, its event stream. Moved from cli/pinned.js, which says it still.
@@ -10,7 +11,8 @@ import http from "node:http";
 import tls from "node:tls";
 import { isIP } from "node:net";
 import { Readable } from "node:stream";
-import { printOf, samePrint } from "../../core/x509.js";
+import { printOf } from "../../core/x509.js";
+import { pinHolds } from "./key-pins.js";
 
 /** Statuses whose answer has no body: a Response with one is refused. */
 const NO_BODY = new Set([101, 204, 205, 304]);
@@ -79,8 +81,10 @@ export function pinnedFetch(pin, { connectMs = 0 } = {}) {
             s.once("close", () => slow && clearTimeout(slow));
             s.once("secureConnect", () => {
               if (slow) clearTimeout(slow);
-              const got = s.getPeerCertificate()?.fingerprint256 || "";
-              if (samePrint(got, pin)) return done(null, s.setKeepAlive(true, KEEP_ALIVE_MS));
+              const peer = s.getPeerCertificate();
+              const got = peer?.fingerprint256 || "";
+              // The pinned certificate, or one its key signed since (a renewal: key-pins.js).
+              if (pinHolds(pin, peer)) return done(null, s.setKeepAlive(true, KEEP_ALIVE_MS));
               s.destroy();
               done(Object.assign(new Error(`the certificate at ${u.host} is ${printOf(got) || "none"}, not the one this command line pinned (${printOf(pin)}): nothing was sent`), { code: "FILAMENT_PIN" }));
             });

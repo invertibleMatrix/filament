@@ -48,6 +48,7 @@ import { createTunnels } from "./lib/ssh-route.js";
 import { createMachineAgents } from "./lib/machine-agents.js";
 import { createDesk } from "./lib/desk.js";
 import { createMachines } from "../src/services/machines/index.js";
+import { usePinBook } from "../src/services/machines/key-pins.js";
 import { mergedPath, readShellPath } from "./lib/shell-path.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -62,6 +63,8 @@ const opt = (name) => {
 
 // An absolute folder: Electron takes no other, and the server, started in the checkout, reads it the same.
 const dataDir = resolve(resolveDataDir(opt("--data-dir")));
+// The keys behind the certificates its machines' network routes pin, learned at each pinned connection (key-pins.js).
+usePinBook(dataDir);
 const own = join(dataDir, "desktop");
 app.setName("Filament");
 app.setPath("userData", own);

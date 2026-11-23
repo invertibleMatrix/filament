@@ -365,6 +365,7 @@ POST /api/remote/agent-device
 POST /api/remote/claim
 POST /api/remote/devices/*/copies/clear
 POST /api/remote/lan/firewall
+POST /api/remote/lan/new-key
 POST /api/remote/pair
 POST /api/remote/sign-out
 POST /api/remote/tailscale/retry

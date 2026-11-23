@@ -964,6 +964,8 @@ export function artifactsListener({ dataDir, answer, server, devices = null, nam
     state: listener.state,
     port: listener.port,
     settled: listener.settled,
+    /** Its certificate read again, as the network's listener made a new key (admin/remote.js `/remote/lan/new-key`). */
+    reload: () => listener.reload().then(tell),
     /** Off for good, as Filament stops. */
     close: () => listener.close().then(tell),
   };

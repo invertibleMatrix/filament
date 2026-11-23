@@ -30,6 +30,7 @@ export const SEARCH_ROWS = Object.freeze([
   { path: "server.lan.enabled", label: "Reach this machine on my network", words: "lan local network https tls wifi remote access listen" },
   { path: "server.lan.port", label: "Port", words: "network lan https port" },
   { label: "Certificate", words: "tls https fingerprint self-signed warning lan network address ip", also: ["Addresses"] },
+  { label: "Certificate key", words: "new key certificate renew rotate compromised copied tls lan pair again" },
   { label: "Windows Firewall", words: "firewall allow network lan port blocked" },
   { path: "server.tailscale.serve", label: "Share on my tailnet", words: "tailscale tailnet ts.net serve https vpn remote access", also: ["Tailnet address", "Turn it on", "Tailscale"] },
   { path: "server.tailscale.trustOwnLogin", label: "Trust my own tailnet login", words: "tailscale login sign in trust without pairing" },
@@ -44,6 +45,10 @@ export const sizeWords = (n) => {
   const b = Math.max(0, Number(n) || 0);
   return b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : `${Math.round(b / 1024 ** 2)} MB`;
 };
+
+/** What New key asks the person to confirm: what it cuts off, and that renewal never does. */
+export const NEW_KEY_WORDS =
+  "This machine's network listener gets a new key and certificate now. Every machine and command line paired over the network pinned the old one: each stops reaching this machine there until it pairs again with a new code. A browser warns of the certificate once more: compare the new fingerprint. Devices on your tailnet or an SSH tunnel go on. Renewing the certificate keeps the key: this is only for a key that may have been copied.";
 
 /** How often a page with a code open looks for the device that claimed it. */
 export const CLAIM_LOOK_MS = 2000;
@@ -338,6 +343,8 @@ export function renderRemote(body, cb = {}, io = {}) {
   let lanFor = "";
   /** Windows asked to allow it, not answered yet. */
   let allowing = false;
+  /** A new key asked for and not answered yet (`newKey`). */
+  let keying = false;
   /**
    * Tailscale here as last read (GET /remote/tailscale): installed, signed in, this machine's name on the tailnet,
    * whether and where Filament is served there, and why not; `{ unread }` where the read failed; null before the first.
@@ -498,6 +505,25 @@ export function renderRemote(body, cb = {}, io = {}) {
       toast(`Not allowed: ${said(e)}`, "err");
     }
     allowing = false;
+    redraw();
+  };
+  /**
+   * New key: the network listener's key and certificate made anew (POST /remote/lan/new-key), once the person said so —
+   * every device paired over the network pairs again. Renewal keeps the key; this alone changes it.
+   */
+  const newKey = async () => {
+    if (keying) return;
+    if (!(await ask({ title: "Make a new key?", description: NEW_KEY_WORDS, confirmLabel: "New key", destructive: true }))) return;
+    keying = true;
+    redraw();
+    try {
+      const got = await call("/remote/lan/new-key", { method: "POST", body: {} });
+      lanNow = { ...lanNow, ...got };
+      toast("A new key and certificate: pair each device again");
+    } catch (/** @type {any} */ e) {
+      toast(`No new key: ${said(e)}`, "err");
+    }
+    keying = false;
     redraw();
   };
 
@@ -899,6 +925,10 @@ export function renderRemote(body, cb = {}, io = {}) {
       ? kit.row("Addresses", "Open one in the other machine's browser — the one its network reaches this machine by — or a pairing's link below, which brings the code.", m("div", { class: "rset-links" }, ...n.addresses.map((/** @type {string} */ u) => copyable(u, "the address"))), { wide: true })
       : kit.note(`This machine is on no network yet: connected to one, it answers there at port ${n.listening.port}.`, "warn"));
     out.push(kit.row("Certificate", "Made for this machine by Filament: no authority vouches for it, so a browser warns once. The fingerprint in the warning's certificate details must be this one; another means something else answered.", copyable(String(n.fingerprint), "the fingerprint"), { wide: true }));
+    // Its key, made anew on this computer alone: renewal keeps it, so the paired devices go on.
+    if (!elsewhere)
+      out.push(kit.row("Certificate key", "Renewing the certificate keeps its key, so paired devices go on. A new key cuts every machine and command line paired over the network off until it pairs again, and a browser warns once more: make one only if this machine's key may have been copied.",
+        m("button", { class: "ghost sm danger", type: "button", disabled: keying ? "" : null, onclick: () => void newKey() }, "New key…")));
     if (n.platform === "win32") {
       const fw = n.firewall;
       const act = fw?.fix && !elsewhere

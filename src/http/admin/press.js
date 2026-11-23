@@ -142,6 +142,7 @@ export const PRESS_TABLE = [
   ["POST /remote/claim", PROOF],
   ["GET /remote/lan", READS],
   ["POST /remote/lan/firewall", OWN],
+  ["POST /remote/lan/new-key", NARROWS],
   ["GET /remote/tailscale", READS],
   ["POST /remote/tailscale/retry", SETTING],
   ["GET /remote/me", READS],

@@ -3,7 +3,8 @@
 // on a port of its own, on every address of this machine, beside the loopback listener, which stays as it is. Its
 // certificate is self-signed (core/x509.js), made the first time it is turned on and kept in <dataDir>/lan-tls/ — the
 // key readable by this user alone — so its fingerprint stays the same for every device that pinned it, until it is
-// renewed a month before its 825 days run out. A browser shows its warning once; the person compares the fingerprint
+// renewed a month before its 825 days run out, by the same key: a device learned that key at its pinned connections
+// (services/machines/key-pins.js) and takes the new certificate by it. A browser shows its warning once; the person compares the fingerprint
 // it shows with the one Settings › Remote access shows here, and pairs. Over it, Filament's pages, its API, its event
 // stream and its sockets answer the devices paired with this machine (and the pairing page anyone); the model
 // endpoints, MCP, an app's hooks and an artifact's address answer on this machine alone, so turning it on opens no
@@ -11,11 +12,11 @@
 // server.host).
 import https from "node:https";
 import { execFile, spawnSync } from "node:child_process";
-import { X509Certificate, createPrivateKey, generateKeyPairSync } from "node:crypto";
+import { X509Certificate, createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
-import { selfSigned } from "../core/x509.js";
+import { keyPrintOf, selfSigned } from "../core/x509.js";
 
 /** The folder in the data folder its key and certificate are kept in. */
 export const LAN_DIR = "lan-tls";
@@ -111,32 +112,56 @@ export const lanNames = (h = hostname()) => {
 
 /**
  * The listener's key and certificate: those kept, while they read, belong together and have more than a month left;
- * else a new pair, made and kept (`made`). Its names are this machine's — localhost, its host name and that name on
- * the local network (.local) — and its addresses as they are now: a browser that opens it by another address warns of
- * the name too, and a pinning client never reads names. An address that moves makes none anew: every device pinned the
- * certificate's whole fingerprint (cli/pinned.js), and a browser warns of a self-signed one whatever its names.
+ * else a certificate made and kept (`made`) — signed by the key kept, where one reads and belonged to the certificate
+ * (`renewed`), so its public key, which every device learned at its pinned connections (services/machines/key-pins.js),
+ * stays, and no device pairs again; by a new key where none did, or `newKey` asks for one (Settings › Remote access ›
+ * New key), which every device must then be paired with anew. Its names are this machine's — localhost, its host name
+ * and that name on the local network (.local) — and its addresses as they are now: a browser that opens it by another
+ * address warns of the name too, and a pinning client never reads names. An address that moves makes none anew: every
+ * device pinned the certificate's fingerprint (cli/pinned.js), and a browser warns of a self-signed one whatever its names.
  * @param {string} dataDir
- * @param {{ name?: string, now?: number, nets?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>, host?: () => string }} [o]  `name`: this machine's, as the certificate says it
- * @returns {{ key: string, cert: string, fingerprint: string, notAfter: number, made: boolean }}
+ * @param {{ name?: string, now?: number, nets?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>, host?: () => string, newKey?: boolean }} [o]
+ *   `name`: this machine's, as the certificate says it
+ * @returns {{ key: string, cert: string, fingerprint: string, keyPrint: string, notAfter: number, made: boolean, renewed: boolean }}
  */
-export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets, host = hostname } = {}) {
+export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets, host = hostname, newKey = false } = {}) {
   const dir = join(dataDir, LAN_DIR);
   const keyFile = join(dir, "key.pem");
   const certFile = join(dir, "cert.pem");
+  /**
+   * The key kept, where it signed the certificate kept — or no certificate reads beside it, missing or broken (the
+   * review of s4g: a new key cut every device off where the key alone could renew): a certificate renewed is signed by
+   * it again.
+   */
+  let kept = "";
   try {
     const key = readFileSync(keyFile, "utf8");
-    const cert = readFileSync(certFile, "utf8");
-    const x = new X509Certificate(cert);
-    const notAfter = Date.parse(x.validTo);
-    if (notAfter - now > RENEW_MS && x.checkPrivateKey(createPrivateKey(key))) return { key, cert, fingerprint: x.fingerprint256, notAfter, made: false };
+    const own = createPrivateKey(key);
+    let cert = "";
+    /** @type {X509Certificate | null} */
+    let x = null;
+    try {
+      cert = readFileSync(certFile, "utf8");
+      x = new X509Certificate(cert);
+    } catch (/** @type {any} */ e) {
+      if (e?.syscall && e.code !== "ENOENT") throw e;
+    }
+    if (!x) kept = key;
+    else if (x.checkPrivateKey(own)) {
+      const notAfter = Date.parse(x.validTo);
+      if (notAfter - now > RENEW_MS && !newKey) return { key, cert, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(cert), notAfter, made: false, renewed: false };
+      kept = key;
+    }
   } catch (/** @type {any} */ e) {
     // Kept, but not read this time (another program holds it, its rights changed): a new pair would change the
     // fingerprint every device pinned, so it is said instead. Missing, or not a pair that belongs: made anew.
     if (e?.syscall && e.code !== "ENOENT") throw e;
   }
-  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const renewed = !!kept && !newKey;
+  const privateKey = renewed ? createPrivateKey(kept) : generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  const publicKey = createPublicKey(privateKey);
   const { pem } = selfSigned({ privateKey, publicKey, name: `Filament on ${name}`, dns: ["localhost", ...lanNames(host())], ips: ["127.0.0.1", ...lanIps(nets)], now });
-  const key = /** @type {string} */ (privateKey.export({ type: "pkcs8", format: "pem" }));
+  const key = renewed ? kept : /** @type {string} */ (privateKey.export({ type: "pkcs8", format: "pem" }));
   mkdirSync(dir, { recursive: true });
   for (const [file, text] of [[keyFile, key], [certFile, pem]]) {
     const tmp = `${file}.${process.pid}.tmp`;
@@ -147,7 +172,7 @@ export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets
     } catch {}
   }
   const x = new X509Certificate(pem);
-  return { key, cert: pem, fingerprint: x.fingerprint256, notAfter: Date.parse(x.validTo), made: true };
+  return { key, cert: pem, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(pem), notAfter: Date.parse(x.validTo), made: true, renewed };
 }
 
 /** What a listen that failed says, in words. @param {any} e @param {number} port */
@@ -220,7 +245,7 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     new Promise((resolve) => {
       try {
         identity = lanIdentity(dataDir, { name: name(), nets: nets() });
-        if (identity.made) log("info", `remote: a certificate for this machine on the network was made — its fingerprint ${identity.fingerprint}`);
+        if (identity.made) log("info", `remote: a certificate for this machine on the network was ${identity.renewed ? "renewed with its key" : "made"} — its fingerprint ${identity.fingerprint}`);
       } catch (/** @type {any} */ e) {
         error = `its certificate could not be read or made: ${e?.message || e}`;
         return resolve(undefined);
@@ -249,6 +274,14 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
       });
     });
 
+  /** Listening, it starts again on the port it has, its certificate read again (`lanIdentity`). */
+  const again = async () => {
+    const port = at?.port;
+    if (closed || !server || port == null) return;
+    await stop();
+    await start(port);
+  };
+
   return {
     /**
      * Listen as `lan` says: on, on its port (`portOf`; 0: any free one); off. A change waits for the one before it.
@@ -275,6 +308,36 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     port: () => at?.port ?? null,
     /** Once the changes asked for so far are made: a read after a save says what the save did. */
     settled: () => chain,
+    /**
+     * A new key and a certificate it signs (`lanIdentity` `newKey`), kept, and listened with at once where it listens,
+     * on the port it has: every machine and command line paired over the network pinned the old key, and pairs again.
+     * → its fingerprint, or why it could not.
+     * @returns {Promise<{ ok: true, fingerprint: string } | { ok: false, why: string }>}
+     */
+    newKey() {
+      /** @type {{ ok: true, fingerprint: string } | { ok: false, why: string }} */
+      let out = { ok: false, why: "Filament is stopping" };
+      return then(async () => {
+        if (closed) return;
+        /** @type {ReturnType<typeof lanIdentity>} */
+        let made;
+        try {
+          made = identity = lanIdentity(dataDir, { name: name(), nets: nets(), newKey: true });
+        } catch (/** @type {any} */ e) {
+          out = { ok: false, why: `its certificate could not be made: ${e?.message || e}` };
+          return;
+        }
+        log("info", `remote: a new key and certificate for this machine on the network — its fingerprint ${made.fingerprint}: the machines and command lines paired over it pair again`);
+        await again();
+        // Made and kept, and not listened with: said, as the listener says it (the review of s4g).
+        out = want.enabled && !server ? { ok: false, why: `the new key is kept, and the listener does not listen: ${error || "it did not start"}` } : { ok: true, fingerprint: made.fingerprint };
+      }).then(() => out);
+    },
+    /**
+     * The key and certificate read again from their files and listened with at once, on the port it has: another
+     * listener on them — the network's, for its artifacts' (http/artifacts.js) — made a new key (the review of s4g).
+     */
+    reload: () => then(again),
     /** Off for good, as Filament stops. */
     close() {
       closed = true;

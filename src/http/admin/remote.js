@@ -710,6 +710,24 @@ export function remoteRoutes(a) {
       }),
     ],
     [
+      // New key (Settings › Remote access › Certificate key): the network listener's key made anew, and a certificate it
+      // signs — renewal keeps the key (lan-tls.js `lanIdentity`), this alone changes it. Every machine and command line
+      // paired over the network pinned the old one and pairs again, so it is this computer's to ask for. The artifacts'
+      // network address, which serves the same pair, reads it again at once (the review of s4g).
+      "POST",
+      "/remote/lan/new-key",
+      guard(async (r) => {
+        if (r.who?.kind !== "local") return sendJson(r.res, 403, { error: "a new key cuts off every machine and command line paired over the network: make it on the machine Filament runs on" });
+        const l = a.lan?.();
+        if (!l?.newKey) return sendJson(r.res, 503, { error: "the network's listener is not wired in this Filament" });
+        const got = await l.newKey();
+        await a.artifactsNet?.()?.reload?.();
+        if (!got.ok) return sendJson(r.res, 500, { error: got.why });
+        a.log?.("info", "remote: the network listener's key was made anew: every machine and command line paired over the network pairs again");
+        return sendJson(r.res, 200, { ...net(), fingerprint: got.fingerprint });
+      }),
+    ],
+    [
       // Share on my tailnet (Settings › Remote access): asked for or not, Tailscale's state here — installed, signed in,
       // this machine's name, the tailnet's HTTPS —, whether and where it is served, and why not (`?fresh=1` reads it again).
       "GET",
