@@ -523,7 +523,7 @@ export const agentsDevice = (who) => who?.kind === "device" && who.scope === "ag
  * What a paired device holds open — a terminal, the run socket, the events stream — ends once it is revoked or signs
  * out: `end` runs then (the security review of 882809c20: its token stopped at once, and a terminal it had open still
  * typed into this machine). Another machine's agents' device's ends too as the grant it was let in by is switched off —
- * `agents`, or `models` for a model's answer streaming to it (the remote-agents plan's f-answer: only its new requests
+ * `agents` (or `copies`, where that alone let it in), or `models` for a model's answer streaming to it (the remote-agents plan's f-answer: only its new requests
  * were refused, and a run's events it followed went on). Any other caller's holds on. → what stops listening, for the
  * connection's close.
  * @param {import("../services/devices.js").DeviceStore | null} devices @param {Caller | null} who @param {() => void} end
@@ -536,9 +536,12 @@ export function endsWithDevice(devices, who, end, grant = "agents") {
   const unRevoke = devices.onRevoke((gone) => {
     if (gone === id) end();
   });
+  // Let in by Run on alone (`copies`, Agents off: http/admin/remote.js `COPY_ROUTES`), it ends as that goes off, never
+  // as another grant changes (the review of s2a: switching Models cut its sends).
+  const byCopies = grant === "agents" && who.device.grants?.agents !== true && who.device.grants?.copies === true;
   const unGrant = agentsDevice(who) && devices.onGrant
     ? devices.onGrant((set, grants) => {
-        if (set === id && grants[grant] !== true) end();
+        if (set === id && grants[grant] !== true && !(byCopies && grants.copies === true)) end();
       })
     : () => {};
   return () => {

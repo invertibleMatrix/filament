@@ -432,15 +432,26 @@ export function sessionRoutes(a) {
   // that machine's agents worked in there with them, before their folders are removed: what runs in each stopped as a
   // revoke stops it and waited for, then the chat deleted as its Delete deletes it (memory.js): its teams and flows
   // stopped, what was kept behind its graphs dropped. A chat's folder is compared as the filesystem named the copies'
-  // folders before they went (`keys`).
-  a.remoteCopies?.onCleared?.(async (/** @type {import("../../services/copies.js").Cleared} */ { devices: theirs, keys }) => {
-    if (!memory.archive?.agentChats || !theirs.length || !keys.length) return;
+  // folders before they went (`keys`). The person's chat in a copy placed for it (Run on) goes with that copy too
+  // (`chats`), its folder compared alike.
+  a.remoteCopies?.onCleared?.(async (/** @type {import("../../services/copies.js").Cleared} */ { devices: theirs, keys, chats: yours = [] }) => {
+    if (!memory.archive?.agentChats || (!theirs.length && !yours.length) || !keys.length) return;
     const inside = (/** @type {string | null} */ cwd) => {
       if (!cwd) return false;
       const k = folderKeyOf(cwd);
       return keys.some((f) => inFolder(k, f));
     };
-    const chats = memory.archive.agentChats(theirs).filter((/** @type {any} */ x) => inside(x.cwd));
+    // One whose folder cannot be read is left: the agents' chats there are stopped all the same (the review of s2a).
+    const own = yours.flatMap((id) => {
+      try {
+        const cwd = memory.archive.metaOf?.(id, ["cwd"])?.cwd;
+        return typeof cwd === "string" ? [{ id, cwd }] : [];
+      } catch (/** @type {any} */ e) {
+        log("warn", `[copies] chat ${id}'s folder could not be read (${e?.message || e}): it is not deleted with its copy`);
+        return [];
+      }
+    });
+    const chats = [...memory.archive.agentChats(theirs), ...own].filter((/** @type {any} */ x, i, all) => inside(x.cwd) && all.findIndex((y) => y.id === x.id) === i);
     // Each chat on its own: one whose stop throws neither lets the folders go early nor leaves the others running.
     await Promise.allSettled(
       chats.map(async (/** @type {{ id: string }} */ c) => {
@@ -513,9 +524,38 @@ export function sessionRoutes(a) {
         // A copy another launch's chat works in is that chat's alone: a second chat there would work under its turns. One
         // whose chat never ran a turn there goes to this one (copies.js `bind`): the launch never heard that chat named.
         const taken = agentsDevice(r.who) && typeof b.cwd === "string" ? a.remoteCopies?.copyAt(r.who.device.id, b.cwd) : null;
+        // A copy placed for the person's own chat (transfers.js `place` `for: "person"`) is never their agents' to start in.
+        if (taken?.owned) return sendJson(r.res, 403, { error: `${b.cwd} is in a copy placed for a chat of the person's own: another machine's agents start none there` });
         if (taken?.chat && taken.ran) return sendJson(r.res, 409, { error: `${b.cwd} is in a copy another launch's chat works in: a launch that names no folder takes a copy of its own` });
+        // Run on: the person's chat, started by their machine's app — the full device that machine's agents' devices were
+        // minted by — in the copy placed for it (services/copies.js `ownedAt`): bound to it below as a launch's chat is,
+        // so its turns hold it and what it changes is read back from there; it works there whatever agentLoop.roots
+        // lists (`ownCopy`). One copy, one chat: a second is refused once the first ran a turn.
+        const own = r.who?.kind === "device" && r.who.scope === "full" && typeof b.cwd === "string" ? a.remoteCopies?.ownedAt?.(r.who.device.id, b.cwd) : null;
+        if (own && b.worktree != null) return sendJson(r.res, 400, { error: `${b.cwd} is a copy placed for a chat of yours, which works in it: no worktree is made of it` });
+        // A chat of it deleted gives way (copies.js `bind`); one not known to be gone is there.
+        const ownChatThere = () => {
+          try {
+            return memory.archive?.hasChain?.(own?.chat) !== false;
+          } catch {
+            return true;
+          }
+        };
+        if (own?.chat && own.ran && ownChatThere()) return sendJson(r.res, 409, { error: `${b.cwd} is in a copy another chat of yours works in: Run on sends a copy for each chat` });
+        if (own) Object.assign(args, { ownCopy: own.folder });
         // `worktree: { name }`: the chat works in a new worktree of its folder's repository, made here (GW-D45).
         const made = b.worktree != null ? await createInWorktree(args, b.worktree) : native().create(args);
+        if (own) {
+          if (!a.remoteCopies.bind(own.id, String(made.id))) {
+            // Two starts in it at once, and the other's chat ran a turn first: this one is let go, as the 409 would say.
+            await memory.deleteSession(String(made.id)).catch(() => null);
+            return sendJson(r.res, 409, { error: `${b.cwd} is in a copy another chat of yours works in: Run on sends a copy for each chat` });
+          }
+          memory.archive?.mergeMeta(String(made.id), { copy: own.id });
+          // A start before it whose chat never ran a turn there gave way to this one (the app asked again, its answer
+          // lost): that chat, empty, is deleted, never left naming a copy that is this one's (the review of s2a).
+          if (own.chat && own.chat !== String(made.id) && !own.ran) await memory.deleteSession(own.chat).catch(() => null);
+        }
         // Another machine's agents' chat is theirs alone (the remote-agents plan's f-answer): the device that started it
         // is kept on it, and the admin gate lets that device reach no other chat, nor its runs or asks (index.js). The
         // name of the machine whose agents they are is kept beside it (`agentFrom`, the sidebar's "From MacBook's
@@ -1752,8 +1792,10 @@ export function sessionRoutes(a) {
         const outside = b?.outside === true;
         if (!b || typeof b !== "object" || (!outside && typeof b.cwd !== "string")) return sendJson(r.res, 400, { error: "a JSON object is required: { cwd, model?, settings?, text? }, or { outside: true, … } for a chat outside a project" });
         const args = { model: b.model ?? null, settings: b.settings ?? null, preset: b.preset ?? null, text: typeof b.text === "string" ? b.text : "" };
-        // The New Task board (HarnessV3-NewTask): the body the first send would create from, weighed — nothing written.
-        if (!outside) return sendJson(r.res, 200, await native().draftStart({ ...args, cwd: b.cwd }));
+        // The New Task board (HarnessV3-NewTask): the body the first send would create from, weighed — nothing written. A
+        // copy placed for the person's chat is weighed as POST /sessions makes the chat there (`ownCopy`).
+        const own = !outside && r.who?.kind === "device" && r.who.scope === "full" ? a.remoteCopies?.ownedAt?.(r.who.device.id, b.cwd) : null;
+        if (!outside) return sendJson(r.res, 200, await native().draftStart({ ...args, cwd: b.cwd, ...(own ? { ownCopy: own.folder } : {}) }));
         // A chat outside a project (no folder chosen): weighed in Everything's folder, where its first send makes it and
         // the chat works — not made here.
         if (!a.everything) return sendJson(r.res, 503, { error: "Everything is not wired in this Filament" });

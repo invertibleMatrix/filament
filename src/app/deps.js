@@ -53,6 +53,9 @@
  *   why another machine's agents' chat without Full control may not work in `cwd`, in words, or null where their fence
  *   lets it (http/admin/remote.js `agentFolderRefusal`), `device` theirs, whose machine's copies they work in: judged
  *   at each of its turns
+ * @property {(chat: string) => string} [ownCopy]
+ *   the folder of the copy placed for the person's chat `chat` (services/copies.js `owned`), where their machine's app
+ *   started it and to which it is bound, or "": a root for that chat's turns whatever agentLoop.roots lists
  * @property {import("./second-look.js").SecondLook} [secondLook]  the Reviewer's second look at a move that asks
  *   (HarnessV4_Space_Plan S3b)
  * @property {(chainId: string | null | undefined) => boolean} [parallelFor]  Parallelize tasks for a chat: its own

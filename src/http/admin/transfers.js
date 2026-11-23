@@ -12,6 +12,8 @@ import { guard } from "./guard.js";
  * @returns {import("../router.js").RouteRow[]}
  */
 export function transferRoutes(a) {
+  /** Whether the agents' device that asks has its grant Agents on; off, its grant Copies lets it reach these rows for the person's own chats alone (remote.js `agentRefusal`). @param {any} r */
+  const agents = (r) => ({ agents: r.who?.device?.grants?.agents === true });
   /**
    * The agents' device that asks, or the refusal sent: these rows are another machine's agents' alone.
    * @param {any} r @returns {string | null}
@@ -65,14 +67,15 @@ export function transferRoutes(a) {
         return device && answer(r, await a.transfers.part(device, r.params.id, await r.json()));
       }),
     ],
-    // `{ project, repo, commit }`: a copy taken for a launch and checked out at a commit the mirror holds → `{ copy, folder,
-    // reused }`, the folder its chat starts in.
+    // `{ project, repo, commit, for? }`: a copy taken for a launch and checked out at a commit the mirror holds → `{ copy,
+    // folder, reused }`, the folder its chat starts in. `for: "person"`: for the person's own chat, which that machine's
+    // app starts there as its full device (`owned` in the answer).
     [
       "POST",
       "/transfers/place",
       guard(async (r) => {
         const device = theirs(r);
-        return device && answer(r, await a.transfers.place(device, await r.json()));
+        return device && answer(r, await a.transfers.place(device, await r.json(), agents(r)));
       }),
     ],
     // `{ copy, chat, haves }`: what a launch's sub-agent changed in its copy, captured to go back → `{ id, base, commit,
@@ -83,7 +86,7 @@ export function transferRoutes(a) {
       "/transfers/back",
       guard(async (r) => {
         const device = theirs(r);
-        return device && answer(r, await a.transfers.back(device, await r.json()));
+        return device && answer(r, await a.transfers.back(device, await r.json(), agents(r)));
       }),
     ],
     // `?offset=`: a part of a capture going back, in base64 → `{ offset, data, end }`.

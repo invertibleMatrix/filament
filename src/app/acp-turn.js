@@ -377,6 +377,9 @@ export function createAcpTurn(deps) {
       }
     })();
     const theirs = agentDevice !== null;
+    // How the folder rules judge its folders (turn.js `folderVerdict`): Filament's copies folder is a root for their chat
+    // alone, and for a chat of the person's the copy placed for it (`deps.ownCopy`) alone.
+    const whose = { person: !theirs, copy: theirs ? "" : deps.ownCopy?.(chainRefOf(inboundHeaders) || String(mem?.chain || "")) || "" };
     // Under Full control (devices.js `fullControl`, read once for the turn) their chat runs as the person's own: the
     // coding agent opens with the person's settings, MCP servers and skills, and Filament's tools reach past its folder.
     // No machine of this Filament's is offered it all the same (`launchOffer`).
@@ -806,7 +809,7 @@ export function createAcpTurn(deps) {
     const signed = listed.length && deps.mcpSignIns && door ? deps.mcpSignIns.forAgent(listed, (s) => door.give(selfBase(), doorChat, s)) : { list: listed, words: [] };
     const chatServers = signed.list;
     for (const w of signed.words) (rec.priorChanges ||= []).push(w);
-    const added = harnessChat ? addedFoldersOf(config(), mem?.sit?.settings?.loop?.addedFolders, { person: !theirs }) : { folders: [], left: [] };
+    const added = harnessChat ? addedFoldersOf(config(), mem?.sit?.settings?.loop?.addedFolders, whose) : { folders: [], left: [] };
     for (const l of added.left) (rec.priorChanges ||= []).push(`acp: an added folder is left out — ${l}`);
     // Another machine's agents' chat without Full control reads none their fence refuses (turn.js `fencedAdded`).
     if (fenced) added.folders = fencedAdded(added.folders, (f) => deps.agentsFolder?.(f, agentDevice) ?? null, rec, "priorChanges");
@@ -866,14 +869,14 @@ export function createAcpTurn(deps) {
     // where Filament answers by itself); with none listed, any folder is the agent's. Filament's own call runs in its
     // own folder, and a cycle the agent began by itself is its session's, under way already. Filament's copies folder is
     // a root for another machine's agents' chat alone (`person`), as the loop judges it.
-    const fence =!ownCall && !ownCycle && cwdHint ? folderVerdict(config(), String(cwdHint), { person: !theirs }) : null;
+    const fence =!ownCall && !ownCycle && cwdHint ? folderVerdict(config(), String(cwdHint), whose) : null;
     // A harness chat's run that only reads for the whole of its turn — its request names read-only, as a Reviewer's
     // does — has its commands that only read reach its repository's other worktrees too, Filament's helper copies among
     // them (the owner's of 11-09), as the loop's agent does: judged by the session's switch, read once a turn before the
     // agent is called (`worktreeReads`). A run whose mode may let it write gets none.
     const worktreesListed =
       harnessChat && fence?.ok && sessionMode({ config, archive: null, chain: null, sit: null, header: modeAsked }).fixed === "read-only"
-        ? worktreeReadsOf(config(), fence.root, { person: !theirs }).then((l) => (fenced ? l.filter((f) => !deps.agentsFolder?.(f, agentDevice)) : l))
+        ? worktreeReadsOf(config(), fence.root, whose).then((l) => (fenced ? l.filter((f) => !deps.agentsFolder?.(f, agentDevice)) : l))
         : null;
     /** @type {string[]} */
     let worktreeReads = [];

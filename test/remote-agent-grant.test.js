@@ -21,7 +21,7 @@ import { agentBodyRefusal, agentFolderRefusal } from "../src/http/admin/remote.j
 import { agentsModels } from "../src/http/admin/upstreams.js";
 
 const JSON_TYPE = { "content-type": "application/json" };
-const OFF = { agents: false, models: false, browser: false, unasked: false, codingAgents: false, full: false };
+const OFF = { agents: false, copies: false, models: false, browser: false, unasked: false, codingAgents: false, full: false };
 const WS = { connection: "Upgrade", upgrade: "websocket", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13" };
 
 /**

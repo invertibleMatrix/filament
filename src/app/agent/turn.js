@@ -464,12 +464,13 @@ export function newFolderRefusal(cfg, folder, { from = "" } = {}) {
  * check so a caller can say it in its own words; `root` is the folder as resolved.
  * @param {any} cfg
  * @param {string} cwd
- * @param {{ person?: boolean }} [o]  `person`: judged for a chat of this machine's person — its start, its turn, a
+ * @param {{ person?: boolean, copy?: string }} [o]  `person`: judged for a chat of this machine's person — its start, its turn, a
  *   folder it adds —, for which Filament's copies folder is no root: another machine's agents' chats work there, and a
- *   row that reads a folder reads theirs too (the security re-read of 11-11: it was a root for every chat)
+ *   row that reads a folder reads theirs too (the security re-read of 11-11: it was a root for every chat). `copy`: the
+ *   one copy there placed for the person's own chat (services/copies.js `owned`), a root for that chat alone
  * @returns {{ ok: true, root: string, why: null } | { ok: false, root: string, why: "empty" | "missing" | "outside" | "exposed" }}
  */
-export function folderVerdict(cfg, cwd, { person = false } = {}) {
+export function folderVerdict(cfg, cwd, { person = false, copy = "" } = {}) {
   const al = cfg?.agentLoop || {};
   const roots = (Array.isArray(al.roots) ? al.roots : []).map(String).filter(Boolean);
   const c = String(cwd || "").trim();
@@ -483,8 +484,10 @@ export function folderVerdict(cfg, cwd, { person = false } = {}) {
   if (!isDir) return { ok: false, root: c, why: "missing" };
   const root = realFolder(c);
   // Filament's copies folder, where another machine's agents work in a copy of their project (services/copies.js), is
-  // one more root where roots are listed: it holds none of the person's folders, and no chat of the person's works in it.
-  if (!underRoots(root, roots.length && !person ? [...roots, copiesRootOf()] : roots)) return { ok: false, root, why: "outside" };
+  // one more root where roots are listed: it holds none of the person's folders, and no chat of the person's works in it
+  // but the one in a copy placed for it (`copy`), there alone.
+  const more = !roots.length ? [] : !person ? [copiesRootOf()] : copy ? [copy] : [];
+  if (!underRoots(root, [...roots, ...more])) return { ok: false, root, why: "outside" };
   if (!roots.length && exposedListener(cfg)) return { ok: false, root, why: "exposed" };
   return { ok: true, root, why: null };
 }
@@ -787,8 +790,9 @@ export function createAgentLoopTurn(deps) {
     })();
     const agentsChat = agentDevice !== null;
     // Filament's copies folder is a root for their chat alone: a chat of this machine's person is judged without it
-    // (`folderVerdict`'s `person`), its folder, the folders it adds and its repository's other worktrees alike.
-    const whose = { person: !agentsChat };
+    // (`folderVerdict`'s `person`), its folder, the folders it adds and its repository's other worktrees alike — but for
+    // the copy placed for it, where it was started (`deps.ownCopy`, services/copies.js `owned`).
+    const whose = { person: !agentsChat, copy: agentsChat ? "" : deps.ownCopy?.(String(sessionChain || chainRef || "")) || "" };
     const verdict = folderVerdict(cfg, cwd, whose);
     const root = verdict.root;
     if (verdict.why === "empty")

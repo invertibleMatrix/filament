@@ -105,16 +105,30 @@ export const AGENT_ROUTES = Object.freeze([
 const agentRows = new Set(AGENT_ROUTES);
 /** The row that answers another machine's agents with their grant off too: they can say why they are refused. */
 const AGENT_ME_ROW = "GET /remote/me";
+/**
+ * What their device reaches with its grant `copies` alone, Agents off (devices.js GRANTS): what Filament is and what it
+ * takes, and the transfers' rows — a copy of their project sent here and placed for the person's own chat, which that
+ * machine's app starts there as its full device, and what changed there read back (services/transfers.js `place` and
+ * `back` hold it to such copies). No chat, command or model of theirs runs here by it.
+ */
+export const COPY_ROUTES = Object.freeze([
+  "GET /state",
+  "GET /transfers/haves", "POST /transfers", "POST /transfers/:id/part", "POST /transfers/:id/commit", "POST /transfers/place",
+  "POST /transfers/back", "GET /transfers/back/:id",
+]);
+const copyRows = new Set(COPY_ROUTES);
 
 /**
- * Why another machine's agents' device may not make this request, in words; null where it may: /remote/me always, and
- * while its grant `agents` is on, a row of AGENT_ROUTES. No row matched: nothing.
+ * Why another machine's agents' device may not make this request, in words; null where it may: /remote/me always,
+ * while its grant `agents` is on a row of AGENT_ROUTES, and while its grant `copies` is on a row of COPY_ROUTES. No row
+ * matched: nothing.
  * @param {string} method @param {string} path  as asked, under /api @param {string | null | undefined} pattern  the matched row's
- * @param {{ name: string, grants?: { agents?: boolean } }} device
+ * @param {{ name: string, grants?: { agents?: boolean, copies?: boolean } }} device
  */
 export function agentRefusal(method, path, pattern, device) {
   const row = pattern ? `${method} ${pattern}` : "";
   if (row === AGENT_ME_ROW) return null;
+  if (device.grants?.agents !== true && device.grants?.copies === true && copyRows.has(row)) return null;
   if (device.grants?.agents !== true) return `${device.name} may not run agents here: its grant is switched on in Settings › Remote access — by this computer, or a full device paired with it`;
   return agentRows.has(row) ? null : `another machine's agents start and follow chats here; ${method} ${path} is more than that`;
 }
@@ -144,7 +158,7 @@ export const AGENT_BODIES = Object.freeze({
   "POST /transfers": ["project", "repo", "bytes", "sha256"],
   "POST /transfers/:id/part": ["offset", "data"],
   "POST /transfers/:id/commit": [],
-  "POST /transfers/place": ["project", "repo", "commit"],
+  "POST /transfers/place": ["project", "repo", "commit", "for"],
   "POST /transfers/back": ["copy", "chat", "haves"],
 });
 /**
@@ -161,9 +175,11 @@ const AGENT_SETTINGS = Object.freeze(["model.name", "model.effort", "loop.permis
  * project, sent as a git bundle into their machine's store (transfers.js); `copy`: one checked out into a copy of
  * theirs for a launch, whose chat holds it (POST /transfers/place); `back`: what its sub-agent changed there, read
  * back (POST /transfers/back); `repo`: what tells their project's repository from another of its folder's name, which
- * its store and copies here are found by (`repo` beside `project` in the transfers' rows).
+ * its store and copies here are found by (`repo` beside `project` in the transfers' rows); `person-copy`: a copy placed
+ * for the person's own chat (POST /transfers/place `for: "person"`), which their machine's app starts there as its full
+ * device and reads back as a launch's, under their grant Agents or Copies (`COPY_ROUTES`).
  */
-export const AGENT_TAKES = Object.freeze(["mode", "exec-mode", "transfer", "copy", "back", "repo"]);
+export const AGENT_TAKES = Object.freeze(["mode", "exec-mode", "transfer", "copy", "back", "repo", "person-copy"]);
 /**
  * A message's block their turn takes: words, and a picture or a document carried whole — never one named by a URL, which
  * a coding agent is handed to open (acp/bridge.js), nor a tool's call or result. @param {any} b
@@ -424,14 +440,17 @@ const ownCopies = (copies, copiesRoot) => {
  * there is refused them, whatever lists it — another machine's copies, a copy let go whose folder a chat's row still
  * names (the reviews of cp-root and cp-fix) —, and so is the copies folder itself and what holds it: a chat's start
  * (`agentFolderRefusal`), a command's, and a file read in a chat of theirs (index.js).
- * @param {string} cwd @param {{ copies?: string, copiesRoot?: string, copiesGone?: readonly string[], doing?: string }} o
+ * A copy placed for the person's own chat (`copiesOwned`, Run on) is refused them too, their own machine's among them:
+ * that chat runs as the person, and loads what its folder holds (the review of s2a).
+ * @param {string} cwd @param {{ copies?: string, copiesRoot?: string, copiesGone?: readonly string[], copiesOwned?: readonly string[], doing?: string }} o
  */
-export function copiesRefusal(cwd, { copies = "", copiesRoot = copiesRootOf(), copiesGone = [], doing = "start a chat" }) {
+export function copiesRefusal(cwd, { copies = "", copiesRoot = copiesRootOf(), copiesGone = [], copiesOwned = [], doing = "start a chat" }) {
   const asked = String(cwd || "").trim();
   if (!asked || !copiesRoot || networkShare(asked) || networkShare(copiesRoot)) return "";
   const c = folderKey(asked);
   const root = folderKey(copiesRoot);
   if (copiesGone.some((g) => g && within(c, folderKey(g)))) return `another machine's agents never ${doing} in a copy let go; ${asked} is in one, which goes`;
+  if (copiesOwned.some((g) => g && within(c, folderKey(g)))) return `another machine's agents never ${doing} in a copy placed for a chat of the person's own; ${asked} is in one`;
   const k = ownCopies(copies, copiesRoot);
   // In one copy alone (`<project>/<n>`): their machine's folder and a project's hold every copy of it, the one another
   // launch works in among them, and no copy's chat is bound there (the swarm's review of 11-10).
@@ -457,11 +476,12 @@ export function copiesRefusal(cwd, { copies = "", copiesRoot = copiesRootOf(), c
  * `copies`: the folder their own machine's copies are kept in here (services/copies.js `folderOf`), which they work in
  * without Full control and whatever agentLoop.roots lists — where it lies inside the copies folder and is itself none
  * of the folders above. Anything else in the copies folder (`copiesRoot`) is refused them, whatever lists it, and so are
- * their own copies let go (`copiesGone`): `copiesRefusal`. A caller passes the copies' own (services/copies.js `fenceOf`).
- * @param {string} cwd @param {{ dataDir: string, home?: string, roots?: readonly string[], folders?: readonly string[], doing?: string, full?: boolean, copies?: string, copiesRoot?: string, copiesGone?: readonly string[] }} o
+ * their own copies let go (`copiesGone`) and those placed for the person's chats (`copiesOwned`): `copiesRefusal`. A
+ * caller passes the copies' own (services/copies.js `fenceOf`).
+ * @param {string} cwd @param {{ dataDir: string, home?: string, roots?: readonly string[], folders?: readonly string[], doing?: string, full?: boolean, copies?: string, copiesRoot?: string, copiesGone?: readonly string[], copiesOwned?: readonly string[] }} o
  * @returns {string | null}
  */
-export function agentFolderRefusal(cwd, { dataDir, home = homedir(), roots = [], folders = [], doing = "start a chat", full = false, copies = "", copiesRoot = copiesRootOf(), copiesGone = [] }) {
+export function agentFolderRefusal(cwd, { dataDir, home = homedir(), roots = [], folders = [], doing = "start a chat", full = false, copies = "", copiesRoot = copiesRootOf(), copiesGone = [], copiesOwned = [] }) {
   const asked = String(cwd || "").trim();
   if (!asked) return null; // the row says a folder is required
   const alias = aliasedPath(asked);
@@ -474,7 +494,7 @@ export function agentFolderRefusal(cwd, { dataDir, home = homedir(), roots = [],
   if (within(c, data) || (!full && within(data, c))) return `another machine's agents never ${doing} in Filament's data folder; ${asked} is ${within(c, data) ? "in" : "around"} it`;
   if (full) return null;
   const h = folderKey(home);
-  const inCopies = copiesRefusal(asked, { copies, copiesRoot, copiesGone, doing });
+  const inCopies = copiesRefusal(asked, { copies, copiesRoot, copiesGone, copiesOwned, doing });
   if (inCopies) return inCopies;
   const k = ownCopies(copies, copiesRoot);
   if (k && within(c, k) && !closedFolder(k, h) && !within(k, data) && !within(data, k)) {
@@ -509,9 +529,11 @@ export const PAGES = Object.freeze(["new"]);
  * chainId, id, open }`: a coding agent's, a sub-agent's; the chat's own ask ends its turn and its answer begins one,
  * which `turn` says). `events-only`: its events feed takes `?only=` and sends those topics alone. `chat-only`: its page
  * shows a chat alone at `?only=chat` (ui/harness/lib/chat-only.js), the desk's look at `&theme=`, beside the desk's own
- * left bar.
+ * left bar. `person-copy`: a chat the desk's full device starts in a copy its agents' device placed for the person
+ * (`AGENT_TAKES`) is bound to that copy (http/admin/sessions.js), works there whatever agentLoop.roots lists, and is read
+ * back from there — Run on.
  */
-export const DESK = Object.freeze(["remote-key", "ask-events", "events-only", "chat-only"]);
+export const DESK = Object.freeze(["remote-key", "ask-events", "events-only", "chat-only", "person-copy"]);
 
 /** The claim's path, answered before any caller is known (index.js). */
 export const CLAIM_PATH = "/remote/claim";
@@ -575,7 +597,17 @@ export function remoteRoutes(a) {
   /** A device as the list says it: an agents' device with its machine's copies here, where it keeps any. @param {any} d */
   const withCopies = (d) => {
     const u = d.scope === "agent" ? a.remoteCopies?.usage(d.id) : null;
-    return u ? { ...d, copies: u } : d;
+    if (!u) return d;
+    // The person's chats in copies placed for them, by their titles: a Clear deletes them with the copies, and says so.
+    const chats = u.chats.map((/** @type {string} */ id) => {
+      let title = "";
+      try {
+        const c = a.memory?.archive?.getChain?.(id);
+        title = String(c?.title || c?.preview || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      } catch {}
+      return { id, title };
+    });
+    return { ...d, copies: { ...u, chats } };
   };
   /** The network's listener as it stands (services/lan-tls.js); null where none is wired. */
   const net = () => a.lan?.()?.state?.() ?? null;

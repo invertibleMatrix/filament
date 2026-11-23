@@ -55,7 +55,7 @@ const BACKS_MAX = 16;
  * @typedef {{ id: string, device: string, copy: string, chat: string, commit: string, kept: boolean, dir: string, file: string, bytes: number, sha256: string, at: number }} Going
  *   a capture going back to the machine whose sub-agent made it (cp-back), kept in its own temp folder until `BACK_TTL_MS`
  *   after it was last read; `kept`: one of what was kept of a copy as `chat` left it (`keepFirst`), not of the copy
- * @typedef {{ id: string, folder: string, project: string, chat: string, repo?: string, turn?: boolean }} CopyHere  a copy as the copies say it
+ * @typedef {{ id: string, folder: string, project: string, chat: string, repo?: string, turn?: boolean, owned?: true }} CopyHere  a copy as the copies say it
  * @typedef {{ ok: true, base: string, commit: string, unchanged: boolean, had: boolean, files: number, left: { path: string, why: string }[], dir: string | null, file: string | null, bytes: number, sha256: string } | { ok: false, error: string, gone?: true }} Captured
  */
 
@@ -69,8 +69,8 @@ const sha256Of = async (file) => {
 /**
  * @param {{ copies: { storeOf: (deviceId: string, project: string, o?: { make?: boolean, repo?: string }) => { ok: true, folder: string } | { ok: false, why: string, busy?: boolean },
  *     roomFor: (deviceId: string, bytes: number, o?: { spare?: ReadonlySet<string> | null }) => string, measureStore?: (deviceId: string, project: string, repo?: string) => Promise<number>,
- *     take?: (deviceId: string, project: string, o?: { leaseMs?: number, repo?: string, fresh?: boolean, again?: string, spare?: ReadonlySet<string> | null }) => { ok: true, copy: { id: string, folder: string }, reused: boolean } | { ok: false, why: string },
- *     hold?: (id: string, leaseMs?: number) => unknown, keep?: (id: string, ms?: number) => unknown, release?: (id: string) => unknown, measure?: (id: string) => Promise<number>,
+ *     take?: (deviceId: string, project: string, o?: { leaseMs?: number, repo?: string, fresh?: boolean, again?: string, spare?: ReadonlySet<string> | null, owned?: boolean }) => { ok: true, copy: { id: string, folder: string }, reused: boolean } | { ok: false, why: string },
+ *     hold?: (id: string, leaseMs?: number) => unknown, keep?: (id: string, ms?: number) => unknown, release?: (id: string, o?: { disown?: boolean }) => unknown, measure?: (id: string) => Promise<number>,
  *     get?: (id: string) => CopyHere | null | undefined,
  *     copyAt?: (deviceId: string, folder: string) => { id: string } | null,
  *     idle?: (deviceId: string, project: string, o?: { repo?: string, not?: readonly string[] }) => CopyHere | null,
@@ -362,18 +362,24 @@ export function createTransfers({ copies, take, haves: havesOf, has = null, chec
      * words, the copy let go again.
      * `keeps`: how long what its sub-agent changes there is kept after its chat last used the copy — in the copy, then
      * as what was kept of it (`keepFirst`) —, for its machine to say.
-     * @param {string} device @param {{ project?: unknown, repo?: unknown, commit?: unknown }} b
-     * @returns {Promise<{ copy: string, folder: string, reused: boolean, keeps?: number } | Refused>}
+     * `for: "person"`: the copy is for the person's own chat, which the app on that machine starts in it as its full
+     * device here (services/copies.js `owned`, `ownedAt`): never taken again by a launch nor let go for room. `agents`:
+     * whether the device's grant Agents is on; with it off (its grant Copies alone), a copy is placed for the person alone.
+     * @param {string} device @param {{ project?: unknown, repo?: unknown, commit?: unknown, for?: unknown }} b @param {{ agents?: boolean }} [o]
+     * @returns {Promise<{ copy: string, folder: string, reused: boolean, keeps?: number, owned?: true } | Refused>}
      */
-    async place(device, b) {
+    async place(device, b, { agents = true } = {}) {
       if (!checkout || !copies.take) return { status: 503, error: "this Filament checks no copy out" };
+      if (b?.for != null && b.for !== "person") return { status: 400, error: 'for is "person", a copy for your own chat, or none' };
+      const person = b?.for === "person";
+      if (!person && !agents) return { status: 403, error: "this machine lets that machine's agents send copies for your own chats alone: Agents is off in Settings › Remote access" };
       const w = where(device, b?.project, b?.repo);
       if ("status" in w) return w;
       const commit = typeof b?.commit === "string" ? b.commit.trim() : "";
       if (!/^[0-9a-f]{40}$/.test(commit)) return { status: 400, error: "commit is the copy's commit, 40 hex digits" };
       if (has && !(await has(w.mirror, commit).catch(() => false))) return { status: 422, error: `the commit ${commit.slice(0, 12)} is not here: send the copy first` };
       const project = String(b?.project).trim();
-      const o = { leaseMs: CHECKOUT_HOLD_MS, repo: w.repo };
+      const o = { leaseMs: CHECKOUT_HOLD_MS, repo: w.repo, owned: person };
       const take_ = copies.take.bind(copies);
       // An idle copy is taken again only once its state is kept in the mirror, one mirror's step with its take, so no
       // other launch of the project looks at it between the two; one whose state cannot be kept is passed over and
@@ -411,12 +417,13 @@ export function createTransfers({ copies, take, haves: havesOf, has = null, chec
         clearInterval(keep);
       }
       if (!out.ok) {
-        copies.release?.(id);
+        // One for the person's chat that could not be checked out is no one's own: it goes as an idle copy does.
+        copies.release?.(id, { disown: person });
         return { status: 422, error: out.error };
       }
       copies.hold?.(id, BIND_MS);
       void copies.measure?.(id).catch(() => {});
-      return { copy: id, folder, reused: took.reused, ...(keep && copies.keepState && copies.keeps ? { keeps: copies.keeps } : {}) };
+      return { copy: id, folder, reused: took.reused, ...(keep && copies.keepState && copies.keeps ? { keeps: copies.keeps } : {}), ...(person ? { owned: /** @type {true} */ (true) } : {}) };
     },
     /**
      * What a launch's sub-agent changed in its copy here, to go back to its machine (cp-back): the copy this device's
@@ -424,16 +431,19 @@ export function createTransfers({ copies, take, haves: havesOf, has = null, chec
      * without what that machine holds (`haves`). → the capture, kept `BACK_TTL_MS` for its parts to be read (`id`);
      * `unchanged` or `had` with none to read; or refused in words. A copy that went to a newer launch, or for room, is
      * answered from what was kept of it as that chat left it (`keepFirst`), for as long as the copies keep one.
-     * @param {string} device @param {{ copy?: unknown, chat?: unknown, haves?: unknown }} b
+     * The person's chat in a copy placed for it (`for: "person"`) is answered as a launch's is. `agents`: whether the
+     * device's grant Agents is on; with it off (its grant Copies alone), only such a copy is read back.
+     * @param {string} device @param {{ copy?: unknown, chat?: unknown, haves?: unknown }} b @param {{ agents?: boolean }} [o]
      * @returns {Promise<{ id: string | null, base: string, commit: string, unchanged: boolean, had: boolean, files: number, left: { path: string, why: string }[], bytes: number, sha256: string } | Refused>}
      */
-    async back(device, b) {
+    async back(device, b, { agents = true } = {}) {
       if (!capture || !copies.get || !copies.copyAt) return { status: 503, error: "this Filament sends no change back" };
       const id = typeof b?.copy === "string" ? b.copy.trim() : "";
       const chat = String(b?.chat ?? "");
       const haves = (Array.isArray(b?.haves) ? b.haves : []).filter((h) => typeof h === "string" && /^[0-9a-f]{40}$/.test(h)).slice(0, 20);
       const c = id ? copies.get(id) : null;
-      const k = id && chat && !(c && c.chat === chat) ? copies.keptOf?.(device, id, chat) : null;
+      // What was kept of a copy a launch let go is its agents' chat's: none of a copy the person owns.
+      const k = agents && id && chat && !(c && c.chat === chat) ? copies.keptOf?.(device, id, chat) : null;
       if (k) {
         const w = where(device, k.project, k.repo, false);
         if ("status" in w) return w;
@@ -458,6 +468,9 @@ export function createTransfers({ copies, take, haves: havesOf, has = null, chec
         return { id: goes(device, { copy: id, chat, commit: k.commit, kept: true, dir: bundled.dir, file: bundled.file, bytes: bundled.bytes, sha256: bundled.sha256 }), ...said, bytes: bundled.bytes, sha256: bundled.sha256 };
       }
       if (!c || copies.copyAt(device, c.folder)?.id !== id) return { status: 404, error: `no copy ${id.slice(0, 60)} of this machine's here: it was cleared, or left idle until it went` };
+      if (!agents && !c.owned) return { status: 403, error: "this machine lets that machine's agents read back copies of your own chats alone: Agents is off in Settings › Remote access" };
+      // A copy the person owns is never another launch's: its chat is the one started there, or none yet.
+      if (c.owned && c.chat !== chat) return { status: 409, error: c.chat ? "that copy here is another chat's" : "no chat was started in that copy here yet" };
       if (!c.chat || c.chat !== chat) return { status: 410, error: "its copy here went to a newer launch of its project once its chat let it go, and nothing is kept of what it changed there any more" };
       // A turn of its chat runs in it now: what it holds is half written, and nothing is read of it until that turn
       // ends (the review of 11-11: a change came back half done) — its machine asks again.

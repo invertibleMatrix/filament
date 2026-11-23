@@ -114,12 +114,15 @@ export { keyOf as folderKeyOf, within as inFolder };
  * One copy: whose machine (`machine`, its key), which of its agents' devices took it last and every one that took it
  * (`by`: a second mint replaces the device, and the chats the first made there are its still), its project's name, its
  * folder, when it was made and last used, until when a launch holds it (0: idle), and its size as last measured.
- * @typedef {{ id: string, machine: string, device: string, by: string[], project: string, folder: string, madeAt: number, usedAt: number, busyUntil: number, bytes: number, chat: string, ran?: boolean, working?: boolean, turn?: boolean, repo?: string, sent?: string }} Copy
+ * @typedef {{ id: string, machine: string, device: string, by: string[], project: string, folder: string, madeAt: number, usedAt: number, busyUntil: number, bytes: number, chat: string, ran?: boolean, working?: boolean, turn?: boolean, repo?: string, sent?: string, owned?: true }} Copy
  *   `chat`: the chat a launch started in it (`bind`), whose turns hold it (`lease`); "" until one is; `ran`: a turn of
  *   that chat's has held it; `turn`: one runs in it now (`lease` to `grace`), and what it holds is half written;
  *   `project`: its store's name (`storeName`); `repo`: the repository it is a copy of, as its
  *   machine tells it apart (none on a copy made before one was sent); `sent`: the capture of it its machine last read
- *   whole or said it holds (`sent`)
+ *   whole or said it holds (`sent`); `owned`: placed for the person's own chat, which their machine's full device starts
+ *   in it (POST /transfers/place `for: "person"`, `ownedAt`): while that chat is there — or, none started yet, while its
+ *   placement holds it (`own`) — never taken again by a launch nor let go for room; it goes `idleMs` after its chat last
+ *   used it, or with a Clear
  * @typedef {{ copy: string, chat: string, machine: string, project: string, repo?: string, name: string, base: string, commit: string, files: number, left: { path: string, why: string }[], at: number, read?: boolean }} Kept
  *   a copy's state as its chat left it, kept in its project's mirror before a newer launch took the copy or it went
  *   for room (the review of 11-11: what its sub-agent changed there, never brought back, went with the checkout):
@@ -130,10 +133,12 @@ export { keyOf as folderKeyOf, within as inFolder };
  *   came for it, its size as last measured, and the repository it is of (none on one kept from before one was sent)
  * @typedef {{ folder: string, name: string, store?: string, stores?: Record<string, Store> }} MachineFolder
  *   `store`: the folder in `STORES` its projects' stores are kept in, `stores` each by its name there (`storeName`)
- * @typedef {{ machine: string, devices: string[], folders: string[], keys: string[], why: "cleared" | "idle" | "room" | "again" }} Cleared
+ * @typedef {{ machine: string, devices: string[], folders: string[], keys: string[], chats: string[], why: "cleared" | "idle" | "room" | "again" }} Cleared
  *   `keys`: each folder as the filesystem named it before it went (`folderKey`), for what compares a chat's folder by
- *   it; `why` "again": folders a let-go left, told again and removed at a sweep
- * @typedef {{ folder: string, machine: string, devices: string[] }} Leftover
+ *   it; `chats`: the person's chats bound to owned copies among them, which go with them as their agents' chats do;
+ *   `why` "again": folders a let-go left, told again and removed at a sweep
+ * @typedef {{ folder: string, machine: string, devices: string[], chat?: string }} Leftover  `chat`: the person's chat an
+ *   owned copy's folder was bound to, deleted with it (`Cleared` `chats`)
  * @typedef {ReturnType<typeof createCopies>} Copies
  */
 
@@ -213,13 +218,13 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     const held = (/** @type {any} */ c) => (c.working === true ? Math.min(Number(c.busyUntil) || 0, now() + GRACE_MS) : Number(c.busyUntil) || 0);
     copies = (Array.isArray(j?.copies) ? j.copies : [])
       .filter((/** @type {any} */ c) => c && typeof c.id === "string" && typeof c.folder === "string" && typeof c.machine === "string" && (inRoot(c.folder) || void out(c.folder)))
-      .map((/** @type {any} */ c) => ({ id: c.id, machine: c.machine, device: String(c.device || ""), by: (Array.isArray(c.by) ? c.by : [c.device]).map(String).filter(Boolean), project: String(c.project || ""), folder: c.folder, madeAt: Number(c.madeAt) || 0, usedAt: Number(c.usedAt) || 0, busyUntil: held(c), bytes: Number(c.bytes) || 0, chat: String(c.chat || ""), ran: c.ran === true, working: false, turn: false, ...repoOf(c.repo), ...(shaOf(c.sent) ? { sent: c.sent } : {}) }));
+      .map((/** @type {any} */ c) => ({ id: c.id, machine: c.machine, device: String(c.device || ""), by: (Array.isArray(c.by) ? c.by : [c.device]).map(String).filter(Boolean), project: String(c.project || ""), folder: c.folder, madeAt: Number(c.madeAt) || 0, usedAt: Number(c.usedAt) || 0, busyUntil: held(c), bytes: Number(c.bytes) || 0, chat: String(c.chat || ""), ran: c.ran === true, working: false, turn: false, ...repoOf(c.repo), ...(shaOf(c.sent) ? { sent: c.sent } : {}), ...(c.owned === true ? { owned: /** @type {true} */ (true) } : {}) }));
     keptStates = (Array.isArray(j?.kept) ? j.kept : [])
       .filter((/** @type {any} */ k) => k && typeof k.copy === "string" && typeof k.chat === "string" && typeof k.machine === "string" && machines[k.machine] && shaOf(k.base) && shaOf(k.commit))
       .map((/** @type {any} */ k) => ({ copy: k.copy, chat: k.chat, machine: k.machine, project: String(k.project || ""), ...repoOf(k.repo), name: String(k.name || ""), base: k.base, commit: k.commit, files: Number(k.files) || 0, left: leftOf(k.left), at: Number(k.at) || 0, ...(k.read === true ? { read: true } : {}) }));
     leftovers = (Array.isArray(j?.leftovers) ? j.leftovers : [])
       .filter((/** @type {any} */ l) => inRoot(l?.folder) || void (typeof l?.folder === "string" && out(l.folder)))
-      .map((/** @type {any} */ l) => ({ folder: l.folder, machine: String(l.machine || ""), devices: (Array.isArray(l.devices) ? l.devices : []).map(String).filter(Boolean) }));
+      .map((/** @type {any} */ l) => ({ folder: l.folder, machine: String(l.machine || ""), devices: (Array.isArray(l.devices) ? l.devices : []).map(String).filter(Boolean), ...(typeof l.chat === "string" && l.chat ? { chat: l.chat } : {}) }));
     // A list kept before copies were by the device this Filament issued names each machine by the id its claim stated
     // (the security re-read of 11-11). Its folder and copies are found again by the devices that took them: they go to
     // the app's device that minted those, where the copies under that id are one machine's — kept so at the next
@@ -332,6 +337,22 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
 
   /** Whether the chat a copy is bound to still has work going in it, past its turns (`setWorking`). @type {((chat: string) => boolean) | null} */
   let working = null;
+  /** Whether a chat is still there, not deleted (`setChatThere`). @type {((chat: string) => boolean) | null} */
+  let chatThere = null;
+  /** Whether a copy's chat was deleted: what is not known is there. @param {Copy} c */
+  const chatGone = (c) => {
+    try {
+      return !!c.chat && !!chatThere && !chatThere(c.chat);
+    } catch {
+      return false;
+    }
+  };
+  /**
+   * Whether a copy is the person's own chat's now (`owned`): its chat still there, or none started in it yet while its
+   * placement holds it. One whose chat never came, or was deleted, is taken again and let go for room as any idle copy
+   * (the review of s2a: it held its place for a week). @param {Copy} c
+   */
+  const own = (c) => !!c.owned && (c.chat ? !chatGone(c) : c.busyUntil > now());
   /** Whether a command another machine's agents run here still runs in a folder (`holdWhile`): exec.js's. @type {((folder: string) => boolean)[]} */
   const runsIn = [];
   /** Whether a copy is held by a launch now, or its chat's work still runs there: a sub-agent, a background command. @param {Copy} c */
@@ -363,7 +384,7 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     if (!gone.length) return Promise.resolve(/** @type {string[]} */ ([]));
     const folders = gone.map((l) => l.folder);
     for (const f of folders) going.add(f);
-    const cleared = { machine: gone[0]?.machine || "", devices: [...new Set(gone.flatMap((l) => l.devices))], folders, keys: folders.map(keyOf), why };
+    const cleared = { machine: gone[0]?.machine || "", devices: [...new Set(gone.flatMap((l) => l.devices))], folders, keys: folders.map(keyOf), chats: [...new Set(gone.flatMap((l) => (l.chat ? [l.chat] : [])))], why };
     const run = Promise.allSettled([...clearHeard].map(async (fn) => fn(cleared))).then(async (told) => {
       for (const t of told) if (t.status === "rejected") log("warn", `[copies] what works in ${folders.length} cleared folders was not all stopped: ${String(t.reason?.message || t.reason).slice(0, 160)}`);
       const rootKey = keyOf(root);
@@ -408,8 +429,10 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     const folders = [...gone.map((c) => c.folder), ...more];
     const ids = new Set(gone.map((c) => c.id));
     const told = [...new Set([...devicesOf(key), ...gone.flatMap((c) => c.by)])];
+    // The person's chat bound to an owned copy goes with it, as their agents' chats go with theirs.
+    const chatOf = new Map(gone.filter((c) => c.owned && c.chat).map((c) => [c.folder, c.chat]));
     copies = copies.filter((c) => !ids.has(c.id));
-    const fresh = folders.map((folder) => ({ folder, machine: key, devices: told }));
+    const fresh = folders.map((folder) => ({ folder, machine: key, devices: told, ...(chatOf.has(folder) ? { chat: /** @type {string} */ (chatOf.get(folder)) } : {}) }));
     leftovers = [...leftovers.filter((l) => !folders.includes(l.folder)), ...fresh];
     save();
     return settle(fresh, why);
@@ -419,7 +442,8 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
    * The idle copies of a machine's that would go for one more copy of its (`copy`), or for `more` bytes of what it
    * sends, oldest first, while it would hold `maxCopies`, or more than `maxBytes` as measured with its stores — only
    * those named in `spare` where one is given: an idle copy may hold what its sub-agent changed, never brought back,
-   * and goes only once that is kept (`keepState`). → them, what would stay, and how many idle ones were passed over.
+   * and goes only once that is kept (`keepState`). → them, what would stay, how many idle ones were passed over, and how
+   * many of the machine's copies are the person's own chats' (`owned`), which never go for room.
    * `not`: idle ones passed over as a busy one is.
    * @param {{ key: string, name: string }} m @param {{ copy?: boolean, more?: number, spare?: ReadonlySet<string> | null, not?: readonly string[] }} [o]
    */
@@ -430,9 +454,10 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     let count = mine.length;
     let size = mine.reduce((n, c) => n + c.bytes, 0) + storeBytes(m.key) + more;
     let held = 0;
+    const owns = mine.filter(own).length;
     for (const c of mine) {
       if ((!copy || count < maxCopies) && size <= maxBytes) break;
-      if (busy(c) || not.includes(c.id)) continue;
+      if (busy(c) || own(c) || not.includes(c.id)) continue;
       if (spare && !spare.has(c.id)) {
         held++;
         continue;
@@ -441,7 +466,7 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       count--;
       size -= c.bytes;
     }
-    return { gone, count, size, held };
+    return { gone, count, size, held, owns };
   };
   /**
    * Room for one more copy of a machine's (`copy`), or for `more` bytes of what it sends: its oldest idle copies go
@@ -449,15 +474,23 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
    * @param {{ key: string, name: string }} m @param {{ copy?: boolean, more?: number, spare?: ReadonlySet<string> | null }} [o] @returns {string}
    */
   const room = (m, { copy = true, more = 0, spare = null } = {}) => {
-    const { gone, count, size, held } = roomOf(m, { copy, more, spare });
+    const { gone, count, size, held, owns } = roomOf(m, { copy, more, spare });
     const aside = held ? `, ${held} of them idle with a change that could not be kept aside` : "";
-    if (copy && count >= maxCopies) return `${m.name}'s agents have ${count} copies${held ? "" : " in use"} on this machine, the most it keeps for them${aside}: no more is made until one is let go`;
-    if (size > maxBytes) return `${m.name}'s copies${held ? "" : " in use"}${more ? " and this send" : ""} take ${gib(size)} on this machine, past the ${gib(maxBytes)} kept for them${aside}: clear them in Settings › Remote access`;
+    // Copies of your own chats among them (Run on): said as yours, never as their agents' in use.
+    const yours = owns ? `, ${owns} of them your own chats'` : "";
+    if (copy && count >= maxCopies)
+      return owns
+        ? `${m.name} has ${count} copies on this machine${yours}${aside}, the most it keeps: no more is made until one goes, or they are cleared in Settings › Remote access`
+        : `${m.name}'s agents have ${count} copies${held ? "" : " in use"} on this machine, the most it keeps for them${aside}: no more is made until one is let go`;
+    if (size > maxBytes) return `${m.name}'s copies${held || owns ? "" : " in use"}${more ? " and this send" : ""} take ${gib(size)} on this machine, past the ${gib(maxBytes)} kept for them${yours}${aside}: clear them in Settings › Remote access`;
     if (gone.length) void letGo(m.key, gone, "room");
     return "";
   };
-  /** A machine's idle copies of a project a launch may take again, the one idle longest first. @param {{ key: string }} m @param {string} name  its store's @param {string} repo */
-  const idleOf = (m, name, repo) => copiesOf(m.key).filter((c) => (repo ? c.repo === repo : c.project === name && !c.repo) && !busy(c));
+  /**
+   * A machine's idle copies of a project a launch may take again, the one idle longest first: never one the person's own
+   * chat is in (`owned`). @param {{ key: string }} m @param {string} name  its store's @param {string} repo
+   */
+  const idleOf = (m, name, repo) => copiesOf(m.key).filter((c) => !own(c) && (repo ? c.repo === repo : c.project === name && !c.repo) && !busy(c));
 
   /** A copy's new folder in its project's folder: the next number not there. @param {string} projectFolder */
   const nextFolder = (projectFolder) => {
@@ -572,10 +605,11 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
      * for its own repository alone, one made before repositories were sent for a launch that sends none. → the copy,
      * its folder made; or why not, in words. `again`: that idle copy and no other (its state kept first, `idle`),
      * refused where it is idle no more; `spare`: the idle copies that may go for room (`needs`), any where none is given.
-     * @param {string} deviceId @param {string} project @param {{ leaseMs?: number, fresh?: boolean, repo?: string, again?: string, spare?: ReadonlySet<string> | null }} [o]  `fresh`: never an idle one
+     * `owned`: the copy is the person's own chat's from then on (`Copy` `owned`), an idle one taken again with it.
+     * @param {string} deviceId @param {string} project @param {{ leaseMs?: number, fresh?: boolean, repo?: string, again?: string, spare?: ReadonlySet<string> | null, owned?: boolean }} [o]  `fresh`: never an idle one
      * @returns {{ ok: true, copy: Copy, reused: boolean } | { ok: false, why: string }}
      */
-    take(deviceId, project, { leaseMs = LEASE_MS, fresh = false, repo = "", again = "", spare = null } = {}) {
+    take(deviceId, project, { leaseMs = LEASE_MS, fresh = false, repo = "", again = "", spare = null, owned = false } = {}) {
       const m = machineOf(deviceId);
       if (!m) return { ok: false, why: "copies are kept for another machine's agents alone" };
       if (rootRefusal) return { ok: false, why: rootRefusal };
@@ -592,6 +626,8 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
         idle.ran = false;
         idle.turn = false;
         delete idle.sent;
+        if (owned) idle.owned = true;
+        else delete idle.owned;
         idle.device = String(deviceId);
         if (!idle.by.includes(idle.device)) idle.by = [...idle.by, idle.device].slice(-8);
         save();
@@ -607,7 +643,7 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
         return { ok: false, why: `${folder} could not be made: ${e?.message || e}` };
       }
       /** @type {Copy} */
-      const c = { id: randomUUID(), machine: m.key, device: String(deviceId), by: [String(deviceId)], project: name, folder, madeAt: now(), usedAt: now(), busyUntil: now() + leaseMs, bytes: 0, chat: "", ran: false, working: true, ...repoOf(repo) };
+      const c = { id: randomUUID(), machine: m.key, device: String(deviceId), by: [String(deviceId)], project: name, folder, madeAt: now(), usedAt: now(), busyUntil: now() + leaseMs, bytes: 0, chat: "", ran: false, working: true, ...repoOf(repo), ...(owned ? { owned: /** @type {true} */ (true) } : {}) };
       copies.push(c);
       save();
       return { ok: true, copy: { ...c }, reused: false };
@@ -625,14 +661,16 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     /**
      * The chat a launch started in a copy, kept on it: its turns hold it (`lease`). Only the first that runs a turn
      * there: a copy taken for one launch is that launch's chat's, and a chat of it that never ran one gives way to the
-     * next (the launch's machine never heard the answer that named it, and starts another). → whether it is that chat's
-     * now. @param {string} id @param {string} chat
+     * next (the launch's machine never heard the answer that named it, and starts another), and so does one deleted
+     * (`setChatThere`). → whether it is that chat's now. @param {string} id @param {string} chat
      */
     bind(id, chat) {
       const c = copies.find((x) => x.id === id);
       if (!c || !chat) return false;
-      if (!c.chat || (!c.ran && c.chat !== String(chat))) {
+      const gone = c.chat !== String(chat) && chatGone(c);
+      if (!c.chat || (!c.ran && c.chat !== String(chat)) || gone) {
         c.chat = String(chat);
+        if (gone) c.ran = false;
         save();
       }
       return c.chat === String(chat);
@@ -645,7 +683,8 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     lease(id, chat) {
       const c = copies.find((x) => x.id === id);
       if (!c) return "its copy here was cleared, or left idle until it went: a new launch takes a fresh one";
-      if (c.chat !== String(chat)) return "its copy here went to a newer launch of its project once this chat let it go: a new launch takes a fresh one";
+      if (c.chat !== String(chat))
+        return c.owned ? "its copy here went to another chat started there: Run on sends a fresh copy" : "its copy here went to a newer launch of its project once this chat let it go: a new launch takes a fresh one";
       c.busyUntil = now() + LEASE_MS;
       c.working = true;
       c.usedAt = now();
@@ -682,14 +721,18 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       save();
       return true;
     },
-    /** A copy let go: idle, for the next launch of its project. @param {string} id */
-    release(id) {
+    /**
+     * A copy let go: idle, for the next launch of its project. `disown`: one placed for the person's chat whose checkout
+     * failed is no one's own any more, and goes as an idle copy does. @param {string} id @param {{ disown?: boolean }} [o]
+     */
+    release(id, { disown = false } = {}) {
       const c = copies.find((x) => x.id === id);
       if (!c) return false;
       c.busyUntil = 0;
       c.working = false;
       c.turn = false;
       c.usedAt = now();
+      if (disown) delete c.owned;
       save();
       return true;
     },
@@ -704,6 +747,19 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       if (!m || !folder) return null;
       const k = keyOf(folder);
       const c = copies.find((x) => x.machine === m.key && within(k, keyOf(x.folder)));
+      return c ? { ...c } : null;
+    },
+    /**
+     * The copy placed for the person's own chat (`owned`) that a folder is or lies in, for the full device that machine's
+     * agents' devices were minted by — the copies' machine key (`machineOf`) — alone: the app on that machine starts its
+     * chat there as the person. Null for any other device, and for a copy no one owns.
+     * @param {string} deviceId  a full device's @param {string} folder @returns {Copy | null}
+     */
+    ownedAt(deviceId, folder) {
+      const d = devices.get(String(deviceId || ""));
+      if (!d || d.scope !== "full" || d.revokedAt != null || !folder) return null;
+      const k = keyOf(folder);
+      const c = copies.find((x) => x.owned && x.machine === String(d.id) && within(k, keyOf(x.folder)));
       return c ? { ...c } : null;
     },
     /**
@@ -774,16 +830,17 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       return bytes;
     },
     /**
-     * What a device's machine keeps here: how many copies, their size as measured with what it sent (its stores), and its
-     * folder; null for a device whose machine keeps none. @param {string} deviceId
-     * @returns {{ count: number, bytes: number, folder: string } | null}
+     * What a device's machine keeps here: how many copies, their size as measured with what it sent (its stores), its
+     * folder, and the person's chats bound to its owned copies (`chats`), which a Clear deletes with them; null for a
+     * device whose machine keeps none. @param {string} deviceId
+     * @returns {{ count: number, bytes: number, folder: string, chats: string[] } | null}
      */
     usage(deviceId) {
       const m = machineOf(deviceId);
       if (!m) return null;
       const mine = copiesOf(m.key);
       if (!mine.length && !machines[m.key]) return null;
-      return { count: mine.length, bytes: mine.reduce((n, c) => n + c.bytes, 0) + storeBytes(m.key), folder: machineFolder(m) };
+      return { count: mine.length, bytes: mine.reduce((n, c) => n + c.bytes, 0) + storeBytes(m.key), folder: machineFolder(m), chats: mine.filter((c) => own(c) && c.chat).map((c) => c.chat) };
     },
     /** Every copy. @returns {Copy[]} */
     list: () => copies.map((c) => ({ ...c })),
@@ -839,11 +896,12 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     gone: () => leftovers.map((l) => l.folder),
     /**
      * What the fence takes of an agents' device's copies (http/admin/remote.js `agentFolderRefusal`): its machine's
-     * folder, the copies folder, and the folders let go. @param {string} deviceId
+     * folder, the copies folder, the folders let go, and the copies placed for the person's own chats (`copiesOwned`),
+     * which their agents never start, run or read in (the review of s2a). @param {string} deviceId
      */
     fenceOf(deviceId) {
       const m = machineOf(deviceId);
-      return { copies: (m && machines[m.key]?.folder) || "", copiesRoot: root, copiesGone: leftovers.map((l) => l.folder) };
+      return { copies: (m && machines[m.key]?.folder) || "", copiesRoot: root, copiesGone: leftovers.map((l) => l.folder), copiesOwned: copies.filter((c) => c.owned).map((c) => c.folder) };
     },
     /** → once every let-go under way has ended, its folders removed or left for the sweep. */
     settled: async () => {
@@ -864,6 +922,14 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
      */
     setWorking(fn) {
       working = fn;
+    },
+    /**
+     * What tells whether a chat is still there: one deleted lets go of the copy it was bound to — the person's copy is
+     * no one's own then (`own`), and a chat started there next is bound to it. Set once the archive is.
+     * @param {((chat: string) => boolean) | null} fn
+     */
+    setChatThere(fn) {
+      chatThere = fn;
     },
     /**
      * A single command another machine's agents run in a copy holds it too while it runs (exec.js), bound to no chat: no

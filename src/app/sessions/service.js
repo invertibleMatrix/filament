@@ -2090,13 +2090,14 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    * defaults: there are no presets (the owner's of 11-07). A client written before them sends `preset` none, or
    * "plain", which was the defaults named; any other name is refused in words, never dropped — a start that asked for
    * a read-only preset must not quietly start with every tool.
-   * @param {{ cwd: string, model?: string | null, settings?: any, preset?: string | null, unmade?: boolean, theirs?: boolean }} args
+   * @param {{ cwd: string, model?: string | null, settings?: any, preset?: string | null, unmade?: boolean, theirs?: boolean, ownCopy?: string }} args
    *   `unmade`: the Start board's draft of a chat outside a project, whose folder of Filament's own (app/everything.js)
    *   is made at its first send — weighed where it will be, its fence judged by Everything's own check; never `create`'s.
    *   `theirs`: a chat another machine's agents start, or one made from theirs — the one kind Filament's copies folder
-   *   is a root for (`folderVerdict`'s `person`)
+   *   is a root for (`folderVerdict`'s `person`). `ownCopy`: the folder of the copy placed for the person's chat that
+   *   their machine's app starts (http/admin/sessions.js, services/copies.js `ownedAt`), a root for it (`folderVerdict`'s `copy`)
    */
-  function draftOf({ cwd, model = null, settings = null, preset, unmade = false, theirs = false }) {
+  function draftOf({ cwd, model = null, settings = null, preset, unmade = false, theirs = false, ownCopy = "" }) {
     if (preset != null && !["none", "plain"].includes(String(preset).trim().toLowerCase()))
       throw refusal(400, `there are no presets: a new chat starts from your defaults, and what it changes rides as its settings ("${String(preset)}" names none)`);
     const folder = String(cwd || "").trim();
@@ -2104,7 +2105,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     // Judged as Filament's own loop judges its working folder (`folderVerdict`), for whichever agent the chat runs: a
     // coding agent works in the folder its chat names, so a chat in a folder outside the roots agentLoop.roots lists is
     // not made, nor one on a network share no listed root names. With none listed, any folder is.
-    const verdict = unmade ? null : folderVerdict(config.get(), folder, { person: !theirs });
+    const verdict = unmade ? null : folderVerdict(config.get(), folder, { person: !theirs, copy: theirs ? "" : ownCopy });
     if (verdict?.why === "missing") throw refusal(400, `the folder does not exist on this machine: ${folder}`);
     if (verdict?.why === "outside") throw refusal(403, outsideRootsWords(folder));
     const real = verdict ? verdict.root : folder;
@@ -2122,7 +2123,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
   /**
    * A new session: the folder validated, its project row ensured (D3), the chain created with the harness as client
    * and the given session layer (plus `model.name`).
-   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean }} args
+   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean, ownCopy?: string }} args
    *   `preset`: none, as `draftOf` reads it. `autoTitle` (no `title`): named by the first line of its first message
    *   that reaches the model, never by a command Filament answers (backlog 18) — the archive writes it when that turn
    *   begins. `beside`: the chat a team's chat runs beside
@@ -2132,9 +2133,9 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    *   `thread`: the chat whose agent started this one (core/threads.js), an interactive chat tied to it by a `thread`
    *   link as it is made — Filament's own, never a route's.
    *   `agents`: another machine's agents' device starts it (http/admin/sessions.js) — `draftOf`'s `theirs`; one made
-   *   from a chat of theirs is theirs without it.
+   *   from a chat of theirs is theirs without it. `ownCopy`: as `draftOf` reads it.
    */
-  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false }) {
+  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false, ownCopy = "" }) {
     const a = archive();
     if (kind === "team" ? !beside || !a.hasChain(String(beside)) : kind !== "interactive" && kind !== "fork") throw refusal(400, `kind must be interactive or fork, not "${kind}"`);
     if (thread != null && (kind !== "interactive" || !a.hasChain(String(thread)))) throw refusal(400, "a thread is an interactive chat started from one that is there");
@@ -2145,7 +2146,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     const madeFrom = beside || parentId || thread;
     const theirs = madeFrom ? a.metaOf(String(madeFrom), ["agentDevice", "agentFrom"]) : null;
     const device = theirs?.agentDevice;
-    const draft = draftOf({ cwd, model, settings, preset, theirs: agents || typeof device === "string" });
+    const draft = draftOf({ cwd, model, settings, preset, theirs: agents || typeof device === "string", ownCopy });
     const real = draft.cwd;
     // The project is the folder's, or its main folder's for a worktree (GW-D46); the chat's own folder is `meta.cwd`.
     const project = a.ensureProject(draft.home);
@@ -2191,8 +2192,8 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    * every pause in typing. `create` runs the same `draftOf` before it writes, so the board shows what the first
    * send makes. The folder's Environment comes from the app's capture, whose short cache the first turn then reuses
    * (HarnessV3-SystemPrompt SP-D7).
-   * @param {{ cwd: string, model?: string | null, settings?: any, preset?: string | null, text?: string, unmade?: boolean, outside?: boolean }} args
-   *   `unmade`: as `draftOf` reads it; `outside`: a chat outside a project, in Everything's folder — the answer says
+   * @param {{ cwd: string, model?: string | null, settings?: any, preset?: string | null, text?: string, unmade?: boolean, outside?: boolean, ownCopy?: string }} args
+   *   `unmade`, `ownCopy`: as `draftOf` reads them; `outside`: a chat outside a project, in Everything's folder — the answer says
    *   so, and counts the memories it draws on that hold everywhere
    */
   async function draftStart(args) {

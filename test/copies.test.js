@@ -67,7 +67,7 @@ test("a copy is taken in its machine's folder, held, let go and taken again; a s
   const remint = devices.mintAgents(pc.full, { from: "DESKTOP-1" });
   assert.ok(remint.ok);
   assert.equal(copies.folderOf(remint.device.id), join(root, "From DESKTOP-1"));
-  assert.deepEqual(copies.usage(remint.device.id), { count: 2, bytes: 0, folder: join(root, "From DESKTOP-1") });
+  assert.deepEqual(copies.usage(remint.device.id), { count: 2, bytes: 0, folder: join(root, "From DESKTOP-1"), chats: [] });
 
   // Another machine of the same name: its own folder.
   const other = machineOf("DESKTOP-1", "22222222-2222-4222-8222-222222222222");
@@ -150,7 +150,7 @@ test("copies kept under the id a claim stated are found again by the devices tha
   );
   const copies = createCopies({ dataDir: data, root, devices, now: () => 1_000 });
   assert.equal(copies.folderOf(pc.agents), mine, "found again by the device that took them");
-  assert.deepEqual(copies.usage(pc.agents), { count: 1, bytes: 7, folder: mine });
+  assert.deepEqual(copies.usage(pc.agents), { count: 1, bytes: 7, folder: mine, chats: [] });
   const again = copies.take(pc.agents, "web-shop");
   assert.ok(again.ok && again.reused && again.copy.id === "c-1", "its idle copy is taken again");
   assert.equal(again.copy.machine, pc.full, "kept by the app's device that minted its agents'");
@@ -284,7 +284,7 @@ test("a machine's room: past its copies, the oldest idle one goes and its chats 
   assert.ok(c2.ok);
   await copies.settled();
   assert.equal(existsSync(a.copy.folder), false, "the oldest idle copy went");
-  assert.deepEqual(heard, [{ machine: pc.full, devices: [pc.agents], folders: [a.copy.folder], keys: [aKey], why: "room" }], "told by the device this Filament issued, never by the id its claim stated");
+  assert.deepEqual(heard, [{ machine: pc.full, devices: [pc.agents], folders: [a.copy.folder], keys: [aKey], chats: [], why: "room" }], "told by the device this Filament issued, never by the id its claim stated");
 
   // Its bytes as measured: the copies in use past them, a make is refused, and the idle one is not let go for nothing.
   writeFileSync(join(b.copy.folder, "big.bin"), Buffer.alloc(2 * 1024 ** 2));
@@ -337,7 +337,7 @@ test("a copy idle a week goes, one held stays; Clear takes a machine's copies, h
   assert.equal(existsSync(join(root, "From DESKTOP-1")), false, "its folder went with them");
   assert.equal(existsSync(root), true, "the copies folder stays");
   assert.equal(heard.length, 1);
-  assert.deepEqual({ ...heard[0], devices: [...heard[0].devices].sort() }, { machine: pc.full, devices: [pc.agents, remint.device.id].sort(), folders: [held.copy.folder, join(root, "From DESKTOP-1")], keys, why: "cleared" }, "the device a second mint replaced is told too: its chats there are its own");
+  assert.deepEqual({ ...heard[0], devices: [...heard[0].devices].sort() }, { machine: pc.full, devices: [pc.agents, remint.device.id].sort(), folders: [held.copy.folder, join(root, "From DESKTOP-1")], keys, chats: [], why: "cleared" }, "the device a second mint replaced is told too: its chats there are its own");
   assert.equal(copies.folderOf(remint.device.id), "", "nothing of theirs is opened after a Clear");
   assert.deepEqual(await copies.clear(pc.full), { cleared: 0, bytes: 0, failed: [] }, "a full device has none");
 });

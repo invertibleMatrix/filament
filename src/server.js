@@ -1819,6 +1819,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     // as it started (http/admin/remote.js `agentFolderRefusal`; the fc-review's).
     agentsFolder: (/** @type {string} */ cwd, /** @type {string | null | undefined} */ device) =>
       agentFolderRefusal(cwd, { dataDir, roots: config.get().agentLoop?.roots || [], folders: memory.chatFolders({ person: true }), doing: "work", ...remoteCopies.fenceOf(device || "") }),
+    // The copy placed for a chat of the person's, bound to it as their machine's app started it there (http/admin/
+    // sessions.js): its turns work in it whatever agentLoop.roots lists.
+    ownCopy: (/** @type {string} */ chat) => {
+      if (!chat) return "";
+      const id = memory.archive?.metaOf?.(chat, ["copy"])?.copy;
+      const c = typeof id === "string" ? remoteCopies.get(id) : null;
+      return c?.owned && c.chat === chat ? c.folder : "";
+    },
     secondLook,
     // Parallelize tasks for a chat: its own switch, else Settings › Experimental's (`parallelFor`).
     parallelFor,
@@ -2059,6 +2067,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   remoteCopies.setWorking(
     (chat) => runningShellsOf(chat).length > 0 || subagents.list(chat).some((s) => s.status === "running") || (agentTasks.get(chat) || []).some((t) => t.background !== false),
   );
+  // A chat deleted lets go of the copy it was bound to: the person's (Run on) is no one's own then.
+  remoteCopies.setChatThere((chat) => memory.archive?.hasChain?.(chat) !== false);
   // Late-bound on purpose: the service takes the pipeline, the pipeline's commands take the service — a cycle
   // resolved by reading the property at call time (the /autofit command), never at wiring time.
   deps.sessions = sessions;

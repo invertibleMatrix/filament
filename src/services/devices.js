@@ -50,12 +50,14 @@ export const machineIdOf = (s) => (typeof s === "string" && /^[0-9a-f]{8}-[0-9a-
  * follow chats), use its models, use its browser, run without asking in Auto (`unasked`: off, Auto is judged as Edit
  * for their chats and their commands), and run their chats on the coding agents here (`codingAgents`). `full`, Full
  * control (the owner's of 11-09), sits on top of `agents` and is kept only with it: their chats here run as the person's
- * own, and while it is on it holds `unasked` and `codingAgents` with it (`heldGrant`). Every device carries them; an
- * agents' device alone holds one on.
- * @typedef {{ agents: boolean, models: boolean, browser: boolean, unasked: boolean, codingAgents: boolean, full: boolean }} Grants
+ * own, and while it is on it holds `unasked` and `codingAgents` with it (`heldGrant`). `copies`, on its own: that
+ * machine sends copies of its projects here for the person's own chats and reads back what changed there (Run on,
+ * http/admin/remote.js `COPY_ROUTES`) — no agent of theirs runs here by it; Agents holds it too. Every device carries
+ * them; an agents' device alone holds one on.
+ * @typedef {{ agents: boolean, copies: boolean, models: boolean, browser: boolean, unasked: boolean, codingAgents: boolean, full: boolean }} Grants
  */
 /** The grants by name. */
-export const GRANTS = Object.freeze(/** @type {(keyof Grants)[]} */ (["agents", "models", "browser", "unasked", "codingAgents", "full"]));
+export const GRANTS = Object.freeze(/** @type {(keyof Grants)[]} */ (["agents", "copies", "models", "browser", "unasked", "codingAgents", "full"]));
 /** The grants Full control holds with it while on: switched off, each is as its own pill says. */
 export const FULL_HOLDS = Object.freeze(/** @type {(keyof Grants)[]} */ (["unasked", "codingAgents"]));
 /**
@@ -88,7 +90,7 @@ export const scopeOf = (s) => (s === "full" || s === "agent" ? s : "view");
  * Grants as kept: each on where it is `true`, off else — a devices.json from before them holds none —, and Full control
  * with `agents` alone. @param {any} g @returns {Grants}
  */
-const grantsOf = (g) => ({ agents: g?.agents === true, models: g?.models === true, browser: g?.browser === true, unasked: g?.unasked === true, codingAgents: g?.codingAgents === true, full: g?.full === true && g?.agents === true });
+const grantsOf = (g) => ({ agents: g?.agents === true, copies: g?.copies === true, models: g?.models === true, browser: g?.browser === true, unasked: g?.unasked === true, codingAgents: g?.codingAgents === true, full: g?.full === true && g?.agents === true });
 /** A code as typed, as it is compared: letters upper-cased, everything that is no letter or digit gone. @param {unknown} s */
 export const normalCode = (s) => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 /** @param {string} token */

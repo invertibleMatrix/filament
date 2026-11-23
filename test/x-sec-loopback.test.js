@@ -152,7 +152,7 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
     assert.deepEqual(await pending(), [], "no code was made");
     shut(await call(`/api/remote/devices/${agents}`, { method: "PATCH", body: { grants: { agents: true, unasked: true } } }), "a grant");
     shut(await call(`/api/remote/devices/${agents}`, { method: "PATCH", body: { name: "Mine now", grants: { agents: false } } }), "a grant with a name");
-    assert.deepEqual(await grants(), { agents: false, models: false, browser: false, unasked: false, codingAgents: false, full: false }, "no grant was set");
+    assert.deepEqual(await grants(), { agents: false, copies: false, models: false, browser: false, unasked: false, codingAgents: false, full: false }, "no grant was set");
     const renamed = await call(`/api/remote/devices/${agents}`, { method: "PATCH", body: { name: "Studio's agents" } });
     assert.equal(renamed.status, 200, renamed.text);
     // The app's page: its writes carry the key.

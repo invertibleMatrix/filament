@@ -16,7 +16,7 @@ import { GRANTS, UNREAD_DEVICE, createDevices, fullControl, grantEnds, heldGrant
 import { scaledMs } from "./helpers/wait.js";
 
 const JSON_TYPE = { "content-type": "application/json" };
-const OFF = { agents: false, models: false, browser: false, unasked: false, codingAgents: false, full: false };
+const OFF = { agents: false, copies: false, models: false, browser: false, unasked: false, codingAgents: false, full: false };
 
 // (fails before: yes — there was no grant `full`: GRANTS had five, and fullControl, heldGrant and grantEnds were none)
 test("the store: Full control off by default, kept only with Agents, never carried over a second mint; it holds Without asking and Coding agents while on; a revoked device holds no Full control, nor any grant", () => {

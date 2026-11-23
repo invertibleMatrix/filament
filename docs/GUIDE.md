@@ -364,8 +364,8 @@ agents they are, as its Settings › Remote access › This machine names it (el
 below), and it starts with nothing allowed. On the machine worked on, Settings › Remote access › Machines shows it on
 that machine's card, on the line *What <machine> may do on this machine*, with a pill for each thing it may do here (its whole
 meaning on its tooltip),
-**Agents** first, each off until this computer or a full device paired with it presses it; the agents' device switches
-nothing itself. With Agents on, their chats:
+**Agents** first, then **Run on** (a copy for your own chat, below), each off until this computer or a full device
+paired with it presses it; the agents' device switches nothing itself. With Agents on, their chats:
 
 - start inside a folder `agentLoop.roots` lists, where it lists any, else inside the folders of your own projects and
   chats on that machine — never a home folder or what holds one, a drive's root, Filament's data folder, a folder on
@@ -449,6 +449,23 @@ worked in there, after asking. Whatever runs in a copy (a chat's turn, its sub-a
 is stopped before its folder is deleted; a folder Windows still holds open stays until the hourly sweep removes it, and
 the toast says so. `FILAMENT_COPIES_DIR` naming a drive's root or a home folder is ignored, and a copies folder in or
 around Filament's data folder makes no copy.
+
+**Run on: a copy for your own chat.** A machine can also send a copy of a project here for a chat of yours to run in:
+its agents' device places the copy for you (`for: "person"`), and its app starts the chat in it as your device paired
+here — the one that made that agents' device. That chat is the copy's: it works there whatever `agentLoop.roots` lists,
+its turns hold the copy, and what it changed is read back to the machine that sent it, as a launch's change is. Their
+agents start no chat there, their own machine's included, and without Full control run no command there and read
+nothing of it. Another chat
+started in that folder — one of this computer's, another device's, a fork or a thread of that chat — is bound to no
+copy, and is made only where `agentLoop.roots` lets it, as in any folder. While its chat is there — or, before one is
+started, for the quarter hour after the copy is placed — the copy is never taken by a launch of the same project nor let
+go to make room; it still counts in the 12 copies and 20 GB. Once its chat is deleted, or none came, it is an idle copy
+as any. It goes a week after its chat last worked there, the chat with it. One copy holds one chat: a second start
+there once the first ran a turn is refused; one before that takes the copy, and the first chat, which never ran, is
+deleted. The **Run on** pill on that machine's line lets it do this with **Agents** off — send copies, place them for
+your chats, read back what changed —, and nothing more: no chat or command of its agents runs here by it. Agents holds
+Run on while it is on. **Clear copies** names your chats it would delete with the copies — *Your chat running there
+from Laptop is deleted too: “Fix the widgets”.* — before it asks.
 
 In the desktop app, each machine added to the app has a card in Settings › Remote access › Machines, and on it the
 line *What this machine may do on <machine>*, with a pill for each thing this Filament may do there — what each does on its
@@ -1885,8 +1902,8 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/remote/lan[?fresh=1]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
 | `POST /api/remote/lan/new-key` | New key: the network listener's key and certificate made anew and served at once, its artifacts' address too (this computer alone); every machine and command line paired over the network pairs again. Answers the listener's state, its new fingerprint in it. |
 | `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ cookie, token }`, which the app keeps as an HttpOnly cookie of its windows; any other call is refused (403). |
-| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`); a device signs itself out. |
-| `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
+| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on); a device signs itself out. |
+| `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`; `copies` is Run on); an agents' device's `copies` says what its machine keeps here, your chats in its copies among it (`chats`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
 | `POST /api/remote/agent-device` | A full device makes its own machine's agents a device here: `{ device, machine, token }`, the token this once, its grant off. A second one replaces the first. |
 | `GET /.well-known/filament` | This machine's id and name, its version, and the wire it speaks with the oldest it still speaks (`protocol`, `protocolLowest`), to anyone: what the pairing page, `filament connect` and another machine's app ask before a code or a token is sent. |
 | `POST /api/dry-run` | Route and shape a request without sending it. |

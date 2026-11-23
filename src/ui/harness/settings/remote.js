@@ -179,10 +179,12 @@ export function qrSvg(encoder, text) {
  * `judged`); `codingAgents` by their chats' turn on a coding agent (acp-turn.js). `full`, on top of `agents`, by all of
  * them: their chats run as yours (devices.js `fullControl`), Without asking and Coding agents with it (`heldGrant`).
  * `browser` is kept, and gets its switch once something reads it (the plan's browser step): a switch that changes
- * nothing would say what is not so.
+ * nothing would say what is not so. `copies` by the admin gate (remote.js `COPY_ROUTES`): Run on from that machine
+ * alone; Agents holds it with it.
  */
 export const GRANT_ROWS = Object.freeze([
   { grant: "agents", short: "Agents", label: "Agents may work here", says: (/** @type {string} */ n) => `${n}'s agents may start chats here and run commands as you, in your project folders. What they ask comes to you on ${n}.` },
+  { grant: "copies", short: "Run on", label: "Your chats on it may run here", says: (/** @type {string} */ n) => `${n} may send a copy of a project here for a chat of yours to run in, and bring its changes back (Run on). No agent of ${n}'s works here by it.` },
   { grant: "models", short: "Models", label: "Its chats may use this machine's models", says: (/** @type {string} */ n) => `${n}'s chats may use the API models set up here, on this machine's keys. Usage counts what they spend.` },
   { grant: "unasked", short: "Without asking", label: "May run without asking", says: (/** @type {string} */ n) => `${n}'s sub-agents, and the single commands ${n} sends, run here without asking when the chat on ${n} that sent them is in Full access. Off, they always ask, and their command tasks and checks don't run.` },
   { grant: "codingAgents", short: "Coding agents", label: "May use coding agents here", says: (/** @type {string} */ n) => `${n}'s chats may run on the coding agents here (Claude Code, Codex, Cursor), on their sign-ins here, without your own MCP servers; Cursor still loads its own.` },
@@ -638,7 +640,10 @@ export function renderRemote(body, cb = {}, io = {}) {
    */
   const clearCopies = async (d, machine) => {
     const n = Number(d.copies?.count) || 0;
-    const description = `${n === 1 ? "Its copy" : `Its ${n} copies`} on ${hereName()} ${n === 1 ? "is" : "are"} deleted, with the chats its agents worked in there: one at work there stops. The next time they work here, ${machine} sends a new copy.`;
+    // Chats of yours that run in copies placed for them (Run on) go too: named, so none is deleted unsaid.
+    const yours = (Array.isArray(d.copies?.chats) ? d.copies.chats : []).map((/** @type {any} */ c) => `“${String(c?.title || "Untitled chat")}”`);
+    const also = yours.length ? ` Your ${yours.length === 1 ? "chat" : `${yours.length} chats`} running there from ${machine} ${yours.length === 1 ? "is" : "are"} deleted too: ${yours.slice(0, 5).join(", ")}${yours.length > 5 ? `, and ${yours.length - 5} more` : ""}.` : "";
+    const description = `${n === 1 ? "Its copy" : `Its ${n} copies`} on ${hereName()} ${n === 1 ? "is" : "are"} deleted, with the chats its agents worked in there: one at work there stops.${also} The next time they work here, ${machine} sends a new copy.`;
     if (!(await ask({ title: `Clear ${machine}'s copies?`, description, confirmLabel: "Clear copies", destructive: true }))) return;
     try {
       const r = await call(`/remote/devices/${encodeURIComponent(d.id)}/copies/clear`, { method: "POST" });
@@ -1230,17 +1235,20 @@ export function renderRemote(body, cb = {}, io = {}) {
 
   /**
    * A pill for each thing a machine's agents may do here, each PATCHing its grant on their device. Full control waits
-   * for Agents, and holds Without asking and Coding agents on while it is on. @param {any} a  their device @param {string} name
+   * for Agents, and holds Without asking and Coding agents on while it is on; Agents holds Run on.
+   * @param {any} a  their device @param {string} name
    */
   const grantPills = (a, name) =>
     m("span", { class: "rset-pills", role: "group", "aria-label": `What ${name}'s agents may do here` },
       ...GRANT_ROWS.map((g) => {
         const own = a.grants?.[g.grant] === true;
-        // Held by Full control, which is on top of Agents: on, and still while it is on.
-        const held = FULL_HOLDS.includes(g.grant) && a.grants?.full === true && a.grants?.agents === true;
+        // Held by Full control, which is on top of Agents: on, and still while it is on. Run on is held by Agents.
+        const byFull = FULL_HOLDS.includes(g.grant) && a.grants?.full === true && a.grants?.agents === true;
+        const byAgents = g.grant === "copies" && a.grants?.agents === true;
+        const held = byFull || byAgents;
         // Full control waits for Agents: on top of it, never alone.
         const waits = g.grant === "full" && !own && a.grants?.agents !== true;
-        const title = held ? `${g.says(name)} On while Full control is on.` : waits ? `${g.says(name)} Turn on Agents first.` : g.says(name);
+        const title = held ? `${g.says(name)} On while ${byFull ? "Full control" : "Agents"} is on.` : waits ? `${g.says(name)} Turn on Agents first.` : g.says(name);
         return pill(g.short, own || held, { aria: `${g.label} (${a.name})`, title, held, disabled: held || waits || granting.has(`${a.id}:${g.grant}`), data: { "data-grant": g.grant }, onclick: () => void setGrant(a, g.grant, !own, name) });
       }));
 

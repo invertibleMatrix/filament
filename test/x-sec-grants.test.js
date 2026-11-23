@@ -502,7 +502,7 @@ test("the store: both switches off by default, set alone, carried over a second 
     const minted = devices.mintAgents(full.device.id);
     assert.ok(minted.ok);
     assert.deepEqual([minted.device.grants.unasked, minted.device.grants.codingAgents], [false, false]);
-    assert.deepEqual(devices.grant(minted.device.id, { unasked: true })?.grants, { agents: false, models: false, browser: false, unasked: true, codingAgents: false, full: false });
+    assert.deepEqual(devices.grant(minted.device.id, { unasked: true })?.grants, { agents: false, copies: false, models: false, browser: false, unasked: true, codingAgents: false, full: false });
     devices.grant(minted.device.id, { codingAgents: true });
     const again = devices.mintAgents(full.device.id);
     assert.ok(again.ok);
@@ -512,7 +512,7 @@ test("the store: both switches off by default, set alone, carried over a second 
     for (const d of kept.devices) d.grants = { agents: true };
     writeFileSync(join(dir, "devices.json"), JSON.stringify(kept));
     const back = createDevices({ dataDir: dir });
-    assert.deepEqual(back.get(again.device.id)?.grants, { agents: true, models: false, browser: false, unasked: false, codingAgents: false, full: false });
+    assert.deepEqual(back.get(again.device.id)?.grants, { agents: true, copies: false, models: false, browser: false, unasked: false, codingAgents: false, full: false });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -674,7 +674,7 @@ test("Settings › Remote access: on the line for what a machine's agents may do
   assert.equal(textOf(coders), "Coding agents");
   assert.match(coders.attrs.title, /on their sign-ins here, without your own MCP servers; Cursor still loads its own\.$/);
   assert.deepEqual([ask, coders].map((s) => s.attrs["aria-pressed"]), ["false", "false"]);
-  assert.deepEqual(pills(itemOf(body, "What Laptop may do on this machine")).map((s) => s.attrs["aria-label"]).filter((a) => a.endsWith("(Filament agents on Laptop)")).length, 5, "every pill its agents' device's");
+  assert.deepEqual(pills(itemOf(body, "What Laptop may do on this machine")).map((s) => s.attrs["aria-label"]).filter((a) => a.endsWith("(Filament agents on Laptop)")).length, 6, "every pill its agents' device's");
   ask.attrs.onclick();
   await settle();
   assert.deepEqual(sent.filter(([m]) => m === "PATCH").at(-1), ["PATCH", "/remote/devices/d-agents", { grants: { unasked: true } }]);

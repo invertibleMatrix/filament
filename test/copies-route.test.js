@@ -79,7 +79,7 @@ test("their copy: a chat of theirs starts in it without Full control, roots list
     assert.match(await turn.text(), /"ok"|\bok\b/);
 
     const listed = await (await there.api("/api/remote/devices")).json();
-    assert.deepEqual(listed.devices.find((/** @type {any} */ d) => d.id === id)?.copies, { count: 1, bytes: 0, folder: join(base, "copies", "From Laptop") });
+    assert.deepEqual(listed.devices.find((/** @type {any} */ d) => d.id === id)?.copies, { count: 1, bytes: 0, folder: join(base, "copies", "From Laptop"), chats: [] });
     const full = listed.devices.find((/** @type {any} */ d) => d.scope === "full");
     assert.equal(full.copies, undefined, "a full device keeps none");
 
