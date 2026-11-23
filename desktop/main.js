@@ -1487,13 +1487,22 @@ async function run() {
     const w = windows.get("harness");
     if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk", d);
   };
+  /**
+   * The harness window's own page — This computer's, Filament's page there, not a popped pane's — a word to the desk
+   * comes from, else null: a popped pane, which never hears the desk move, neither reads it nor acts through it (the hunt
+   * on s1e). @param {Electron.IpcMainEvent | Electron.IpcMainInvokeEvent} e
+   */
+  const deskPage = (e) => {
+    const w = windows.get("harness");
+    return w && !w.isDestroyed() && paneOf(e) === w && rail?.hearsPage(e.sender, e.senderFrame) === LOCAL_ID ? w : null;
+  };
   // This computer's page asks for it as it starts listening (harness-preload.cjs `onDesk`), Filament's own page alone.
-  ipcMain.handle("filament:desk", (e) => (paneOf(e) ? (deskNow ?? deskOf()) : null));
+  ipcMain.handle("filament:desk", (e) => (deskPage(e) ? (deskNow ?? deskOf()) : null));
   // The desk's Done cleared: those chats of a machine kept marked seen there (harness-preload.cjs `seen`), this
   // computer's page alone, its chats' ids as ids — fifty at most —, the machine's own mark and nothing else.
   ipcMain.handle("filament:desk-seen", async (e, p) => {
     const id = String(p?.id ?? "");
-    if (!paneOf(e) || !readKept(machinesFile).some((k) => k.id === id && !k.off)) return false;
+    if (!deskPage(e) || !readKept(machinesFile).some((k) => k.id === id && !k.off)) return false;
     const chains = (Array.isArray(p?.chains) ? p.chains : []).map(String).filter((c) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/.test(c)).slice(0, 50);
     await Promise.all(chains.map((c) => fleet.markSeen(id, c)));
     return true;
@@ -1511,15 +1520,7 @@ async function run() {
       if (f.type === "turn" || f.type === "ask" || f.type === "hello") lookSoon(f.machine);
     },
   });
-  ipcMain.handle("filament:desk-call", (e, p) => (paneOf(e) ? desk.call(p) : null));
-  /**
-   * The harness window's own page — This computer's, Filament's page there, not a popped pane's — a word to the desk's
-   * chat shown in place comes from, else null. @param {Electron.IpcMainEvent | Electron.IpcMainInvokeEvent} e
-   */
-  const deskPage = (e) => {
-    const w = windows.get("harness");
-    return w && !w.isDestroyed() && paneOf(e) === w && rail?.hearsPage(e.sender, e.senderFrame) === LOCAL_ID ? w : null;
-  };
+  ipcMain.handle("filament:desk-call", (e, p) => (deskPage(e) ? desk.call(p) : null));
   /** A rectangle of the page's, in the window's units. @param {BrowserWindow} w @param {unknown} rect */
   const deskRect = (w, rect) => {
     const [width, height] = w.getContentSize();

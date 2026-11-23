@@ -545,7 +545,7 @@ test("close during a stream's wait to join again ends it there: no stream asked 
 
 test("main.js: the desk's bridge heard from Filament's own page in the harness window alone; its frames told to that page alone; reach is lib/reach.js's", () => {
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
-  assert.match(main, /ipcMain\.handle\("filament:desk-call", \(e, p\) => \(paneOf\(e\) \? desk\.call\(p\) : null\)\);/);
+  assert.match(main, /ipcMain\.handle\("filament:desk-call", \(e, p\) => \(deskPage\(e\) \? desk\.call\(p\) : null\)\);/, "This computer's page alone, not a popped pane's (the hunt on s1e)");
   assert.match(main, /if \(w && !w\.isDestroyed\(\) && paneHears\(true, w\.webContents\.getURL\(\), origin\)\) w\.webContents\.send\("filament:desk-event", f\);/);
   assert.match(main, /machineBrowsers\.sync\(\);\n\s+desk\.sync\(\);/, "its streams follow the machines kept, at each look");
   assert.match(main, /machineBrowsers\.destroy\(\);\n\s+desk\.close\(\);/, "and end as the app does");

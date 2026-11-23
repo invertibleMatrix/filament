@@ -50,7 +50,8 @@ const HARNESS_HASH = /^#\/[^\s#]*$/;
 export function showAsk(p, zoom, content, place) {
   const id = String(p?.machine ?? "");
   const hash = String(p?.route ?? "");
-  if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(id) || id === LOCAL_ID || !HARNESS_HASH.test(hash) || hash.length > 2000) return null;
+  // Any id the machines file keeps (machines.js `idOf`), not a narrower one (the hunt on s1e).
+  if (!/^[a-z0-9_-]{1,64}$/i.test(id) || id === LOCAL_ID || !HARNESS_HASH.test(hash) || hash.length > 2000) return null;
   return { id, hash, rect: place(p?.rect, zoom, content), theme: p?.theme === "light" ? "light" : "dark", focus: p?.focus === true };
 }
 

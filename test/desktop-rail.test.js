@@ -1923,11 +1923,12 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
   assert.deepEqual(frames, [{ machine: "m-box", type: "hello" }]);
   // main.js hears each from a harness page of the window alone, as its machine.
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
-  // The desk told to Filament's own page in the harness window alone, and asked for by a harness page of Filament's alone.
+  // The desk told to Filament's own page in the harness window alone, and asked for by that page alone — not a popped
+  // pane's, which never hears it move (the hunt on s1e).
   assert.match(main, /if \(w && !w\.isDestroyed\(\) && paneHears\(true, w\.webContents\.getURL\(\), origin\)\) w\.webContents\.send\("filament:desk", d\);/);
-  assert.match(main, /ipcMain\.handle\("filament:desk", \(e\) => \(paneOf\(e\) \? \(deskNow \?\? deskOf\(\)\) : null\)\);/);
+  assert.match(main, /ipcMain\.handle\("filament:desk", \(e\) => \(deskPage\(e\) \? \(deskNow \?\? deskOf\(\)\) : null\)\);/);
   // Seen there: This computer's page alone, a machine kept and connected, its chats' ids as ids.
-  assert.match(main, /ipcMain\.handle\("filament:desk-seen", async \(e, p\) => \{\n\s+const id = String\(p\?\.id \?\? ""\);\n\s+if \(!paneOf\(e\) \|\| !readKept\(machinesFile\)\.some\(\(k\) => k\.id === id && !k\.off\)\) return false;\n\s+const chains = [^\n]+\.filter\(\(c\) => \/\^\[A-Za-z0-9\]\[A-Za-z0-9_\.:-\]\{0,99\}\$\/\.test\(c\)\)\.slice\(0, 50\);\n\s+await Promise\.all\(chains\.map\(\(c\) => fleet\.markSeen\(id, c\)\)\);/);
+  assert.match(main, /ipcMain\.handle\("filament:desk-seen", async \(e, p\) => \{\n\s+const id = String\(p\?\.id \?\? ""\);\n\s+if \(!deskPage\(e\) \|\| !readKept\(machinesFile\)\.some\(\(k\) => k\.id === id && !k\.off\)\) return false;\n\s+const chains = [^\n]+\.filter\(\(c\) => \/\^\[A-Za-z0-9\]\[A-Za-z0-9_\.:-\]\{0,99\}\$\/\.test\(c\)\)\.slice\(0, 50\);\n\s+await Promise\.all\(chains\.map\(\(c\) => fleet\.markSeen\(id, c\)\)\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-open", \(e, rect\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.openPop\(id, rect\);/);
   assert.match(main, /ipcMain\.on\("filament:machines-title-bar", \(e, c\) => \{\n\s+const id = rail\?\.hearsPage\(e\.sender, e\.senderFrame\);\n\s+if \(id\) rail\?\.tintFrom\(id, c\);/);
   assert.match(main, /ipcMain\.on\("filament:frame-area", \(e, r\) => void \(rail\?\.hearsPage\(e\.sender, e\.senderFrame\) === LOCAL_ID && rail\.frameArea\(r\)\)\);/);
@@ -2571,7 +2572,9 @@ describe("another machine's chat shown in place", () => {
     assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", theme: "sepia" }, 1, { width: 1, height: 1 }, place)?.theme, "dark");
     assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", focus: true }, 1, { width: 1, height: 1 }, place)?.focus, true);
     assert.equal(showAsk({ machine: "m-box", route: "#/task/c1", focus: "yes" }, 1, { width: 1, height: 1 }, place)?.focus, false);
-    for (const p of [{ machine: LOCAL_ID, route: "#/" }, { machine: "../x", route: "#/" }, { machine: "m-box", route: "#/a b" }, { machine: "m-box", route: `#/${"x".repeat(2000)}` }, null])
+    for (const p of [{ machine: LOCAL_ID, route: "#/" }, { machine: "../x", route: "#/" }, { machine: "m.box", route: "#/" }, { machine: "x".repeat(65), route: "#/" }, { machine: "m-box", route: "#/a b" }, { machine: "m-box", route: `#/${"x".repeat(2000)}` }, null])
       assert.equal(showAsk(p, 1, { width: 1, height: 1 }, place), null, JSON.stringify(p)?.slice(0, 40));
+    // (fails before: yes — the hunt on s1e) Any id the machines file keeps: one with an underscore too.
+    assert.equal(showAsk({ machine: "m_box", route: "#/task/c1" }, 1, { width: 1, height: 1 }, place)?.id, "m_box");
   });
 });
