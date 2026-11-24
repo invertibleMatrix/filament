@@ -5,8 +5,9 @@
 // shows on the other machine, and its code; who answers there, and its certificate's fingerprint to compare where
 // nothing vouches for it; then the pairing, which the app makes — or, for ssh://<alias>, the tunnel the app holds, and
 // no code: ssh's own sign-in let this computer in. Above the fields, the machines of this computer's tailnet that run
-// Filament, a press filling the address. A classic script: a module from a file:// page is refused. Its functions are
-// tried on fakes in test/desktop-rail.test.js.
+// Filament, a press filling the address; under them, Set it up over SSH, for a machine with no Filament yet — the setup
+// sheet of This computer's page, the SSH host typed here passed to it. A classic script: a module from a file:// page is
+// refused. Its functions are tried on fakes in test/desktop-rail.test.js.
 "use strict";
 
 /** The popover's gap under the chip, and its least room from the window's edges. */
@@ -105,7 +106,7 @@ function hearRail(doc, bridge) {
  * `enter`: the address or link and the code; `compare`: the certificate's fingerprint the app read, for the person to
  * say whether the machine shows the same — nothing is sent there before; `ready`: who answers, and Pair — Add, through
  * an SSH tunnel (`who.ssh`), where no code is asked.
- * @param {{ add: (input: any) => Promise<any>, closeAdd: () => void }} bridge @param {(v: SheetView) => void} show
+ * @param {{ add: (input: any) => Promise<any>, closeAdd: () => void, setupOverSsh?: (alias: string) => void }} bridge @param {(v: SheetView) => void} show
  */
 function addFlow(bridge, show) {
   /** @type {SheetView["phase"]} */
@@ -191,7 +192,22 @@ function addFlow(bridge, show) {
       view("Nothing was sent. Another fingerprint means something else answered at that address: check it, and the network you are on.", true);
     },
     cancel: () => bridge.closeAdd(),
+    /** Set it up over SSH: This computer's setup sheet, with the SSH host typed here where there is one. */
+    setup() {
+      if (!busy) bridge.setupOverSsh?.(sshHostOf(link));
+    },
   };
+}
+
+/**
+ * The SSH host an address names, for the setup over SSH: `ssh://<alias>` (Filament's port after it left), or
+ * user@host as it is; "" for any other. @param {string} link
+ */
+function sshHostOf(link) {
+  const s = String(link || "").trim();
+  const m = /^ssh(?::\/\/|\s+)(.*?)(?::\d{1,5})?\/*$/i.exec(s);
+  const host = m ? m[1].trim() : s;
+  return /^(?:\w[\w.-]*@)?\w[\w.-]*$/.test(host) && (m || host.includes("@")) ? host : "";
 }
 
 /** The sheet drawn as the flow says it. @param {any} doc @param {SheetView} v */
@@ -221,6 +237,7 @@ function paintSheet(doc, v) {
   $("add-said").textContent = v.words;
   $("add-said").classList.toggle("err", v.err);
   for (const b of $("add-peers-list")?.querySelectorAll?.("button") ?? []) b.disabled = v.busy;
+  if ($("add-setup")) $("add-setup").disabled = v.busy;
 }
 
 /** How long the ask for the tailnet's machines goes before the sheet says it is looking. */
@@ -326,6 +343,10 @@ function hearSheet(doc, flow) {
   });
   $("add-cancel").addEventListener("click", () => flow.cancel());
   $("add-back").addEventListener("click", () => flow.notSame());
+  $("add-setup")?.addEventListener("click", () => {
+    fields();
+    flow.setup();
+  });
   doc.addEventListener("keydown", (/** @type {any} */ e) => {
     if (e.key === "Escape" && doc.body.classList.contains("adding")) flow.cancel();
   });
@@ -350,4 +371,4 @@ if (typeof window !== "undefined" && /** @type {any} */ (window).filamentRail) {
     /** @type {any} */ (document.getElementById("add-link"))?.focus();
   });
 }
-if (typeof module !== "undefined") module.exports = { popPlace, drawRail, hearRail, addFlow, paintSheet, hearSheet, drawPeers, peerLook, peerPick };
+if (typeof module !== "undefined") module.exports = { popPlace, drawRail, hearRail, addFlow, paintSheet, hearSheet, drawPeers, peerLook, peerPick, sshHostOf };

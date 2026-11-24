@@ -1479,7 +1479,7 @@ describe("adding a machine", () => {
     assert.equal(view.webContents.loads[0], "https://192.168.0.9:20343/.well-known/filament");
     assert.ok(t.sessions["persist:machine-m-new"].sets >= 1, "its partition's certificate check set before its page loads");
     const got = await v;
-    assert.deepEqual(got, { ok: true, name: "Studio" });
+    assert.deepEqual(got, { ok: true, id: "m-new", name: "Studio" });
     assert.equal(view.webContents.scripts.length, 1);
     assert.match(view.webContents.scripts[0], /^fetch\("\/api\/remote\/claim"/);
     assert.match(view.webContents.scripts[0], /ABCD-EFGH/);
@@ -1492,7 +1492,64 @@ describe("adding a machine", () => {
     assert.ok(t.ticks.length > 0, "and is looked at");
   });
 
-  // (fails before: yes — s0b: a machine added by ssh:// was kept with no device there, its Filament taking the tunnel's
+  test("pair with stay (the setup over SSH): kept and opened in the background, the window left on This computer; a way added after its others", async () => {
+    /** @type {any[]} */
+    const kept = [];
+    const t = rig({
+      kept: [],
+      check: async () => BOXC,
+      keep: {
+        add: (/** @type {any} */ m) => {
+          kept.push(m);
+          const k = machine(m.id, m.name, m.routes);
+          t.setList([localMachine(ORIGIN), k]);
+          return k;
+        },
+        remove: () => false,
+      },
+      claim: async () => ({ status: 200, body: { machine: { id: "m-new" } } }),
+    });
+    await t.settle();
+    assert.deepEqual(await t.r.add({ op: "pair", link: "192.168.0.9:20343", stay: true }), { ok: true, id: "m-new", name: "Studio" });
+    assert.equal(t.r.active(), "local", "This computer stays shown");
+    assert.ok(t.viewOf("persist:machine-m-new"), "its view made all the same");
+    const ssh = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "me@box", port: 20300 };
+    const got = t.r.addWay("m-new", ssh);
+    assert.deepEqual(got?.routes, [BOXC.route, ssh], "after the way it was paired at");
+    assert.deepEqual(kept.at(-1), { id: "m-new", name: "Studio", routes: [BOXC.route, ssh], partition: "persist:machine-m-new" });
+    assert.equal(t.r.addWay("m-none", ssh), null, "none of that id: nothing kept");
+    assert.equal(t.r.addWay("local", ssh), null, "nor This computer");
+  });
+
+  test("a way added to a machine you disconnected keeps it disconnected; a code the setup made there already is claimed through the tunnel, none made anew", async () => {
+    /** @type {any[]} */
+    const offs = [];
+    const box = { ...machine("m-box", "Box", [BOXC.route]), off: true };
+    const t = rig({
+      kept: [box],
+      keep: { add: (/** @type {any} */ m) => ({ ...box, ...m, off: undefined }), remove: () => false, off: (/** @type {string} */ id, /** @type {boolean} */ off) => (offs.push([id, off]), null) },
+    });
+    await t.settle();
+    t.r.addWay("m-box", { kind: "ssh", url: "http://127.0.0.1:5555", alias: "me@box", port: 20300 });
+    assert.deepEqual(offs, [["m-box", true]]);
+
+    const route = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "filtest", port: 20300 };
+    /** @type {any[]} */
+    const asked = [];
+    const u = rig({
+      kept: [],
+      check: async () => ({ ok: true, url: route.url, code: "", fingerprint: "", route, machine: { id: "m-new", name: "Studio", version: "" }, ssh: "filtest" }),
+      keep: { add: (/** @type {any} */ m) => machine(m.id, m.name, m.routes), remove: () => false },
+      claim: async () => ({ status: 200, body: { machine: { id: "m-new" } } }),
+      sshPair: async (/** @type {string} */ alias) => (asked.push(alias), { code: "WXYZ-2345" }),
+    });
+    await u.settle();
+    assert.deepEqual(await u.r.add({ op: "pair", link: "ssh://filtest", stay: true, made: "ABCD-EFGH" }), { ok: true, id: "m-new", name: "Studio" });
+    assert.deepEqual(asked, [], "no code made anew over SSH");
+    assert.match(u.viewOf("persist:machine-m-new").webContents.scripts[0], /ABCD-EFGH/);
+  });
+
+  // (fails before: yes — s0b:a machine added by ssh:// was kept with no device there, its Filament taking the tunnel's
   // end for this computer itself)
   test("through an SSH tunnel: a code made there over SSH and claimed through the tunnel, as any machine's — its device's cookie in its partition —, its harness opened with its alias, shown, the sheet closed", async () => {
     const route = { kind: "ssh", url: "http://127.0.0.1:5555", alias: "filtest", port: 20300 };
@@ -1521,7 +1578,7 @@ describe("adding a machine", () => {
     assert.deepEqual(await t.r.add({ op: "check", link: "ssh://filtest" }), { ok: true, id: "m-new", url: route.url, name: "Studio", fingerprint: "", kept: false, code: false, ssh: "filtest" });
     assert.deepEqual([kept, asked], [[], []], "Continue keeps nothing, and asks nothing over SSH");
     const got = await t.r.add({ op: "pair", link: "ssh://filtest", code: "", expect: "m-new" });
-    assert.deepEqual(got, { ok: true, name: "Studio" });
+    assert.deepEqual(got, { ok: true, id: "m-new", name: "Studio" });
     assert.deepEqual(asked, [["filtest", "m-new"]], "the code made there, over SSH");
     assert.deepEqual(kept, [{ id: "m-new", name: "Studio", routes: [route], partition: "persist:machine-m-new" }]);
     const view = t.viewOf("persist:machine-m-new");
@@ -1566,7 +1623,7 @@ describe("adding a machine", () => {
     await t.settle();
     assert.deepEqual(await t.r.add({ op: "pair", link: "ssh://filtest" }), { ok: false, words: "A pairing with Studio is on its way." });
     for (const r of later) r({ words: "the Filament app runs on Studio, and makes its codes in its window" });
-    assert.deepEqual(await first, { ok: true, name: "Studio", note: "the Filament app runs on Studio, and makes its codes in its window" });
+    assert.deepEqual(await first, { ok: true, id: "m-new", name: "Studio", note: "the Filament app runs on Studio, and makes its codes in its window" });
     assert.deepEqual(kept, [{ id: "m-new", name: "Studio", routes: [route], partition: "persist:machine-m-new" }]);
     const view = t.viewOf("persist:machine-m-new");
     assert.deepEqual(view.webContents.loads, ["http://127.0.0.1:5555/ui/harness.html?ssh=filtest"], "its harness and nothing else: no claim's page");
@@ -1617,7 +1674,7 @@ describe("adding a machine", () => {
     t.r.select("m-box");
     await t.settle();
     assert.ok(later.length >= 1, "its view opening: an ask on its way");
-    assert.deepEqual(await t.r.add({ op: "pair", link: "ssh://filtest" }), { ok: true, name: "Workstation" });
+    assert.deepEqual(await t.r.add({ op: "pair", link: "ssh://filtest" }), { ok: true, id: "m-box", name: "Workstation" });
     assert.equal(kept[0].partition, "persist:machine-m-box.2", "the partition it had");
     const view = t.viewOf("persist:machine-m-box.2");
     assert.equal(view.webContents.loads.at(-1), "http://127.0.0.1:5555/ui/harness.html?ssh=filtest");
@@ -1677,7 +1734,7 @@ describe("adding a machine", () => {
     assert.equal(verdict("192.168.0.9"), -2, "the host the new way names is pinned while the claim is made");
     assert.equal(verdict("box.tail1234.ts.net"), -3, "its other ways as they were");
     answer();
-    assert.deepEqual(await p, { ok: true, name: "Workstation" });
+    assert.deepEqual(await p, { ok: true, id: "m-box", name: "Workstation" });
     assert.deepEqual(kept, [{ id: "m-box", name: "Workstation", routes: [pinned.route], partition: "persist:machine-m-box" }], "kept: lib/machines.js puts the new way first, the old ones after; reached at another host before, its partition the one it had");
     assert.match(k.viewOf("persist:machine-m-box").webContents.scripts[0], /^fetch\("\/api\/remote\/sign-out",\{method:"POST"/, "this window's old device signed out there first");
   });
@@ -1732,7 +1789,7 @@ describe("adding a machine", () => {
     assert.deepEqual(fresh.cookies.jar.map((/** @type {any} */ k) => [k.url, k.name, k.value, k.secure, k.httpOnly]), [[url, "__Host-filament-device", "the-old-sign-in", true, true]], "this window's sign-in carried, for the claim to sign it out");
     assert.deepEqual([verdict(fresh, first.cert), verdict(fresh, second.cert)], [-2, 0], "the new certificate alone in it");
     answer({ status: 200, body: { machine: { id: "m-box" } } });
-    assert.deepEqual(await p, { ok: true, name: "Workstation" });
+    assert.deepEqual(await p, { ok: true, id: "m-box", name: "Workstation" });
     assert.match(view.webContents.scripts[0], /^fetch\("\/api\/remote\/sign-out"/, "signed out there first");
     assert.equal(kept[0].partition, "persist:machine-m-box.1", "kept with it");
     assert.equal(old.cleared, 1, "the partition it left cleared, the old certificate's yes with it");
@@ -1875,7 +1932,7 @@ describe("adding a machine", () => {
     await k.settle();
     assert.equal(wc.scripts.length, 1, "the claim made once its own page loaded");
     answer();
-    assert.deepEqual(await p, { ok: true, name: "Workstation" });
+    assert.deepEqual(await p, { ok: true, id: "m-box", name: "Workstation" });
   });
 
   // (fails before: yes — an opening ask's answer loaded the harness over the claim's page)
@@ -1902,7 +1959,7 @@ describe("adding a machine", () => {
     await k.settle();
     assert.equal(box.webContents.loads.at(-1), "https://192.168.0.9:20343/.well-known/filament", "the claim's page stands");
     answer();
-    assert.deepEqual(await p, { ok: true, name: "Workstation" });
+    assert.deepEqual(await p, { ok: true, id: "m-box", name: "Workstation" });
     assert.equal(box.webContents.loads.at(-1), "https://192.168.0.9:20343/ui/harness.html", "its harness opens where it was paired");
   });
 
@@ -2394,7 +2451,7 @@ test("a machine's page's bridges: its chip's state, its press, its colours, and 
 
 describe("the app's page", () => {
   const src = readFileSync(new URL("../desktop/rail-page.js", import.meta.url), "utf8");
-  /** @returns {{ popPlace: Function, drawRail: Function, hearRail: Function, addFlow: Function, paintSheet: Function, hearSheet: Function, drawPeers: Function, peerLook: Function, peerPick: Function }} */
+  /** @returns {{ popPlace: Function, drawRail: Function, hearRail: Function, addFlow: Function, paintSheet: Function, hearSheet: Function, drawPeers: Function, peerLook: Function, peerPick: Function, sshHostOf: Function }} */
   const load = () => {
     const box = { module: { exports: {} } };
     vm.runInNewContext(src, box);
@@ -2594,8 +2651,33 @@ describe("the app's page", () => {
     assert.match(els["add-who-kept"].textContent, /^It is in this window already: pairing again/);
   });
 
+  test("Set it up over SSH: This computer's setup sheet asked for, with the SSH host the field names — none for an address that is no SSH host; not while a step runs", async () => {
+    const { addFlow, sshHostOf } = load();
+    assert.deepEqual(
+      ["ssh://me@box", "ssh://me@box:20300", "ssh build-box", "me@box", "https://192.168.0.9:20343", "box", "ssh://-oProxyCommand=x", ""].map((l) => sshHostOf(l)),
+      ["me@box", "me@box", "build-box", "me@box", "", "", "", ""],
+    );
+    /** @type {string[]} */
+    const asked = [];
+    /** @type {() => void} */
+    let release = () => {};
+    const flow = addFlow({ add: () => new Promise((r) => (release = () => r({ ok: false, words: "no" }))), closeAdd: () => {}, setupOverSsh: (/** @type {string} */ a) => asked.push(a) }, () => {});
+    flow.reset();
+    flow.edit("ssh://me@box", "");
+    flow.setup();
+    assert.deepEqual(asked, ["me@box"]);
+    const p = flow.go();
+    flow.setup();
+    assert.deepEqual(asked, ["me@box"], "not while Continue asks");
+    release();
+    await p;
+    flow.edit("192.168.0.9", "");
+    flow.setup();
+    assert.deepEqual(asked, ["me@box", ""], "the sheet opens empty");
+  });
+
   // (fails before: yes — Enter accepted a fingerprint unread, an answer after Cancel painted the new sheet, Pair named no machine)
-  test("the sheet's guards: Enter never says a fingerprint is the same; an answer from before the sheet opened anew is not shown; Pair names the machine shown", async () => {
+  test("the sheet's guards:Enter never says a fingerprint is the same; an answer from before the sheet opened anew is not shown; Pair names the machine shown", async () => {
     const { addFlow, hearSheet } = load();
     /** @type {any[]} */
     const asked = [];

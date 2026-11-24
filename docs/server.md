@@ -30,6 +30,12 @@ When your laptop's app goes mid-turn, the pages it held open again in that Chrom
 
 ## 2. Install
 
+**From the Filament app on your laptop**, sections 2 to 5 are one sheet: Settings › Remote access › **Set up over
+SSH…**, then `you@server` or a Host of your SSH config. It runs each step below on the server over SSH — install, the
+service, its coding agents and memory, the tailnet or the network, the pairing — and says each as it goes; what only
+you answer (a host key, a password, `sudo`) runs in a terminal on the sheet. Run again, it does only what is missing
+([Setting a machine up over SSH](GUIDE.md#remote-access-this-filament-from-another-machine)). By hand, on the server:
+
 ```sh
 curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
 ```

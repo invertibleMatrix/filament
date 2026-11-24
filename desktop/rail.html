@@ -101,6 +101,10 @@
   .b.primary { background: #0a84ff; border-color: #0a84ff; color: #fff; }
   .b:disabled { opacity: .55; cursor: default; }
   .b:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+  /* A button that reads as a link, in a line of words. */
+  .link { font: inherit; padding: 0; border: 0; background: none; color: #0a84ff; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .link:disabled { opacity: .55; cursor: default; }
+  .link:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -116,6 +120,7 @@
     <div class="box" id="add-print" hidden><p>Its certificate's SHA-256 fingerprint. Settings › Remote access on that machine must show the same:</p><code id="add-print-fp"></code></div>
     <div class="box" id="add-who" hidden><b id="add-who-name"></b><code id="add-who-print"></code><p class="quiet" id="add-who-kept" hidden>It is in this window already: pairing again replaces this window's sign-in there.</p></div>
     <p id="add-said" role="status" aria-live="polite"></p>
+    <p class="quiet">No Filament on that machine yet? <button class="link" type="button" id="add-setup">Set it up over SSH…</button></p>
     <div class="acts"><button class="b" type="button" id="add-cancel">Cancel</button><button class="b" type="button" id="add-back" hidden>Not the same</button><button class="b primary" type="submit" id="add-go">Continue</button></div>
   </form>
 </div>

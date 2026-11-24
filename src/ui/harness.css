@@ -3566,6 +3566,28 @@ details.memory-note[open] > summary.card-title { margin-bottom: 4px; }
 .tk-foot-note { flex: 1; min-width: 0; font-size: var(--text-ui-sm); color: var(--aq-label-3); }
 .tk-foot .zc-btn { flex: none; min-width: 84px; height: 30px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
 
+/* Set up a machine over SSH (ssh-setup.js): the host and its button, each step with its mark, the lines only you run. */
+.ssh-ask { display: flex; gap: 8px; }
+.ssh-ask .zc-input { flex: 1; min-width: 0; }
+.ssh-ask .zc-btn { flex: none; height: 32px; padding: 0 14px; border-radius: 8px; font-weight: 550; }
+.ssh-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ssh-step { display: flex; align-items: flex-start; gap: 10px; }
+.ssh-mark { display: grid; place-items: center; flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--aq-label-3); }
+.ssh-mark svg { width: 15px; height: 15px; }
+.ssh-step.is-done .ssh-mark { color: var(--color-sys-green-text); }
+.ssh-step.is-failed .ssh-mark { color: var(--color-sys-red-text); }
+.ssh-step.is-running .ssh-mark { color: var(--aq-accent); }
+.ssh-step.is-running .ssh-mark svg { animation: spin 1s linear infinite; }
+.ssh-step-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
+.ssh-step-text b { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
+.ssh-step.is-pending .ssh-step-text b { color: var(--aq-label-2); }
+.ssh-step-said { font-weight: 400; color: var(--aq-label-3); }
+.ssh-line { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--aq-hairline); border-radius: 10px; background: var(--aq-card); }
+.ssh-acts { display: flex; gap: 8px; }
+.ssh-acts .zc-btn { height: 28px; padding: 0 12px; border-radius: 8px; font-weight: 550; }
+.ssh-term { display: flex; flex-direction: column; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .ssh-step.is-running .ssh-mark svg { animation: none; } }
+
 /* The sub-agent viewer. */
 .sav-head { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 .sav-avatar { width: 34px; height: 34px; border-radius: 9px; }

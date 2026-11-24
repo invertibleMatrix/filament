@@ -299,7 +299,27 @@ nothing. **Pair** then claims the code, and the machine shows in the window — 
 window's title bar, as this computer's is. A machine reached by SSH alone: type `ssh://` and a Host of your SSH config,
 or `ssh://you@server` (Filament's port there after a colon, where it is not 20300). The app holds the tunnel itself,
 with your SSH keys and agent, and never asks a password; there is no code to type: **Pair** runs `filament pair` there
-over SSH and claims its code through the tunnel ([Filament on a server](server.md#5-reach-it-from-your-laptop)). Once another machine is kept, the top bar shows the machine you are looking
+over SSH and claims its code through the tunnel ([Filament on a server](server.md#5-reach-it-from-your-laptop)).
+
+**Setting a machine up over SSH.** A Linux machine you reach with SSH that has no Filament yet — a server, a cloud
+VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the
+Add sheet's fields, which takes the `ssh://` host typed there). Type `user@host` or a Host of your SSH config and
+**Set up**: the sheet runs each step there over SSH, with your keys and your SSH config, and says each as it goes —
+*Reach it over SSH* (what the machine is, and what Filament's installer needs that it lacks), *Install Filament* (this
+app's version; an app that is a build of its own offers the newest release instead), *Run it as a service* (systemd,
+at boot), *Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
+machine's own Settings › Coding agents), *A way in over https* (shared on your tailnet where Tailscale runs there,
+else its network listener on), and *Pair this window with it* (a code made there over SSH and claimed here, at the
+tailnet's address, then the network's, else through an SSH tunnel; its SSH way is kept after its https one). A host
+key ssh does not know is yours to check: ssh asks in a terminal on the sheet, with its fingerprint, and the step goes
+on once you answer. A machine that asks for a password gets this computer's key instead — **Run in a terminal** adds
+it there, the password typed once. What only `sudo` may do — lingering, so Filament starts at boot with no one logged
+in; Tailscale's operator; the firewall's ports — is said under its step with its line to copy and **Run in a
+terminal**. A coding agent that does not connect there is said, and the setup goes on. A step that failed says why,
+with **Retry**. Setting up a machine again does only what is missing: one set up already says *Nothing to do*. One
+paired through its SSH tunnel stays so; remove it from the window first for a setup to try its https ways again.
+
+Once another machine is kept, the top bar shows the machine you are looking
 at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of
 the chats that wait on you on the others. Press it for the machines menu: each machine with its state, its icon and
 its key (Ctrl+1…9, ⌘ on a Mac), the one showing ticked; pick one to show it, or **Add a machine…**. This window is listed on the other machine as

@@ -57,6 +57,20 @@ contextBridge.exposeInMainWorld("filamentApp", {
   /** Settings › Remote access's Add a machine: the app's Add sheet opened over the harness's window (lib/rail.js). */
   addMachine: () => ipcRenderer.send("filament:add-machine"),
   /**
+   * One step of setting up a machine over SSH (lib/setup-over-ssh.js): `{ alias, step, latest? }` → how it went
+   * (`StepResult`). Null where the app does not answer this page. @param {{ alias: string, step: string, latest?: boolean }} input
+   */
+  sshSetup: (input) => ipcRenderer.invoke("filament:ssh-setup", { alias: String(input?.alias ?? ""), step: String(input?.step ?? ""), ...(input?.latest === true ? { latest: true } : {}) }),
+  /**
+   * The Add sheet's Set up Filament over SSH, heard: the setup sheet opened with the host typed there; → a function that
+   * stops hearing it. @param {(p: { alias: string }) => void} fn
+   */
+  onSshSetup: (fn) => {
+    const heard = (_e, p) => fn({ alias: String(p?.alias ?? "") });
+    ipcRenderer.on("filament:ssh-setup-open", heard);
+    return () => ipcRenderer.removeListener("filament:ssh-setup-open", heard);
+  },
+  /**
    * Settings › Remote access's other machines (the remote-agents plan's f-ui): each this window keeps, and whether this
    * Filament's agents may work there, as that machine says — read by the app with its sign-in there, which this page
    * never holds (lib/machine-agents.js `AgentsRow`). @returns {Promise<{ machines: any[] } | null>}

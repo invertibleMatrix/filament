@@ -6,6 +6,8 @@
 // as `?token=` because a browser WebSocket cannot set headers. A terminal is a program started as the person and
 // typed into, so opening one, typing into one and its stream are presses (press.js; r-doors, 11-12): the stream, which
 // passes no front door, asks it itself, by the ticket the page's press was given.
+import { homedir } from "node:os";
+import { basename } from "node:path";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
 import { allowedFolder } from "./folder.js";
@@ -13,6 +15,24 @@ import { countOwnerless, drives, endsWithDevice, hostAllowed, hostNameOf, ownOri
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
 import { wsHandshake, wsTextFrame, wsCloseFrame, WsDecoder } from "../ws.js";
+
+/** The most words a terminal's program is given, and the longest of them: ssh's, a script for sh encoded in its last. */
+const PROGRAM_ARGS_MAX = 64;
+const PROGRAM_ARG_MAX = 32 * 1024;
+
+/**
+ * A terminal's program as a body names it — its file, and its words —, none where it names none, or why it is no
+ * program, in words. @param {unknown} p @returns {{ file: string, args: string[] } | null | string}
+ */
+export function programOf(p) {
+  if (p == null) return null;
+  const o = /** @type {any} */ (p);
+  if (typeof o !== "object" || typeof o.file !== "string" || !o.file.trim() || /[\0\r\n]/.test(o.file)) return "program.file is required: the program to run";
+  const args = o.args ?? [];
+  if (!Array.isArray(args) || args.length > PROGRAM_ARGS_MAX || args.some((x) => typeof x !== "string" || x.length > PROGRAM_ARG_MAX || x.includes("\0")))
+    return `program.args are its words: ${PROGRAM_ARGS_MAX} at most, each ${PROGRAM_ARG_MAX / 1024} KiB at most`;
+  return { file: o.file, args: [...args] };
+}
 
 /**
  * @param {any} a  the admin context: { config, terminal }
@@ -26,9 +46,15 @@ export function terminalRoutes(a) {
       "/terminal",
       guardWith(async (r) => {
         const body = await r.json();
-        const f = allowedFolder(config.get(), body.cwd);
+        // A program in its place (the desk's setup over SSH: ssh, for what only the person answers — a host key, a
+        // password, sudo): no more than a shell here runs, typed into, so the same press; started in the person's own
+        // folder where no cwd is named, with the environment a shell gets.
+        const program = programOf(body.program);
+        if (typeof program === "string") return sendJson(r.res, 400, { error: program });
+        const f = program && !body.cwd ? { ok: /** @type {const} */ (true), root: homedir() } : allowedFolder(config.get(), body.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
-        const t = terminal.create({ cwd: f.root, cols: body.cols, rows: body.rows });
+        const title = program ? String(body.title || basename(program.file)).slice(0, 80) : "";
+        const t = terminal.create({ cwd: f.root, cols: body.cols, rows: body.rows, ...(program ? { title, program: { ...program, env: { ...process.env } } } : {}) });
         return sendJson(r.res, 200, { ok: true, terminal: t });
       }),
     ],

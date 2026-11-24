@@ -73,8 +73,10 @@ const button = (el, name) => {
  * promise the list's answer, made as it is asked, waits for before it lands (none: at once); `pairHold`, a code's.
  * @param {{ state?: Record<string, any>, devices?: any[], devicesRefused?: boolean, devicesFail?: () => boolean, devicesHold?: () => Promise<unknown> | null, pairHold?: () => Promise<unknown> | null, links?: string[], confirm?: boolean, skew?: number, codes?: { id: string, scope: string, leftMs: number }[],
  *   lan?: { enabled?: boolean, state: (cfg: { enabled: boolean, port: number }, fresh: boolean) => any, allow?: () => any, newKey?: () => any },
- *   tailnet?: { serve?: boolean, trustOwnLogin?: boolean, state: (cfg: { serve: boolean, trustOwnLogin: boolean, port: number }, fresh: boolean) => any, retry?: (cfg: any) => any }, app?: any, qr?: () => Promise<any> }} [o]
- *   `app`: the desktop app's bridge, where the page runs in it. `qr`: the QR encoder's load (none: the vendored one, at once)
+ *   tailnet?: { serve?: boolean, trustOwnLogin?: boolean, state: (cfg: { serve: boolean, trustOwnLogin: boolean, port: number }, fresh: boolean) => any, retry?: (cfg: any) => any }, app?: any, qr?: () => Promise<any>,
+ *   sshSetup?: (o: any) => unknown }} [o]
+ *   `app`: the desktop app's bridge, where the page runs in it. `qr`: the QR encoder's load (none: the vendored one, at once).
+ *   `sshSetup`: the setup sheet's opening, recorded
  */
 async function open(o = {}) {
   /** server.lan as kept. */
@@ -191,6 +193,7 @@ async function open(o = {}) {
     go: (/** @type {string} */ p) => void went.push(p),
     app: o.app ?? null,
     qr: o.qr ?? (async () => qrcode),
+    ...(o.sshSetup ? { sshSetup: o.sshSetup } : {}),
   };
   renderRemote(body, { onToast: (/** @type {string} */ msg, /** @type {string | undefined} */ kind) => void toasts.push([msg, kind]) }, io);
   await settle();
@@ -1046,4 +1049,18 @@ test("in the desktop app, This computer's page adds another machine to its windo
   assert.ok(!labels((await open()).body).includes("Add a machine"), "a browser has no app's sheet");
   const far = await open({ app, state: { viewer: "remote", device: { id: "d9", name: "Laptop", scope: "full" } } });
   assert.ok(!labels(far.body).includes("Add a machine"), "another machine's page drives no window of this one's");
+});
+
+test("in the desktop app, This computer's page sets a machine up over SSH: its row opens the setup sheet; not where the app makes no setup, nor on another machine's page", async () => {
+  /** @type {any[]} */
+  const opened = [];
+  const app = { addMachine: () => {}, sshSetup: async () => null };
+  const p = await open({ app, sshSetup: (/** @type {any} */ o) => opened.push(o) });
+  assert.match(textOf(rowOf(p.body, "Set up a machine over SSH")), /A Linux machine you reach with SSH, with no Filament yet: install it there, run it as a service, and pair this window with it, step by step\./);
+  button(rowOf(p.body, "Set up a machine over SSH"), "Set up over SSH…").attrs.onclick();
+  assert.equal(opened.length, 1);
+  assert.equal(typeof opened[0].onToast, "function");
+  assert.ok(!labels((await open({ app: { addMachine: () => {} } })).body).includes("Set up a machine over SSH"), "an app that makes no setup offers none");
+  const far = await open({ app, state: { viewer: "remote", device: { id: "d9", name: "Laptop", scope: "full" } } });
+  assert.ok(!labels(far.body).includes("Set up a machine over SSH"), "another machine's page sets up nothing from this window");
 });

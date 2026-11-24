@@ -43,6 +43,7 @@ import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickR
 import { createMachineBrowsers, machineGuards, partitionFor, placeOnMachine } from "./lib/machine-browser.js";
 import { createRail, showAsk, zoomRows } from "./lib/rail.js";
 import { createUpdateThere } from "./lib/update-there.js";
+import { createSetupOverSsh } from "./lib/setup-over-ssh.js";
 import { DESK_KEYS } from "../src/ui/harness/lib/chat-only.js";
 import { checkMachine } from "./lib/add-machine.js";
 import { createTunnels } from "./lib/ssh-route.js";
@@ -525,6 +526,15 @@ async function run() {
   ipcMain.on("filament:rail-update-all", (e) => void (rail?.hears(e.sender, e.senderFrame?.url) && rail.updateAll()));
   ipcMain.handle("filament:rail-add", (e, input) => (rail?.hears(e.sender, e.senderFrame?.url) ? rail.add(input) : { ok: false, words: "Not the rail's page." }));
   ipcMain.handle("filament:rail-tailnet", (e) => (rail?.hears(e.sender, e.senderFrame?.url) ? rail.tailnet() : { found: [], words: "Not the rail's page." }));
+  // The Add sheet's Set up Filament over SSH: the sheet closed, This computer shown, and its page's setup sheet opened
+  // with the SSH host typed there (src/ui/harness/ssh-setup.js).
+  ipcMain.on("filament:rail-ssh-setup", (e, alias) => {
+    if (!rail?.hears(e.sender, e.senderFrame?.url)) return;
+    rail.closeAdd();
+    rail.select(LOCAL_ID);
+    const w = windows.get("harness");
+    if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:ssh-setup-open", { alias: String(alias ?? "").slice(0, 300) });
+  });
   /** The panes in windows of their own (BS4), by the tab each shows. @type {Map<string, BrowserWindow>} */
   const popped = new Map();
   /** Every window the app has: its own two, and those a page of Filament's opened. @type {Set<BrowserWindow>} */
@@ -1821,7 +1831,18 @@ async function run() {
   }
   // Settings › General's Notifications in the harness's window (the design pass of 10-24, UX8): the tray's own check,
   // read — and set, where the page names a choice — from Filament's page there alone. The answer is the app's choice.
-  // Settings › Remote access's Add a machine, from Filament's page in a harness window: the harness window's Add sheet.
+  // Set up a machine over SSH (the remote desk's s3b), from Filament's page in the harness window alone: one step at a
+  // time, its sheet saying each; a code made there is claimed by the window's rail itself, the window left where it is,
+  // and the machine's SSH way kept after its https one (lib/setup-over-ssh.js).
+  const sshSetup = createSetupOverSsh({
+    version: appVersion(ROOT),
+    pair: async (link, made) => (rail ? rail.add({ op: "pair", link, code: "", fingerprint: "", stay: true, ...(made ? { made } : {}) }) :{ ok: false, words: "No window holds machines now: open Filament's window, then Retry." }),
+    machines: () => readKept(machinesFile),
+    addWay: (id, route) => rail?.addWay(id, route),
+    routeFor: (alias, port) => tunnels.routeFor(alias, port),
+    log: (line) => log.line(line),
+  });
+  ipcMain.handle("filament:ssh-setup", (e, input) => (paneOf(e) ? sshSetup.run(input) : null));
   ipcMain.on("filament:add-machine", (e) => {
     if (!paneOf(e) || !rail) return;
     const w = windows.get("harness");

@@ -1323,8 +1323,10 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    * first. `expect`: the id Continue showed — Pair goes to that machine alone. What the claim could not keep is refused
    * before it: an id that is none, a full window, this computer's own Filament (the review of p3-add). Through an SSH
    * tunnel the code is made there over SSH (`sshPair`) and claimed through it; one where none could be made is kept as
-   * reached (`keepSsh`).
-   * @param {{ op?: string, link?: string, code?: string, fingerprint?: string, expect?: string }} input
+   * reached (`keepSsh`). `stay`: the window left where it is, the machine paired in the background (the setup over SSH,
+   * whose sheet shows on This computer's page) — never the Add sheet's, whose bridge carries no such word; `made`: through
+   * a tunnel, the code that setup made there over SSH already, claimed in place of one made anew.
+   * @param {{ op?: string, link?: string, code?: string, fingerprint?: string, expect?: string, stay?: boolean, made?: string }} input
    * @returns {Promise<any>}
    */
   async function add(input) {
@@ -1350,12 +1352,12 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       /** @type {{ code: string } | { words: string }} */
       let got;
       try {
-        got = await sshPair(c.ssh, c.machine);
+        got = input?.made ? { code: String(input.made) } : await sshPair(c.ssh, c.machine);
       } finally {
         sshing.delete(id);
       }
       if (gone) return { ok: false, words: "The window closed." };
-      if ("words" in got) return keepSsh(c, id, had, got.words);
+      if ("words" in got) return keepSsh(c, id, had, got.words, input?.stay === true);
       c = { ...c, code: got.code };
     }
     if (!c.code) return { ok: false, words: `Type the code Settings › Remote access shows on ${c.machine.name}.` };
@@ -1440,9 +1442,25 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     openAt(v, c.route);
     adding = false;
     refresh();
-    if (active === id) layout();
+    if (active === id || input?.stay) layout();
     else select(id);
-    return { ok: true, name: c.machine.name };
+    return { ok: true, id, name: c.machine.name };
+  }
+
+  /**
+   * A way to a machine kept, put after the ways it has (the setup over SSH: its SSH way, after the https one it was
+   * paired at). → the machine as kept now, or null where the window keeps none of that id.
+   * @param {string} id @param {import("./machines.js").Route} route
+   */
+  function addWay(id, route) {
+    const m = list.find((x) => x.id === id && !x.local);
+    if (gone || !m) return null;
+    const got = keep.add({ id, name: m.name, routes: [...m.routes, route], partition: m.partition });
+    // One you disconnected stays so: keeping it again would connect it.
+    if (m.off) keep.off?.(id, true);
+    log(`rail: machine ${id} kept with a ${route.kind} way after its others`);
+    refresh();
+    return got;
   }
 
   /**
@@ -1451,8 +1469,9 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
    * of this window's there, so its agents are not switched on from here (machine-agents.js). Its way first, the ways it
    * had after, in the partition it had; an ask from before it is stale.
    * @param {any} c  what `check` said @param {string} id @param {Machine | null} had @param {string} why
+   * @param {boolean} [stay]  the window left where it is (`add`'s `stay`)
    */
-  function keepSsh(c, id, had, why) {
+  function keepSsh(c, id, had, why, stay = false) {
     /** @type {Machine} */
     let m;
     try {
@@ -1467,9 +1486,9 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     openAt(viewOf(m), c.route);
     adding = false;
     refresh();
-    if (active === id) layout();
+    if (active === id || stay) layout();
     else select(id);
-    return { ok: true, name: c.machine.name, note: why };
+    return { ok: true, id, name: c.machine.name, note: why };
   }
 
   /**
@@ -1570,6 +1589,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     paint,
     destroy,
     add,
+    addWay,
     machineMenu,
     /** The Add sheet opened over the window, or closed. */
     openAdd: () => sheet(true),

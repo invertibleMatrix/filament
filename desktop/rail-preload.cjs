@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld("filamentRail", {
       fingerprint: String(input?.fingerprint || ""),
       ...(input?.expect ? { expect: String(input.expect) } : {}),
     }),
+  /**
+   * Set up Filament on a machine over SSH: the Add sheet closed, and This computer's setup sheet opened with the SSH host
+   * typed here, where there is one. @param {string} alias
+   */
+  setupOverSsh: (alias) => ipcRenderer.send("filament:rail-ssh-setup", String(alias ?? "")),
   /** The machines of this computer's tailnet that answer as a Filament, for the Add sheet (lib/rail.js `tailnet`). @returns {Promise<any>} */
   tailnet: () => ipcRenderer.invoke("filament:rail-tailnet"),
   /** @param {(state: unknown) => void} fn */

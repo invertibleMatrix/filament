@@ -10,8 +10,9 @@
 // another machine's agents' device under the full device that minted it, with a switch for each thing they may do here
 // (the remote-agents plan's f-ui). Read from another machine, pairing is this machine's alone, the device list is a full
 // device's, and the device it is signs itself out. In the desktop app, This computer's page adds another machine to its
-// window's rail (Add a machine, the app's bridge), and lets this Filament's agents work on each of them, or not: the app
-// makes those calls with its sign-in there, and the page hears the outcome. Where their device is kept, a second switch
+// window's rail (Add a machine, the app's bridge) — or sets one up over SSH first (ssh-setup.js) —, and lets this
+// Filament's agents work on each of them, or not: the app makes those calls with its sign-in there, and the page hears
+// the outcome. Where their device is kept, a second switch
 // uses that machine's models in this Filament's chats (the remote-agents plan's m-ui): the app switches the device's
 // grant `models` there, and the page adds this Filament's upstream of them (POST /upstreams, type `filament`), or
 // removes it. Built with an injected `h`, `api`, clipboard, dialog and clock, so it runs on the fake DOM.
@@ -22,6 +23,7 @@ import { segment } from "../lib/fields.js";
 import { mountConfigPage } from "../lib/config-rows.js";
 import { confirmDialog } from "../lib/ui.js";
 import { PAIR_PAGE } from "../../lib/standing.js";
+import { openSshSetup } from "../ssh-setup.js";
 
 /** Settings search's words for this page (search.js, HS-D68): each row it draws, checked against its code by a test. */
 export const SEARCH_ROWS = Object.freeze([
@@ -37,6 +39,7 @@ export const SEARCH_ROWS = Object.freeze([
   { path: "server.tailscale.trustOwnLogin", label: "Trust my own tailnet login", words: "tailscale login sign in trust without pairing" },
   { label: "Machines", words: "other machines computers paired connected status revoke another machine's agents grant let in sub-agents commands models use its models picker use this app's browser remote ask full access auto without asking coding agents claude code codex cursor mcp full control yolo act as you forget copies clear copies folder" },
   { label: "Add a machine", words: "other machines drive another computer workstation laptop machines menu desktop app window pair connect" },
+  { label: "Set up a machine over SSH", words: "ssh server cloud vm linux install service systemd setup headless remote machine user@host" },
   { label: "Browsers and command lines", words: "paired devices phone laptop tablet browser command line terminal filament connect revoke forget view-only" },
   { label: "New code", words: "pair a device remote phone laptop tablet another machine connect code link view-only", also: ["Code", "Good for", "Links", "Codes open"] },
 ]);
@@ -216,6 +219,8 @@ export const FILTER_FROM = 8;
 export const MACHINES_WORDS = "Other computers running Filament, and what each may do on the other. Hover a pill for what it allows.";
 /** What Add a machine does, in a line. */
 export const ADD_MACHINE_WORDS = "Pair this window with another machine by a code from its Settings › Remote access. It then shows in the machines menu at the top (Ctrl+1…9).";
+/** What Set up a machine over SSH does, in a line. */
+export const SSH_SETUP_WORDS = "A Linux machine you reach with SSH, with no Filament yet: install it there, run it as a service, and pair this window with it, step by step.";
 
 /** What the caller's switch lets this Filament's agents do on another machine (the app's other machines). @param {string} name */
 export const thereWords = (name) => `This machine's agents may start chats on ${name} and run commands there as you. What they ask comes to you here.`;
@@ -307,10 +312,11 @@ const scopeWords = (scope) => (scope === "view" ? "view-only: it reads" : "full:
  * @param {{ h?: typeof h, api?: (path: string, o?: any) => Promise<any>, copy?: (text: string) => Promise<void>, confirm?: (q: any) => Promise<boolean>,
  *   now?: () => number, every?: (fn: () => void, ms: number) => () => void, go?: (path: string) => void, qr?: () => Promise<any>,
  *   app?: { addMachine?: () => void, agentMachines?: () => Promise<any>, agentsOn?: (id: string, on: boolean) => Promise<any>, agentsModels?: (id: string, on: boolean) => Promise<any>, agentsFull?: (id: string, on: boolean) => Promise<any>, agentsForget?: (id: string) => Promise<any>,
- *     browserOn?: (id: string, on: boolean) => Promise<any>, onBrowserLink?: (fn: (row: any) => void) => () => void } | null }} [io]
+ *     browserOn?: (id: string, on: boolean) => Promise<any>, onBrowserLink?: (fn: (row: any) => void) => () => void, sshSetup?: (input: any) => Promise<any> } | null,
+ *   sshSetup?: (o: { onToast?: (msg: string, kind?: string) => void }) => unknown }} [io]
  *   `every`: a timer that runs `fn` each `ms` until stopped (the countdown, the look for a claim); `go`: where a device
  *   that signed itself out goes (the pairing page); `qr`: the QR encoder loaded (`QR_MODULE`); `app`: the desktop app's
- *   bridge (harness-preload.cjs `filamentApp`)
+ *   bridge (harness-preload.cjs `filamentApp`); `sshSetup`: the setup sheet opened (ssh-setup.js `openSshSetup`)
  */
 export function renderRemote(body, cb = {}, io = {}) {
   const m = io.h || h;
@@ -1074,6 +1080,8 @@ export function renderRemote(body, cb = {}, io = {}) {
     if (cards.length || adds) out.push(kit.note(MACHINES_WORDS));
     if (elsewhere && cards.length) out.push(kit.note(`What ${here}'s own agents may do on other machines is set on ${here} itself.`));
     if (adds) out.push(kit.row("Add a machine", ADD_MACHINE_WORDS, m("button", { class: "ghost sm", type: "button", onclick: () => app.addMachine() }, "Add a machine…")));
+    if (adds && typeof app?.sshSetup === "function")
+      out.push(kit.row("Set up a machine over SSH", SSH_SETUP_WORDS, m("button", { class: "ghost sm", type: "button", onclick: () => (io.sshSetup || openSshSetup)({ onToast: toast }) }, "Set up over SSH…")));
     if (lets && there === null) out.push(kit.note("Reading the other machines…"));
     else if (lets && thereWhy) out.push(kit.note(`The other machines could not be read: ${thereWhy}`, "warn"));
     if (cards.length) out.push(filtered("machines", "machines", cards.map((c) => [[c.name], card(c, s, here, elsewhere, lets, adds)]), true));

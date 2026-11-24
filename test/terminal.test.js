@@ -4,7 +4,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { wsAcceptKey, wsHandshake, wsTextFrame, wsCloseFrame, WsDecoder } from "../src/http/ws.js";
 import { createTerminalService, MAX_TERMINALS } from "../src/services/terminal.js";
@@ -243,4 +243,25 @@ test("the admin rows: create fences the cwd, list/input/resize/kill reach the se
 
   const noInput = await call("POST", `/terminal/${t.id}/input`, rows, { json: { data: "x" } });
   assert.match(noInput.error, /no such terminal/);
+});
+
+test("the admin rows: a program in a shell's place, in the person's own folder where no cwd is named, its words checked", async () => {
+  /** @type {any[]} */
+  const asked = [];
+  const svc = createTerminalService({ spawn: (/** @type {any} */ o) => (asked.push(o), fakeSpawn()), log: () => {} });
+  const rows = terminalRoutes({ config: { get: () => ({ agentLoop: { roots: [] }, server: {} }) }, terminal: svc });
+  const t = (await call("POST", "/terminal", rows, { json: { program: { file: "/usr/bin/ssh", args: ["-t", "--", "box", "exit"] }, title: "ssh box" } })).terminal;
+  assert.ok(t.id);
+  assert.equal(t.title, "ssh box");
+  assert.equal(asked[0].program.file, "/usr/bin/ssh");
+  assert.deepEqual(asked[0].program.args, ["-t", "--", "box", "exit"]);
+  assert.equal(asked[0].cwd, homedir());
+  // The environment a shell gets: the program's own (ssh's agent socket among it).
+  assert.equal(asked[0].program.env.PATH ?? asked[0].program.env.Path, process.env.PATH ?? process.env.Path);
+  // No title: the program's name.
+  assert.equal((await call("POST", "/terminal", rows, { json: { program: { file: "/usr/bin/ssh" } } })).terminal.title, "ssh");
+  assert.match((await call("POST", "/terminal", rows, { json: { program: { file: "" } } })).error, /program\.file is required/);
+  assert.match((await call("POST", "/terminal", rows, { json: { program: { file: "ssh", args: "-t box" } } })).error, /program\.args are its words/);
+  assert.match((await call("POST", "/terminal", rows, { json: { program: { file: "ssh", args: [1] } } })).error, /program\.args are its words/);
+  assert.equal(asked.length, 2);
 });

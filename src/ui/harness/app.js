@@ -148,6 +148,7 @@ import { followEngine } from "../lib/engine.js";
 import { accountName, followAccounts, noticeOf, othersOf, resetOutcomeWords } from "../lib/accounts.js";
 import { listenerSet } from "../lib/listeners.js";
 import { openSignIn } from "./sign-in.js";
+import { openSshSetup } from "./ssh-setup.js";
 import { openInstall } from "./install-sheet.js";
 import { openWelcome, stepAt, tourOpensItself, keysIn } from "./views/welcome.js";
 import { createCoach } from "./coach/coach.js";
@@ -5083,6 +5084,8 @@ function openWholeOn(machine, route, name = "That machine") {
     () => {},
   );
 }
+// The app's Add sheet's Set it up over SSH: this page's setup sheet, the host typed there in its field (ssh-setup.js).
+/** @type {any} */ (globalThis).filamentApp?.onSshSetup?.((/** @type {{ alias: string }} */ p) => void openSshSetup({ alias: p.alias, onToast: toast }));
 const sidebar = createSidebar(shell.sidebarHost, {
   // Another machine's chat opened from the bar: shown in place beside it where the app and that machine can, else on
   // that machine's whole page.
