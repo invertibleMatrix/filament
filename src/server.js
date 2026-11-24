@@ -125,7 +125,7 @@ import { testUpstream } from "./app/upstream-test.js";
 import { createResponsesFrontDoor } from "./http/responses.js";
 import { LENT_IN_FLIGHT, createFrontDoor, lanDoor, mainDoor } from "./http/front-door.js";
 import { createHookDoor } from "./http/hooks.js";
-import { artifactsDoor, artifactsListener, createArtifactsHandler, createPasses, passKeyIn } from "./http/artifacts.js";
+import { artifactsDoor, artifactsListener, createArtifactsHandler, createPasses, hereKey, holderPass, localArtifactsDoor, passKeyIn, passedHere } from "./http/artifacts.js";
 import { createFeeds } from "./services/artifact-feeds.js";
 import { plan, dryRunWith } from "./app/plan.js";
 import { dropForksOf, forkSession } from "./app/fork.js";
@@ -1799,6 +1799,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     places: ownPlaces,
     chrome: createHeadlessHost({ dataDir, own: browserOwn, log, find: overrides.findChrome || (() => findChrome()), ...(overrides.chromeSpawn ? { spawn: overrides.chromeSpawn } : {}) }),
   });
+  // The passes of this machine's artifacts' addresses (http/artifacts.js `localArtifactsDoor`), signed with a key made
+  // from the network's artifacts address's: where this machine's programs need the owner key, a page loads under one.
+  const artifactPasses = createPasses({ key: hereKey(passKeyIn(dataDir)) });
   // A page that comes with no agent's call at work — a popup — is judged by its chat's rules, as a call would judge it.
   const browsers = createBrowsers({
     host: browserHost,
@@ -1816,6 +1819,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     // A chat whose turn runs, or whose sub-agents do, keeps its tabs however long one stood unused. Asked first by the
     // minute's look, long after `chatBusy` below is made.
     working: (chain) => chatBusy(chain) || subagents.atWork().includes(String(chain)),
+    // An artifact of this machine's opens under its pass where this machine's programs need the owner key: the tab's
+    // page carries no credential of Filament's, as a frame of its page carries none.
+    addressed: (url) => (loopbackTrusted(config.get().server) ? url : passedHere(url, selfPort(), () => holderPass(artifactPasses, { kind: "local" }, config.get().server))),
   });
   // Where plugins come from (HarnessV4_SpacesPlugins_Plan B1): Claude Code's and Codex's, read where they stand when the
   // Plugins page asks; the marketplaces the person adds, cloned into the data folder.
@@ -3407,6 +3413,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     lan: () => lan,
     // The artifacts' network address (http/artifacts.js `artifactsListener`), where /state says a page reads them.
     artifactsNet: () => artLan,
+    // The passes of this machine's artifacts' addresses (http/artifacts.js `localArtifactsDoor`), which /state gives.
+    artifactPasses: () => artifactPasses,
     // Filament on the tailnet (services/tailscale.js `createTailnetShare`), made below with the servers.
     tailnet: () => tailnet,
     // Anonymous telemetry (services/telemetry.js), made below with the alerts' timer.
@@ -3502,6 +3510,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const requestMs = Math.max(1000, Number(overrides.requestMs) || 300_000);
   // The artifacts' pages, at their own addresses: this machine's `<name>.art.localhost`, and the network's (below).
   const artifactsAnswer = createArtifactsHandler({ store: artifactStore, server: () => config.get().server, port: selfPort, feeds: artifactFeeds, dashboards, sql: appSql, pageHost: () => machine.pageHost() });
+  // This machine's, where its programs need the owner key, by the pass their addresses carry (x41): /api/state gives
+  // Filament's page its pass for every artifact.
+  const artifactsHere = localArtifactsDoor({ answer: artifactsAnswer, server: () => config.get().server, devices, passes: artifactPasses });
   const frontDoor = createFrontDoor({
       config,
       log,
@@ -3512,7 +3523,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       memoryMcp,
       connectors,
       admin: handleAdmin,
-      artifacts: artifactsAnswer,
+      artifacts: artifactsHere,
       hooks: createHookDoor({ dashboards, server: () => config.get().server, log }),
       watchHooks: createWatchHookDoor({ watch: posting, server: () => config.get().server, log }),
       opening: () => (opened ? null : openedAtStart),

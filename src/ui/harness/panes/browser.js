@@ -23,6 +23,7 @@ import { icon } from "../lib/icons.js";
 import { button, confirmDialog, dialog, menu, tooltip } from "../lib/ui.js";
 import { runSocket } from "../lib/run-socket.js";
 import { atWork } from "../state.js";
+import { openOut } from "../artifact-acts.js";
 
 /** The sizes the chip offers, as the browser names them (src/core/browser.js `SIZES`; a test keeps the two the same). */
 export const PAGE_SIZES = Object.freeze([
@@ -295,7 +296,7 @@ export function renderBrowser(body, ctx) {
           : [{ label: "No site yet — it asks before it first acts on one", disabled: true }]),
         { type: "separator" },
         // Without an opener: the site the agent browsed gets no hold on the harness's tab (reverse tabnabbing).
-        ...(url && /^https?:/i.test(url) ? [{ icon: "appWindow", label: "Open this page in your browser", onClick: () => void window.open(url, "_blank", "noopener") }] : []),
+        ...(url && /^https?:/i.test(url) ? [{ icon: "appWindow", label: "Open this page in your browser", onClick: () => void openOut(url) }] : []),
         {
           icon: "x",
           label: "Clear the browser's data…",

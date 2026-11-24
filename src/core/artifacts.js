@@ -227,17 +227,22 @@ export const artifactAddress = (name, port) => `http://${name}.${ART_DOMAIN}:${p
 
 /** What stands for an artifact's name in the addresses `artifactsAt` gives. */
 export const NAME_SLOT = "{name}";
+/** Whether a host reached Filament on this machine: a name under localhost, a loopback address. @param {string} h  lower-case */
+const isHereHost = (h) => h === "localhost" || h.endsWith(".localhost") || /^127(?:\.\d{1,3}){3}$/.test(h) || h === "[::1]";
 /**
  * Where a page reads its artifacts (AFC-50; the owner's remote Filament of 11-06, Part 4), by the Host it reached
  * Filament at: by a name under localhost or a loopback address — this machine, or another's SSH tunnel to it — each at
  * `<name>.art.localhost` on that port, which leads to this Filament as the page's own address does; by any other name,
  * on the network's artifacts address at that name, where it listens (`artPort`) — none where it does not. Each address
- * has `NAME_SLOT` for the artifact's name: the page's address and its still preview's.
+ * has `NAME_SLOT` for the artifact's name: the page's address and its still preview's. This machine's carry `pass`
+ * where it is given — the page's pass for every artifact, where its programs need the owner key (http/artifacts.js
+ * `holderPass`).
  * @param {string} host  the Host header as the page's request carried it
  * @param {number | null | undefined} artPort  the port the network's artifacts address listens on, if it does
+ * @param {() => string} [pass]  asked only for this machine's
  * @returns {{ page: string, still: string } | null}
  */
-export function artifactsAt(host, artPort) {
+export function artifactsAt(host, artPort, pass = () => "") {
   let u;
   try {
     u = new URL(`http://${host}`);
@@ -245,9 +250,11 @@ export function artifactsAt(host, artPort) {
     return null;
   }
   const h = u.hostname.toLowerCase();
-  if (h === "localhost" || h.endsWith(".localhost") || /^127(?:\.\d{1,3}){3}$/.test(h) || h === "[::1]") {
+  if (isHereHost(h)) {
     const port = u.port ? `:${u.port}` : "";
-    return { page: `http://${NAME_SLOT}.${ART_DOMAIN}${port}/`, still: `http://${NAME_SLOT}.${STILL_LABEL}.${ART_DOMAIN}${port}/` };
+    const p = pass();
+    const under = p ? `~${p}/` : "";
+    return { page: `http://${NAME_SLOT}.${ART_DOMAIN}${port}/${under}`, still: `http://${NAME_SLOT}.${STILL_LABEL}.${ART_DOMAIN}${port}/${under}` };
   }
   if (!h || !artPort) return null;
   return { page: `https://${h}:${artPort}/${NAME_SLOT}/`, still: `https://${h}:${artPort}/${STILL_PATH}/${NAME_SLOT}/` };

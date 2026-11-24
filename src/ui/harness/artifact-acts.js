@@ -6,7 +6,7 @@
 import { h } from "../lib/dom.js";
 import { api } from "./lib/api.js";
 import { confirmDialog, dialog, toast } from "./lib/ui.js";
-import { askingChat, dataWords, projectOf, readsWords, sizeWords, typeWord, versionLine } from "./lib/artifacts.js";
+import { askingChat, dataWords, hereArtifactOf, passless, projectOf, readsWords, sizeWords, typeWord, versionLine } from "./lib/artifacts.js";
 import { followRecord } from "./artifacts-live.js";
 
 /** @typedef {import("./lib/artifacts.js").ArtifactSeen} ArtifactSeen */
@@ -121,9 +121,39 @@ export async function downloadArtifact(a, v) {
   }
 }
 
-/** Copy its address. @param {ArtifactSeen} a @param {string} address  at the port this page is served on */
-export function copyLink(a, address) {
-  navigator.clipboard?.writeText(address).then(() => toast(`Copied the link to ${a.title}`), (e) => toast(`The link could not be copied: ${said(e)}.`, "err"));
+/**
+ * An address of an artifact's that leaves this page, as it goes: where this page's addresses carry its pass for every
+ * artifact (lib/artifacts.js `hereArtifactOf`), under one of that artifact's own the server gives (POST
+ * /api/artifacts/:name/pass), the path inside it kept; else as it is. One the server gives none for is said, and
+ * none. @param {string} address @returns {Promise<string>}
+ */
+export async function addressOut(address) {
+  const here = hereArtifactOf(address);
+  if (!here) return address;
+  try {
+    const at = String((await api(`/artifacts/${encodeURIComponent(here.name)}/pass`, { method: "POST", body: { still: here.still } }))?.address || "");
+    if (at) return `${at.replace(/\/$/, "")}${here.path}`;
+  } catch (e) {
+    toast(`Its address could not be given: ${said(e)}.`, "err");
+    return "";
+  }
+  return address;
+}
+/**
+ * An address opened in a tab of its own, with no opener: an artifact's here under its own pass once the server gives
+ * it (`addressOut`), any other at once, as pressed. @param {string} address
+ */
+export function openOut(address) {
+  const go = (/** @type {string} */ to) => void (to && window.open(to, "_blank", "noopener,noreferrer"));
+  if (!hereArtifactOf(address)) return go(address);
+  void addressOut(address).then(go);
+}
+
+/** Copy its address, under its own pass where it needs one (`addressOut`). @param {ArtifactSeen} a @param {string} address  at the port this page is served on */
+export async function copyLink(a, address) {
+  const to = await addressOut(address);
+  if (!to) return;
+  navigator.clipboard?.writeText(to).then(() => toast(`Copied the link to ${a.title}`), (e) => toast(`The link could not be copied: ${said(e)}.`, "err"));
 }
 
 /**
@@ -139,7 +169,7 @@ export function showInfo(a, address) {
   const kept = h("span", {}, dataWords(a.data));
   followRecord(kept, a.name, (x) => void (kept.textContent = dataWords(x.data)), (e) => void (kept.textContent = `it could not be read: ${said(e)}.`));
   const body = h("div", { class: "artifact-info" },
-    row("Address", h("a", { href: address, target: "_blank", rel: "noopener noreferrer" }, address)),
+    row("Address", h("a", { href: String(passless(address)), target: "_blank", rel: "noopener noreferrer" }, String(passless(address)))),
     row("Type", typeWord(a.type)),
     row("Project", a.folder ? h("span", { title: a.folder }, projectOf(a.folder)) : "none named"),
     row("Made", momentOf(a.createdAt)),
@@ -167,8 +197,8 @@ export function artifactItems(a, address, o) {
   return [
     o.open ? { label: "Open", icon: "maximize", onClick: o.open } : null,
     // No address — its Filament serves artifacts to this page on no network —: no link to open or copy.
-    o.inView || !address ? null : { label: "Open in browser", icon: "externalLink", onClick: () => window.open(address, "_blank", "noopener,noreferrer") },
-    address ? { label: "Copy link", icon: "link", onClick: () => copyLink(a, address) } : null,
+    o.inView || !address ? null : { label: "Open in browser", icon: "externalLink", onClick: () => void openOut(address) },
+    address ? { label: "Copy link", icon: "link", onClick: () => void copyLink(a, address) } : null,
     o.inView ? null : { label: a.pinned ? "Unpin" : "Pin", icon: "pin", onClick: () => void setPinned(a, !a.pinned) },
     { label: "Rename…", icon: "pencil", onClick: () => renameArtifact(a) },
     o.inView ? null : { label: "Download", icon: "download", onClick: () => void downloadArtifact(a) },

@@ -64,11 +64,16 @@ const viewRows = new Set(VIEW_ROUTES);
 /** The paths below are under /api. A device that lapsed unused may still sign itself out (index.js). */
 export const SIGN_OUT_PATH = "/remote/sign-out";
 /**
- * Whether a view-only device may make this request: a GET whose row (its pattern, as the router matched it) it reads,
- * and the one write that is its own — signing itself out. No row matched: nothing.
- * @param {string} method @param {string | null | undefined} pattern  the matched row's, under /api
+ * An artifact's address that leaves the page, under its own pass (admin/artifacts.js): a POST that writes nothing, and
+ * a view-only device's pass writes nothing either (http/artifacts.js `ownPass`).
  */
-export const viewReads = (method, pattern) => !!pattern && ((method === "GET" && viewRows.has(pattern)) || (method === "POST" && pattern === SIGN_OUT_PATH));
+const ARTIFACT_PASS_PATH = "/artifacts/:name/pass";
+/**
+ * Whether a view-only device may make this request: a GET whose row (its pattern, as the router matched it) it reads,
+ * the one write that is its own — signing itself out —, and an artifact's address to open or copy. No row matched:
+ * nothing. @param {string} method @param {string | null | undefined} pattern  the matched row's, under /api
+ */
+export const viewReads = (method, pattern) => !!pattern && ((method === "GET" && viewRows.has(pattern)) || (method === "POST" && (pattern === SIGN_OUT_PATH || pattern === ARTIFACT_PASS_PATH)));
 
 /**
  * What another machine's agents reach here while their grant `agents` is on (the remote-agents plan's f-grant): a chat

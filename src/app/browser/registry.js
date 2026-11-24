@@ -33,7 +33,7 @@ import { randomUUID } from "node:crypto";
 import { MediaResult, imageBlock } from "../../core/media.js";
 import { PAGE_SIZE, TABS_MAX, actionOf, acts, browserArgWords, inputProblem, pageSize, siteOf, sizeWanted, sizeWords, wholeUrl } from "../../core/browser.js";
 import { HEADLESS, HERE, NO_HOST } from "./host.js";
-import { createDriver } from "./driver.js";
+import { createDriver, saidUrl } from "./driver.js";
 
 /** The words a call gets while the developer holds the browser. @param {number} at @param {() => number} now */
 const takenWords = (at, now) =>
@@ -192,15 +192,17 @@ export function inputCommand(ev) {
 /**
  * @param {{ host: ReturnType<typeof import("./host.js").createBrowserHost>, now?: () => number, log?: (level: string, line: string) => void,
  *   looks?: (chain: string, page: string) => boolean, own?: (url: string) => boolean, moved?: (chain: string, use: Use) => void,
- *   working?: (chain: string) => boolean }} o
+ *   working?: (chain: string) => boolean, addressed?: (url: string) => string }} o
  *   `looks`: whether a chat's rules let the browser read a page, from its settings — what judges a page that comes with
  *   no call of an agent at work, as a popup may; `own`: whether an address is Filament's own (core/browser.js
  *   `filamentsOwn`), which neither an agent nor the developer opens here; `moved`: told as a chat's agents' use of its
  *   browser moves — a call begins, goes on to its batch's next step or ends, the developer takes it over or gives it
  *   back —, for the line over the chat's box (the owner's of 11-02); `working`: whether a chat's agents work now — a
- *   turn holds it, or a sub-agent of its runs —, which keeps its tabs open however long unused (`TAB_IDLE_MS`)
+ *   turn holds it, or a sub-agent of its runs —, which keeps its tabs open however long unused (`TAB_IDLE_MS`);
+ *   `addressed`: the address a tab opens for one asked — an artifact's of this machine's with its pass where it needs one
+ *   (http/artifacts.js `passedHere`) —, what the words say left as asked
  */
-export function createBrowsers({ host, now = Date.now, log = () => {}, looks = () => true, own = () => false, moved = () => {}, working = () => false }) {
+export function createBrowsers({ host, now = Date.now, log = () => {}, looks = () => true, own = () => false, moved = () => {}, working = () => false, addressed = (url) => url }) {
   /** @type {Map<string, ChatBrowser>} */
   const chats = new Map();
   /** A tab's chat. @type {Map<string, string>} */
@@ -548,7 +550,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
       const loads = p.url !== "about:blank" && look(p.url);
       if (loads) t.url = p.url;
       else if (p.url !== "about:blank") said.push(`Tab ${p.id} opened again blank: this session's rules keep the browser from reading the page it was on.`);
-      const going = loads ? t.driver.navigate(p.url, p.shown ? signal : null).catch(() => "") : null;
+      const going = loads ? t.driver.navigate(addressed(p.url), p.shown ? signal : null).catch(() => "") : null;
       if (p.shown) await going;
       // Gone again as it loaded: `lose` kept it, at its address, for the call after.
       if (!t.open) continue;
@@ -609,7 +611,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
     if (e.op === "event") {
       const t = own;
       t.driver.feed(String(e.method), e.params);
-      if (e.method === "Page.frameNavigated" && !e.params?.frame?.parentId) t.url = String(e.params?.frame?.url || t.url);
+      if (e.method === "Page.frameNavigated" && !e.params?.frame?.parentId) t.url = saidUrl(String(e.params?.frame?.url || t.url));
       return;
     }
     if (e.op === "popup") {
@@ -618,7 +620,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
       const s = b.seats.get(opener.seat) || seatOf(b);
       if (b.tabs.length >= TABS_MAX) {
         void host.call("close", { tab: String(e.tab) }, { host: at }).catch(() => {});
-        note(s, `The page opened a window (${String(e.url || "").slice(0, 200)}), not kept: this chat has ${TABS_MAX} tabs, the most it may.`);
+        note(s, `The page opened a window (${saidUrl(String(e.url || "")).slice(0, 200)}), not kept: this chat has ${TABS_MAX} tabs, the most it may.`);
         return;
       }
       const to = String(e.url || "about:blank");
@@ -631,11 +633,11 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
       }
       // At its opener's size, as its host opened it, and on that host.
       const t = newTab(b, s, at, String(e.tab), Number(e.width) ? pageSize(e.width, e.height) : opener.size || PAGE_SIZE);
-      t.url = to;
+      t.url = saidUrl(to);
       // The host opened it blank: its address is loaded here, now that the chat keeps it.
       void t.driver
         .enable()
-        .then(() => (to !== "about:blank" ? t.driver.navigate(to, null) : ""))
+        .then(() => (to !== "about:blank" ? t.driver.navigate(addressed(to), null) : ""))
         .catch((err) => log("warn", `browser: a tab the page opened did not take its commands (${err?.message || err})`));
       note(s, `The page ${from ? `in ${from} ` : ""}opened a new tab, ${t.id} (${t.url.slice(0, 200)}); it is not shown — tabs select shows it.`);
       recast(b);
@@ -691,7 +693,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
     switch (a) {
       case "navigate": {
         const to = wholeUrl(step.url);
-        return { words: said(`Opened ${to}.`, await d.navigate(to, signal)), snapshot: true };
+        return { words: said(`Opened ${to}.`, await d.navigate(addressed(to), signal)), snapshot: true };
       }
       case "back":
         return { words: said("Went back.", await d.back(signal)), snapshot: true };
@@ -763,7 +765,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
       if (agent) works(s, t);
       if (s.key === MAIN || !shownBefore) b.view = t.id;
       recast(b);
-      const loaded = o.url ? await t.driver.navigate(wholeUrl(o.url), signal) : "";
+      const loaded = o.url ? await t.driver.navigate(addressed(wholeUrl(o.url)), signal) : "";
       return { words: [`Opened tab ${t.id}${o.url ? ` at ${wholeUrl(o.url)}` : ""}; ${s.key === MAIN ? "it is the one shown" : "your calls work on it"}.`, loaded].filter(Boolean).join(" "), snapshot: true };
     }
     if (op === "select") {
@@ -1199,7 +1201,7 @@ export function createBrowsers({ host, now = Date.now, log = () => {}, looks = (
           const problem = inputProblem({ action: "navigate", url: to }, { own });
           if (problem) return { ok: false, error: problem };
           const t = await shownTab();
-          await t.driver.navigate(to);
+          await t.driver.navigate(addressed(to));
           tellOwner(b, t, `The developer opened ${to}${t.seat !== MAIN ? ` in your tab ${t.id}` : ""}.`);
         } else if (act === "back" || act === "forward" || act === "reload") {
           const t = await shownTab();

@@ -37,6 +37,7 @@ import { AGENT_WORK } from "../../adapters/agents/acp/bridge.js";
 import { agentsDevice, isLocalCaller, loopbackTrusted, onTailnetDoor } from "../guards.js";
 import { fullControl } from "../../services/devices.js";
 import { artifactsAt } from "../../core/artifacts.js";
+import { holderPass } from "../artifacts.js";
 import { tailnetDoor } from "../../services/tailscale.js";
 import { createMachineCaps } from "../../services/machine-caps.js";
 import { AGENT_TAKES, agentFolderRefusal } from "./remote.js";
@@ -193,8 +194,15 @@ export function systemRoutes(a) {
           // Where this page reads the artifacts (the owner's remote Filament of 11-06, Part 4), by the address it reached
           // Filament at: this machine's `<name>.art.localhost` (an SSH tunnel's too), else the network's artifacts
           // address — null where it does not listen; reached on the tailnet, its artifacts' https port there. A call with no
-          // request (Filament's own) says none: the page's own address.
-          ...(r.req?.headers?.host ? { artifacts: artifactsAt(String(r.req.headers.host), onTailnetDoor(r.req) ? tailnetDoor()?.artPort ?? null : a.artifactsNet?.()?.state?.()?.listening?.port ?? null) } : {}),
+          // request (Filament's own) says none: the page's own address. This machine's carry the page's pass for every
+          // artifact where its programs need the owner key (http/artifacts.js `holderPass`): no frame carries a credential.
+          ...(r.req?.headers?.host
+            ? {
+                artifacts: artifactsAt(String(r.req.headers.host), onTailnetDoor(r.req) ? tailnetDoor()?.artPort ?? null : a.artifactsNet?.()?.state?.()?.listening?.port ?? null, () =>
+                  !loopbackTrusted(config.get().server) && r.who && a.artifactPasses ? holderPass(a.artifactPasses(), r.who, config.get().server) : "",
+                ),
+              }
+            : {}),
         });
       },
     ],

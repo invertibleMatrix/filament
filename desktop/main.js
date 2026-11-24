@@ -288,7 +288,9 @@ async function run() {
       if (route !== "refuse") void outside(url, route);
     };
     contents.on("will-navigate", away);
-    contents.on("will-redirect", away);
+    // The window's own redirects alone, as `will-navigate` hears its own navigations alone: a frame's is its page's — an
+    // artifact's frame led under its pass (src/http/artifacts.js), the network's artifacts address's alike.
+    contents.on("will-redirect", (e, url) => void (e.isMainFrame === false || away(e, url)));
     contents.setWindowOpenHandler(({ url }) => {
       const route = routeHere(url);
       // This computer's console, opened from its page (the harness's Open Filament console), has the press key's bridge.

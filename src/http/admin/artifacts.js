@@ -16,8 +16,10 @@ import {
   APP_JSON,
   CONTENT_FILE,
   CONTENT_JSON,
+  NAME_SLOT,
   PAGE_FILE,
   artifactAddress,
+  artifactsAt,
   artifactTypeOf,
   isTextData,
   cleanTitle,
@@ -29,7 +31,8 @@ import {
   pageAlone,
   typeShell,
 } from "../../core/artifacts.js";
-import { PAGE_SCRIPT_TEXT, lookCss, typeData, typeOwnAlone } from "../artifacts.js";
+import { PAGE_SCRIPT_TEXT, lookCss, ownPass, typeData, typeOwnAlone } from "../artifacts.js";
+import { loopbackTrusted } from "../guards.js";
 import { zipOf } from "../../services/zip.js";
 import { PINNED_TEXT, PINS_FILE, WEB_DIR, isWebFile, pinnedText, pinsOf, relativeRef } from "../../core/web-pins.js";
 
@@ -250,6 +253,25 @@ export function artifactRoutes(a) {
         const visual = r.url.searchParams.get("visual");
         const all = store.list().filter((x) => !chain || x.versions.some((v) => v.by.chain === chain && (!visual || v.by.visual === visual)));
         return sendJson(r.res, 200, { artifacts: all.map(view) });
+      }),
+    ],
+    [
+      "POST",
+      "/artifacts/:name/pass",
+      // Its address for one that leaves Filament's page — Open in browser, Copy link, a link pressed in a chat (x41):
+      // where this computer's programs need the owner key, a `.art.localhost` address under a pass of its own alone
+      // (http/artifacts.js `ownPass`), never the page's pass for every artifact; else as it is. `still`: its still
+      // preview's, under a pass that writes nothing. "" where the page reached Filament from afar, whose artifacts'
+      // address gives each page its own pass as it loads.
+      guard(async (r) => {
+        const o = one(r);
+        if (!o.it) return o.sent;
+        const it = o.it;
+        const still = ((await r.json()) || {}).still === true;
+        const server = a.config.get().server;
+        const pass = () => (!loopbackTrusted(server) && r.who && a.artifactPasses ? ownPass(a.artifactPasses(), it.name, r.who, server, still) : "");
+        const at = artifactsAt(String(r.req?.headers?.host || ""), null, pass);
+        return sendJson(r.res, 200, { address: at && !at.page.startsWith("https://") ? (still ? at.still : at.page).replace(NAME_SLOT, it.name) : "" });
       }),
     ],
     [

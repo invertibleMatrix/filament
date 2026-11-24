@@ -40,6 +40,14 @@ const remoteWords = (o) => {
  */
 
 /**
+ * An address as the browser says it to anyone: an artifact's of this machine's with its page's pass taken out
+ * (`/~<pass>`, http/artifacts.js) — what a model reads never carries one; it opens again under a pass of its own. Its
+ * name ending in a dot too (`x.art.localhost.`), which the front door answers as it would without.
+ * @param {string} u
+ */
+export const saidUrl = (u) => (/^http:\/\/[^/?#]+\.art\.localhost\.*(?::\d+)?\/~/i.test(u) ? u.replace(/^(http:\/\/[^/?#]+)\/~[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?=[/?#]|$)/, "$1") : u);
+
+/**
  * @param {{ cdp: Cdp, now?: () => number, capture?: Capture | null }} o  `capture`: the app's picture of the page; without
  *   it, Chrome's screenshot
  */
@@ -85,7 +93,7 @@ export function createDriver({ cdp, now = Date.now, capture = null }) {
     switch (method) {
       case "Page.frameNavigated":
         if (!p.frame?.parentId) {
-          url = String(p.frame?.url || url);
+          url = saidUrl(String(p.frame?.url || url));
           navigations++;
           // A new document: the old one's handles name nothing on it.
           refs = new Map();
@@ -93,7 +101,7 @@ export function createDriver({ cdp, now = Date.now, capture = null }) {
         }
         break;
       case "Page.navigatedWithinDocument":
-        url = String(p.url || url);
+        url = saidUrl(String(p.url || url));
         break;
       case "Page.frameStartedLoading":
         if (p.frameId && p.frameId === mainFrame) loading = true;
@@ -120,17 +128,17 @@ export function createDriver({ cdp, now = Date.now, capture = null }) {
         break;
       case "Runtime.exceptionThrown": {
         const d = p.exceptionDetails || {};
-        keepLine({ level: "error", text: `Uncaught ${remoteWords(d.exception) || d.text || "exception"}${d.url ? ` (${d.url}:${(d.lineNumber ?? 0) + 1})` : ""}`.slice(0, 2000), at: now() });
+        keepLine({ level: "error", text: `Uncaught ${remoteWords(d.exception) || d.text || "exception"}${d.url ? ` (${saidUrl(String(d.url))}:${(d.lineNumber ?? 0) + 1})` : ""}`.slice(0, 2000), at: now() });
         break;
       }
       case "Log.entryAdded": {
         const e = p.entry || {};
-        keepLine({ level: String(e.level || "info"), text: `${String(e.text || "").slice(0, 2000)}${e.url ? ` (${e.url})` : ""}`, at: now() });
+        keepLine({ level: String(e.level || "info"), text: `${String(e.text || "").slice(0, 2000)}${e.url ? ` (${saidUrl(String(e.url))})` : ""}`, at: now() });
         break;
       }
       case "Network.requestWillBeSent": {
         const id = String(p.requestId);
-        net.set(id, { id, method: String(p.request?.method || "GET"), url: String(p.request?.url || ""), type: String(p.type || ""), status: null, failed: null, at: now() });
+        net.set(id, { id, method: String(p.request?.method || "GET"), url: saidUrl(String(p.request?.url || "")), type: String(p.type || ""), status: null, failed: null, at: now() });
         if (net.size > RING) net.delete(/** @type {string} */ (net.keys().next().value));
         break;
       }
@@ -171,7 +179,7 @@ export function createDriver({ cdp, now = Date.now, capture = null }) {
     await cdp("Page.setInterceptFileChooserDialog", { enabled: true }).catch(() => {});
     const tree = await cdp("Page.getFrameTree").catch(() => null);
     mainFrame = String(tree?.frameTree?.frame?.id || "");
-    url = String(tree?.frameTree?.frame?.url || url);
+    url = saidUrl(String(tree?.frameTree?.frame?.url || url));
   }
 
   /** The page's address and title, as they are now — and its size, the snapshot's first line names (BS2). */
@@ -179,7 +187,7 @@ export function createDriver({ cdp, now = Date.now, capture = null }) {
     const r = await cdp("Runtime.evaluate", { expression: "[location.href, document.title, innerWidth, innerHeight]", returnByValue: true }).catch(() => null);
     const v = r?.result?.value;
     if (Array.isArray(v)) {
-      url = String(v[0] || url);
+      url = saidUrl(String(v[0] || url));
       title = String(v[1] || "");
       const w = Number(v[2]);
       const h = Number(v[3]);

@@ -2037,7 +2037,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/state` | Version, uptime, configuration (secrets masked; one this `secret.key` cannot open shown as kept, its place in `unreadable`), 24-hour summary, endpoints; where Filament listens (`listening`: a host or port saved since takes effect after a restart) and what starts it again after a stop (`supervisor`: `"desktop"`, the Filament app, or null); `endpoints` write a wildcard host as `localhost` and an IPv6 host in brackets; `exposed`: Filament's words where it listens beyond this machine while `agentLoop.roots` lists no folder, else null; `system`: this machine's system by name, its architecture, kernel release, shell (and PowerShell), path separator, CPUs and memory; `ownerless`, to this computer alone: its calls without the owner key since Filament started, `count` and `programs` (each `agent`, `count`, `lastAt`, newest first). Another machine's agents' device gets the version, the machine and `system` alone. |
+| `GET /api/state` | Version, uptime, configuration (secrets masked; one this `secret.key` cannot open shown as kept, its place in `unreadable`), 24-hour summary, endpoints; where Filament listens (`listening`: a host or port saved since takes effect after a restart) and what starts it again after a stop (`supervisor`: `"desktop"`, the Filament app, or null); `endpoints` write a wildcard host as `localhost` and an IPv6 host in brackets; `exposed`: Filament's words where it listens beyond this machine while `agentLoop.roots` lists no folder, else null; `system`: this machine's system by name, its architecture, kernel release, shell (and PowerShell), path separator, CPUs and memory; `ownerless`, to this computer alone: its calls without the owner key since Filament started, `count` and `programs` (each `agent`, `count`, `lastAt`, newest first); `artifacts`: where the page reads the artifacts, `page` and `still` with `{name}` for each one's name — this computer's `.art.localhost` addresses, under the page's pass where its programs need the owner key ([Artifacts](#artifacts-pages-the-agent-keeps)), or the network's artifacts address. Another machine's agents' device gets the version, the machine and `system` alone. |
 | `GET /api/clones?remote=<url>` | This machine's clones of a repository, named by its remote's URL in any form (`git@host:o/r.git` and `https://host/o/r` are one): each with its path, HEAD, branch and whether it is dirty, looked for in the folders of its projects and chats (the first 200). The answer names the repository by its key (`host/o/r`), never by the URL asked. |
 | `GET /api/sessions/<id>/asks`, `POST /api/sessions/<id>/asks/<ask>/answer` | What a chat waits on — its own turn's ask, the card its turn waits on for a command on another machine, its coding agent's, its sub-agents' — each with an id, what asks, the question and its options; one answer for any of them: a permission by `allow` (true or false) or `choice` `allow` \| `deny`, a question by `choice` (an option's id) or `words`, a coding agent's form by `outcome` and `answers` — never by matching words. The chat's own turn's pause goes on in the answer's reply (`stream`, `runEvents`, as a turn's); any other answers `{ ok, id, from }`. 404 for an ask the chat never had, 409 for one answered or ended. |
 | `PATCH /api/config/fields` | Change some of Filament's own settings (server, agent loop, observability, alerts, memory; never a credential): `{ "set": { "path": value }, "unset": ["path"], "base": version }`. Each value is checked by its type; `unset` puts Filament's default back; a `base` older than a change to one of the named settings is refused (409). Answers the changes in words, `restartNeeded`, each setting's value and the new version. |
@@ -2218,7 +2218,8 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   here that sends none of them — no key, no window's session, no pairing — is no one Filament knows
   (`server.loopbackTrust` `token`, its default): the admin API refuses it (HTTP 403, `ownerKey: true`, its words naming
   `filament open`), the harness and the console send its browser to the pairing page, and the run socket, a terminal,
-  a model call's `x-filament-memory-load` and memory's door with no inbound key set refuse it; `/health`,
+  a model call's `x-filament-memory-load`, memory's door with no inbound key set and an artifact's address with no pass
+  (Filament's page gives its frames and links one: [Artifacts](#artifacts-pages-the-agent-keeps)) refuse it; `/health`,
   `/.well-known/filament`, the pairing page and a pairing's claim answer anyone, and so does an MCP server's sign-in
   coming back to this computer's browser, which its own state proves. A browser here pairs with `filament open` or the
   tray's **Open in browser**; a client of memory's door with an inbound key, which every agent here may hold, reads its
@@ -5527,6 +5528,24 @@ script asks it with `fetch`, XHR or `EventSource`; one a script sets on an eleme
 give it relative (`a.png`). A request sent with credentials (`credentials: "include"`) is refused there. Where Filament
 serves no artifacts on the network, the harness there links none. Reached through an SSH tunnel, the page uses the
 tunnel's own `.art.localhost` address, as here.
+
+**On this computer.** A frame or a browser's tab carries nothing of Filament's own to an artifact's address, so where
+this computer's programs need the owner key (`server.loopbackTrust` `token`, its default: [Security](#15-security))
+an artifact's page opens under a pass too. Filament's page is given one for every artifact as it starts, by its owner
+key, window session or pairing, and the frames it shows carry it — a card, a pane, the Artifacts page —; a page's load
+trades it for a pass of that artifact's alone: the address moves to `<name>.art.localhost:20300/~<pass>/` as it loads,
+and the page reads and writes its own data alone. An address that leaves Filament's page — Open in browser, Copy link,
+a link to one in a chat's words, the Browser pane's Open in your browser — is asked for as it leaves and carries that
+artifact's pass alone (a still preview's leaves as one, writing nothing); the chat's own browser opens one under a pass
+too, and tells the chat its address without it. A switch between **Any program** and the owner key moves the
+addresses Filament's open pages give at once; a page already open in a frame goes on as it loaded until it is opened
+again.
+Its origin stays its own, so `localStorage`, `sessionStorage` and cookies are a page's own; an address from the top,
+a script's too, reaches its own file. A pass here works on this computer alone: one given by the owner key or a
+window's session ends when Filament restarts, one given to a browser paired here or to a device ends with its revoke,
+and none lasts past 30 days. An address with no pass — typed, kept from a chat, asked by a chat's shell or a script — is
+refused in words; a script of yours sends the owner key and is answered with none. With **Any program** (`legacy`), any
+program here opens one with no pass, an address under a pass too.
 
 **Getting one.** Ask any agent ("make me a page that tracks my reading"), or start from a tile on the Artifacts page:
 **Page**, **Doc**, **Slides**, **Dashboard** or **Design**, each a new task whose message box says what to make. A

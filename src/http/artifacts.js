@@ -9,8 +9,9 @@
 // or a deck (step 6), a Dashboard or a Design (step 7) — is its content drawn by Filament's own page, whose files are at
 // `/_filament/ui/`; a Dashboard that reads Filament's own numbers (AF-D12) asks for each at `/_filament/feeds/<name>`
 // and hears which changed at `/_filament/feed-changes`, and no other address is answered them. Every answer carries
-// the artifact's policy and sets no cookie. Only this machine is answered (AFC-56), as `/api` is without its token,
-// and only the page's own origin writes its data (AFC-90). The network's artifacts address (`artifactsDoor`,
+// the artifact's policy and sets no cookie. Only this machine is answered (AFC-56) — where its programs need the owner
+// key, a page by the pass its address carries (`localArtifactsDoor`) —, and only the page's own origin writes its data
+// (AFC-90). The network's artifacts address (`artifactsDoor`,
 // `artifactsListener`, the owner's remote Filament of 11-06, Part 4) answers the devices paired with this machine too,
 // every artifact on one https origin under its name's path, on a port of its own beside the network's listener.
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -34,6 +35,7 @@ import {
   STILL_SANDBOX,
   TYPE_MODULES,
   TYPE_STYLE,
+  artifactNameOfHost,
   artifactOfPath,
   artifactPath,
   artifactsOnNetwork,
@@ -51,6 +53,7 @@ import {
   rootedUnder,
   runsItself,
   servedPage,
+  stillNameOfHost,
   typeAlone,
   typeServed,
   typeShell,
@@ -61,7 +64,7 @@ import { PINNED_TEXT, PINS_FILE, WEB_DIR, isWebFile, pinnedText, pinsOf } from "
 import { FILAMENT_MARK } from "../core/headers.js";
 import { createLanListener, lanPortOf } from "../services/lan-tls.js";
 import { tailnetDoor } from "../services/tailscale.js";
-import { agentsDevice, callerAddress, endsWithDevice, hostNameOf, isLocalCaller, readBody, whoIs } from "./guards.js";
+import { agentsDevice, callerAddress, endsWithDevice, hostNameOf, isLocalCaller, loopbackTrusted, readBody, whoIs } from "./guards.js";
 
 /** The names a chart's script reads as colors: every name of the look but the type's and the corners'. */
 const COLOR_NAMES = Object.freeze([...Object.keys(LOOK_TOKENS).filter((n) => !NOT_COLORS.includes(n)), ...VISUAL_HUES.map((h) => `--${h}-fill`)]);
@@ -370,18 +373,20 @@ const isObject = (x) => Object.prototype.toString.call(x) === "[object Object]";
  *   `dashboards`: what runs a Space's dashboards, which answers a kept Dashboard's sources (HarnessV4_Space_Plan S2);
  *   `sql`: each app's own SQLite database (10-29) — where none is given, an app has none; `pageHost`: this Filament's
  *   own name under localhost (services/machine.js), whose page frames an artifact as 127.0.0.1's does
- * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, name: string, url: URL, o?: { still?: boolean, network?: { base: string, preview?: boolean } }) => void | Promise<void>}
+ * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, name: string, url: URL, o?: { still?: boolean, network?: { base: string, preview?: boolean }, under?: string }) => void | Promise<void>}
  *   `still`: the request came to the artifact's still address, which the harness's previews frame — or from a page
  *   that reads alone (a view-only device's) —: its page reads its data, its database and its sources as they stand, and
  *   changes none of them; `network`: it came to the network's artifacts address, whose door let it in by its page's
  *   pass (`artifactsDoor`) and handed it on with `url` the path inside the artifact, which sits under `base` there, the
- *   pass in it — `preview`, a still preview's —: its page is an origin of none, and its pass alone says what it writes
+ *   pass in it — `preview`, a still preview's —: its page is an origin of none, and its pass alone says what it writes;
+ *   `under`: it came to its own address under its page's pass (`localArtifactsDoor`), the path `url` is inside
  */
 export function createArtifactsHandler({ store, server, port, feeds = null, dashboards = null, sql = null, pageHost = () => "" }) {
   const pageData = store.data;
-  return function artifactAnswer(req, res, name, url, { still = false, network } = {}) {
-    // Where the artifact sits on the address asked: "" at its own; its name's path on the network's artifacts address.
-    const base = network?.base ?? "";
+  return function artifactAnswer(req, res, name, url, { still = false, network, under = "" } = {}) {
+    // Where the artifact sits on the address asked: "" at its own, or its page's pass's path there; its name's path on
+    // the network's artifacts address.
+    const base = network?.base ?? under;
     // The page's own origin, which alone writes its data and runs its SQL: https on the network's artifacts address.
     const own = `${network ? "https" : "http"}://${String(req.headers.host || "").toLowerCase()}`;
     /** What an address that names no artifact is answered. */
@@ -391,8 +396,8 @@ export function createArtifactsHandler({ store, server, port, feeds = null, dash
       "x-content-type-options": "nosniff",
       // On the network's artifacts address the page's own files are another origin's to it (its sandbox), let in by its
       // pass alone; its address, the pass in it, goes to its own address alone — a module it imports from the top is led
-      // under its pass by it (`artifactsDoor`).
-      "referrer-policy": network ? "same-origin" : "no-referrer",
+      // under its pass by it (`artifactsDoor`, `localArtifactsDoor`).
+      "referrer-policy": network || base ? "same-origin" : "no-referrer",
       ...(network ? NETWORK_CORS : {}),
       "cache-control": "no-cache",
     };
@@ -710,7 +715,7 @@ export function createArtifactsHandler({ store, server, port, feeds = null, dash
     // load it, is not (AFC-81).
     if (!old && !still && path === "/" && req.method === "GET") store.viewed(name);
     // Every page of it draws in the harness's look and says what fails in it, its other pages as its first (AFC-75);
-    // on the network's artifacts address its addresses from the top, and its sheets', are under its path there.
+    // under a path — the network's artifacts address, a pass's — its addresses from the top, and its sheets', are under it.
     if (type.startsWith("text/html")) return send(200, type, servedPage(rootedUnder(data.toString("utf8"), base, "html"), a.title, base), a.type === "app" ? APP_PAGE_HEAD : {});
     if (base && type.startsWith("text/css")) return send(200, type, rootedUnder(data.toString("utf8"), base, "css"));
     return send(200, type, data);
@@ -753,9 +758,12 @@ export function createPasses({ key = randomBytes(32), now = Date.now, ms = PASS_
   /** @param {string} body @param {string} from */
   const sign = (body, from) => createHmac("sha256", key).update(`${body}\n${from}`).digest("base64url").slice(0, 32);
   return {
-    /** @param {{ name: string, still: boolean, writes: boolean, who: string, from: string }} p @returns {string} */
-    give: ({ name, still, writes, who, from }) => {
-      const body = Buffer.from(JSON.stringify([name, still ? 1 : 0, writes ? 1 : 0, who, now() + ms])).toString("base64url");
+    /**
+     * `life`: how long it lasts, where not `ms` (this machine's passes, `LOCAL_PASS_MS`).
+     * @param {{ name: string, still: boolean, writes: boolean, who: string, from: string, life?: number }} p @returns {string}
+     */
+    give: ({ name, still, writes, who, from, life = ms }) => {
+      const body = Buffer.from(JSON.stringify([name, still ? 1 : 0, writes ? 1 : 0, who, now() + life])).toString("base64url");
       return `${body}.${sign(body, from)}`;
     },
     /**
@@ -811,7 +819,7 @@ const TAILNET_HOLDER = "tailnet:";
 /** A short hash of an admin token, never the token. @param {unknown} token */
 const tokenMark = (token) => createHash("sha256").update(String(token || "")).digest("base64url").slice(0, 16);
 /** Whether a pass's holder is a device. @param {string} who */
-const heldByDevice = (who) => who !== "local" && !who.startsWith("admin:") && !who.startsWith(TAILNET_HOLDER);
+const heldByDevice = (who) => who !== "local" && !who.startsWith("local:") && !who.startsWith("admin:") && !who.startsWith(TAILNET_HOLDER);
 
 /** A page's own load — a frame's, a tab's — by a browser's word, or by a client's that says nothing of it. @param {import("node:http").IncomingMessage} req */
 const loading = (req) => (req.method === "GET" || req.method === "HEAD") && (req.headers["sec-fetch-mode"] === undefined || req.headers["sec-fetch-mode"] === "navigate");
@@ -925,6 +933,152 @@ export function artifactsDoor({ answer, server, devices = null, log = () => {}, 
       if (!res.headersSent) say(500, "The artifact could not be served.");
       else res.end();
     }
+  };
+}
+
+/** How long a pass on this machine lasts: the harness reads its pass once a page (`holderPass`), and a desk stays open for days. */
+export const LOCAL_PASS_MS = 30 * 24 * 60 * 60 * 1000;
+/** Where this machine's passes are good: every caller on loopback is one place, whichever address it came by. */
+const HERE = "here";
+/** What a pass for every artifact names instead of one: no artifact's name is it. */
+const ANY_ARTIFACT = "*";
+/** This run of Filament's: a pass given by the owner key or a window's session ends with it, as they do. */
+const HERE_RUN = `local:${randomBytes(9).toString("base64url")}`;
+/**
+ * The key this machine's passes are signed with, made from the network's (`passKeyIn`): a pass of one address is good at
+ * the other nowhere, whatever a caller says it came from. @param {Buffer} key
+ */
+export const hereKey = (key) => createHmac("sha256", key).update("this computer's artifacts' addresses").digest();
+/**
+ * Whom a pass of this machine's is given: a browser paired here by its pairing, which its revoke ends; the owner key's
+ * and a window's session by this run of Filament's; else as the network's names them (`passHolder`).
+ * @param {any} who  whoIs's @param {any} server
+ */
+const holderHere = (who, server) => (who?.kind === "local" ? who.here || HERE_RUN : passHolder(who, server));
+/** A pass in an address of this machine's artifacts: `/~<pass>` and the path inside the artifact after it. */
+const PASS_AT = /^\/~([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(\/.*)?$/;
+/** What a request for an artifact here with no pass is answered, where this machine's programs need the owner key. */
+export const NO_PASS_HERE =
+  "An artifact on this computer opens from Filament (a chat's card, its pane, the Artifacts page, Open in browser), whose address for it carries a pass: this one carries none.";
+/** …and one whose pass is not good. */
+export const PASS_HERE_WORDS = "This page's pass to its artifact is not good here, or has ended: open it again from Filament.";
+
+/**
+ * The pass Filament's page is given for this machine's artifacts (/api/state's `artifacts`): good for any artifact's
+ * page load alone, which trades it for that artifact's own (`localArtifactsDoor`) — so no page holds another's. A
+ * view-only device's writes nothing. @param {ReturnType<typeof createPasses>} passes @param {any} who  whoIs's
+ * @param {any} server
+ */
+export const holderPass = (passes, who, server) =>
+  passes.give({ name: ANY_ARTIFACT, still: false, writes: !(who?.kind === "device" && who.scope === "view"), who: holderHere(who, server), from: HERE, life: LOCAL_PASS_MS });
+
+/**
+ * An artifact's own pass on this machine, for an address that leaves Filament's page — Open in browser, Copy link, a link
+ * pressed in a chat (POST /api/artifacts/:name/pass) —: its page alone, or its still preview's, which writes nothing;
+ * never the pass for every artifact, which a browser's history or a pasted link would carry.
+ * @param {ReturnType<typeof createPasses>} passes @param {string} name @param {any} who  whoIs's @param {any} server
+ * @param {boolean} [still]
+ */
+export const ownPass = (passes, name, who, server, still = false) =>
+  passes.give({ name, still, writes: !still && !(who?.kind === "device" && who.scope === "view"), who: holderHere(who, server), from: HERE, life: LOCAL_PASS_MS });
+
+/**
+ * An address the chats' browser opens, with this machine's pass for every artifact where it is one of this machine's
+ * artifacts' at Filament's port and carries none (server.js gives it where the owner key is needed): its page's load
+ * trades it for its own, as a frame of Filament's page does. Any other address as it is — one whose name ends in a dot
+ * too (`x.art.localhost.`), which the front door answers but an address said to the chat (driver.js `saidUrl`) would
+ * keep its pass in (the review of x41).
+ * @param {string} url @param {number} port  the port Filament listens on @param {() => string} pass  `holderPass`'s, asked only then
+ */
+export function passedHere(url, port, pass) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return url;
+  }
+  if (u.protocol !== "http:" || Number(u.port || 80) !== Number(port) || u.hostname.endsWith(".") || !(artifactNameOfHost(u.hostname) || stillNameOfHost(u.hostname)) || PASS_AT.test(u.pathname)) return url;
+  u.pathname = `/~${pass()}${u.pathname}`;
+  return u.href;
+}
+
+/**
+ * This machine's artifacts' addresses (`<name>.art.localhost`) where its programs need the owner key (server.loopbackTrust
+ * "token", s0c, x41): a page loads in a frame of Filament's page or a browser's tab, which carries no credential of
+ * Filament's, so it is let in by a pass in its path, as the network's artifacts address lets its pages in. Filament's
+ * page holds a pass for every artifact (`holderPass`); a page's own load under it is led under a pass of that artifact's
+ * alone, `/~<pass>/…`, and its every file and its data are read under it — a module it imports from the top by its
+ * Referer. A caller whoIs knows — the owner key, the admin token, a device's — is answered with none. Any other is
+ * refused in words; under "legacy", any program here is answered, with no pass.
+ * @param {{ answer: ReturnType<typeof createArtifactsHandler>, server: () => any, devices?: import("../services/devices.js").DeviceStore | null,
+ *   passes: ReturnType<typeof createPasses> }} o
+ * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, name: string, url: URL, o?: { still?: boolean }) => Promise<void>}
+ */
+export function localArtifactsDoor({ answer, server, devices = null, passes }) {
+  /**
+   * Whom a pass was given, still let in: the owner key's and a window's session in this run of Filament's; the admin
+   * token it was given under; a device, a browser paired here among them, not revoked. @param {string} who
+   */
+  const stillIn = (who) => {
+    if (who === HERE_RUN) return true;
+    if (who === "local" || who.startsWith("local:")) return false;
+    if (who.startsWith("admin:")) return !!server()?.adminToken && who === `admin:${tokenMark(server().adminToken)}`;
+    if (who.startsWith(TAILNET_HOLDER)) return false;
+    const d = devices?.get(who);
+    return !!d && d.revokedAt == null;
+  };
+  /** A pass good here for `name`'s page, or for any (`ANY_ARTIFACT`). @param {string} pass @param {string} name @param {boolean} still */
+  const good = (pass, name, still) => {
+    const p = passes.read(pass, HERE);
+    return p && stillIn(p.who) && (p.name === ANY_ARTIFACT || (p.name === name && p.still === still)) ? p : null;
+  };
+  /** The path inside the artifact a pass's address names. @param {URL} url @param {string} rest */
+  const inside = (url, rest) => {
+    const inner = new URL(url.href);
+    inner.pathname = rest;
+    return inner;
+  };
+  return async function artifactsHere(req, res, name, url, { still = false } = {}) {
+    const at = PASS_AT.exec(url.pathname);
+    // Any program here is answered: a page Filament's page framed under a pass while it needed one is served under it.
+    if (loopbackTrusted(server())) return await answer(req, res, name, at ? inside(url, at[2] || "/") : url, { still, ...(at ? { under: `/~${at[1]}` } : {}) });
+    /** @param {number} status @param {string} words @param {Record<string, string>} [more] */
+    const say = (status, words, more = {}) => {
+      res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-store", ...more });
+      res.end(req.method === "HEAD" ? undefined : `${words}\n`);
+    };
+    if (!isLocalCaller(req)) return say(403, "An artifact answers only this machine.");
+    if (at) {
+      const p = good(at[1], name, still);
+      if (!p) return say(403, PASS_HERE_WORDS);
+      const rest = at[2] || "";
+      // The pass for every artifact: a page's own load trades it for its artifact's own, and nothing else is read by it.
+      if (p.name === ANY_ARTIFACT) {
+        if (!loading(req) || !name) return say(403, NO_PASS_HERE);
+        const own = passes.give({ name, still, writes: p.writes && !still, who: p.who, from: HERE, life: LOCAL_PASS_MS });
+        return say(302, "", { location: `/~${own}${rest || "/"}${url.search}` });
+      }
+      const base = `/~${at[1]}`;
+      if (!rest) return say(302, "", { location: `${base}/${url.search}` });
+      if (!p.writes && !p.still && DATA_AT.test(rest) && req.method !== "GET" && req.method !== "HEAD") return say(403, VIEW_WRITES_WORDS);
+      // A device's page ends as the device does: what it follows closes at its revoke.
+      if (heldByDevice(p.who)) res.on("close", endsWithDevice(devices, /** @type {any} */ ({ kind: "device", device: { id: p.who } }), () => res.destroy()));
+      return await answer(req, res, name, inside(url, rest), { still: p.still || !p.writes, under: base });
+    }
+    // What a page asks from the top — a module's import, a sheet's picture, a page it goes to (`location = "/next"`) —
+    // comes with no pass but the page's address as its Referer: led under it.
+    {
+      let ref = null;
+      try {
+        ref = new URL(String(req.headers.referer || ""));
+      } catch {}
+      const by = ref && ref.host.toLowerCase() === String(req.headers.host || "").toLowerCase() ? PASS_AT.exec(ref.pathname) : null;
+      const p = by ? good(by[1], name, still) : null;
+      if (by && p && p.name !== ANY_ARTIFACT) return say(307, "", { location: `/~${by[1]}${url.pathname}${url.search}` });
+    }
+    const who = whoIs(req, server(), devices);
+    if (!who || agentsDevice(who)) return say(403, NO_PASS_HERE);
+    return await answer(req, res, name, url, { still: still || (who.kind === "device" && who.scope === "view") });
   };
 }
 

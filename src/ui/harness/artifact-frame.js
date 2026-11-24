@@ -18,8 +18,9 @@ import { ICONS } from "./lib/icons.js";
 import { failureLine, failureOf } from "./lib/visuals.js";
 import { askText, clickedIn } from "./lib/frame-ask.js";
 import { whenShown } from "./lib/when-shown.js";
-import { artifactAddress, artifactOrigin, frameableAt, lookName, portOf, sentTo, spokenOrigin, stillAddress, stillOrigin, useArtifactsAt, versionAddress, APP_FRAME_ALLOW, APP_FRAME_SANDBOX, FRAME_ALLOW, FRAME_SANDBOX } from "./lib/artifacts.js";
+import { artifactAddress, artifactOrigin, frameableAt, hereArtifactOf, lookName, passless, portOf, sentTo, spokenOrigin, stillAddress, stillOrigin, useArtifactsAt, versionAddress, APP_FRAME_ALLOW, APP_FRAME_SANDBOX, FRAME_ALLOW, FRAME_SANDBOX } from "./lib/artifacts.js";
 import { onPublished } from "./artifacts-live.js";
+import { openOut } from "./artifact-acts.js";
 
 /** Where this page reads its artifacts, as /api/state said it, once read. @type {Promise<void> | null} */
 let placing = null;
@@ -51,18 +52,54 @@ export function artifactsPlaced(pause = (ms) => new Promise((r) => setTimeout(r,
 }
 
 /**
+ * Where this page reads its artifacts, read again once a setting changed — `server.loopbackTrust` among them, which
+ * makes this machine's addresses carry a pass or none (the review of x41: a page read under Any program framed every
+ * artifact with none after the switch to the owner key). A read that fails leaves the addresses as they were.
+ * @returns {Promise<void>}
+ */
+export function artifactsPlacedAgain() {
+  if (!placing) return artifactsPlaced();
+  placing = placing.then(async () => {
+    try {
+      const st = await api("/state");
+      if (st && "artifacts" in st) useArtifactsAt(st.artifacts);
+    } catch {
+      // As they were: the next change reads them again.
+    }
+  });
+  return placing;
+}
+
+/**
+ * A link to an artifact of this machine's, pressed anywhere on this page — a chat's words, a card's arrow, Info — where
+ * its addresses carry this page's pass (lib/artifacts.js `hereArtifactOf`): opened in a tab of its own under a pass of
+ * that artifact's alone (artifact-acts.js `openOut`), never as written, which no pass or the page's for every artifact
+ * would carry out. Once, as the page starts. @param {Document} doc
+ */
+export function passArtifactLinks(doc) {
+  const out = (/** @type {MouseEvent} */ e) => {
+    if (e.type === "auxclick" && e.button !== 1) return;
+    const a = /** @type {any} */ (e.target)?.closest?.("a[href]");
+    if (!a || typeof a.href !== "string" || !a.href.startsWith("http://") || !hereArtifactOf(a.href)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void openOut(a.href);
+  };
+  doc.addEventListener("click", out, true);
+  doc.addEventListener("auxclick", out, true);
+}
+
+/**
  * A link out to an artifact's address, once this page knows where it reads them: none, hidden, where its Filament
- * serves them to this page nowhere (`artifactAddress` "").
+ * serves them to this page nowhere (`artifactAddress` ""). Written without this page's pass, which a press takes on to
+ * one of the artifact's own (`passArtifactLinks`).
  * @param {Element} a @param {string} address
  */
 export function linkOut(a, address) {
-  if (address) a.setAttribute("href", address);
+  if (address) a.setAttribute("href", String(passless(address)));
   else a.removeAttribute("href");
   a.classList.toggle("hidden", !address);
 }
-
-/** A page's pass in an address it said failed, taken out: what goes to the chat never carries it (fx-artifacts). @param {unknown} s */
-const passless = (s) => (typeof s === "string" ? s.replace(/\/~[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?=\/|$)/g, "") : s);
 
 /** @typedef {import("./lib/visuals.js").Failure} Failure */
 

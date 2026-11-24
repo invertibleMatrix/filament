@@ -334,7 +334,7 @@ describe("the Browser pane", () => {
       more.dispatch("click", { currentTarget: more });
       const item = /** @type {any} */ (document.querySelectorAll(".zc-menu-item").find((/** @type {any} */ r) => /Open this page in your browser/.test(r.textContent)));
       item.dispatch("click");
-      assert.deepEqual(opened, [["https://shop.test/login", "_blank", "noopener"]]);
+      assert.deepEqual(opened, [["https://shop.test/login", "_blank", "noopener,noreferrer"]]);
     } finally {
       if (hadOpen === undefined) delete g.window.open;
       else g.window.open = hadOpen;

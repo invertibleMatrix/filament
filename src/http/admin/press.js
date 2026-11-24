@@ -508,6 +508,8 @@ export const PRESS_TABLE = [
   ["PUT /model-routes", kept("config.js `pressNeeded`, from model-routes.js through app/model-routes.js `setBackups`")],
   // artifacts.js
   ["GET /artifacts", READS],
+  // An artifact's address with a pass of its own: it changes nothing, and opens what the page frames already.
+  ["POST /artifacts/:name/pass", READS],
   ["POST /artifacts", WORDS],
   ["GET /artifacts/:name", READS],
   ["PATCH /artifacts/:name", WORDS],

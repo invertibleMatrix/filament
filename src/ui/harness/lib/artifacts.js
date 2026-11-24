@@ -99,6 +99,37 @@ export const stillOrigin = (name, port) => new URL(atPort(port).still.replace(NA
 export const spokenOrigin = (origin) => (place?.page.startsWith("https://") ? "null" : origin);
 /** Where a word to an artifact's frame goes: to its page wherever its origin is none, else to its origin alone. @param {string} origin  `spokenOrigin`'s */
 export const sentTo = (origin) => (origin === "null" ? "*" : origin);
+/** A pass at the head of an address's path: `/~<pass>`. */
+const PASS_HEAD = /^\/~([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=\/|$)/;
+/**
+ * An address of this machine's artifacts that leaves this page — a link pressed, Open in browser, Copy link — where the
+ * server gave this page a pass for every artifact (its programs need the owner key, http/artifacts.js `holderPass`):
+ * which artifact, and the path inside it (its query and fragment with it), with any pass it carried taken out. It goes
+ * under a pass of that artifact's own, asked of the server: the pass for every artifact stays in this page's frames,
+ * never in a browser's history or a pasted link; a still preview's under a still one, which writes nothing. Null for
+ * any other address, or where this page holds no such pass.
+ * @param {string} url @returns {{ name: string, still: boolean, path: string } | null}
+ */
+export function hereArtifactOf(url) {
+  const page = place?.page || "";
+  if (!page.startsWith("http://")) return null;
+  const mine = new URL(page.replace(NAME_SLOT, "x"));
+  if (!PASS_HEAD.test(mine.pathname)) return null;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const m = new RegExp(`^([a-z0-9-]+)(\\.still)?\\.${ART_DOMAIN.replace(".", "\\.")}$`).exec(u.hostname.toLowerCase());
+  if (u.protocol !== "http:" || u.port !== mine.port || !m || !isArtifactName(m[1])) return null;
+  return { name: m[1], still: !!m[2], path: `${u.pathname.replace(PASS_HEAD, "") || "/"}${u.search}${u.hash}` };
+}
+/**
+ * An address with a page's pass taken out — the network's artifacts address's, or this machine's where its programs need
+ * the owner key —: what is said or shown never carries it (fx-artifacts). @param {unknown} s
+ */
+export const passless = (s) => (typeof s === "string" ? s.replace(/\/~[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?=\/|$)/g, "") : s);
 /** A version's address at its still preview's. @param {string} name @param {string | number} port @param {number} v */
 export const stillAddress = (name, port, v) => `${atPort(port).still.replace(NAME_SLOT, name)}_filament/v/${v}/`;
 /**

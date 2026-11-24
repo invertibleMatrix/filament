@@ -84,7 +84,8 @@ import { renderThreadPane, threadOnceListed } from "./panes/thread.js";
 import { renderControlRoom } from "./control-room.js";
 import { renderArtifactView } from "./artifact-view.js";
 import { renderArtifactsPage } from "./artifacts-page.js";
-import { artifactFrame } from "./artifact-frame.js";
+import { artifactFrame, artifactsPlaced, artifactsPlacedAgain, passArtifactLinks } from "./artifact-frame.js";
+import { openOut } from "./artifact-acts.js";
 import { sessionStartBody, chipStanding } from "./session-start.js";
 import { dialog, closeOverlays, confirmDialog, sheet, toast as noticeToast } from "./lib/ui.js";
 import { crashNoticeOf, addressWithoutCrash, CRASH_NOTICE_MS } from "./lib/crash-notice.js";
@@ -3702,7 +3703,7 @@ const decisions = createDecisions({
   agentAnswer: (chat, ask, a) => answerAgent(chat, ask, a),
   agentPlan: (chat, ask, x) => planAgent(chat, ask, x),
   agentPermission: (chat, ask, x) => { void permitAgent(chat, ask, x); },
-  open: (url) => { window.open(url, "_blank", "noopener,noreferrer"); },
+  open: (url) => { void openOut(url); },
   // A decision that appears takes the keys while the developer types nothing (HarnessV4_Tasks U1) — on a page that
   // answers: a view-only device's has no dock (paintViewOnly).
   keys: () => viewOnlyPage() ? null : dockKeys({ draft: composer.draft(), modal: !!document.querySelector('[aria-modal="true"]'), active: document.activeElement, body: document.body, box: composer.box }),
@@ -9667,6 +9668,9 @@ async function boot() {
   sayCrash();
   stillWhileHidden();
   watchTheme();
+  // A link to an artifact of this machine's, wherever it is pressed, opens under this page's pass where it needs one.
+  passArtifactLinks(document);
+  void artifactsPlaced();
   // The header's folder field with its memory.
   const folders = recentFolders();
   shell.foldersDatalist.replaceChildren(...folders.map((f) => h("option", { value: f })));
@@ -9770,6 +9774,8 @@ async function boot() {
   // Your defaults live in the configuration: a save may have changed "New chats start in".
   onBus((msg) => { if (msg?.type === "config-changed") void loadNewChatMode(); });
   void loadNewChatMode();
+  // …and where it reads this machine's artifacts: Any program, or the owner key, says whether their addresses carry a pass.
+  onBus((msg) => { if (msg?.type === "config-changed") void artifactsPlacedAgain(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") catalogue.refreshIfOlder(30_000); });
   window.setInterval(() => { if (document.visibilityState === "visible") catalogue.refreshIfOlder(5 * 60_000); }, 60_000);
   /** How many models answer as the page started (`answers`, the server's own rule: readiness.js), for the welcome tour: null where the read failed. */

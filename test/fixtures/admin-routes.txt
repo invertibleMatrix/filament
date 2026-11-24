@@ -279,6 +279,7 @@ POST /api/agents
 POST /api/alerts/ack
 POST /api/artifacts
 POST /api/artifacts/*/newest
+POST /api/artifacts/*/pass
 POST /api/artifacts/*/versions
 POST /api/assistant/apply
 POST /api/assistant/chat

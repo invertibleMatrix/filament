@@ -400,7 +400,7 @@ export const ownerNeeded = (req) => isLocalCaller(req) && ownerOf(req) !== "owne
  * agents' device stops at its revoke; a cookie that does not — another port's: a browser sends a host's cookies to each
  * of its ports — leaves the caller this computer. A tailnet login that carries a device's token is the login, and its
  * device is counted in use all the same (its verify).
- * @typedef {{ kind: "local", owner?: true } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
+ * @typedef {{ kind: "local", owner?: true, here?: string } | { kind: "admin" } | { kind: "tailnet", login: string } | { kind: "device", device: import("../services/devices.js").Device, scope: import("../services/devices.js").Scope }} Caller
  * @param {import("node:http").IncomingMessage} req
  * @param {any} server  the `server` config section
  * @param {import("../services/devices.js").DeviceStore | null} [devices]  none: no device is known
@@ -413,8 +413,9 @@ export function whoIs(req, server, devices = null) {
     const device = deviceOfToken(req, devices);
     // A browser here, at this Filament's own name: the person at this computer, as its pairing — made with the owner
     // key or the app's press — says. It does what this computer's owner does, but what needs the key itself (a window's
-    // session, keys copied) or, while the app holds its key, a press.
-    if (device?.here) return { kind: "local", owner: true };
+    // session, keys copied) or, while the app holds its key, a press. Its pairing named (`here`), what it is given — an
+    // artifact's pass (http/artifacts.js) — ends with its revoke.
+    if (device?.here) return { kind: "local", owner: true, here: device.id };
     if (device) return { kind: "device", device, scope: device.scope };
     if (devices && deviceBearer(req)) return null;
     // No key, no session, no pairing — or a cookie that does not verify (a revoked desk's through an SSH tunnel, another

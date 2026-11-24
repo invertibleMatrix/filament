@@ -309,8 +309,8 @@ test("a browser here is this computer's owner at this Filament's own name alone:
   assert.equal(got.ok, true, got.why);
   assert.equal(got.device.here, true);
   const cookie = `filament_device=${got.token}`;
-  assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie }), {}, devices), { kind: "local", owner: true }, "at its own name: the owner's");
-  assert.deepEqual(whoIs(req({ host: `${H.toUpperCase()}:8080`, cookie }), {}, devices), { kind: "local", owner: true }, "at an SSH tunnel's port, its name kept");
+  assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie }), {}, devices), { kind: "local", owner: true, here: got.device.id }, "at its own name: the owner's, its pairing named");
+  assert.deepEqual(whoIs(req({ host: `${H.toUpperCase()}:8080`, cookie }), {}, devices), { kind: "local", owner: true, here: got.device.id }, "at an SSH tunnel's port, its name kept");
   assert.equal(whoIs(req({ host: "127.0.0.1:20300", cookie }), {}, devices), null, "at 127.0.0.1: no one's cookie, and no key: no one");
   assert.deepEqual(whoIs(req({ host: "127.0.0.1:20300", cookie }), { loopbackTrust: "legacy" }, devices), { kind: "local" }, "legacy: this computer's call as any program's");
   assert.equal(whoIs(req({ host: "127.0.0.1:20300", authorization: `Bearer ${got.token}` }), {}, devices), null, "its token as a Bearer there: no one");
