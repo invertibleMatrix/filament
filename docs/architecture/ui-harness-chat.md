@@ -63,7 +63,7 @@ The [architecture](../ARCHITECTURE.md) explains the layers; each row below says 
 
 | File | What it is |
 | ---- | ---------- |
-| `ui/harness/conversation/tools/layout.js` | The one tool-stub layout, `toolRow`: icon in its family's tone, the kind label (gradient while running), primary and secondary text, the failure status and the chevron; the whole row toggles. `factsOf`, `statusOf` (Cut off, Not followed), `refusedWhy`, `fileChip`, and `chipActions` — the page's hooks the cards call (sub-agent rows, a saved agent's card marks and answer, overrule, envelope state, open team or flow). |
+| `ui/harness/conversation/tools/layout.js` | The one tool-stub layout, `toolRow`: icon in its family's tone, the kind label (gradient while running), primary and secondary text, the failure status and the chevron; the whole row toggles. `factsOf`, `statusOf` (Cut off, Not followed), `refusedWhy`, `fileChip` (one on another machine, `There`, opens its chat there), and `chipActions` — the page's hooks the cards call (sub-agent rows, a saved agent's card marks and answer, overrule, envelope state, open team or flow). |
 | `ui/harness/conversation/tools/render.js` | The tool renderers: one row per call through layout.js, groups from consecutive completed stubs of one family (Explore, Changes, Terminal; `groupRuns`), mixed finished calls folded into one sentence (`workSentence`); sub-agent cards (call rows only while open, `placeCalls`), search hits (`searchHits`), read facts, a write's errors (`lspErrors`), a plan an agent proposes (`planCard`), and after a reload the archived stubs (`archivedStubs` and its results). Cards show only what the events carried. |
 
 ## `ui/harness/views/`

@@ -400,9 +400,12 @@ export function createSidebar(host, cb, rail = null) {
    * (`cb.openThere`), else on its machine's whole page (the app's `openOn`). @param {{ id: string, name: string }} m @param {string} route
    */
   function openOnMachine(m, route) {
-    const flags = desk?.machines.find((x) => x.id === m.id)?.flags || [];
-    if (cb.openThere) return cb.openThere({ id: m.id, name: m.name, flags }, route);
-    void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(m.id, route))?.catch?.(() => {});
+    // Its id as the app keeps it, in lower case (desktop/lib/machines.js `idOf`): a sub-agent's machine says its own as
+    // that Filament said it.
+    const id = String(m.id || "").toLowerCase();
+    const flags = desk?.machines.find((x) => x.id === id)?.flags || [];
+    if (cb.openThere) return cb.openThere({ id, name: m.name, flags }, route);
+    void (/** @type {any} */ (globalThis).filamentApp?.openOn?.(id, route))?.catch?.(() => {});
   }
   /** Another machine's Done cleared: each marked seen there, through the app (harness-preload.cjs `seen`). @param {import("./lib/desk.js").DeskRow[]} rows */
   function seenThere(rows) {

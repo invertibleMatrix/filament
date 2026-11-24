@@ -324,6 +324,58 @@ test("a chat deleted stops its sub-agents at work, one on another machine with a
   }
 });
 
+// (fails before: yes — the review of s2e: its card said the round its run there numbered, and its thread the round its
+// run here did: after a second run of one exchange, Round 1 on the card and Round 3 in the thread)
+test("its card says the round its thread does: what its card reads is the event as its run here numbers it", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "filament-remote-rounds-"));
+  let release = () => {};
+  const held = new Promise((r) => (release = () => r(null)));
+  /** @type {any[]} */
+  const published = [];
+  const client = {
+    state: { system: null, takes: ["mode"] },
+    post: async (/** @type {string} */ path) => (path === "/sessions" ? { id: "chat-1", model: "m-1" } : { ok: true }),
+    get: async (/** @type {string} */ path) => (path.endsWith("/asks") ? { asks: [] } : { events: [] }),
+    stream: async (/** @type {string} */ _p, /** @type {any} */ _b, /** @type {(e: string, d: any) => void} */ onEvent, /** @type {any} */ o) => {
+      onEvent(...runEvent({ n: 1, type: "round-start", round: 1 }));
+      onEvent(...runEvent({ n: 2, type: "round-start", round: 2 }));
+      await Promise.race([held, new Promise((r) => o.signal.addEventListener("abort", r, { once: true }))]);
+      if (o.signal.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    },
+  };
+  try {
+    const registry = createSubagentRegistry({
+      config: () => /** @type {any} */ ({ agentLoop: {} }),
+      log: () => {},
+      events: { publish: (/** @type {string} */ topic, /** @type {any} */ e) => void (topic.startsWith("run:") && published.push(e)) },
+      runs: /** @type {any} */ ({ startRun: () => {}, endRun: () => {} }),
+      context: /** @type {any} */ ({ settings: () => ({ subagents: {}, loop: { permissions: "edit" } }), modelProblem: () => null, session: () => ({ cwd: folder, model: "m-1" }), mark: (/** @type {string} */ _c, /** @type {any} */ m) => m, loadThreads: () => [] }),
+      machines: oneMachine(client),
+    });
+    const door = registry.openTurn({ chainId: "c-rounds", runId: "turn-rounds", cwd: folder, mode: "edit", model: "m-1", thinking: null, fork: null });
+    const res = await door.subagents.run({ id: "toolu_rounds", input: { machine: "Box", cwd: "/w", description: "Work there", prompt: "Work.", run_in_background: true }, emit: () => {}, signal: null });
+    const id = String(/sub-agent (sa_[0-9a-f]+)/.exec(res.text)?.[1] || "");
+    await until(() => published.filter((e) => e.type === "round-start").length === 2, "its rounds in its thread");
+    assert.equal(registry.get(id)?.progress?.round, 2, "its card's round is its thread's");
+    door.close();
+    await registry.forgetChat("c-rounds");
+  } finally {
+    release();
+    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+  // A second run there of one exchange (an answer's resumed turn) is numbered on in its run here (`mirrorEvents`, above):
+  // the card reads that event, never the one its run there sent.
+  const src = readFileSync(new URL("../src/app/agent/subagents.js", import.meta.url), "utf8");
+  assert.match(src, /registryApi\?\.relay\(sa\.id, shown\?\.event\(e\) \?\? e\);/);
+  assert.match(src, /if \(shown\) events\.publish\(`run:\$\{id\}`, shown\);\s+return shown;/);
+});
+
+// (fails before: yes — the review of s2e: a run here of a turn there that a crash left open stayed running for good)
+test("a run here of a turn there that the last stop left open is ended at the next start, as a sub-agent's of this machine's is", () => {
+  const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(server, /for \(const o of await runs\.openOnDisk\("remote-subagent"\)\) runs\.closeOnDisk\(o\.id, \{ status: "aborted", summary: \{ error: LEFT_OPEN \} \}\);/);
+});
+
 // (fails before: yes — the swarm's review of 11-10: a follow-up carried a changed mode to a Filament there that takes
 // none, which refused the message; a folder there that machine's fence keeps from this machine's agents was read as an
 // old Filament's answer, and the launch went to a clone; a read of the asks there that failed was never made again)

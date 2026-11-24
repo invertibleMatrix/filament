@@ -131,9 +131,30 @@ export const chipActions = {
   envelopeState: null, openTeam: null, openFlow: null, openChat: null, openOnMachine: null,
 };
 
-/** A file chip: the leaf name, the path as its title. Click opens the file in the side pane (§5.7 B3). @param {string} path */
-export function fileChip(path) {
+/**
+ * Another machine an agent's calls ran on (subagent-viewer.js, a thread mirrored from it): its id and name, and its chat
+ * there once made. @typedef {{ id: string, name: string, chat: string | null }} There
+ */
+
+/**
+ * A file chip: the leaf name, the path as its title. Click opens the file in the side pane (§5.7 B3). A file on another
+ * machine (`there`) is that machine's: the chip opens its chat there, where it is — never this computer's file of that
+ * name —, and says so. @param {string} path @param {There | null} [there]
+ */
+export function fileChip(path, there = null) {
   const leaf = String(path || "").split(/[\\/]/).pop() || path;
+  if (there) {
+    const opens = !!chipActions.openOnMachine && !!there.chat;
+    return h("button", {
+      class: "file-chip", type: "button", title: `${path} — on ${there.name}${opens ? ": open its chat there" : ""}`,
+      onclick: (/** @type {Event} */ e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (opens) chipActions.openOnMachine?.({ id: there.id, name: there.name }, String(there.chat));
+        else if (path && navigator.clipboard) navigator.clipboard.writeText(path).catch(() => {});
+      },
+    }, leaf);
+  }
   return h("button", {
     class: "file-chip", type: "button", title: chipActions.open ? `${path} — open in the side pane` : path,
     onclick: (e) => {

@@ -324,7 +324,9 @@ describe("the left bar's desk (sidebar.js, pinned in the source)", () => {
 
   test("a row of theirs opens at its chat's address — in place beside the bar where the page can (desk-in-place.test.js), else on its machine through the app (`openOn`); Clear marks them seen there", () => {
     assert.match(bar, /openOnMachine\(r\.machine, deskRoute\(r\.there\)\);/);
-    assert.match(bar, /if \(cb\.openThere\) return cb\.openThere\(\{ id: m\.id, name: m\.name, flags \}, route\);\n\s+void \(\/\*\* @type \{any\} \*\/ \(globalThis\)\.filamentApp\?\.openOn\?\.\(m\.id, route\)\)\?\.catch\?\.\(\(\) => \{\}\);/);
+    // (fails before: yes — the review of s2e: a sub-agent's machine said its id with capitals, and Open on found no
+    // machine) Its id in lower case, as the app keeps it (desktop/lib/machines.js `idOf`).
+    assert.match(bar, /const id = String\(m\.id \|\| ""\)\.toLowerCase\(\);\n\s+const flags = desk\?\.machines\.find\(\(x\) => x\.id === id\)\?\.flags \|\| \[\];\n\s+if \(cb\.openThere\) return cb\.openThere\(\{ id, name: m\.name, flags \}, route\);\n\s+void \(\/\*\* @type \{any\} \*\/ \(globalThis\)\.filamentApp\?\.openOn\?\.\(id, route\)\)\?\.catch\?\.\(\(\) => \{\}\);/);
     assert.match(bar, /for \(const \[id, chains\] of by\) void bridge\?\.seen\?\.\(id, chains\)\?\.catch\?\.\(\(\) => \{\}\);/);
     assert.match(preload, /seen: \(id, chains\) => ipcRenderer\.invoke\("filament:desk-seen", \{ id: String\(id\), chains: Array\.isArray\(chains\) \? chains\.slice\(0, 50\)\.map\(String\) : \[\] \}\),/);
   });

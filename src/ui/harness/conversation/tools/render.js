@@ -24,9 +24,10 @@ import { chatLinkEl } from "../../lib/chat-open.js";
 import { nextFrame } from "../../lib/weak-frame.js";
 import { proposedOf, routineCard } from "../routine-card.js";
 
-/** @typedef {{ chain: string, n: number, agent?: string }} TurnAt  a turn's chat and number (an agent's thread: its
- *  exchange's, and `agent`, the agent): where its edit cards ask their call's own
- *  change (HarnessV4_Four_Plan E22) */
+/** @typedef {{ chain: string, n: number, agent?: string, there?: import("./layout.js").There | null }} TurnAt  a turn's
+ *  chat and number (an agent's thread: its exchange's, and `agent`, the agent): where its edit cards ask their call's
+ *  own change (HarnessV4_Four_Plan E22). `there`: an agent's on another machine, whose calls ran there — its changes,
+ *  files and pictures are that machine's, and its cards ask nothing of this one's */
 
 /** The grouping switches, as groupRuns reads them. */
 function groupToggles() {
@@ -253,9 +254,10 @@ const SHOTS_KEPT = 24;
  * An image the agent made (Cursor's generateImage, Codex's image_generation): what it was asked to draw and, once it is
  * saved, its file — shown on the card, and opened whole in the side pane from its chip or the picture. One the files
  * route cannot show (outside the session's folder, too large, gone) is named by its chip and says why it is not shown.
- * @param {any} t @param {any} base
+ * One made on another machine (`there`) is that machine's file: none of this computer's is read for it.
+ * @param {any} t @param {any} base @param {import("./layout.js").There | null} [there]
  */
-function imageRow(t, base) {
+function imageRow(t, base, there = null) {
   const running = t.state === "running";
   const file = typeof t.file === "string" ? t.file : "";
   const asked = line(t.card?.subject ?? argsOf(t).description ?? "");
@@ -264,7 +266,8 @@ function imageRow(t, base) {
     ? h("img", { class: "code-img", src: r.src, alt: asked || file, title: "Open it in the side pane", onclick: () => chipActions.open?.(file) })
     : h("p", { class: "pane-note" }, r.note));
   let held = null;
-  if (file && chipActions.readFile) {
+  if (file && there) held = { read: Promise.resolve({ src: "", note: `Not shown: the picture is on ${there.name}, where its chat shows it.` }), got: { src: "", note: `Not shown: the picture is on ${there.name}, where its chat shows it.` } };
+  else if (file && chipActions.readFile) {
     held = shots.get(t.id);
     if (!held) {
       const read = Promise.resolve(chipActions.readFile?.(file)).then(
@@ -285,7 +288,7 @@ function imageRow(t, base) {
     ...base,
     icon: ICONS.image,
     kind: running ? "Generating an image" : t.state === "failed" ? "Image failed" : "Generated an image",
-    primary: file ? [fileChip(file)] : asked ? [asked] : [],
+    primary: file ? [fileChip(file, there)] : asked ? [asked] : [],
     secondary: [file ? asked : "", factsOf(t)].filter(Boolean).join(" · "),
     body: shot ? h("div", { class: "term-card image-card" }, shot) : undefined,
     open: !!shot,
@@ -305,13 +308,15 @@ const shown = (pics) => pics.map((p) => ({ src: pictureUrl(p.ref), alt: p.alt })
 
 /**
  * The pictures a call handed its model (HarnessV4_Tasks U9): thumbnails Filament serves, a click opening one whole over
- * the page. One no longer kept says so in its place, and any the run log could not keep are counted, with why.
- * @param {any} t @param {string} alt
+ * the page. One no longer kept says so in its place, and any the run log could not keep are counted, with why. A call
+ * on another machine's (`there`) were kept there: said so, none asked of this one.
+ * @param {any} t @param {string} alt @param {import("./layout.js").There | null} [there]
  */
-function picturesPart(t, alt) {
+function picturesPart(t, alt, there = null) {
   const kept = Array.isArray(t.images) ? t.images : [];
   const lost = t.imagesNotKept && Number(t.imagesNotKept.count) > 0 ? t.imagesNotKept : null;
   if (!kept.length && !lost) return null;
+  if (there) return h("div", { class: "tool-shots-wrap" }, h("p", { class: "pane-note" }, `${kept.length || lost?.count} picture${(kept.length || lost?.count) === 1 ? "" : "s"} it was shown, on ${there.name}: its chat there shows ${(kept.length || lost?.count) === 1 ? "it" : "them"}.`));
   const swept = kept.some((/** @type {any} */ im) => pictureLost(pictureUrl(String(im?.ref || ""))));
   const gone = kept.length ? h("p", { class: `pane-note${swept ? "" : " hidden"}` }, "No longer kept: a picture is kept as long as its run's log.") : null;
   const list = shown(kept.map((/** @type {any} */ im) => ({ ref: String(im?.ref || ""), alt })));
@@ -1066,10 +1071,10 @@ function stubOf(t, o = {}) {
   }
   if (k === "read") {
     // A read of an image shows the picture the model got, open, in place of its one line of words (HarnessV4_Tasks U9).
-    const shots = picturesPart(t, pictureAltOf(t));
+    const shots = picturesPart(t, pictureAltOf(t), o.turnAt?.there);
     return toolRow({
       ...base, icon: ICONS.search, kind: t.card?.title || (running ? "Reading" : "Read"),
-      primary: [fileChip(subj ?? a.path ?? "")],
+      primary: [fileChip(subj ?? a.path ?? "", o.turnAt?.there)],
       secondary: readFacts(t),
       body: shots ? h("div", { class: "term-card picture-card" }, shots) : t.preview ? previewBody(t) : undefined,
       open: pictured(t),
@@ -1102,9 +1107,12 @@ function stubOf(t, o = {}) {
     /** @type {((row: Element) => void) | null} */
     let read = null;
     let known = false;
-    const call = t.state === "done" && o.turnAt && t.id != null && !t.idless ? { ...o.turnAt, id: String(t.id) } : null;
+    // One on another machine (`there`) changed that machine's file: nothing of this one's record is asked for it.
+    const there = o.turnAt?.there || null;
+    const call = !there && t.state === "done" && o.turnAt && t.id != null && !t.idless ? { chain: o.turnAt.chain, n: o.turnAt.n, ...(o.turnAt.agent ? { agent: o.turnAt.agent } : {}), id: String(t.id) } : null;
     // A call that failed or never ran changed nothing: its card opens on its own words, why (FOC-16).
     if (!running && t.state !== "done" && t.preview) body = previewBody(t);
+    else if (!running && there && (subj ?? a.path)) body = h("p", { class: "pane-note" }, `The change is in the file on ${there.name}: its chat there shows it.`);
     else if (!running && (o.runId || call) && (subj ?? a.path)) {
       const runId = o.runId ? String(o.runId) : null;
       const target = String(subj ?? a.path);
@@ -1123,7 +1131,7 @@ function stubOf(t, o = {}) {
     const row = toolRow({
       ...base, icon: ICONS.pencil,
       kind: t.card?.title || (running ? (k === "write" ? "Writing" : "Editing") : (k === "write" ? "Wrote" : "Edited")),
-      primary: [fileChip(subj ?? a.path ?? ""), counts], secondary: errsFact ? [errsFact, facts ? ` · ${facts}` : null] : facts,
+      primary: [fileChip(subj ?? a.path ?? "", there), counts], secondary: errsFact ? [errsFact, facts ? ` · ${facts}` : null] : facts,
       body,
     });
     // A change read already draws at once; else the card reads once it is shown (V4-D304): a closed fold's wait.
@@ -1221,7 +1229,7 @@ function stubOf(t, o = {}) {
     return toolRow({ ...base, icon: ICONS.bot, kind: running ? "Stopping sub-agent" : base.status ? SUBAGENT_STOP : "Stopped sub-agent", primary: subj ? [line(subj)] : [], secondary: facts, ...(said ? { body: said } : {}) });
   }
   if (k === "subagent" && name !== "delegate_read") return subagentRow(t, base, o);
-  if (k === "image") return imageRow(t, base);
+  if (k === "image") return imageRow(t, base, o.turnAt?.there);
   // A visual (HarnessV4_Visuals_Plan §5): one line each in the work — the picture itself stands in the answer. A drawing
   // refused says why on its line (VC-50); the guide names the kinds it was read for.
   if (k === "visual" || k === "visual-guide") {

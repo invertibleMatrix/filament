@@ -3190,9 +3190,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       } catch (/** @type {any} */ e) {
         log("warn", `sub-agents: the run ${o.id} the last stop left open could not be settled (${e.message})`);
       }
-    // A sub-agent on another machine has no run on disk here: one whose exchange that process left open is found in the
-    // threads its chat keeps, and its turn there is sent its stop (`recallCut`) — none runs on there unwatched until
-    // someone opens its chat here.
+    // A sub-agent on another machine's run here only shows its turn there (subagents.js `mirrorRun`): one that process
+    // left open is ended, so no list says it still runs. Its exchange is found in the threads its chat keeps, and its turn
+    // there is sent its stop (`recallCut`) — none runs on there unwatched until someone opens its chat here.
+    try {
+      for (const o of await runs.openOnDisk("remote-subagent")) runs.closeOnDisk(o.id, { status: "aborted", summary: { error: LEFT_OPEN } });
+    } catch (/** @type {any} */ e) {
+      log("warn", `sub-agents: the runs on other machines the last stop left open could not be ended (${e.message})`);
+    }
     try {
       subagents.recallCut(memory?.archive?.chainsCutThere() ?? []);
     } catch (/** @type {any} */ e) {

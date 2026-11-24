@@ -172,7 +172,8 @@ function diffEl(diff) {
  * @param {import("./lib/subagents.js").SubagentExchange} ex @param {number} index
  * @param {{ stick: (fn: () => void) => void, label: string,
  *   onward: { main: MainDoor, send: (exchange: number, when: "now" | "next") => Promise<{ into: "turn" | "queue" }> } | null,
- *   toast: (msg: string, kind?: string) => void, pictures?: Pictures | null, at?: { chain: string, agent: string } | null,
+ *   toast: (msg: string, kind?: string) => void, pictures?: Pictures | null,
+ *   at?: { chain: string, agent: string, there?: () => import("./conversation/tools/layout.js").There | null } | null,
  *   follow?: (hears: { onEvent: (e: any) => void, onWords: (frame: any) => void }) => { promise: Promise<unknown>, stop: () => void },
  *   asleep?: boolean }} o
  *   `label`: the words over the prompt (`askedWords`) — a saved agent's exchanges are questions, not tasks;
@@ -455,7 +456,8 @@ function exchangeView(ex, index, o) {
       // agents' marks, compactions and the line of one under way, an edit's change, the Background button. A row whose
       // call did not change stays, and each command's output keeps its place.
       const live = current.status === "running";
-      const at = o.at ? { chain: o.at.chain, n: index, agent: o.at.agent } : null;
+      // One on another machine's calls ran there: its cards ask nothing of this one's (tools/render.js `TurnAt` `there`).
+      const at = o.at ? { chain: o.at.chain, n: index, agent: o.at.agent, ...(o.at.there?.() ? { there: o.at.there() } : {}) } : null;
       const outputs = /** @type {[HTMLElement, number][]} */ (Array.from(roundsBox.querySelectorAll("pre.term-out")).map((p) => [/** @type {HTMLElement} */ (p), outputTops.get(p) || 0]));
       for (const r of dirty) {
         const cell = aligned.byRound.get(r);
@@ -923,8 +925,8 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
       return pic.el;
     },
   };
-  /** The head's buttons: each shows only where the sub-agent's state offers it (`paintHead`). */
-  const actions = [detachBtn, takeBtn, stopBtn];
+  /** The head's buttons: each shows only where the sub-agent's state offers it (`paintHead`); Open on where its chat there is (`paintThere`). */
+  const actions = [thereBtn, detachBtn, takeBtn, stopBtn];
   /** No sub-agent is shown — not loaded yet, or gone: nothing is offered, and nothing can be asked of it. */
   const offerNothing = () => {
     for (const b of actions) b.classList.add("hidden");
@@ -1207,7 +1209,7 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
       if (!views[i]) {
         // Opened, the thread follows its newest exchange, and any still running; the rest as it comes near them.
         const sleeps = canSleep && first && i < newest && ex.status !== "running" && !!runOf(ex);
-        const v = exchangeView(ex, i, { stick, asleep: sleeps, label: askedWords(sa, i, ex), onward: { main, send: passOn }, toast, pictures: drawn, at: { chain: chainId, agent: id } });
+        const v = exchangeView(ex, i, { stick, asleep: sleeps, label: askedWords(sa, i, ex), onward: { main, send: passOn }, toast, pictures: drawn, at: { chain: chainId, agent: id, there: thereCards } });
         views.push(v);
         if (sleeps) asleep.set(v.el, i);
         stick(() => body.insertBefore(v.el, workBox));
@@ -1225,6 +1227,8 @@ export function subagentConversation({ chainId, id, toast, main, held = null, on
     retry = last && last.status === "running" && !runOf(last) ? setTimeout(lookWhenShown, STARTING_RETRY_MS) : null;
   }
 
+  /** The machine its calls ran on, for its cards (tools/layout.js `There`): null for one of this computer's. */
+  const thereCards = () => (sa?.machine ? { id: String(sa.machine.id), name: String(sa.machine.name), chat: sa.remote?.chat ? String(sa.remote.chat) : null } : null);
   /** Its machine and its chat there, where the page can open that machine's: none before its chat there is made. */
   const thereOf = () => (sa?.machine && sa.remote?.chat && chipActions.openOnMachine ? { machine: sa.machine, chat: sa.remote.chat } : null);
   /** Open on <machine>, where its chat there can be opened. */

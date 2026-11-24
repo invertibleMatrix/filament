@@ -375,7 +375,7 @@ test("sidebar.js: its rows of another machine's open through the page's guest; t
   for (const said of [
     "    openOnMachine(r.machine, deskRoute(r.there));",
     "    const open = () => openOnMachine(c.machine, deskRoute(c.there));",
-    "    if (cb.openThere) return cb.openThere({ id: m.id, name: m.name, flags }, route);",
+    "    if (cb.openThere) return cb.openThere({ id, name: m.name, flags }, route);",
     "marked: () => (spaceAt ? null : guestAt ? `m:${guestAt.machine}/chat:${guestAt.chain}` : ",
     "const current = !spaceAt && !guestAt && !!chat && chat.id === state.currentId;",
     "const current = !spaceAt && !!guestAt && c.key === `m:${guestAt.machine}/chat:${guestAt.chain}`;",

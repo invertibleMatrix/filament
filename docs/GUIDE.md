@@ -748,10 +748,13 @@ runs in your chat's permission mode, *auto* only with **Without asking** or **Fu
 4. Its rows in your chat — sent off, and back — say *on Studio* with a dot in its run's state; its row in the Sub
    Agents tab and its thread say *on Studio* too. Its thread here (**Open**, or **Open beside**) shows it working as
    one of this machine's: its thinking and words as they are written, its calls and their output, each turn there a
-   run here kept as runs are. Its asks stay on its card (*What it asks*, below); the pictures, artifacts and
-   sub-agents it makes stay on Studio. Where the stream from Studio drops, its words come whole as each round ends. In
-   the desktop app, **Open on Studio** on its rows and in its thread's head opens its chat there, in place beside the
-   left bar: a message you send there is a turn of that chat's, and while it runs one from here is refused as busy.
+   run here kept as runs are, its rounds numbered as its card says them. Its asks stay on its card (*What it asks*,
+   below); the pictures, artifacts and sub-agents it makes stay on Studio. Its cards' files are Studio's: an edit says
+   its change is in the file there, a picture it read or made says it is there, and a file's chip opens its chat on
+   Studio — never this computer's file of that name. Where the stream from Studio drops, its words come whole as each
+   round ends. In the desktop app, **Open on Studio** on its rows and in its thread's head opens its chat there, in
+   place beside the left bar: a message you send there is a turn of that chat's, and while it runs one from here is
+   refused as busy. A thread gone from the list takes its **Open on** with it.
    On Studio, its chat stands in the sidebar with whose agents started it under
    its name (*From Laptop's agents*, by this machine's name in Settings › Remote access › This machine), and the agents'
    mark in its header.

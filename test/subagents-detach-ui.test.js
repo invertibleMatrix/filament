@@ -52,7 +52,8 @@ test("the window's Run in background buttons say who gets the report, and its he
 test("a window with no sub-agent to show offers nothing: its buttons start away, and one that is gone takes its follow-up with it", () => {
   const viewer = read("src/ui/harness/subagent-viewer.js");
   // Apply stands in its work box alone since 10-28 (test/apply-in-thread.test.js): the head holds no second one.
-  assert.match(viewer, /const actions = \[detachBtn, takeBtn, stopBtn\];/);
+  // Open on its machine with them: a thread gone keeps none (the review of s2e).
+  assert.match(viewer, /const actions = \[thereBtn, detachBtn, takeBtn, stopBtn\];/);
   assert.doesNotMatch(viewer, /passBtn/, "Send stands under each answer, not in the head (BW-8)");
   // Its context's gauge goes with its pill: a thread that is gone holds nothing to say a share of.
   assert.match(viewer, /const offerNothing = \(\) => \{\s*\n\s*for \(const b of actions\) b\.classList\.add\("hidden"\);\s*\n\s*pill\.className = "sav-status hidden";\s*\n\s*ctx\.className = "sav-ctx hidden";\s*\n\s*input\.disabled = true;\s*\n\s*send\.toggleAttribute\("disabled", true\);/);

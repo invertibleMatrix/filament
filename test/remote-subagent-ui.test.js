@@ -33,6 +33,14 @@ const { fromAgentsWords } = await import("../src/ui/harness/lib/labels.js");
 const { createSideView } = await import("../src/ui/harness/views/side.js");
 const ON = { id: "m1", name: "Workstation" };
 const THERE = { cwd: "/w/app", chat: "c_there", run: "run_there" };
+/** The page's one events stream (lib/bus.js), kept so a test can say a message on it. @type {any[]} */
+const feeds = [];
+class FeedStandIn {
+  constructor() {
+    feeds.push(this);
+  }
+  close() {}
+}
 
 /** Every node under a fake node that `pick` picks. @param {any} n @param {(x: any) => boolean} pick @param {any[]} [out] @returns {any[]} */
 const every = (n, pick, out = []) => {
@@ -124,7 +132,7 @@ describe("the machine that launched it", () => {
     };
     g.requestAnimationFrame = (/** @type {(t: number) => void} */ f) => setTimeout(() => f(0), 0);
     g.MutationObserver = class { observe() {} disconnect() {} };
-    g.EventSource = class { close() {} };
+    g.EventSource = FeedStandIn;
     g.addEventListener = () => {};
     /** @type {{ close: () => void }[]} */
     const open = [];
@@ -223,7 +231,7 @@ describe("the machine that launched it", () => {
     g.requestAnimationFrame = (/** @type {(t: number) => void} */ f) => setTimeout(() => f(0), 0);
     g.cancelAnimationFrame = (/** @type {any} */ id) => clearTimeout(id);
     g.MutationObserver = class { observe() {} disconnect() {} };
-    g.EventSource = class { close() {} };
+    g.EventSource = FeedStandIn;
     g.addEventListener = () => {};
     g.WebSocket = runSocketStandIn((msg, peer) => {
       if (msg.op === "follow") follows.push({ key: msg.key, run: msg.run, words: msg.words, peer });
@@ -267,6 +275,15 @@ describe("the machine that launched it", () => {
       const local = thread("sa_l");
       await until(() => local.head.querySelectorAll(".sav-meta span").some((/** @type {any} */ s) => s.textContent === "m-1 on Anthropic"), "the local one's head");
       assert.equal(acts(local).some((/** @type {string} */ a) => /^Open on /.test(a)), false);
+      // (fails before: yes — the review of s2e: a thread gone kept its Open on, which opened a chat no thread here had)
+      delete rows.sa_r;
+      const gone = (/** @type {string} */ url) => (/\/subagents\/sa_r(?:$|\?)/.test(url) ? new Response(JSON.stringify({ error: "no such sub-agent in this session" }), { status: 404, headers: { "content-type": "application/json" } }) : null);
+      const was = serve;
+      serve = (url) => gone(url) ?? was(url);
+      assert.ok(feeds.length, "the feed is open");
+      for (const f of feeds) f.onmessage?.({ data: JSON.stringify({ type: "subagent", id: "sa_r" }) });
+      await until(() => /This thread is gone/.test(String(remote.body.textContent)), "read again: gone");
+      assert.equal(acts(remote).some((/** @type {string} */ a) => /^Open on /.test(a)), false, "its Open on goes with it");
     } finally {
       for (const c of open) c.close();
       serve = () => null;
@@ -275,6 +292,58 @@ describe("the machine that launched it", () => {
         if (v === undefined) delete g[k];
         else g[k] = v;
       }
+      doc.restore();
+    }
+  });
+});
+
+describe("its thread's cards", () => {
+  // (fails before: yes — the review of s2e: a mirrored edit card asked this machine's record for a change it never held
+  // and said "not in its record"; a file chip opened this computer's file of the same name)
+  test("an edit card on another machine asks nothing of this one and says the change is there; a file's chip opens its chat there, never this computer's file", async () => {
+    const doc = stubDocument();
+    /** @type {string[]} */
+    const asked = [];
+    const was = serve;
+    serve = (url) => void asked.push(url);
+    /** @type {any[][]} */
+    const opened = [];
+    /** @type {string[]} */
+    const here = [];
+    chipActions.openOnMachine = (m, chat) => void opened.push([m.id, m.name, chat]);
+    chipActions.open = (p) => void here.push(p);
+    try {
+      const { archivedRows } = await import("../src/ui/harness/conversation/tools/render.js");
+      const tools = [
+        { id: "e1", name: "edit", card: { kind: "edit", subject: "src/a.js" }, input: { path: "src/a.js" }, result: "ok" },
+        { id: "r1", name: "read", card: { kind: "read", subject: "src/b.js" }, input: { path: "src/b.js" }, result: "export const b = 1;" },
+      ];
+      const there = { id: "m1", name: "Workstation", chat: "c_there" };
+      const [[edit], [read]] = tools.map((t, i) => /** @type {any[]} */ (archivedRows([t], { key: `t1-${i}`, turnAt: { chain: "c1", n: 0, agent: "sa_r", there } })));
+      doc.document.body.append(edit, read);
+      await new Promise((r) => setTimeout(r, 20));
+      assert.match(String(edit.textContent), /The change is in the file on Workstation: its chat there shows it\./);
+      assert.doesNotMatch(String(edit.textContent), /not in its record/);
+      assert.equal(asked.length, 0, `nothing asked of this machine: ${asked.join(", ")}`);
+      for (const row of [edit, read]) {
+        const chip = row.querySelectorAll(".file-chip")[0];
+        assert.match(String(chip.title ?? chip.attrs?.get?.("title")), / — on Workstation: open its chat there$/);
+        chip.dispatch("click");
+      }
+      assert.deepEqual(opened, [["m1", "Workstation", "c_there"], ["m1", "Workstation", "c_there"]]);
+      assert.equal(here.length, 0, "no file of this computer's opened");
+      // This computer's own agent's card asks its change of this machine's record, and its chip opens the file here.
+      const [mine] = /** @type {any[]} */ (archivedRows(tools.slice(0, 1), { key: "t2", turnAt: { chain: "c1", n: 0, agent: "sa_l" } }));
+      doc.document.body.append(mine);
+      mine.open = true;
+      mine.dispatch("toggle");
+      await until(() => asked.some((u) => u.includes("/subagents/sa_l/calls/e1/change")), "its change asked here");
+      mine.querySelectorAll(".file-chip")[0].dispatch("click");
+      assert.deepEqual(here, ["src/a.js"]);
+    } finally {
+      serve = was;
+      chipActions.openOnMachine = null;
+      chipActions.open = null;
       doc.restore();
     }
   });

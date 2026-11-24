@@ -5224,11 +5224,12 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
     const mirror = mirrorEvents({ endBlock: () => liveWords?.endBlock(id), held: () => liveWords?.blocks(id).length ?? 0 });
     let ended = false;
     return {
-      /** @param {any} e  an event of its run there */
+      /** @param {any} e  an event of its run there → as its run here reads it (`mirrorEvents`), else null */
       event(e) {
-        if (ended) return;
+        if (ended) return null;
         const shown = mirror(e);
         if (shown) events.publish(`run:${id}`, shown);
+        return shown;
       },
       words: liveWords
         ? {
@@ -5271,8 +5272,8 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
         rem.held = sent;
         changed(sa);
       }
-      shown?.event(e);
-      registryApi?.relay(sa.id, e);
+      // Its card here says the round its thread does: the event as its run here numbers it (the review of s2e).
+      registryApi?.relay(sa.id, shown?.event(e) ?? e);
     };
     /** @param {import("./remote-agents.js").RemoteAsk} ask @param {AbortSignal} asked @returns {Promise<import("./remote-agents.js").RemoteAnswer | null>} */
     const onAsk = async (ask, asked) => {
