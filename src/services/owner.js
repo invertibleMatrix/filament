@@ -1,6 +1,6 @@
 // @ts-check
-// This computer's key to its own Filament (the "same computer = owner" gap, its phase 0): today any program here reaches
-// the admin API as `local` with no secret. Each start mints a key into `<dataDir>/owner.key`, readable by the person's
+// This computer's key to its own Filament (the "same computer = owner" gap): under `server.loopbackTrust` "token", its
+// default, a program here with none of it, a window's session or a pairing is no one's. Each start mints a key into `<dataDir>/owner.key`, readable by the person's
 // account alone, before the command line can find Filament (listening.json); the command line, the desktop app's own
 // calls and Filament's calls to itself send it in OWNER_HEADER, and the app's windows carry a browser session minted
 // with it (`session`, OWNER_SESSION_HEADER), which the app's main process adds to their calls to Filament's own origin

@@ -173,7 +173,7 @@ test("on the machine worked on: another machine's agents' device is on its machi
     ["Coding agents", "May use coding agents here (Filament agents on Laptop)", "false"],
     ["Full control", "Full control: its agents act here as you (Filament agents on Laptop)", "false"],
   ]);
-  assert.equal(pillOf(p.body, "Its chats may use this machine's models (Filament agents on Laptop)").attrs.title, "Laptop's chats may use the API models set up here, on this machine's keys. Usage counts what they spend.");
+  assert.equal(pillOf(p.body, "Its chats may use this machine's models (Filament agents on Laptop)").attrs.title, "Laptop's chats may use the models set up here, on this machine's keys, sign-ins or its own GPU; never its coding agents. Usage counts what they spend.");
   assert.equal(pillOf(p.body, "Agents may work here (Filament agents on Laptop)").attrs.title, "Laptop's agents may start chats here and run commands as you, in your project folders. What they ask comes to you on Laptop.");
   assert.equal(pills(itemOf(p.body, "Phone")).length, 0);
 

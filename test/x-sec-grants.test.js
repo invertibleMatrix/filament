@@ -669,7 +669,7 @@ test("Settings › Remote access: on the line for what a machine's agents may do
   const CODERS = "May use coding agents here (Filament agents on Laptop)";
   const ask = pillOf(body, ASK);
   assert.equal(textOf(ask), "Without asking");
-  assert.match(ask.attrs.title, /^Laptop's sub-agents, and the single commands Laptop sends, run here without asking when the chat on Laptop that sent them is in Full access\. Off, they always ask, and their command tasks and checks don't run\.$/);
+  assert.match(ask.attrs.title, /^Laptop's sub-agents, and the single commands Laptop sends, run here without asking when the chat on Laptop that sent them is in Full access\. Off, Full access runs as Edit for them: their commands ask, and their command tasks and checks don't run\.$/);
   const coders = pillOf(body, CODERS);
   assert.equal(textOf(coders), "Coding agents");
   assert.match(coders.attrs.title, /on their sign-ins here, without your own MCP servers; Cursor still loads its own\.$/);

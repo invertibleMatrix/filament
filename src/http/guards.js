@@ -520,12 +520,13 @@ export const PRESSLESS_REFUSED =
 /** The shortest key taken: the app's is 32 random bytes, said in base64url. */
 const PRESS_KEY_MIN = 32;
 /**
- * The desktop app's key for this computer's presses (the security review's DESK-1): any program here reaches the admin
- * API as `local` with no secret — the model's own background shell among them —, so while the app holds a key, the
- * press of an ask is the app window's alone. Made by the app as it starts, handed to the Filament it starts over the
+ * The desktop app's key for this computer's presses (the security review's DESK-1): every program that runs as the
+ * person can read the owner key, and the command line sends it for any of them — the model's own background shell
+ * among them —, so while the app holds a key, the press of an ask is the app window's alone. Made by the app as it starts, handed to the Filament it starts over the
  * utility process's port (`hearPressKey`) — never an environment variable, which every program Filament runs would
  * inherit and any program of the person's could read — and to its harness page by its preload. "" where no app handed
- * one — a plain browser, a server, the CLI, a Filament the app attached to —: every press is as it was.
+ * one — a plain browser, a server, the CLI, a Filament the app attached to —: a press goes through from any caller
+ * Filament knows.
  */
 let pressKey = "";
 /** The key, set in this process; "" for none. @param {unknown} k */

@@ -244,7 +244,7 @@ test("this computer's read says the calls that came without the owner key, and f
   const legacy = await open({ state: { ownerless: { count: 1, refused: false, programs: [{ agent: "curl/8.4.0", count: 1, lastAt: T0 }] } } });
   assert.match(textOf(rowOf(legacy.body, "Calls without the owner key")), /without its owner key, answered all the same: curl/);
   const none = await open({ state: { ownerless: { count: 0, programs: [] } } });
-  assert.match(textOf(rowOf(none.body, "Calls without the owner key")), /Every program on this computer that called Filament since it started sent its owner key or a pairing/);
+  assert.match(textOf(rowOf(none.body, "Calls without the owner key")), /No program on this computer reached Filament's admin API, run socket, terminal or browser's host without its owner key or a pairing/);
   const elsewhere = await open({ state: { viewer: "remote" } });
   assert.ok(!labels(elsewhere.body).includes("Calls without the owner key"), "another machine's read carries none");
   assert.ok(!labels(elsewhere.body).includes("Programs on this computer"), "nor what a program here needs");
@@ -1149,7 +1149,7 @@ test("in the desktop app, This computer's page adds another machine to its windo
   let asked = 0;
   const app = { addMachine: () => void asked++ };
   const p = await open({ app });
-  assert.match(textOf(rowOf(p.body, "Add a machine")), /Pair this window with another machine by a code from its Settings › Remote access\. It then shows in the machines menu at the top/);
+  assert.match(textOf(rowOf(p.body, "Add a machine")), /Pair this window with another machine: paste a link from its Settings › Remote access, type its address and code, or type ssh:\/\/ and a Host of your SSH config\. It then shows in the machines menu at the top/);
   button(rowOf(p.body, "Add a machine"), "Add a machine…").attrs.onclick();
   assert.equal(asked, 1);
   assert.ok(!labels((await open()).body).includes("Add a machine"), "a browser has no app's sheet");

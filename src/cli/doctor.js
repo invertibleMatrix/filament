@@ -59,7 +59,7 @@ export async function runDoctor({ dataDir, turn = false, agentFilter = null, log
   }
   catch (e) { srv.items.push(warn(`no Filament answering at ${base}`, e.message, "start it (the Filament app, `npm run desktop`, or `node bin/filament.js`); the agent checks below still run")); }
   // Any program here let in with no key (server.loopbackTrust "legacy"), and this computer's calls without its owner key (services/owner.js), each program named.
-  if (config.server.loopbackTrust === "legacy") srv.items.push(warn("server.loopbackTrust is \"legacy\": any program on this computer reaches Filament's admin API as you, with no key", "every other account here, and whatever hands calls on over loopback, too", "set it back to \"token\" in Settings › Remote access"));
+  if (config.server.loopbackTrust === "legacy") srv.items.push(warn("server.loopbackTrust is \"legacy\": any program on this computer reaches Filament's admin API as you, with no key", "every other account here, and whatever hands calls on over loopback, too", "set it back to \"token\": `filament settings set server.loopbackTrust token`, or Settings › Remote access › Programs on this computer in this computer's app or browser"));
   // Filament's port at the other loopback address held by another program (server.js `holdTwin`): no browser here pairs.
   if (running && state?.loopbackTaken) srv.items.push(warn("another program holds Filament's port at this computer's other loopback address", String(state.loopbackTaken), "stop that program, or set server.port to a free port and restart Filament"));
   const ownerless = state?.ownerless;

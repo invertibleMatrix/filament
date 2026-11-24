@@ -31,9 +31,11 @@ When your laptop's app goes mid-turn, the pages it held open again in that Chrom
 ## 2. Install
 
 **From the Filament app on your laptop**, sections 2 to 5 are one sheet: Settings › Remote access › **Set up over
-SSH…**, then `you@server` or a Host of your SSH config. It runs each step below on the server over SSH — install, the
-service, its coding agents and memory, the tailnet or the network, the pairing — and says each as it goes; what only
-you answer (a host key, a password, `sudo`) runs in a terminal on the sheet. Run again, it does only what is missing
+SSH…**, then `you@server` or a Host of your SSH config. It runs each step below on the server over SSH — install (this
+app's version, or the newest release where this app's has no server build), the service with lingering, the coding
+agents installed there connected and memory on, the tailnet or the network, the pairing — and says each as it goes;
+what only you answer (a host key, a password, `sudo`) runs in a terminal on the sheet. Run again, it does only what is
+missing. Signing its coding agents in and giving it keys are on its card afterwards (section 3)
 ([Setting a machine up over SSH](GUIDE.md#remote-access-this-filament-from-another-machine)). By hand, on the server:
 
 ```sh
@@ -102,6 +104,11 @@ A model needs either a provider's key or a coding agent:
 `filament status` says what runs, what can answer, and who each agent is signed in as. `filament agents` lists the
 coding agents it finds, and `filament agents install <id>` installs one or prints the line that does.
 
+**From the Filament app on your laptop**, once it is paired (section 5), the server's card in Settings › Remote access ›
+Machines says who each coding agent there is signed in as. **Sign in there…** opens the server's own Settings › Coding
+agents in the app; **Copy keys…** sends the providers' keys you tick from your laptop to the server, and no others. A
+key the server holds already under another name is left as it is, and said.
+
 ## 4. Keep it running
 
 ```sh
@@ -136,13 +143,21 @@ container's restart policy, or `tmux` or `screen`. `filament stop` stops it; not
 A server has no browser of its own, so its Settings › Remote access is opened from your laptop, or set with
 `filament settings` on the server. Pick one way in.
 
+**Programs on the server.** Filament answers a program on the server by its owner key: `owner.key` in the data
+folder, made anew at each start. The `filament` command line sends it with every call, and a script of yours sends it
+as the `x-filament-owner` header. A program that sends no key, pairing or session is no one's, whatever account it runs
+as. `filament settings set server.loopbackTrust legacy` lets every program on the server in with no key, every other
+account's too; Filament says so as it starts, and `filament doctor` warns while it is on and counts the calls that came
+without the key.
+
 **SSH, from the Filament app.** On your laptop: Settings › Remote access › **Add a machine…**, and type `ssh://` and the
 server's Host from your SSH config, or `ssh://you@server`. The app holds the tunnel itself, with your SSH keys and
 agent (it never asks for a password, and the server's host key must be known already). No code to type: **Pair** runs
 `filament pair` on the server over SSH and claims its code through the tunnel, so the app is a full device there — its
 agents, its chats' browser and the server's models work through the tunnel as over the network, while the app holds
 it. Where the Filament app runs on the server, which makes its codes in its own window, the server is added with no
-device, and the sheet says why.
+device, and the sheet says why. Once paired, the app learns the server's other ways — its network addresses, pinned to
+its certificate, and its tailnet address — and reaches it by the best one that answers, the SSH tunnel last.
 
 **An SSH tunnel by hand.** On your laptop:
 
@@ -180,7 +195,9 @@ filament settings set server.tailscale.serve true
 
 Filament asks Tailscale to serve it at `https://<server>.<your tailnet>.ts.net`, while it listens on the server
 alone; nothing to open in the firewall. `filament settings set server.tailscale.trustOwnLogin true` lets in your own
-machines on the tailnet without pairing.
+machines on the tailnet without pairing. Tailscale hands each request on below a random path that only it and
+Filament know, and your tailnet login is believed on those requests alone: a program on the server that calls
+Filament's port saying it comes from the tailnet is no one's.
 
 **Pairing.** On the network or the tailnet, every device pairs once. On the server:
 
@@ -188,9 +205,11 @@ machines on the tailnet without pairing.
 filament pair            # --view for a device that only reads
 ```
 
-It prints a code, good for five minutes and one claim, a link for each address, and the certificate's fingerprint. On
-your laptop, open a link in a browser (where it warns of the certificate, check that the fingerprint it shows is the
-one printed); or paste it into the Filament app's **Add a machine…**; or run `filament connect <link>`. Then any command goes there with
+It prints a code, good for five minutes and one claim, and a link for each address; where a link is on the network,
+it prints the certificate's fingerprint too. On your laptop, open a link in a browser (where it warns of the
+certificate, check that the fingerprint it shows is the one printed; a tailnet link opens with no warning); or paste it
+into the Filament app's **Add a machine…**; or run `filament connect <link>`. The server's Settings › Remote access,
+opened from a paired device, shows each link with a QR code for a phone's camera. Then any command goes there with
 `--machine <name>`: `filament status --machine build-box`. `filament devices` on the server lists what is paired, and
 `filament devices revoke <device>` stops one.
 
@@ -200,15 +219,15 @@ Your laptop's Filament can let its agents start chats in the server's projects, 
 the Filament app on the laptop: Settings › Remote access › Machines, the **Agents** pill on the server's card.
 It needs the app paired with the server as a full device — over the network, the tailnet, or by `ssh://`, where
 **Pair** makes the device over SSH. Through an SSH tunnel your laptop's agents reach the server while the app runs,
-holding the tunnel — whose port on your laptop is open to every program there, and the server answers one that sends
-no device's token as itself: Agents' grants fence your agents' device, not the tunnel.
+holding the tunnel, as their device. The tunnel's port on your laptop is open to every program there, and the server
+takes a caller through it that sends no device's token as a program of its own with no owner key: no one's, refused.
 
 What their chats may do there, and what they never touch, is in
 [Another machine's agents](GUIDE.md#remote-access-this-filament-from-another-machine). In short: they start in the
 folders of your projects and chats on the server, never a home folder, the data folder or a credentials folder; they
 take words, pictures, documents, a model, effort and a permission mode, and no other setting; a sub-agent's chat runs in
 the mode of the chat that sent it, *auto* only with **Without asking** or **Full control** on for their device, with
-memory off; so does a single command. A command or a chat sent with no mode, from a Filament before these, runs in the server's own mode:
+memory off; so does a single command. A command or a chat sent with no mode, from a Filament that sends none, runs in the server's own mode:
 
 ```sh
 filament settings set agentLoop.permissions edit    # read-only, edit, ask or auto
@@ -222,8 +241,8 @@ chats don't run on the server's coding agents (Claude Code, Codex, Cursor) until
 *auto* unasked, the server's MCP servers, skills and memory, and its coding agents as yours (what stays shut is in
 [Another machine's agents](GUIDE.md#remote-access-this-filament-from-another-machine)). The laptop's app switches it
 on the server's card in Settings › Remote access › Machines, as it does Agents. A command they run can read
-and change whatever Filament's account on the server can, its keys among it, and reach Filament there as the server's
-own programs do: with no app on the server, that is pairing a device of its own, which outlasts Full control. A
+and change whatever Filament's account on the server can, its keys and Filament's owner key among it, and so reach
+Filament there as the server's owner: with no app on the server, that is pairing a device of its own, which outlasts Full control. A
 command **Without asking** lets run unasked can do the same. Switch either on only for a server that is yours.
 
 Your laptop's agents then send sub-agents there and run commands there — one check, or the same check on every machine —
@@ -256,12 +275,19 @@ before: `current` points back at it, it is started again, and the update says so
 Where no Filament answers and systemd cannot say whether its unit runs, `filament update` says so, restarts nothing
 and goes back to nothing, and exits with code 1: `filament service status` says where it stands.
 
+**From the Filament app on your laptop.** A server older than the app has **Update Filament on** *it* in its ⋯ in the
+machines menu, and **Update all machines…** above Add a machine updates every older one; a server too old for the app
+to open has the same button on its page. Each goes to the app's version and restarts once no turn runs there, as
+`filament update --wait` does, and the app says how each went: a new version that does not come up goes back to the one
+before, and while an installed update waits for its restart, no other version goes over it. A server the app reaches
+only over SSH, or whose Filament has no update route, is updated over SSH.
+
 Every version runs on the same data folder. Where the version that starts does not read a file as another saved
 it — your teams, your agents, a Space, the usage files, telemetry's —, it sets the file aside whole beside itself,
 under a name that says its version (`teams.json.v3.20261112T093005Z`), saves nothing over it, and starts that store
 with none; the version that saved it takes it back when it runs again, and nothing is merged. `filament update` says
 which files those are before it restarts, and what the version it starts does with them; going back to a version
-from before this rule, which would save over such a file and takes none back, it keeps a copy of the file beside it
+that does not carry this rule, which would save over such a file and takes none back, it keeps a copy of the file beside it
 first, and puts that version's own file back in place where a newer one had set it aside.
 
 Running the installer again updates too, and `FILAMENT_VERSION` rolls back to a kept version. The installer restarts
@@ -307,3 +333,6 @@ rm -rf ~/.config/filament        # only to forget everything: settings, keys, ch
 | `filament update` exits with code 5 | A turn runs | The update is in place: `filament restart` once the turn ends, or `filament update --force` next time |
 | `filament update` says `… did not come up … so current points at … again` | The new version did not start on this server | The version before runs again. `filament service status` shows the log; `filament update` tries the new one again |
 | `filament update` says `… answers at …, not …: its unit starts another than current leads to` | The service's unit starts one version's own folder, not `current` | `filament service install` writes the unit again, and starts the new version |
+| The app says `<server> runs Filament …, too old for this app: update Filament on <server>.` | The server speaks an older wire than the app | Its ⋯ › **Update Filament on** *it* in the app, or `filament update` on the server |
+| The app says `… too new for this app: update this app.` | The app is older than the server | Update the Filament app (its tray's Check for updates) |
+| A script on the server gets 403, saying Filament answers a program on this computer by its owner key | It sent no owner key | Send `owner.key` from the data folder as the `x-filament-owner` header (made anew at each start), or use the `filament` command line (section 5) |

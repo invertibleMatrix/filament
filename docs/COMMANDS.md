@@ -14,7 +14,7 @@ Typed as the newest message in a chat Filament runs, the harness's. Filament ans
 | command | forms | where | what happens |
 |---|---|---|---|
 | `/status` | `/status` | api, agent | Where this model name goes, what Filament changes on the request, this chat's spend and the upstream's health. In an agent chat: the agent, its model, mode, effort and context fill. |
-| `/cost` | `/cost` | api, agent | This chat's cost, durations (API and wall), usage per model and prompt-cache stats — the shape of Claude CLI's /cost, from Filament's own records. Costs use each model's price card (its upstream's, else Filament's built-in rates); the provider's invoice is the truth. |
+| `/cost` | `/cost` | api, agent | This chat's cost, durations (API and wall), usage per model and prompt-cache stats, from Filament's own records. Costs use each model's price card (its upstream's, else Filament's built-in rates); the provider's invoice is the truth. |
 | `/help` | `/help` | api, agent | The short list of commands for this kind of chat. |
 
 ## The session's goal

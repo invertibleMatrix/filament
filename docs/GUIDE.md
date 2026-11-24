@@ -138,22 +138,23 @@ did not type.
 | `filament settings get <path>` · `settings set <path> <value>` | One setting by its path, as Settings' rows name it (`agentLoop.permissions`, `memory.enabled`…). A credential is never set here. |
 | `filament open [console] [--no-open]` · `filament stop [--force]` · `filament restart [--force]` | Open the harness (or the console) in your browser, paired by a one-time link as this computer's own browser: Settings › Remote access lists its pairing, which a later one takes the place of, and Filament answers it as this computer, from here or an SSH tunnel's other end alone. The link opens at 127.0.0.1, and the page moves on to this Filament's own name under localhost (`http://filament-….localhost:<port>`) to pair there, so the browser's cookie goes to no other port of this computer; a browser that cannot open that name (Safari) is told so and pairs nothing. `--no-open` says the link instead, for a browser at a tunnel's other end (open it at the tunnel's own address and port). While the Filament app runs here, its tray's **Open in browser** does it, and `filament open` opens the pairing page, which asks for a code from the app's Settings › Remote access; with `--machine`, that machine's page asks for a code. `filament status` says the harness by `filament open`, and `filament setup` opens it so. Stop Filament once no turn runs (`--force`: now). The Filament app's is quit with the app — which asks where a turn runs —, as the app starts its Filament again whenever it stops by itself. `restart` stops it where something starts it again — the app, or systemd — and refuses one started by hand. Under systemd both go through `systemctl --user`, so systemd does not start again what was stopped. |
 | `filament service install` · `service status` · `service logs` · `service uninstall` | On a Linux server: run Filament under systemd's user manager — started at boot, and again 3 s after it ends by itself. `install` writes `~/.config/systemd/user/filament.service` (no root) running the installed Filament by its stable path (`~/.local/share/filament/current`, so an update starts at the next restart) on this data folder, with `--port` where given; a Filament run by hand is stopped first, once no turn runs. Starting at boot with no one logged in needs lingering — `loginctl enable-linger $USER`, which it checks and says. `status` (`--json`) says whether it runs and starts at boot, what it runs, lingering and its log's last lines; `logs` follows the log (journalctl). Refused on macOS and Windows (the Filament app starts at logon) and where there is no systemd user manager (WSL without systemd, a container). |
-| `filament pair [--view]` | On the machine Filament runs on — its own Filament, whatever `FILAMENT_MACHINE` says: a code good for five minutes and one claim, with a link for each address the network's listener answers at (Settings › Remote access › Reach this machine on my network) and the tailnet's where Filament is served there — what Settings › Remote access makes. Reached another way, an SSH tunnel say, there is no link: `connect` takes the address and the code. The device it pairs drives this Filament as you do; `--view` pairs one that reads alone (see [Remote access](#remote-access-this-filament-from-another-machine)). |
+| `filament pair [--view]` | On the machine Filament runs on — its own Filament, whatever `FILAMENT_MACHINE` says: a code good for five minutes and one claim, with a link for each address the network's listener answers at (Settings › Remote access › Reach this machine on my network) and the tailnet's where Filament is served there — what Settings › Remote access makes. Reached another way, an SSH tunnel say, there is no link: `connect` takes the address and the code. A link on the network comes with the certificate's fingerprint, which the browser's warning must show; a tailnet link has none. While the Filament app runs there, the code is made in the app instead (Settings › Remote access › Pair with a code › Make a code). The device it pairs drives this Filament as you do; `--view` pairs one that reads alone (see [Remote access](#remote-access-this-filament-from-another-machine)). |
+| `filament update [--check \| --version <v> \| --back] [--force \| --wait]` | On a Linux server installed by `install.sh`: the newest release of the kind installed, its SHA-512 checked, `current` pointed at it, and the Filament systemd runs restarted on it once no turn runs (`--force`: now; `--wait`: wait for the turn). `--check` only says whether one is out, `--version` takes that release and `--back` goes to the version kept before. A version that does not come up is left for the one before ([Filament on a server](server.md#7-update-and-roll-back)). |
 | `filament connect <link>` · `connect <address> <code> [--fingerprint <SHA-256>] [--name <this device>]` | On another machine: connect its command line to the Filament the link names. That Filament is asked who it is first, the code claimed, and the device's token kept in this machine's data folder (`remotes.json`, yours alone to read), never printed. Over https it trusts the certificate the link names, or `--fingerprint`, and no other; an address with no scheme is https, and plain http goes to an address on the machine itself alone. Connected to that machine already, the device it had signs out there; one that says a kept machine's id from another address takes its place only where the two are shown to be one machine: the kept address, asked with the token kept for it, lists the device just claimed, or, where it no longer answers as itself, the new address lists the device kept for it. The token just claimed goes to the address it was claimed at alone. Else two machines may say one id, the device just claimed signs out, and `filament disconnect` comes first. |
 | `--machine <name>` · `--url <address>` | Send any command to a machine `connect` connected (`FILAMENT_MACHINE` does the same): `filament status --machine Workstation`. Its token goes only to the machine it was paired with — another answering at that address is refused (exit 3) — and a device revoked there is said so, with how to connect again. `setup` and `pair` run on their own machine, `stop` quits no other machine's app, and `chat` needs no inbound key there — with no `--folder`, it works in that machine's newest chat's folder. `open` says the browser pairs on its own. |
 | `filament machines` · `filament disconnect <machine>` | The machines this command line is connected to, and beside them the agents' devices the desktop app keeps (`agent` in the `as` column); sign out of one there, and forget it. `disconnect`, as `--machine`, names your own device for a machine: the agents' device goes by Revoke on this machine's card in that machine's Settings › Remote access, or, while it does not answer, by **Forget** on the line *What this machine may do on <machine>* in the app's. |
-| `filament devices` · `devices revoke <device>` · `devices rename <device> <name>` | The devices paired with this Filament — other machines' browsers and command lines, and their agents' devices — with what each may do and when it was last seen; revoke one (its token stops, and what it holds open closes) or rename it. |
+| `filament devices` · `devices revoke <device>` · `devices rename <device> <name>` | The devices paired with this Filament — this computer's browsers paired by `filament open`, other machines' browsers, apps and command lines, and their agents' devices — with what each may do and when it was last seen; revoke one (its token stops, and what it holds open closes) or rename it. |
 | `filament help <command>` | One command's words in full. `--json` gives a command's answer as JSON. Its exit code: 0 done, 1 failed, 2 typed wrong, 3 no Filament answers, 4 needs you (a terminal, a browser), 5 busy (a turn runs), 130 stopped. |
 | `node bin/filament.js print-key` | Print the current inbound API key — masked, unless `--reveal` at a terminal. |
 | `node bin/filament.js where` | Print the data folder and the config file path. |
-| `node bin/filament.js doctor` | Check everything in one go: config, data folder, the running server, every coding agent (command found, handshake, session, models, login), the housekeeping detection, and the settings that bite (permissions with the client bridge, allowlist entries). Add `--turn` for one real one-word turn per agent (costs a little), `--agent <id>` for one agent. Every problem comes with the fix. |
+| `node bin/filament.js doctor` | Check everything in one go: config, data folder, the running server (whether it took this data folder's owner key, programs here let in with no key, calls that came without it, and the other loopback address taken), every coding agent (command found, handshake, session, models, login), the housekeeping detection, and the settings that bite (permissions with the client bridge, allowlist entries). Add `--turn` for one real one-word turn per agent (costs a little), `--agent <id>` for one agent. Every problem comes with the fix. |
 | `--port <n>` | Listen on another port for this run (the config's `server.port` is the permanent setting). `--port 0` asks the system for a free port, and the start-up line says which it got; anything that is not a port is refused in words. |
 | `--host <h>` | Listen on another interface for this run. |
 | `--data-dir <path>` | Use another data folder. The environment variable `FILAMENT_DATA_DIR` does the same. Without either, a git checkout uses its own (see [Where things live](#where-things-live)). |
 | `--open` | After start, open the harness in the browser once a model can answer, the console's Home before that. |
 | `-v`, `--version`, `-h`, `--help` | Version and help. |
 | `npm test` | Run the test suite (fake upstreams, no network). |
-| `npm run docs` | Regenerate `docs/PARAMETERS.md`, `docs/TEMPLATES.md` and `docs/COMMANDS.md` from the schema. |
+| `npm run docs` | Regenerate `docs/PARAMETERS.md` and `docs/TEMPLATES.md` from the schema and the templates, and `docs/COMMANDS.md` from the chat commands' registry. |
 | `npm run acp-schema` | Pin ACP's schema again from the one the installed Claude Code agent carries, after an agent update (a test says when it is due). |
 | `npm run app` | Open the harness as its own window (Edge/Chrome app mode, Windows). `-- -Page /` opens the console instead. |
 | `npm run desktop` | The desktop app, from the checkout (`npm install` once first: Electron is a development dependency). `--data-dir`, `--port` as the server takes them; `--hidden` starts in the tray; `--quit` quits a running app (see [The desktop app](#the-desktop-app)). |
@@ -204,8 +205,8 @@ the chats, the agents and the terminal run where Filament runs, and the other ma
   the other machine's browser warns once. Before you go on past the warning, open the certificate's details there and
   compare its SHA-256 fingerprint with the one Certificate shows here; another fingerprint means something else
   answered. It is renewed a month before its 825 days run out, with the same key: the machines and command lines
-  paired here learn that key as they reach it, and go on (one that never reached it since you updated pairs again);
-  a browser warns once more. **Certificate key › New key…** makes a new key (only for
+  paired here learned that key at their connections, and go on (one that never connected while the old certificate
+  stood pairs again); a browser warns once more. **Certificate key › New key…** makes a new key (only for
   one that may have been copied): every machine and command line paired over the network then pairs again. On Windows the row says what Windows Firewall lets through, and Allow makes a rule for its ports — on Private
   networks, from your local subnet — after Windows asks you to confirm; a network Windows calls Public lets nothing in
   until you make it Private. This address serves Filament's pages to the devices paired with it, and its artifacts at
@@ -251,9 +252,9 @@ time Filament reads it (not on Windows). Filament holds its port at both of this
 port, no browser here is paired until it lets go — the app's Open in browser and `filament open` say so, and
 `filament doctor` names it. Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
 browser is this computer's owner: it does what this computer does, but press while the Filament app runs (answer an
-ask, Always allow — those come from the app's window). Its code is refused at 127.0.0.1, its cookie or token anywhere
-but that name is no one's, and a browser paired at 127.0.0.1 before this computer's Filament had a name of its own goes
-for good as one is paired at it.
+ask, Always allow — those come from the app's window). Its code is refused at 127.0.0.1, and its cookie or token
+anywhere but that name is no one's. A pairing made at 127.0.0.1 lets nothing in, and goes for good once that browser
+is paired at the name.
 
 **Unused devices expire.** A browser or command line that goes 90 days without reaching this Filament is let in no
 more: its page goes to the pairing page, which says its pairing ran out, and `filament --machine` and the desktop app
@@ -261,8 +262,8 @@ say the same — pair it again with a new code. Expiring revokes nothing: the de
 or pair it again, which signs the old one out (and its machine's agents' device with it). Each use moves its day on,
 whichever way it comes in (a browser your tailnet login lets in moves the day of the device whose cookie it carries),
 and Settings › Remote access says, beside when it was last seen, when it expires if unused (*expires Feb 21, 2027 if
-unused*). The 90 days count from your first start of the Filament that brought this, at the
-earliest, so devices paired before are not let go the day you update. Another machine's agents' device never expires:
+unused*). The 90 days count from the device's last use, its pairing, or the first start of a Filament that counts
+them, whichever is latest. Another machine's agents' device never expires:
 Revoke ends it.
 A command line pairs with `filament connect <link>`: it trusts the certificate the link names and no other, so nothing
 reaches a machine that answers with another; given an https address without the link, it connects where an authority
@@ -329,7 +330,8 @@ machine's own Settings › Coding agents), *A way in over https* (shared on your
 else its network listener on), and *Pair this window with it* (a code made there over SSH and claimed here, at the
 tailnet's address, then the network's, else through an SSH tunnel; its SSH way is kept after its https one). A host
 key ssh does not know is yours to check: ssh asks in a terminal on the sheet, with its fingerprint, and the step goes
-on once you answer. A machine that asks for a password gets this computer's key instead — **Run in a terminal** adds
+on once you answer. A host key that is not the one your known_hosts holds is refused, and nothing is sent: where the
+machine was set up anew, check its key, then remove the old one (`ssh-keygen -R <host>`). A machine that asks for a password gets this computer's key instead — **Run in a terminal** adds
 it there, the password typed once. What only `sudo` may do — lingering, so Filament starts at boot with no one logged
 in; Tailscale's operator; the firewall's ports — is said under its step with its line to copy and **Run in a
 terminal**. A coding agent that does not connect there is said, and the setup goes on. A step that failed says why,
@@ -369,7 +371,7 @@ too old for this app to open has the same as a button on its page; once it is up
 goes to an older version than a machine runs; where an update installed there waits to restart, no other version goes
 there, and the row says so: `filament restart` there starts the one installed. It updates Filament for servers run by its
 systemd service (`filament service install`); the Filament app on another computer updates itself, and says so. A
-server whose Filament is from before this is updated over SSH where this window keeps an SSH way to it — the
+server on Filament 0.9.85 or older, which has no update route, is updated over SSH where this window keeps an SSH way to it — the
 `filament` install.sh installed there, else the one on its PATH; refused while a turn runs there, which its row says:
 the new version is installed, and asking again once the turn ends restarts it on it —, else at its terminal with
 `filament update`.
@@ -419,15 +421,17 @@ them, as this computer's chats do. A menu, a dialog, Ctrl+K or Settings of this 
 of sight meanwhile —, and Ctrl+K, Ctrl+B, Alt+N, Ctrl+N, Ctrl+O and Ctrl+Shift+[ and ] pressed in it are the left bar's,
 as anywhere else in the window, the keys back in the chat as what they opened goes. While it shows, this computer's
 chat's title steps out of the bar's top row. Its header's **Open full page** — or Settings, the Library or a Space
-asked for there — shows that machine whole in the window, as Ctrl+2 does. A machine whose Filament is older than this
-one opens its whole page instead, and says so once, as you come back to this computer. A notification of its chat
-still shows that machine whole, at the chat. What one of
+asked for there — shows that machine whole in the window, as Ctrl+2 does. A machine whose Filament cannot show a chat
+alone (0.9.85 or older) opens its whole page instead, and says so once, as you come back to this computer. A notification of its chat
+still shows that machine whole, at the chat. Ctrl+K searches every machine's chats the bar lists too, each under
+**On** its name ([A task, a session](#a-task-a-session)), and a machine that gave nothing says why under its name. What one of
 theirs asks you waits under its row in **Needs you**, answered there without the window going to it: its question and
 the command it would run, a button for each of its answers, a box where words answer it, and **Open** for its whole
 card in its chat. What a card could show only a part of — a plan, a form, a link, a secret, an edit's changes, a command
 too long or cut by its machine — it answers with **Open** alone, and so does one you answered that its machine still
-lists two minutes later. An answer goes as that machine's own press, so a machine this window reaches through a tunnel or
-your tailnet login, or a device paired as View, refuses it, in words that say to pair it as Full; its card stays and
+lists two minutes later. An answer goes as that machine's own press, so a machine this window reaches by your tailnet
+login, or through an SSH tunnel with no device of its own there, or as a View device, refuses it, in words that say to
+pair it as Full; its card stays and
 says them. **Clear** under Done marks theirs seen on their machines too — one that does not answer then is told once
 it answers again, while the app runs. A machine that does
 not answer keeps its rows as they last stood, greyed, its words on hover. The filter menu's **Machines** says whose
@@ -437,11 +441,11 @@ Archived view, the other machines' chats show in Now alone; a thread, or a team 
 on its own machine. A chat of theirs under a project wears its mark there too — waiting for you, working — while Now
 is folded. Ctrl+Shift+[ and ] move through the chats the bar lists, another machine's shown in place as they come —
 not one whose machine does not answer. Another machine's page in the window lists
-its own chats alone. A machine whose Filament is older than the one that brought this list says no repository for its
+its own chats alone. A machine on Filament 0.9.85 or older says no repository for its
 chats: they stand in projects of their own until it is updated. A folder on a drive or a share that does not answer — a
 mapped drive gone offline — is given two seconds: its chats stand in a project of their own meanwhile, and the chat's
 branch line says the folder did not answer; nothing else on that machine waits on it. Another folder on that drive or
-share is not asked until it answers, and one on another disk is read as ever; one folder that hangs on a drive that
+share is not asked until it answers, and one on another disk is read at once; one folder that hangs on a drive that
 answers — a link to a share gone offline — is that folder's alone. A chat's Changes, branch, places and files there,
 and a turn's changes, say the folder does not answer, and are read again once it does; a turn sent there says it
 cannot reach the folder, and the folder browser leaves out a drive that does not answer.
@@ -508,7 +512,7 @@ paired with it presses it; the agents' device switches nothing itself. With Agen
   your home folder, a `cd` up to `AppData`) — a command by its path in any way a shell says one, through a variable
   (`%APPDATA%`, `$HOME`), `..`, `~`, a link or a wildcard, a file tool's, an MCP tool's, a command they send here
   ([A command on another machine](#a-command-on-another-machine)) — is refused in words in every mode, in Filament's
-  loop and wherever a coding agent asks Filament first, and a command that only reads it no longer runs unasked. Under
+  loop and wherever a coding agent asks Filament first, and a command that only reads it never runs unasked. Under
   *auto*, their reads never land in it and their searches leave its files out. What never reaches Filament is not
   judged: Codex's sandbox and Cursor's own tools read the data folder too, as far as your account can.
   Its words are read, not run: a program of theirs that makes the name itself, which **Without asking** lets run
@@ -596,7 +600,8 @@ chat there: in a clean clone at your commit where that machine has one and nothi
 folder's place in it —; else in a copy of this folder sent with your work, asked first (*Send widgets to Studio?* — how
 many files and how much, the first of those in no commit, what stays here and why, Git LFS's), and named here, so what
 it changes can come back. A copy goes only from the app paired with that machine as the Full device that made this
-Filament's agents' device there: a tailnet login, a tunnel or another device is told so before anything is sent. The
+Filament's agents' device there: a tailnet login or a tunnel with no device there is told so before anything is
+sent, and another device of yours is told to forget that machine's agents' device and switch Run on on again. The
 chat starts on your model where it answers there, else on one that does. Then the message goes, and the chat opens in
 place. A message that did not go leaves the chat standing there and your words back in the box: send them again, and
 they go to that chat — or pick another machine. One whose answer never came may have gone: its chat opens for you to
@@ -615,8 +620,10 @@ stays where it is —, and the dialog stays until they have. Changed there again
 and asks again. While a turn of it still runs there, Bring back says *Studio is still working in your chat there*. A
 file your folder will not take — read-only, or held open by an editor — is said as that in the dialog (*1 file does not
 come through cleanly — z.txt: your folder would not take it*), nothing written and nothing to choose: free the file and
-press Bring back again. Where it had written some files and could not put them all back as they were, it says *Applied
-only in part* with the files to check by hand. The next round brings only what changed since the last one.
+press Bring back again. Where it had written some files and could not put them all back as they were, the dialog
+closes and a notice says *Applied only in part*, naming the files to check by hand; the rest of the folder is as it
+was. The next round brings only what changed since the last one. The desk keeps 200 Run on chats' records; past that,
+the oldest already brought back, or whose copy went, is let go, never one still placed or running.
 
 In the desktop app, each machine added to the app has a card in Settings › Remote access › Machines, and on it the
 line *What this machine may do on <machine>*, with a pill for each thing this Filament may do there — what each does on its
@@ -649,7 +656,8 @@ use this computer's sign-ins to the other machine. Your chats here then send sub
 ([A command on another machine](#a-command-on-another-machine)).
 
 **Sign-ins and keys there.** Where the app is a full device on the machine, its card also lists that machine's coding
-agents and whether someone is signed in to each. **Sign in there…** opens that machine's Settings › Coding agents in its
+agents and whether someone is signed in to each. Where one of them has nobody signed in, or its state is not known,
+**Sign in there…** opens that machine's Settings › Coding agents in its
 page here: a sign-in runs there as it would at that machine, its terminal in the sheet, and where the agent offers a
 code to type (Codex's ChatGPT code), its page opens in this computer's browser. **Copy keys…** lists this machine's
 providers that have a key, none ticked; the ones you tick go to that machine as your device there, over the way the app
@@ -698,7 +706,7 @@ runs in your chat's permission mode, *auto* only with **Without asking** or **Fu
 
 1. Your agent calls its agent tool with `machine: "Studio"` and the task.
 2. Filament finds the folder on Studio: the call's `cwd`; else, where your chat's folder is in git, a copy of it made
-   for this sub-agent there (*Its own copy*, below); else — a Filament on Studio from before copies — Studio's clone
+   for this sub-agent there (*Its own copy*, below); else — where Studio's Filament takes no copies — Studio's clone
    of this project, matched by its git remote in either form (`git@github.com:o/r.git` is `https://github.com/o/r`; no
    credentials are sent), a clone on your branch first, then a clean one. With none, the call is refused in words
    before anything starts.
@@ -763,8 +771,8 @@ there is not said again. Nothing is read from a copy while a turn of its chat ru
 reached Studio: it is asked again. One cut short on its way (Studio asleep, its network gone) is tried again for half an hour, while the
 copy is held — each ask for it holds the copy half an hour more —, and at its next turn's end; one whose copy went
 to a newer launch comes back from what Studio kept of it, and is said gone once that is kept no more. A restart of Filament on Studio ends what held a copy for work, which then stays its chat's half an
-hour, as after a turn. A Filament on Studio from before this
-sends nothing back: its changes stay in that copy, its report saying what it changed, until Studio is updated.
+hour, as after a turn. Where Studio's Filament cannot send a copy's change back, it
+sends nothing: its changes stay in that copy, its report saying what it changed, until Studio is updated.
 
 **What it asks.** Its chat on Studio starts in your chat's permission mode, which decides what asks there; in *auto*,
 with **Without asking** or **Full control** on there, nothing does, and without either *auto* asks as *edit* does. An ask shows in your chat
@@ -802,8 +810,8 @@ coding agents signed in there, how many models answer there — and its clones o
 and whether it is clean); `list_models` with `machine` lists the models that answer there. How your agent chooses
 is in [Choosing a machine](#choosing-a-machine-and-one-check-on-every-machine). What a machine has says nothing of
 whose it is: no data folder, user, environment or account.
-Claude Code, Codex and Cursor get the same fields on Filament's agent tool. With no such machine, the tool is the one it always
-was. A call with `machine` runs as Builder or Reviewer; one that forks your chat or shows it a view (`context`), or
+Claude Code, Codex and Cursor get the same fields on Filament's agent tool. With no such machine, the tool has none of
+these fields. A call with `machine` runs as Builder or Reviewer; one that forks your chat or shows it a view (`context`), or
 names a saved agent, a graph task or one of this machine's providers, is refused in words. For one command there,
 without a sub-agent, see [A command on another machine](#a-command-on-another-machine).
 
@@ -829,7 +837,7 @@ back a report.
    Studio's shell, for up to an hour.
 3. Your chat's permission mode judges it there, as it stands when the call is made, with Studio's own rules, as far
    as Studio lets your agents go: *auto* runs it only where Studio's **Without asking** (or **Full control**) is on
-   for them, and is *edit* there otherwise. A Studio on a Filament from before judges it in its own mode. What it
+   for them, and is *edit* there otherwise. A Studio whose Filament does not take your chat's mode judges it in its own. What it
    asks shows in your chat as a permission card naming the machine, the command and whose mode asks, and waits for
    your **Allow** or **Deny**: never your agent, its tools, its sub-agents or a switch of this chat's mode — a switch
    to read-only denies it. A coding agent's call answers as soon as the card shows
@@ -853,7 +861,7 @@ for this Filament at most, and writes each to its own log — who, where, what a
 
 **The tool's fields.** Where this Filament keeps a machine for its agents, `bash_background` and `background_command`
 take `machine` (by name or id) and `cwd` (a folder there), and one sentence of their text says where such a command
-runs. With no such machine, both tools are the ones they always were.
+runs. With no such machine, neither tool has these fields.
 
 ### Choosing a machine, and one check on every machine
 
@@ -929,7 +937,7 @@ answers, amber while it does not, with why under its list. Its models say *On Wo
 *On your plan*. Pick one as any model: the chat runs here, and each call goes to that machine.
 
 > On the laptop, pick *Workstation › Llama 3.3 70B* and ask the chat to read through a large log. The laptop's chat
-> works as always; every model call it makes runs on the GPU in the workstation.
+> works as any chat here does; every model call it makes runs on the GPU in the workstation.
 
 **What goes where.** Each call carries the conversation as the model needs it, to that machine, over https alone —
 the network or the tailnet, its certificate pinned — with your agents' device's token; never this machine's keys,
@@ -1926,9 +1934,15 @@ If Filament ends while the app runs it, the app starts it again within a few sec
 `config.json` that does not read, say — the app does not try again and again: it says so, with what Filament said
 last (**Try again**, **Open the log**), and the tray's **Restart Filament** tries again once you fixed it.
 
-Where a Filament of the same data folder already answers on the port — the tray's, say — the app shows that one, and
-Quit leaves it running; where another program holds the port, or a Filament of another data folder, it says so and
-starts nothing. Its windows show Filament's pages only: a link to
+Where a Filament of the same data folder already answers on the port — one started with `filament start` or as a
+service — the app shows that one, its windows this computer's owner there as in its own; **Restart Filament** in the
+tray is greyed (*started elsewhere*), and Quit leaves it running; where another program holds the port, or a Filament
+of another data folder, it says so and starts nothing.
+
+**Other machines.** The app's window shows your other machines' Filament beside this one: their chats in this
+computer's left bar, what they ask answered from Now, a chat started on one (Run on) and its changes brought back, and
+their Filament set up and updated from here ([Remote access](#remote-access-this-filament-from-another-machine),
+*Driving other machines from the app* and *Every machine in one list*). Its windows show Filament's pages only: a link to
 another site opens in your browser, and an editor's link (an editor picked in **Open in**) in that editor — at once after your click,
 otherwise only once you say yes, so a page cannot open them unbidden (an editor's link always asks). Its own files
 are under `<data folder>\desktop`, never beside Filament's; `server.log` there holds what Filament printed, with its
@@ -1936,13 +1950,16 @@ inbound key shortened (`Filament print-key` gives it whole), and `settings.json`
 
 **The tray.** A click on the icon shows the card by it (a click again, a click anywhere else, or Esc, hides it); a
 double-click opens the harness. Its menu, at a right-click: **Show the card**, **Open Filament**, **Open in browser** (this Filament in your
-own browser, which a one-time link pairs by name, as this computer's own, at this Filament's own name under localhost), **Open the dashboard**, **Restart
-Filament** (and, with a newer Filament out, **Update to Filament *x***, then **Restart to update to Filament *x***
-once it is downloaded), **Start at logon**, **Notifications** and **Check for updates** (checks), **Quit**. Hover it
-for Filament's state and how many chats need you.
+own browser, which a one-time link pairs by name, as this computer's own, at this Filament's own name under localhost), **Open the dashboard**, then, once another machine is kept, a row for each machine — its colour's dot and how many of its
+chats wait on you, or why it is not reached (*disconnected*, *signed out here*, *offline*, *reconnecting*); a press
+shows it in the window —, **Restart Filament** (and, with a newer Filament out, **Update to Filament *x***, then **Restart to update to Filament *x***
+once it is downloaded), **Start at logon**, **Notifications** and **Check for updates** (checks), **Quit** (*Quit
+(Filament keeps running)* where the app attached to one). Hover it for Filament's state and how many chats need you,
+on every machine, and on which.
 
 **The card** is a small page of Filament's, in four parts. **Now**, where it opens: the harness's own Now — what needs
-you, what works and what just finished, in every chat and project — then the model calls in flight with their speed,
+you, what works and what just finished, in every chat and project on this computer (other machines' rows show in the
+window's left bar) — then the model calls in flight with their speed,
 and the day in one line (a click shows Today). A row opens its chat in the harness, in the window already open,
 without loading it again. **Today**: the alerts, the day's requests, tokens, cache hits and cost, each coding agent's
 plan (how much of its window is used, when it resets), where the day's cost went, and the failover switch.
@@ -2039,7 +2056,7 @@ launcher starts it (`-NoStart` waits instead); `-Page /` opens the console; `-Br
 | `POST /v1/embeddings` | Routed by model name to an OpenAI-compatible upstream. |
 | `GET /v1/models` | The advertised model list; Anthropic shape when the request carries `anthropic-version`, OpenAI shape otherwise. |
 | `GET /health` | `{ ok, version, uptimeMs }`, no key needed. |
-| `POST /mcp/memory` (and `DELETE`) | Filament's memory for any agent, over MCP Streamable HTTP (chapter 22, *Memory for any agent*). It needs one of your inbound keys when any is set; with none, it answers this machine only — a program here with the owner key, where `server.loopbackTrust` is `token`. A client with an inbound key reads its own project's sessions alone, unless any program here is let in (`legacy`). |
+| `POST /mcp/memory` (and `DELETE`) | Filament's memory for any agent, over MCP Streamable HTTP (chapter 22, *Memory for any agent*). It needs one of your inbound keys when any is set; with none, it answers this computer alone: Filament's own calls, and a program here that sends the owner key — any program here where `server.loopbackTrust` is `legacy`. A client with an inbound key reads its own project's sessions alone, unless it also sends the owner key or the admin token, or any program here is let in (`legacy`). |
 
 Inbound keys go in `Authorization: Bearer <key>` or `x-api-key: <key>`. Useful request headers: `x-session-id` (or the
 others listed in section 3) to tie a chat together, `x-filament-cwd` to name the agent's working directory.
@@ -2047,15 +2064,16 @@ others listed in section 3) to tie a chat together, `x-filament-cwd` to name the
 ### Admin API (`/api/*`)
 
 Answered to this computer (a loopback request that no proxy handed on, with the owner key, the desktop app's window
-session or a browser here's pairing — any such request where `server.loopbackTrust` is `legacy`: [Security](#15-security)), a paired device (a browser's cookie, a command
+session or a browser here's pairing — any such request where `server.loopbackTrust` is `legacy`: [Security](#15-security)), your own machines on the tailnet where **Trust my own tailnet login** is on, a paired device (a browser's cookie, a command
 line's Bearer token: see [Remote access](#remote-access-this-filament-from-another-machine); a view-only one reads
 alone, and another machine's agents' device reaches its own chats alone), and `server.adminToken` sent as `x-filament-admin` or a Bearer token; anyone else is refused (403, with the
-pairing page named as `pair`). Mutating calls from a browser page must come from the console's own origin and use
+pairing page named as `pair`): a program here without the owner key with `ownerKey: true`, a device unused for 90 days
+with `lapsed: true` and `days`. Mutating calls from a browser page must come from the console's own origin and use
 `application/json`; every console and admin request must carry a Host header that names this machine.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/state` | Version, uptime, configuration (secrets masked; one this `secret.key` cannot open shown as kept, its place in `unreadable`), 24-hour summary, endpoints; where Filament listens (`listening`: a host or port saved since takes effect after a restart) and what starts it again after a stop (`supervisor`: `"desktop"`, the Filament app, or null); `endpoints` write a wildcard host as `localhost` and an IPv6 host in brackets; `exposed`: Filament's words where it listens beyond this machine while `agentLoop.roots` lists no folder, else null; `system`: this machine's system by name, its architecture, kernel release, shell (and PowerShell), path separator, CPUs and memory; `ownerless`, to this computer alone: its calls without the owner key since Filament started, `count` and `programs` (each `agent`, `count`, `lastAt`, newest first); `artifacts`: where the page reads the artifacts, `page` and `still` with `{name}` for each one's name — this computer's `.art.localhost` addresses, under the page's pass where its programs need the owner key ([Artifacts](#artifacts-pages-the-agent-keeps)), or the network's artifacts address. Another machine's agents' device gets the version, the machine and `system` alone. |
+| `GET /api/state` | Version, uptime, configuration (secrets masked; one this `secret.key` cannot open shown as kept, its place in `unreadable`), 24-hour summary, endpoints; where Filament listens (`listening`: a host or port saved since takes effect after a restart) and what starts it again after a stop (`supervisor`: `"desktop"`, the Filament app, or null); `endpoints` write a wildcard host as `localhost` and an IPv6 host in brackets; `exposed`: Filament's words where it listens beyond this machine while `agentLoop.roots` lists no folder, else null; `system`: this machine's system by name, its architecture, kernel release, shell (and PowerShell), path separator, CPUs and memory; `ownerless`, to this computer alone: its calls without the owner key since Filament started, `count`, `refused` (whether they were) and `programs` (each `agent`, `count`, `lastAt`, newest first); `loopbackTaken`: the other program that holds Filament's port at the other loopback address, where one does; `artifacts`: where the page reads the artifacts, `page` and `still` with `{name}` for each one's name — this computer's `.art.localhost` addresses, under the page's pass where its programs need the owner key ([Artifacts](#artifacts-pages-the-agent-keeps)), or the network's artifacts address. Another machine's agents' device gets the version, the machine and `system` alone. |
 | `GET /api/clones?remote=<url>` | This machine's clones of a repository, named by its remote's URL in any form (`git@host:o/r.git` and `https://host/o/r` are one): each with its path, HEAD, branch and whether it is dirty, looked for in the folders of its projects and chats (the first 200). The answer names the repository by its key (`host/o/r`), never by the URL asked. |
 | `GET /api/sessions/<id>/asks`, `POST /api/sessions/<id>/asks/<ask>/answer` | What a chat waits on — its own turn's ask, the card its turn waits on for a command on another machine, its coding agent's, its sub-agents' — each with an id, what asks, the question and its options; one answer for any of them: a permission by `allow` (true or false) or `choice` `allow` \| `deny`, a question by `choice` (an option's id) or `words`, a coding agent's form by `outcome` and `answers` — never by matching words. The chat's own turn's pause goes on in the answer's reply (`stream`, `runEvents`, as a turn's); any other answers `{ ok, id, from }`. 404 for an ask the chat never had, 409 for one answered or ended. |
 | `PATCH /api/config/fields` | Change some of Filament's own settings (server, agent loop, observability, alerts, memory; never a credential): `{ "set": { "path": value }, "unset": ["path"], "base": version }`. Each value is checked by its type; `unset` puts Filament's default back; a `base` older than a change to one of the named settings is refused (409). Answers the changes in words, `restartNeeded`, each setting's value and the new version. |
@@ -2084,16 +2102,20 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/model-routes` | Every model in the pickers with its provider, where it goes first and its backups, the routes not drawn on a model, whether failover is on, and the version. |
 | `PUT /api/model-routes` | Set one model's backups: `{ "name", "backups": [{ "upstream", "upstreamModel" }], "base" }`. An empty list takes them off. Refused 409 only when the route that catches that name changed since `base`; 400 for a coding agent, an unknown provider or a repeated entry. |
 | `GET /api/keys`, `POST /api/keys/rotate` | The inbound keys in clear, and rotation: this computer alone (a device and the admin token are refused), with the app's key while the desktop app runs. |
-| `POST /api/remote/pair`, `GET`/`DELETE /api/remote/pair` | A pairing code (`{ "scope": "full" \| "view" }`), with the machine, the network listener's addresses, the certificate's fingerprint and a link for each; the codes open; close one (`?id=`, as Settings does), or every one with none. This computer alone. |
-| `POST /api/remote/claim` | Claim a code (`{ code, name }`), the one call answered before the caller is known: a page gets its device's cookie, a command line (no `Origin`) its token, once. Over https, or from this machine (a proxy here, an SSH tunnel), alone: plain http from another machine is refused. |
+| `POST /api/remote/pair`, `GET`/`DELETE /api/remote/pair` | A pairing code (`{ "scope": "full" \| "view" }`), with the machine, the network listener's addresses, the certificate's fingerprint and a link for each; `here: true`, a browser here's code, with no network link (409 `loopbackTaken` where another program holds Filament's port at the other loopback address); the codes open; close one (`?id=`, as Settings does), or every one with none. This computer alone. |
+| `POST /api/remote/claim` | Claim a code (`{ code, name }`), the one call answered before the caller is known: a page gets its device's cookie, a command line (no `Origin`) its token, once. Over https, or from this machine (a proxy here, an SSH tunnel), alone: plain http from another machine is refused. A browser here's code is claimed on loopback, at this Filament's own name alone. |
 | `GET /api/remote/lan[?fresh=1][&firewall=0]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again; `firewall=0` reads it not, as another machine's app learning its ways asks); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
 | `POST /api/remote/lan/new-key` | New key: the network listener's key and certificate made anew and served at once, its artifacts' address too (this computer alone); every machine and command line paired over the network pairs again. Answers the listener's state, its new fingerprint in it. |
 | `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ token }`, which the app adds to its windows' calls to Filament's own address and port (`x-filament-owner-session`); any other call is refused (403). |
 | `POST /api/key-copies` | `{ ids }`: those providers' keys, open, for the desktop app to copy to another machine (Settings › Remote access › a machine's Copy keys). It answers the app's main process alone — the app's press key and the owner key itself on the call —; a page, a device, the command line and any other program are refused (403). Never logged. |
-| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on; `tunnel-device`, a device's token through an SSH tunnel taken as that device's); a device signs itself out. A device's call through a tunnel says `device`. |
+| `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin`, `tailnet` with its `login`, or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on; `tunnel-device`, a device's token through an SSH tunnel taken as that device's); a device signs itself out. A device's call through a tunnel says `device`. |
 | `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`; `copies` is Run on); an agents' device's `copies` says what its machine keeps here, your chats in its copies among it (`chats`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
-| `GET /api/remote-work`, `GET /api/remote-work/places?folder=`, `POST /api/remote-work`, `POST /api/remote-work/<id>/chat`, `POST /api/remote-work/<id>/check`, `POST /api/remote-work/<id>/back`, `DELETE /api/remote-work/<id>` | Run on, from this machine: `places` says where a chat in the folder may run — the folder in git (`here`), each machine kept for this Filament's agents (whether it answers and takes a chat of yours in a copy, its CPUs and load, memory, models and clones of the repository, what its grants let this Filament read), and the one it went to last (`last`). `{ machine, folder }` sends the folder's repository — uncommitted work and files in no commit with it, what stays here as a sub-agent's copy leaves it — to a machine kept for this Filament's agents, whose **Run on** or **Agents** is on there, and has it placed there for a chat of yours (`work.cwd`, where your device there starts it). The first send of a repository to a machine answers 409 with `ask` (the files, those in no commit, what stays here, and how many files Git LFS keeps, whose content stays here); the same body with `allow: { ask }`, that ask's `id`, sends it — its size is measured before any bundle is built, and it names the first 200 files in no commit and counts them all —, and a later send asks again only for a new file in no commit, or for LFS. `…/chat` `{ chat }` names the chat started there; `…/check` `{ seen? }` looks at what it changed there that the folder has not taken — the files, how each would come in, those that would stop it and the capture (`at`), nothing written; kept on the record as `waiting`, with `seen`, the chat's newest moment there the desk saw —; `…/back` brings what it changed into the folder as uncommitted edits, from where the last bring back left it — a file both sides changed stops it, nothing written (409 `conflicts` and `at`, the capture they came with), until `choices` by path (`yours`, `its`, `both`) or `overlap` (`markers`, `mine`) names a way with that `at` — changed there since, it says `moved` with what stops it now, nothing written; put back there as it went, the folder goes back too; 410 once its copy there went, or the folder here; 409 with `kind: "runs"` while a turn of its chat still runs there. A send or a bring back runs while its call stays open: one closed stops it. `DELETE` forgets it here, and its copy there stays that machine's to clear. Sends and bring backs are presses. |
+| `GET /api/remote-work`, `GET /api/remote-work/places?folder=`, `POST /api/remote-work`, `POST /api/remote-work/<id>/chat`, `POST /api/remote-work/<id>/check`, `POST /api/remote-work/<id>/back`, `DELETE /api/remote-work/<id>` | Run on, from this machine: `places` says where a chat in the folder may run — the folder in git (`here`), each machine kept for this Filament's agents (whether it answers and takes a chat of yours in a copy, its CPUs and load, memory, models and clones of the repository, what its grants let this Filament read), and the one it went to last (`last`). `{ machine, folder }` sends the folder's repository — uncommitted work and files in no commit with it, what stays here as a sub-agent's copy leaves it — to a machine kept for this Filament's agents, whose **Run on** or **Agents** is on there, and has it placed there for a chat of yours (`work.cwd`, where your device there starts it). The first send of a repository to a machine answers 409 with `ask` (the files, those in no commit, what stays here, and how many files Git LFS keeps, whose content stays here); the same body with `allow: { ask }`, that ask's `id`, sends it — its size is measured before any bundle is built, and it names the first 200 files in no commit and counts them all —, and a later send asks again only for a new file in no commit, or for LFS. `…/chat` `{ chat }` names the chat started there; `…/check` `{ seen? }` looks at what it changed there that the folder has not taken — the files, how each would come in, those that would stop it and the capture (`at`), nothing written; kept on the record as `waiting`, with `seen`, the chat's newest moment there the desk saw —; `…/back` brings what it changed into the folder as uncommitted edits, from where the last bring back left it — a file both sides changed stops it, nothing written (409 `conflicts` and `at`, the capture they came with), until `choices` by path (`yours`, `its`, `both`) or `overlap` (`markers`, `mine`) names a way with that `at` — changed there since, it says `moved` with what stops it now, nothing written; a file the folder will not take says so in `error`, nothing written and no choice to make (`partial` and `stuck`, the files to check by hand, where it could not all be put back); put back there as it went, the folder goes back too; 410 once its copy there went, or the folder here; 409 with `kind: "runs"` while a turn of its chat still runs there. A send or a bring back runs while its call stays open: one closed stops it. `DELETE` forgets it here, and its copy there stays that machine's to clear. Sends and bring backs are presses. |
 | `POST /api/remote/agent-device` | A full device makes its own machine's agents a device here: `{ device, machine, token }`, the token this once, its grant off. A second one replaces the first. |
+| `/api/transfers/*` | Another machine's agents' device alone: its folders sent here as bundles and placed as copies (`POST /api/transfers/place`, `for: "person"` a copy for a chat of yours its app starts, Run on), and what a chat changed in a copy captured to go back. |
+| `GET /api/update`, `POST /api/update` | This Filament's version and whether this machine updates itself (installed by `install.sh`); `{ version }` installs that release and restarts once no turn runs, as another machine's desk asks (202; 409 where this machine does not update itself, an update runs already, an installed one waits for its restart, or the version runs here already or is older than the one that runs; 400 for a version that is none; 502 where systemd does not start it). The person's alone, and a press. |
+| `POST /api/exec`, `GET /api/exec/<id>`, `POST /api/exec/<id>/stop`, `POST /api/exec/<id>/answer` | A command run here and followed: a press, or another machine's agents' as their grant and fence let them; 413 above 32 KB of words, 429 past 8 at once from one caller or 32 in all. |
+| `POST /api/artifacts/<name>/pass` | An artifact's address for Open in browser, Copy link or a link in a chat, under a pass of its own (`{ still: true }`: its still preview's, which writes nothing) where this computer's programs need the owner key; as it is otherwise. |
 | `GET /.well-known/filament` | This machine's id and name, its version, and the wire it speaks with the oldest it still speaks (`protocol`, `protocolLowest`), to anyone: what the pairing page, `filament connect` and another machine's app ask before a code or a token is sent. |
 | `POST /api/dry-run` | Route and shape a request without sending it. |
 | `GET /api/acp/agents`, `POST /api/acp/agents/<id>/login`, `POST /api/acp/detect` | Known agents with installed / logged-in state (asked asynchronously, cached a minute), open a login terminal, add or enable installed agents. |
@@ -2103,7 +2125,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/acp/profiles` | What each configured agent declared the last time Filament started it, with when (kept in `acp-profiles.json`; a removed agent's answer goes with it). |
 | `GET /api/qoder/<id>/status?quota=1`, `POST /api/qoder/<id>/login/start`, `POST /api/qoder/<id>/login/poll`, `POST /api/qoder/<id>/logout` | Qoder account state and the browser login flow. |
 | `GET /api/sessions/<id>/browser`, `POST /api/sessions/<id>/browser`, `GET /api/sessions/<id>/browser/shot` | A chat's browser: its tabs, who has it, the sites its agent may act on and what it does now; the Browser pane's acts (`{ "act": "take" \| "give" \| "navigate" \| "back" \| "forward" \| "reload" \| "select" \| "new" \| "close" \| "forbid" \| "clear" \| "size", "url", "tab", "site", "size", "width", "height", "fit", "hand" }`); a picture of the page shown (204 with none). |
-| `GET /api/browser`, `GET /api/browser/host` (a WebSocket) | Whether the agent has a browser now: the desktop app's, or Chrome found on this machine; the app's socket — no `Origin` (a page always sends one), and on loopback Filament's inbound key as a Bearer token; at the network or tailnet door, a full device's sign-in (its cookie, or its token as a Bearer), its app's link pinged every 15 seconds. A view-only device or an agents' device is refused 403, a sign-in it does not know 401. |
+| `GET /api/browser`, `GET /api/browser/host` (a WebSocket) | Whether the agent has a browser now: the desktop app's, or Chrome found on this machine; the app's socket — no `Origin` (a page always sends one), and on loopback Filament's inbound key as a Bearer token with the owner key beside it (`x-filament-owner`): the inbound key alone, which every agent here may hold, is refused (403) unless `server.loopbackTrust` is `legacy`; at the network or tailnet door, a full device's sign-in (its cookie, or its token as a Bearer), its app's link pinged every 15 seconds. A view-only device or an agents' device is refused 403, a sign-in it does not know 401. |
 | `GET /api/migrate/9router`, `POST /api/migrate/9router` | Preview and run the import from a local 9router installation. |
 | `GET /api/assistant/models`, `GET /api/assistant/session?id=`, `POST /api/assistant/chat`, `/apply`, `/discard`, `/reset` | The configuration assistant. |
 
@@ -2111,34 +2133,43 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 
 ## 15. Security
 
-- **Private by default.** Filament listens on `127.0.0.1`; nothing outside this computer can reach it. Set
+- **Private by default.** Filament listens on this computer's own loopback addresses, `127.0.0.1` and `[::1]` — it
+  holds its port at both, so no other program answers its name over the other (where one does, `filament doctor` names
+  it, and no browser here pairs) —, and nothing outside this computer can reach it. Set
   `server.host` to `0.0.0.0` only if you mean to share the model endpoints, and keep `requireAuth` on. Shared for
   remote access — Reach this machine on my network, `tailscale serve`, an SSH tunnel — another machine's browser or
-  command line gets in by pairing alone, and only for as long as you leave it paired
-  ([Remote access](#remote-access-this-filament-from-another-machine)).
+  command line gets in by pairing alone, for as long as you leave it paired and it reaches this Filament at least once
+  every 90 days ([Remote access](#remote-access-this-filament-from-another-machine)).
 - **Remote access is encrypted.** The network's listener is https alone, its certificate checked by the person against
   the fingerprint this machine shows, and pinned by a paired command line. Neither a pairing code nor a device's token
-  is taken over plain http from another machine: what plain http carries, anyone on the network reads.
+  is taken over plain http from another machine: what plain http carries, anyone on the network reads. The certificate
+  renews itself a month before its 825 days run out, with the same key, and the command lines, apps and agents paired
+  over it take the renewal; **Certificate key › New key…** makes a new key, and every machine and command line paired
+  over the network then pairs again.
 - **Inbound keys** protect the model endpoints and are compared in constant time. Rotate them from Settings. The model endpoints and MCP answer only to a Host header that names this machine, as the console does (421 in the client's own error shape): a client that calls Filament by another name — a reverse proxy's, a LAN host name, Docker's `host.docker.internal` — needs it in `server.allowedHosts`.
-- **A client keeps to its own conversation**: `x-filament-chain`, which names a Filament session, is Filament's own header, and a client's is dropped (said on the record). **A client from another machine keeps to its own project's memory** unless it carries the admin token: memory's tools, briefing, related memory, `@mem`, a coding agent's memory tools and `/mcp/memory` reach that project's sessions, the one it stands in and the claims that hold in every project. The project is the folder the request names.
+- **A client keeps to its own conversation**: `x-filament-chain`, which names a Filament session, is Filament's own header, and a client's is dropped (said on the record). **A client keeps to its own project's memory** unless it sends the owner key or the admin token — a client on this
+computer too, where `server.loopbackTrust` is `token`: memory's tools, briefing, related memory, `@mem`, a coding agent's memory tools and `/mcp/memory` reach that project's sessions, the one it stands in and the claims that hold in every project. The project is the folder the request names.
 - **A listener open beyond this machine with no `agentLoop.roots`** — any address but this machine's own (`localhost`, a `127.x.x.x` address, `::1`, `::ffff:127.x.x.x`) — works, and Filament says so: a warning as it starts, and a note in Settings › Connect other apps and Settings › Agent loop. A coding agent then works in whatever folder a request names, another computer's too.
-- **The console and admin API answer this computer, a paired device and `server.adminToken` alone** — a browser
-  neither knows is sent to the pairing page, a view-only device reads alone, and the inbound keys are this computer's
+- **The console and admin API answer this computer, your own tailnet login where you trust it, a paired device and
+  `server.adminToken` alone** — a browser none of them knows is sent to the pairing page, a view-only device reads
+  alone, and the inbound keys are this computer's
   only; a request a proxy on this machine hands on (`tailscale serve`, nginx) is another machine's, while a plain
   forward that adds no proxy header (an SSH tunnel) is a program on this computer — no one's without the owner key, a
-  window's session or a pairing ([Security](#15-security)), and one that sends a paired device's token or cookie is
+  window's session or a pairing (below), and one that sends a paired device's token or cookie is
   that device, as from the network, and a model call with another machine's agents' device's token
   passes the network's door: its grant `models`, a revoke, the calls one device may have. They answer only to a Host header that
   names this machine (`localhost`, `*.localhost`, IP addresses, the configured host, `server.allowedHosts`; anything
   else gets HTTP 421, which stops DNS-rebinding attacks from web pages), refuse mutating requests from other origins,
   and require `application/json` on them.
-- **While the desktop app runs, an answer to an ask is its window's.** Any program on this computer reaches the admin
-  API as this computer — an agent's own background shell among them — so while the app runs, answering an ask (a
+- **While the desktop app runs, an answer to an ask is its window's.** Every program that runs as you can read the
+  owner key, and the `filament` command line sends it for any of them — an agent's own background shell among them —,
+  so while the app runs, answering an ask (a
   chat's, a sub-agent's, a coding agent's, a command another machine's agents run here), **Always allow**, a card's
   Allow or Deny, the permission switch's answer to a call that waits, a message that names the mode its turn runs in
   (in its body, or by the request's own `x-filament-permissions` header, whatever word it holds),
-  and a setting that lets the agent do more without asking need the key the app made as it started and handed to its
-  own windows alone (the harness's page and the console's): never an environment variable, a file or the log. Such a
+  and a setting that lets the agent do more without asking need the app's press key, which the app made as it started
+  and handed to its own windows alone (the harness's page and the console's): never an environment variable, a file or
+  the log. Such a
   setting is a mode other than Read-only or Ask, or one put back to the layer below; a list of rules written (it
   replaces one that may hold a deny), or a rule forgotten that is no allow; the commands refused; the second look off;
   the folders a chat works in beside its own; a model named with its coding agent's mode (`…@bypassPermissions`; a
@@ -2160,11 +2191,14 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   folder added to those agents may work under (`agentLoop.roots`), or their list emptied; a
   variable named to be passed to commands (`agentLoop.envPass`: it would reach every command whatever it holds); the
   inbound keys read, replaced or set, and the admin token set; the configuration read again from its file
-  (`POST /api/config/reload`); and memory put back from a backup: each puts in place what an agent then runs by. So
+  (`POST /api/config/reload`); memory put back from a backup; and `server.loopbackTrust` changed, either way: each puts
+  in place what an agent then runs by. So
   does what starts a program as you, or names one Filament starts by itself from then on: a terminal opened or typed
   into — the Terminal pane's stream opens with a ticket the app's window asks for, good once and for half a minute —;
   a command started by the API's command row (`POST /api/exec`: another machine's agents run theirs as their grant
-  and fence let them, unless their device was paired without the app's key);
+  and fence let them, unless their device was paired without the app's key); another version of Filament installed and
+  started (`POST /api/update`, from another machine's desk); a Run on send or bring back; providers' keys copied to
+  another machine (`POST /api/key-copies`, which asks the owner key besides);
   a hook, the check after edits (`loop.verify.afterEdits`), an MCP server's command or address, a plugin switched on
   or a language server's command, written or changed in a chat's settings (a message's own, a new chat's and a fork's
   among them), your defaults, a project or the configuration; an MCP server tested, brought in from another app,
@@ -2205,9 +2239,9 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   tab on this computer and the command line among them: answer in the app's window. A paired full device — your other
   machine's
   page through an SSH tunnel among them — answers without the key, if its pairing was started in the app's
-  **Settings › Remote access**: a device paired from a code made without the key (an older Filament made one for
-  `filament pair` while the app ran), and the agents' device it mints, answer nothing while the app runs — pair it
-  again from the app. Nor does the admin token while the app runs: a program here can read it from the config, or set
+  **Settings › Remote access**: a device paired from a code made without the app's key, and the agents' device it
+  mints, answer nothing while the app runs, and the refusal says so — pair it again from the app. Nor does the admin
+  token while the app runs: a program here can read it from the config, or set
   it there. Nor does a tailnet login **Trust my own tailnet login** lets in: any program on your other machines signed
   in to your tailnet carries it. Filament believes that login only as `tailscale serve` hands it on, below a path its
   serve config alone holds (kept in Filament's data folder too): a program here that reaches the tailnet's door at this
@@ -2215,40 +2249,49 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   tailnet without pairing; to answer from it, pair it once: make a code in the app's Settings › Remote access and open its
   tailnet link there.
   Where no app started this Filament — a server, Filament started on its own (`filament start`), one the app attached
-  to — there is no key, and every answer and setting goes as it did: nothing there is behind one.
+  to — there is no press key: an answer or a setting goes through from any caller Filament knows (the owner key, a
+  window's session, a pairing, the admin token). The owner key holds there too, and an app that attaches to a running
+  Filament gives its windows their owner session before it opens them.
   The key guards Filament's door, not its files. A command you allowed runs as your account: it can write Filament's
   own files in its data folder — the configuration, the devices it knows, a chat's settings — and start Filament
   again, and no key stands in its way. What the key stops is a call to the admin API that would answer for you, let
   an agent do more or start a program as you; what a command may write is the permission mode's, the rules' and the
   folders' to say.
 - **This computer's own programs carry Filament's owner key.** Each start of Filament makes a key into `owner.key` in
-  its data folder, readable by your account alone, before the command line can find it, and takes it away as it stops.
+  its data folder, readable by your account alone (on Windows, by your user folder's own permissions), before the
+  command line can find it, and takes it away as it stops.
   The `filament` command line, the desktop app and Filament's own calls to itself send it with each call to the admin
   API (the `x-filament-owner` header), read at each call, and only to the address and port that data folder's Filament
   says it listens on (`listening.json`) — never to another program that answers at a port it asked, the config's after a
-  move, another account's, or one at that port on another of this computer's addresses (`localhost` reaching `::1`
-  where Filament listens on 127.0.0.1 alone); the app's windows carry a browser session made with it, made again at each
+  move, another account's, or one at that port under another name or address than the one `listening.json` names
+  (`localhost`, or `[::1]` where it names 127.0.0.1); the app's windows carry a browser session made with it, made again at each
   start of Filament — by the key itself, never by a session — and kept in the app's memory alone: the app adds it to
   its windows' own calls to Filament's address and port (the `x-filament-owner-session` header), never a cookie, which
   a browser sends to every port of this computer's address. A server an agent runs on another port, an image a model
   wrote into a chat, an artifact's frame and anything it holds or opens get none, and the pages themselves cannot read it. It
   counts over this computer's own address
-  alone: a request a proxy hands on that carries it is refused, as any such request is, and said once in the log. It is taken out of
+  alone: a request a proxy hands on that carries it is judged without it, as any request from another machine is, and
+  said once in the log. It is taken out of
   each request as Filament reads it, so no record, log or answer holds it, nor any program's environment. A program
-  here that sends none of them — no key, no window's session, no pairing — is no one Filament knows
+  here that sends none of them — no key, no window's session, no pairing, no admin token — is no one Filament knows
   (`server.loopbackTrust` `token`, its default): the admin API refuses it (HTTP 403, `ownerKey: true`, its words naming
-  `filament open`), the harness and the console send its browser to the pairing page, and the run socket, a terminal,
-  a model call's `x-filament-memory-load`, memory's door with no inbound key set and an artifact's address with no pass
-  (Filament's page gives its frames and links one: [Artifacts](#artifacts-pages-the-agent-keeps)) refuse it; `/health`,
+  `filament open`), the harness and the console send its browser to the pairing page, a model call's
+  `x-filament-memory-load` is dropped from it, and the run socket, a terminal, memory's door with no inbound key set
+  and an artifact's address with no pass (Filament's page gives its frames and links one, and Copy link an artifact's
+  own: [Artifacts](#artifacts-pages-the-agent-keeps)) refuse it; `/health`,
   `/.well-known/filament`, the pairing page and a pairing's claim answer anyone, and so does an MCP server's sign-in
   coming back to this computer's browser, which its own state proves. A browser here pairs with `filament open` or the
-  tray's **Open in browser**; a client of memory's door with an inbound key, which every agent here may hold, reads its
-  own project's sessions alone. Each such call is counted by the name it gives itself (its user agent) — **Calls
+  tray's **Open in browser**, at this Filament's own name under localhost (`filament-<twelve letters>.localhost`), never
+  at 127.0.0.1, whose cookies a browser sends to every port of it, a server an agent runs there among them: its code is
+  refused anywhere else, and a browser that cannot open that name (Safari) pairs nothing
+  ([Remote access](#remote-access-this-filament-from-another-machine)). A client of memory's door with an inbound key,
+  which every agent here may hold, reads its own project's sessions alone. Its calls to the admin API, the run socket,
+  a terminal and the browser's host are counted by the name it gives itself (its user agent) — **Calls
   without the owner key** in Settings › Remote access, and `filament doctor`, say how many came since Filament started
   and from which programs, its first call said in the log. **Programs on this computer** › **Any program** there
   (`legacy`) lets every program here in with no key — every other account on this computer, and whatever hands calls
-  on over its loopback, too —, said in the log as Filament starts and by `filament doctor`; only this computer's owner
-  sets it, never a device. A script of yours that calls the admin API sends the key from `owner.key`, read at each
+  on over its loopback, too —, said in the log as Filament starts and by `filament doctor`; only this computer sets it —
+  never a device, a tailnet login or the admin token —, and while the app runs, its window alone. A script of yours that calls the admin API sends the key from `owner.key`, read at each
   call, as the command line does. It guards against another account on this computer, and programs that reach
   Filament without being able to read your files; a program running as you can read the key as it can read every file
   of yours. Another machine's agents' chats never touch the data folder that holds it, without **Full control**
@@ -2259,12 +2302,13 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   its port.
 - **While the desktop app runs, pairing and another machine's agents' grants are its window's too.** A pairing code
   (Make a code, `filament pair`) and a pill on another machine's agents' line (Agents, Full control and the rest) let
-  another machine in, so they need the app's key as an answer does, from this computer's programs, a tailnet login
-  and the admin token alike: a program here reaches the tailnet's door over loopback, and can read the admin token
-  from the config. Without it they are refused (HTTP 403), and `filament pair` says to make the code in the app. A
+  another machine in, so they need the app's press key as an answer does, from this computer's programs, a tailnet
+  login and the admin token alike: any program on your other machines signed in to your tailnet carries that login,
+  and a program here can read the admin token from the config. Without it they are refused (HTTP 403), and `filament
+  pair` says to make the code in the app. A
   paired full device sets grants with its own token, the app on your other machine among them, if its pairing was
   started in the app; renaming or revoking a device is not behind the key. Where no app started this Filament, there
-  is no key, and they go as they did.
+  is no press key, and a code or a grant goes through from any caller Filament knows.
 - **Secrets are encrypted at rest** (AES-256-GCM, `secret.key`): upstream API keys, Qoder tokens, the admin token,
   inbound keys, and credentials inside agent environment variables and custom headers (anything whose name looks like a
   key, token, secret, password or authorization). They are masked in the console, in configuration diffs and for the
@@ -2277,14 +2321,18 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   the system prompt or a header (not from pasted text) and can be limited to an allowlist, and the tool's own tools are
   never handed to an agent.
 - **Memory's door for other agents** (`/mcp/memory`) needs one of your inbound keys whenever one is set, whatever
-  `requireAuth` says. With none, it answers this machine only: Filament's own calls, and a program here with the owner
-  key where `server.loopbackTrust` is `token`. A web page from elsewhere is refused by its `Origin`
+  `requireAuth` says. With none, it answers this computer alone: Filament's own calls, and a program here that sends
+  the owner key — any program here where `server.loopbackTrust` is `legacy`. A web page from elsewhere is refused by its `Origin`
   before any key is read, and it gets the same Host check (421) as the console.
 - **A reply cannot make your browser call another site.** In the harness, an image a reply points to on another host
   is not loaded: a chip names the host, and **Show image** loads it when you say so. An image on Filament's own address — a path, or the page's own origin written whole — shows as its words and is never loaded, and so does a link to Filament's own API (`/api/…`): a reply cannot make the page call Filament's API. Links to Filament's pages stay links. A skill's file in the Library and the Docs draw pictures by the same rule; an artifact's Doc and Slides draw theirs at once, their page's own policy keeping them to its library hosts. The pictures on a call's card are files Filament keeps: PNG, JPEG, GIF or WebP by their bytes, never an
   SVG (which can carry a script), each served as its own type under a name made from its content.
-- **What Filament contacts.** The upstreams you configured, the agents' own services through their CLIs, GitHub for a
-  newer release (the desktop app), and, while they are on, Filament's anonymous usage statistics (below). Nothing else.
+- **What Filament contacts.** The upstreams you configured, whose redirects it never follows, so a key goes to no
+  other address; the agents' own services through their CLIs, and Google's Code Assist service with Antigravity's own
+  sign-in, to read its plan's quota; the feeds it installs and updates coding agents from; GitHub, for a newer release
+  (the desktop app, a server's `filament update`) and a plugin marketplace you add; the MCP servers and connectors you
+  set up; the pages your agent's web hands and browser reach while they are on; the machines you pair or reach by SSH;
+  and, while they are on, Filament's anonymous usage statistics (below).
 - **Anonymous usage statistics**: official builds from filamentdev.com send anonymous usage counts unless you turn them
   off; builds you make yourself send nothing unless you turn them on (below, or with `FILAMENT_TELEMETRY=1`). Where
   they are on, it is said once before anything is sent: a notice in the harness, or the start lines of a Filament
@@ -2423,8 +2471,12 @@ longer kept is "Filament (its own calls)".
 | You see | Why | Do this |
 |---|---|---|
 | Your tool says 401 / invalid key | The tool sends a different key than Filament's inbound key. | Copy the key from the Overview (eye → Copy) into the tool. Keys rotated more than four times ago stop working. |
-| A page or a client gets "Host … does not name this machine" (421) | You opened the console, or pointed a client, at a host name Filament does not know. | Use `http://127.0.0.1:20300/`, or add the name to `server.allowedHosts`. |
-| 403 or 415 on an admin call from a script | Mutating admin calls need `application/json` and, from a browser, the console's own origin. | Send JSON; run scripts without an `Origin` header. |
+| A page or a client gets "Host … does not name this machine" (421) | You opened the console, or pointed a client, at a host name Filament does not know. | For a browser here, run `filament open` (or the Filament app's tray › **Open in browser**), which pairs it and opens Filament at its own name; for a client, add the name to `server.allowedHosts`. |
+| 403 on a call from a script, saying Filament answers a program on this computer by its owner key | Under `server.loopbackTrust` `token`, its default, a program here needs Filament's owner key. | Send the contents of `owner.key` in the data folder as the `x-filament-owner` header on every call (it is made anew at each start), or use the `filament` command line. |
+| 403 or 415 on an admin call from a script that sends the owner key | Mutating admin calls need `application/json` and, from a browser, the console's own origin. | Send JSON; run scripts without an `Origin` header. |
+| "This browser cannot open <machine>'s own name for Filament" | The browser cannot open a name under `.localhost` (Safari cannot). | Open the link in Chrome, Firefox or Edge, or use the Filament app. |
+| "The Filament at … did not take the owner key in …" | The `filament` command line reads another data folder than the one that Filament runs from. | `--data-dir` names the folder it runs from. |
+| `filament doctor` says another program holds Filament's port at this computer's other loopback address | A program answers Filament's port at `[::1]` or `127.0.0.1`, whichever Filament could not take; no browser here pairs while it does. | Stop that program, or set `server.port` to a free port and restart Filament. |
 | "no route matches" | No route's pattern fits the model name. | Check the Routes page's "Try a model name" box; add or reorder a route. |
 | The agent replies, but a note says "… is not a model X offers" | The name after the prefix is not one of the agent's ids. | Use a name from the cheat sheet or `/v1/models`. |
 | Your tool loses the connection and reconnects a few seconds later, repeatedly | Filament was restarted while the chat was flowing through it (a code update, or the app's Restart); the app brings it back within seconds. | Restart when nothing is in flight; a restart waits for in-flight turns (up to 20 s). |
@@ -2494,6 +2546,8 @@ gets the earlier turns handed over once; going back from an agent strips its uns
 | Envelope | Another agent's result that reached your agent while it worked: one line with who sent it and its subject, opened whole when the agent chooses (§23, Envelopes). |
 | Fast mode | Anthropic's research preview that serves Opus at higher output speed for a higher price. |
 | Inbound key | The key your tools show to Filament. Different from upstream API keys. |
+| Owner key | `owner.key` in the data folder, made anew at each start: how Filament knows a program on this computer is you. The desktop app and the `filament` command line send it ([Security](#15-security)). |
+| Paired device | A browser, app or command line that claimed a pairing code: Filament answers it by its token or cookie, and Settings › Remote access lists it ([Remote access](#remote-access-this-filament-from-another-machine)). |
 | Route | A model-name pattern mapped to an upstream and a model there. |
 | Seeding | Handing a chat's earlier turns to an agent session that is new. |
 | Upstream | A destination: a provider, a router, an account, or a local agent. |

@@ -1,4 +1,5 @@
-// Generates docs/PARAMETERS.md and docs/TEMPLATES.md from the schema and template definitions.
+// Generates docs/PARAMETERS.md and docs/TEMPLATES.md from the schema and template definitions, and docs/COMMANDS.md from
+// the chat commands' registry.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { CONFIG_SCHEMA, RULES, UPSTREAM, ROUTE, isLeaf } from "../src/schema.js";
 import { TEMPLATES } from "../src/templates.js";

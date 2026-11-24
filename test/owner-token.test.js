@@ -150,7 +150,7 @@ describe("the owner key, read by the guards", () => {
   });
 
   test("Settings says the calls without the key in words", () => {
-    assert.match(ownerlessWords({ count: 0, programs: [] }), /^Every program on this computer that called Filament since it started sent its owner key/);
+    assert.match(ownerlessWords({ count: 0, programs: [] }), /^No program on this computer reached Filament's admin API, run socket, terminal or browser's host without its owner key/);
     assert.match(ownerlessWords({ count: 3, programs: [{ agent: "curl/8.4.0", count: 2 }, { agent: "python-requests/2.32", count: 1 }] }), /^3 calls since Filament started came from a program here without its owner key, answered all the same: curl\/8\.4\.0 \(2\), python-requests\/2\.32 \(1\)\./);
     assert.match(ownerlessWords({ count: 1 }), /^1 call since/);
   });

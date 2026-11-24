@@ -46,7 +46,7 @@ export function commandCatalog(cfg = {}) {
         forms: ["/cost"],
         where: ["api", "agent"],
         summary:
-          "This chat's cost, durations (API and wall), usage per model and prompt-cache stats — the shape of Claude CLI's /cost, from Filament's own records. Costs use each model's price card (its upstream's, else Filament's built-in rates); the provider's invoice is the truth.",
+          "This chat's cost, durations (API and wall), usage per model and prompt-cache stats, from Filament's own records. Costs use each model's price card (its upstream's, else Filament's built-in rates); the provider's invoice is the truth.",
       },
       {
         command: "/help",

@@ -833,7 +833,7 @@ export const COMMANDS = [
   {
     name: "devices",
     usage: "devices [list | revoke <device> | rename <device> <name>]",
-    summary: "The devices paired with this Filament — other machines' browsers and command lines: list them, revoke one, rename one",
+    summary: "The devices paired with this Filament — this computer's browsers paired by `filament open`, other machines' browsers, apps and command lines: list them, revoke one, rename one",
     more: "A device is named by its name (any case) or its id. Revoked, its token stops at once and what it holds open — a terminal, the live view — closes; it stays listed as revoked.",
     async run(r) {
       const [sub = "list", which, ...rest] = r.words;

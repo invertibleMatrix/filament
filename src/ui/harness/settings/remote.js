@@ -64,7 +64,7 @@ export const NEW_KEY_WORDS =
  */
 export const ownerlessWords = (o) => {
   const n = Number(o?.count) || 0;
-  if (!n) return "Every program on this computer that called Filament since it started sent its owner key or a pairing: the Filament app, the filament command line and a browser paired by filament open do.";
+  if (!n) return "No program on this computer reached Filament's admin API, run socket, terminal or browser's host without its owner key or a pairing since it started: the Filament app, the filament command line and a browser paired by filament open send one.";
   const named = (o?.programs || []).slice(0, 3).map((p) => `${p.agent} (${p.count})`).join(", ");
   return `${n} call${n === 1 ? "" : "s"} since Filament started came from a program here without its owner key, ${o?.refused ? "refused" : "answered all the same"}${named ? `: ${named}` : ""}. The Filament app and the filament command line send it; a browser pairs with filament open; a script sends owner.key from Filament's data folder as the x-filament-owner header.`;
 };
@@ -197,8 +197,8 @@ export function qrSvg(encoder, text) {
 export const GRANT_ROWS = Object.freeze([
   { grant: "agents", short: "Agents", label: "Agents may work here", says: (/** @type {string} */ n) => `${n}'s agents may start chats here and run commands as you, in your project folders. What they ask comes to you on ${n}.` },
   { grant: "copies", short: "Run on", label: "Your chats on it may run here", says: (/** @type {string} */ n) => `${n} may send a copy of a project here for a chat of yours to run in, and bring its changes back (Run on). No agent of ${n}'s works here by it.` },
-  { grant: "models", short: "Models", label: "Its chats may use this machine's models", says: (/** @type {string} */ n) => `${n}'s chats may use the API models set up here, on this machine's keys. Usage counts what they spend.` },
-  { grant: "unasked", short: "Without asking", label: "May run without asking", says: (/** @type {string} */ n) => `${n}'s sub-agents, and the single commands ${n} sends, run here without asking when the chat on ${n} that sent them is in Full access. Off, they always ask, and their command tasks and checks don't run.` },
+  { grant: "models", short: "Models", label: "Its chats may use this machine's models", says: (/** @type {string} */ n) => `${n}'s chats may use the models set up here, on this machine's keys, sign-ins or its own GPU; never its coding agents. Usage counts what they spend.` },
+  { grant: "unasked", short: "Without asking", label: "May run without asking", says: (/** @type {string} */ n) => `${n}'s sub-agents, and the single commands ${n} sends, run here without asking when the chat on ${n} that sent them is in Full access. Off, Full access runs as Edit for them: their commands ask, and their command tasks and checks don't run.` },
   { grant: "codingAgents", short: "Coding agents", label: "May use coding agents here", says: (/** @type {string} */ n) => `${n}'s chats may run on the coding agents here (Claude Code, Codex, Cursor), on their sign-ins here, without your own MCP servers; Cursor still loads its own.` },
   { grant: "full", short: "Full control", label: "Full control: its agents act here as you", says: (/** @type {string} */ n) => `On top of Agents: ${n}'s agents act here as you, in any folder but Filament's own, with your settings, tools and memory, without asking. A command they run can read and change whatever your account can. Asks first.` },
 ]);
@@ -229,7 +229,7 @@ export const FILTER_FROM = 8;
 /** What Machines holds, said once over it: each pill's title says its own whole (the owner's redesign of 11-09). */
 export const MACHINES_WORDS = "Other computers running Filament, and what each may do on the other. Hover a pill for what it allows.";
 /** What Add a machine does, in a line. */
-export const ADD_MACHINE_WORDS = "Pair this window with another machine by a code from its Settings › Remote access. It then shows in the machines menu at the top (Ctrl+1…9).";
+export const ADD_MACHINE_WORDS = "Pair this window with another machine: paste a link from its Settings › Remote access, type its address and code, or type ssh:// and a Host of your SSH config. It then shows in the machines menu at the top (Ctrl+1…9).";
 /** What Set up a machine over SSH does, in a line. */
 export const SSH_SETUP_WORDS = "A Linux machine you reach with SSH, with no Filament yet: install it there, run it as a service, and pair this window with it, step by step.";
 
@@ -1111,7 +1111,7 @@ export function renderRemote(body, cb = {}, io = {}) {
           "Programs on this computer",
           trust === "legacy"
             ? "Any program here reaches this Filament as you, with no key — every other account on this computer, and whatever hands calls on over its loopback, too. Owner key lets in the Filament app, the filament command line and the browsers they pair alone."
-            : "The Filament app, the filament command line and a browser paired by filament open (or the tray's Open in browser) reach this Filament; any other program here is refused. Any program lets every program on this computer in with no key.",
+            : "The Filament app, the filament command line, a script that sends owner.key and a browser paired by filament open (or the tray's Open in browser) reach this Filament; any other program here is refused. Any program lets every program on this computer in with no key.",
           segment(m, [...TRUST_CHOICES], trust, (v) => { if (v !== trust) void kit.setField("server.loopbackTrust", v); }, "What a program on this computer needs"),
         ),
       );
