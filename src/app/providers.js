@@ -15,6 +15,7 @@
 // A coding agent's entry takes only its model lists here (HS-D12): its connection is Settings › Coding agents'.
 import { providerById, planOf, placeholdersOf, fillBaseUrl, providerForBaseUrl, prefixRouteOf, prefixProblem, freePrefix } from "../core/providers.js";
 import { UPSTREAM_TYPES, isAgentUpstream, isMachineUpstream } from "../core/schema.js";
+import { cleanName } from "../services/machine.js";
 import { withoutUpstreams } from "../core/routing.js";
 import { redactConfig } from "../services/config/store.js";
 import { changeConfig, changedSince, changeLines, failure } from "./config-change.js";
@@ -24,6 +25,11 @@ const SECRET = "__SECRET__";
 const API_TYPES = new Set(["openai-compatible", "anthropic-compatible", "openai", "anthropic"]);
 const AUTH_STYLES = new Set(["auto", "bearer", "x-api-key", "both"]);
 const WIRE_APIS = new Set(["auto", "chat-completions", "responses"]);
+/**
+ * Where a key came from, as another machine's app said it as it copied the key here ("Desk on 2026-11-24"): one short
+ * line with nothing invisible in it, as long as a machine's name at most; "" for none. @param {unknown} v
+ */
+const keyFromOf = (v) => (typeof v === "string" ? cleanName(v) : "");
 /** The fields a coding agent's entry takes here: its model lists and a model's row. */
 const AGENT_FIELDS = new Set(["hiddenModels", "models", "pricingRow"]);
 /**
@@ -148,7 +154,7 @@ export function createProviders({ config, usage = null, now = Date.now, machines
       ...(isMachineUpstream(u) ? { machine: u.machine } : {}),
       enabled: u.enabled !== false,
       baseUrl: u.baseUrl || "",
-      key: { stored: u.apiKey === SECRET, masked: u.apiKeyMasked || "", ...(unreadable("apiKey") ? { unreadable: true } : {}) },
+      key: { stored: u.apiKey === SECRET, masked: u.apiKeyMasked || "", ...(unreadable("apiKey") ? { unreadable: true } : {}), ...(u.keyFrom ? { from: String(u.keyFrom) } : {}) },
       billing: u.billing === "metered" || u.billing === "plan" ? u.billing : null,
       provider: known
         ? {
@@ -309,6 +315,7 @@ export function createProviders({ config, usage = null, now = Date.now, machines
         type,
         baseUrl,
         apiKey,
+        ...(apiKey && keyFromOf(b.keyFrom) ? { keyFrom: keyFromOf(b.keyFrom) } : {}),
         authStyle: AUTH_STYLES.has(b.authStyle) ? b.authStyle : "auto",
         ...(type === "openai" || type === "openai-compatible" ? { wireApi: WIRE_APIS.has(b.wireApi) ? b.wireApi : "auto" } : {}),
         modelsPath: typeof b.modelsPath === "string" ? b.modelsPath.trim() : plan?.modelsPath || "",
@@ -366,6 +373,8 @@ export function createProviders({ config, usage = null, now = Date.now, machines
           nu.apiKey = "";
           forget.push(`upstreams.${id}.apiKey`);
         } else if (typeof p.apiKey === "string" && p.apiKey.trim() && p.apiKey !== SECRET) nu.apiKey = p.apiKey.trim();
+        // Where the key came from goes with it: a copy's (`keyFrom`), and none for one set here.
+        if (p.apiKey === null || (typeof p.apiKey === "string" && p.apiKey.trim() && p.apiKey !== SECRET)) nu.keyFrom = keyFromOf(p.keyFrom);
       }
       if ("baseUrl" in p) {
         const url = String(p.baseUrl ?? "").trim();

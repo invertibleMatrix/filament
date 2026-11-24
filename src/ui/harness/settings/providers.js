@@ -276,7 +276,9 @@ export function renderProviders(body, cb = {}, io = {}) {
         m("span", { class: "prov-masked", title: "Kept as it was sealed" }, "unreadable"),
         btn(m, "Replace", "outline", () => { part.replacing = true; paint(); }),
         keyUrl ? m("a", { class: "prov-link", href: keyUrl, target: "_blank", rel: "noopener noreferrer" }, "Get a key") : null);
-    return cardRow("Key", u.key.stored ? "Sealed on this computer: never shown again" : u.provider?.keyless ? "It runs on this computer: no key needed" : "No key yet",
+    // One another machine's app copied here says where from (http/admin/keys-copy.js on that machine).
+    const from = u.key.stored && u.key.from ? ` — copied from ${u.key.from}` : "";
+    return cardRow("Key", u.key.stored ? `Sealed on this computer: never shown again${from}` : u.provider?.keyless ? "It runs on this computer: no key needed" : "No key yet",
       u.key.stored ? m("span", { class: "prov-masked", title: "The key's first and last letters" }, u.key.masked) : null,
       btn(m, u.key.stored ? "Replace" : "Set a key", "outline", () => { part.replacing = true; paint(); }),
       keyUrl ? m("a", { class: "prov-link", href: keyUrl, target: "_blank", rel: "noopener noreferrer" }, "Get a key") : null);

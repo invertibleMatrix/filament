@@ -22,6 +22,7 @@ import { RANKS, isLearned, pickRoute, rankOf } from "./machines.js";
 import { routeFetch } from "./watch.js";
 import { FOR, createReach } from "./reach.js";
 import { ROUTES_MOST, onThisMachine } from "../../src/services/machines/remotes.js";
+import { NAME_MAX } from "../../src/services/machine.js";
 
 /**
  * One machine as the page shows it. `on`: this Filament's agents may work there — their device's token kept here, its
@@ -31,7 +32,13 @@ import { ROUTES_MOST, onThisMachine } from "../../src/services/machines/remotes.
  * window's sign-in there — disconnected in this window (`off`), or no way to it answers (`quiet`); `update`: it answers
  * on a wire this app does not speak, `words` saying which side to update; `said`, an outcome to tell once — `failed`
  * where it went wrong.
- * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", update?: true, said?: string, failed?: true }} AgentsRow
+ * `agents`: its coding agents' accounts, as it lists them (GET /agent-accounts) — read where the switches move, none else.
+ * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", update?: true, said?: string, failed?: true, agents?: AccountLine[] }} AgentsRow
+ * One coding agent's account there: its name, and whether someone is signed in to it (`in`, as `who` where it said
+ * whom), nobody is (`out`), it is turned off there (`off`), or it has not said yet (`unknown`).
+ * @typedef {{ name: string, state: "in" | "out" | "off" | "unknown", who: string | null }} AccountLine
+ * How one provider's key copied to a machine went (`copyKeys`): `words` where it did not.
+ * @typedef {{ id: string, name: string, ok: boolean, words: string | null }} Copied
  * One machine in the new-chat menu (pk-list): its projects, newest first; null where they could not be read, `words`
  * saying why.
  * @typedef {{ id: string, name: string, projects: { cwd: string, name: string }[] | null, words: string | null }} ProjectsRow
@@ -49,6 +56,23 @@ import { ROUTES_MOST, onThisMachine } from "../../src/services/machines/remotes.
 const PROJECTS_MAX = 50;
 const WORDS_MAX = 400;
 
+/** The most coding agents' accounts one machine's card lists. */
+const ACCOUNTS_MAX = 20;
+
+/**
+ * One coding agent's account as a machine lists it (http/admin/upstreams.js GET /agent-accounts, ui/lib/accounts.js
+ * `AgentRow`), as its card says it. @param {any} r @returns {AccountLine}
+ */
+const accountLine = (r) => {
+  const a = r?.account;
+  const name = capped(r?.name || r?.agentName || r?.upstream);
+  if (r?.off) return { name, state: "off", who: null };
+  if (!a) return { name, state: "unknown", who: null };
+  if (a.signedOut) return { name, state: "out", who: null };
+  if (a.identity) return { name, state: "in", who: capped(a.identity.label || "") || null };
+  return a.identitySource ? { name, state: "in", who: null } : { name, state: "unknown", who: null };
+};
+
 /** Words said whole up to `WORDS_MAX`, cut past it. @param {unknown} w */
 const capped = (w) => {
   const s = String(w ?? "");
@@ -65,14 +89,16 @@ const gone = (r) => r.status === 404 || r.status === 409;
 
 /**
  * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: import("./watch.js").KeepSignIn, store: Store,
- *   pick?: typeof pickRoute, fetchOf?: (route: Route) => typeof fetch, log?: (line: string) => void, ownName?: () => string }} o
+ *   pick?: typeof pickRoute, fetchOf?: (route: Route) => typeof fetch, log?: (line: string) => void, ownName?: () => string,
+ *   keysOut?: (ids: string[]) => Promise<any[]>, now?: () => number }} o
  *   `machines`: the machines the window keeps, read now; `cookieOf`: the Cookie header the machine's partition sends that
  *   origin; `keepSignIn`: the sign-in an answer sent again, kept there (watch.js `storeSignIn`); `store`: this Filament's
  *   machine store (services/machines `createMachines`); `ownName`: this machine's name, as
  *   its Settings › Remote access › This machine says it — the machine's chats from this Filament's agents are said to be
- *   from it, not from the app's device there ("Filament app on DESKTOP-1")
+ *   from it, not from the app's device there ("Filament app on DESKTOP-1"); `keysOut`: the providers' keys named, open,
+ *   as this computer's Filament hands them to the app alone (http/admin/keys-copy.js) — thrown, in words, where it does not
  */
-export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pick = pickRoute, fetchOf = routeFetch, log = () => {}, ownName = () => "" }) {
+export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pick = pickRoute, fetchOf = routeFetch, log = () => {}, ownName = () => "", keysOut = async () => Promise.reject(new Error("this app copies no keys")), now = Date.now }) {
   /** @param {Machine} m @param {Partial<AgentsRow>} o @returns {AgentsRow} */
   const rowOf = (m, o) => ({ id: m.id, name: m.name, on: false, models: false, full: false, kept: false, ready: false, words: null, ...o });
   /** The agents' device kept here for a machine, or null: one `filament connect` connected is no agents'. @param {Machine} m */
@@ -183,11 +209,89 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
    */
   async function standing(m, reached) {
     const kept = keptOf(m);
-    const r = await reached.send("/remote/devices").catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
+    /** @param {unknown} e */
+    const failed = (e) => ({ status: 0, json: { error: String(/** @type {any} */ (e)?.message || e) } });
+    const [r, accounts] = await Promise.all([reached.send("/remote/devices").catch(failed), reached.send("/agent-accounts").catch(failed)]);
     if (r.status !== 200) return rowOf(m, { kept: !!kept, words: `${m.name}'s devices could not be read: ${refusal(r)}.` });
     const there = kept ? (Array.isArray(r.json?.devices) ? r.json.devices : []).find((/** @type {any} */ d) => d?.id === kept.device.id && d.revokedAt == null) : null;
     if (there) follow(m, reached, kept);
-    return rowOf(m, { on: there?.grants?.agents === true, models: there?.grants?.models === true, full: there?.grants?.full === true, kept: !!kept, ready: true, words: kept && !there ? `Its agents' device on ${m.name} was revoked there: switched on, ${m.name} makes a new one.` : null });
+    // Its coding agents' sign-ins, as it lists them: none said where they could not be read.
+    const agents = accounts.status === 200 && Array.isArray(accounts.json?.agents) ? accounts.json.agents.slice(0, ACCOUNTS_MAX).map(accountLine) : null;
+    return rowOf(m, {
+      on: there?.grants?.agents === true,
+      models: there?.grants?.models === true,
+      full: there?.grants?.full === true,
+      kept: !!kept,
+      ready: true,
+      words: kept && !there ? `Its agents' device on ${m.name} was revoked there: switched on, ${m.name} makes a new one.` : null,
+      ...(agents ? { agents } : {}),
+    });
+  }
+
+  /**
+   * Your providers' keys copied to a machine, the ones named alone (s3c): read open from this computer's Filament by
+   * `keysOut` — the app's main process alone may ask it (http/admin/keys-copy.js) — and each handed to the machine as
+   * this window's full device there over the way it reaches it, pinned on the network, once its providers are read:
+   * added there as it is set here, its prefix its id, or its key set anew where the machine has it already at the same
+   * address — by its name, else its one provider there —; one of that name elsewhere, or several there, is left; where it
+   * came from said there (`keyFrom`: this machine's name and the day), never the key. Nothing of a key reaches the page
+   * or a log line. @param {Machine} m @param {string[]} ids @returns {Promise<AgentsRow & { copied?: Copied[] }>}
+   */
+  async function copyKeys(m, ids) {
+    const r = await reach(m);
+    if ("row" in r) return { ...r.row, said: `No key copied: ${r.row.words}`, failed: true };
+    // What it has already, read first: a key goes where it would land, or not at all.
+    const list = await r.send("/upstreams").catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
+    if (list.status !== 200 || !Array.isArray(list.json?.upstreams)) return { ...(await standing(m, r)), said: `No key copied: ${m.name}'s providers could not be read — ${capped(refusal(list))}`, failed: true };
+    /** @type {any[]} */
+    const had = list.json.upstreams;
+    /** @type {any[]} */
+    let keys;
+    try {
+      keys = await keysOut(ids);
+    } catch (/** @type {any} */ e) {
+      return { ...(await standing(m, r)), said: `No key copied: ${e?.message || e}`, failed: true };
+    }
+    // The day said whole within a machine's name's length, which is all the machine keeps of it (app/providers.js).
+    const day = ` on ${new Date(now()).toISOString().slice(0, 10)}`;
+    const keyFrom = `${(String(ownName() || "").trim() || "another machine").slice(0, NAME_MAX - day.length).trim()}${day}`;
+    /** A provider's address, as two of them are compared. @param {any} u */
+    const addressOf = (u) => String(u?.baseUrl || "").replace(/\/+$/, "");
+    /** @param {any} u */
+    const aProvider = (u) => !u?.agent && !u?.machine;
+    /** @type {Copied[]} */
+    const copied = [];
+    for (const k of keys) {
+      const { id, apiKey, ...rest } = k;
+      /** @param {string} words */
+      const no = (words) => copied.push({ id, name: String(k.name || id), ok: false, words });
+      // Its own of that name, or else its one provider at that address, takes the key; none, it is added.
+      const same = had.find((u) => String(u?.id).toLowerCase() === String(id).toLowerCase());
+      if (same && !aProvider(same)) {
+        no(`"${same.id}" on ${m.name} is a coding agent or another machine's models: it is left as it is.`);
+        continue;
+      }
+      if (same && addressOf(same) !== addressOf(k)) {
+        no(`${m.name} has a provider "${same.id}" of its own at another address: its key there is left as it is.`);
+        continue;
+      }
+      const at = same ? [same] : had.filter((u) => aProvider(u) && addressOf(u) === addressOf(k));
+      if (at.length > 1) {
+        no(`${m.name} has ${at.length} providers at that address (${at.map((u) => `"${u.id}"`).join(", ")}): set the key of the one you mean in its Settings › Providers.`);
+        continue;
+      }
+      const sent = await (at.length
+        ? r.send(`/upstreams/${encodeURIComponent(String(at[0].id))}`, { method: "PATCH", body: { apiKey, keyFrom } })
+        : r.send("/upstreams", { method: "POST", body: { ...rest, apiKey, prefix: id, keyFrom } })
+      ).catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
+      if (sent.status === 200) copied.push({ id, name: String(k.name || id), ok: true, words: null });
+      else no(capped(refusal(sent)));
+    }
+    const ok = copied.filter((c) => c.ok).map((c) => c.name);
+    const not = copied.filter((c) => !c.ok);
+    log(`machines: providers' keys copied to ${m.name}: ${ok.join(", ") || "none"}${not.length ? `; not: ${not.map((c) => c.name).join(", ")}` : ""}`);
+    const said = not.length ? `${ok.length ? `Copied to ${m.name}: ${ok.join(", ")}. ` : ""}Not copied: ${not.map((c) => `${c.name} (${c.words})`).join("; ")}` : `Copied to ${m.name}: ${ok.join(", ")}`;
+    return { ...(await standing(m, r)), said, copied, ...(not.length ? { failed: /** @type {const} */ (true) } : {}) };
   }
 
   /** A machine by its id, kept in the window now. @param {string} id */
@@ -371,6 +475,17 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
       const m = machineOf(id);
       if (!m) return Promise.resolve(none(id));
       return inTurn(m.id, () => switchGrant(m, "full", on));
+    },
+    /**
+     * Your providers' keys named copied to a machine (`copyKeys`): → the machine as it stands after, and how each went.
+     * @param {string} id @param {string[]} ids
+     */
+    copyKeys(id, ids) {
+      const m = machineOf(id);
+      if (!m) return Promise.resolve(none(id));
+      const named = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))];
+      if (!named.length) return Promise.resolve({ ...rowOf(m, {}), said: "No key copied: none was chosen", failed: /** @type {const} */ (true) });
+      return inTurn(m.id, () => copyKeys(m, named));
     },
     /**
      * Forget: the agents' device revoked there, its token let go here. A machine that does not answer has it forgotten

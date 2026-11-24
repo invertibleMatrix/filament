@@ -42,6 +42,7 @@ import { coachRoutes } from "./coach.js";
 import { telemetryRoutes } from "./telemetry.js";
 import { starRoutes } from "./star.js";
 import { ownerRoutes } from "./owner.js";
+import { keysCopyRoutes } from "./keys-copy.js";
 import { remoteWorkRoutes } from "./remote-work.js";
 import { updateRoutes } from "./update.js";
 import { pressClass } from "./press.js";
@@ -90,6 +91,7 @@ export function createAdminHandler(a) {
     ...telemetryRoutes(a),
     ...starRoutes(a),
     ...ownerRoutes(a),
+    ...keysCopyRoutes(a),
     ...remoteWorkRoutes(a),
     ...updateRoutes(a),
     ...remoteRoutes(a),

@@ -306,6 +306,7 @@ POST /api/git/places/put-back
 POST /api/git/places/remove
 POST /api/git/places/template
 POST /api/health/*/reset
+POST /api/key-copies
 POST /api/keys/rotate
 POST /api/mcp-servers/import
 POST /api/mcp-servers/look

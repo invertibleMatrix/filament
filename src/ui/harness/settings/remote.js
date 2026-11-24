@@ -21,7 +21,8 @@ import { api } from "../lib/api.js";
 import { ICONS } from "../lib/icons.js";
 import { segment } from "../lib/fields.js";
 import { mountConfigPage } from "../lib/config-rows.js";
-import { confirmDialog } from "../lib/ui.js";
+import { confirmDialog, dialog } from "../lib/ui.js";
+import { maskEmail } from "../../lib/accounts.js";
 import { PAIR_PAGE } from "../../lib/standing.js";
 import { openSshSetup } from "../ssh-setup.js";
 
@@ -195,6 +196,8 @@ export const GRANT_ROWS = Object.freeze([
 ]);
 /** The grants Full control holds while it is on (services/devices.js `heldGrant`): their pills show on, and still. */
 const FULL_HOLDS = Object.freeze(["unasked", "codingAgents"]);
+/** The providers whose key Copy keys offers: an API's, as another machine adds one (http/admin/keys-copy.js `KEY_TYPES`). */
+const KEY_TYPES = new Set(["openai-compatible", "anthropic-compatible", "openai", "anthropic"]);
 
 /**
  * What the confirm before Full control goes on says, on either machine: what it lets, and the line it crosses.
@@ -307,16 +310,28 @@ export function machinesOf(devices, rows = []) {
 const scopeWords = (scope) => (scope === "view" ? "view-only: it reads" : "full: it drives this Filament as you do");
 
 /**
+ * One coding agent's account on another machine, as its card says it (desktop/lib/machine-agents.js `AccountLine`): an
+ * email it names masked, as this page masks one. @param {{ name: string, state: string, who: string | null }} a
+ */
+const accountWords = (a) => {
+  const who = a.who ? (a.who.includes("@") ? maskEmail(a.who) : a.who) : "";
+  const state = a.state === "in" ? (who ? `signed in as ${who}` : "signed in") : a.state === "out" ? "nobody signed in" : a.state === "off" ? "off" : "not said yet";
+  return `${a.name} ${state}`;
+};
+
+/**
  * @param {HTMLElement} body
  * @param {{ onToast?: (msg: string, kind?: string) => void }} [cb]
  * @param {{ h?: typeof h, api?: (path: string, o?: any) => Promise<any>, copy?: (text: string) => Promise<void>, confirm?: (q: any) => Promise<boolean>,
  *   now?: () => number, every?: (fn: () => void, ms: number) => () => void, go?: (path: string) => void, qr?: () => Promise<any>,
  *   app?: { addMachine?: () => void, agentMachines?: () => Promise<any>, agentsOn?: (id: string, on: boolean) => Promise<any>, agentsModels?: (id: string, on: boolean) => Promise<any>, agentsFull?: (id: string, on: boolean) => Promise<any>, agentsForget?: (id: string) => Promise<any>,
- *     browserOn?: (id: string, on: boolean) => Promise<any>, onBrowserLink?: (fn: (row: any) => void) => () => void, sshSetup?: (input: any) => Promise<any> } | null,
- *   sshSetup?: (o: { onToast?: (msg: string, kind?: string) => void }) => unknown }} [io]
+ *     browserOn?: (id: string, on: boolean) => Promise<any>, onBrowserLink?: (fn: (row: any) => void) => () => void, sshSetup?: (input: any) => Promise<any>,
+ *     openOn?: (id: string, route: string) => Promise<boolean>, copyKeys?: (id: string, ids: string[]) => Promise<any> } | null,
+ *   sshSetup?: (o: { onToast?: (msg: string, kind?: string) => void }) => unknown, pickKeys?: (o: { name: string, providers: any[] }) => Promise<string[] | null> }} [io]
  *   `every`: a timer that runs `fn` each `ms` until stopped (the countdown, the look for a claim); `go`: where a device
  *   that signed itself out goes (the pairing page); `qr`: the QR encoder loaded (`QR_MODULE`); `app`: the desktop app's
- *   bridge (harness-preload.cjs `filamentApp`); `sshSetup`: the setup sheet opened (ssh-setup.js `openSshSetup`)
+ *   bridge (harness-preload.cjs `filamentApp`); `sshSetup`: the setup sheet opened (ssh-setup.js `openSshSetup`);
+ *   `pickKeys`: the providers whose keys go to a machine, as the person ticks them (`keysSheet`)
  */
 export function renderRemote(body, cb = {}, io = {}) {
   const m = io.h || h;
@@ -740,7 +755,8 @@ export function renderRemote(body, cb = {}, io = {}) {
    * A machine's row as the app answered it, in its place: what the answer does not carry — its browser switch and its
    * link, beside Agents', Models' and Forget's answers — kept as it stood. @param {any} got
    */
-  const tookThere = (got) => void (got?.id && (there = (there || []).map((y) => (y.id === got.id ? { ...y, ...got } : y))));
+  // Its coding agents' line is the answer's alone: one that could not read them leaves none standing from before.
+  const tookThere = (got) => void (got?.id && (there = (there || []).map((y) => (y.id === got.id ? { ...y, ...got, agents: got.agents } : y))));
   /**
    * This Filament's upstream of a machine's models removed here, where there is one: null where none is left, else why
    * it stays, in words (a route of the person's that names it). @param {any} x
@@ -848,6 +864,71 @@ export function renderRemote(body, cb = {}, io = {}) {
     thereBusy.delete(x.id);
     redraw();
   };
+  /**
+   * The sheet Copy keys opens: this computer's providers with a key, none ticked; → the ids ticked at Copy, or null where
+   * it closed. The keys themselves never reach this page: the app reads them where it sends them.
+   * @param {{ name: string, providers: any[] }} o @returns {Promise<string[] | null>}
+   */
+  const keysSheet = (o) =>
+    new Promise((resolve) => {
+      /** @type {Set<string>} */
+      const ticked = new Set();
+      let done = false;
+      const rows = o.providers.map((u) =>
+        m("label", { class: "rset-keypick" },
+          m("input", { type: "checkbox", onchange: (/** @type {any} */ e) => void (e.target.checked ? ticked.add(String(u.id)) : ticked.delete(String(u.id))) }),
+          m("span", {}, String(u.name || u.id)),
+          m("span", { class: "prov-masked" }, String(u.key?.masked || ""))));
+      /** @param {string[] | null} ids */
+      const end = (ids) => {
+        done = true;
+        d.close(true);
+        resolve(ids);
+      };
+      const d = dialog({
+        title: `Copy keys to ${o.name}`,
+        description: `Each key ticked goes to ${o.name} as your device there, over the way this app reaches it, and is sealed there as its own. ${o.name} says it came from here. Nothing else goes: not this computer's secret.key, sign-ins or memory.`,
+        body: m("div", { class: "rset-keypicks" }, ...rows),
+        actions: [
+          { label: "Cancel", variant: "outline", onClick: () => end(null) },
+          { label: "Copy", onClick: () => end([...ticked]) },
+        ],
+        onClose: () => void (done || resolve(null)),
+      });
+    });
+  const pickKeys = io.pickKeys || keysSheet;
+  /**
+   * Copy keys: this computer's providers with a key listed, those ticked copied to the machine by the app, which reads
+   * each key here and sends it as your full device there (desktop/lib/machine-agents.js `copyKeys`). @param {any} x
+   */
+  const copyKeysThere = async (x) => {
+    if (thereBusy.has(x.id)) return;
+    // Its card's buttons wait while the sheet is open too: one sheet at a time.
+    thereBusy.add(x.id);
+    redraw();
+    try {
+      /** @type {any[]} */
+      let ups;
+      try {
+        ups = ((await call("/upstreams"))?.upstreams || []).filter((/** @type {any} */ u) => KEY_TYPES.has(u.type) && !u.agent && !u.machine && u.key?.stored && !u.key?.unreadable);
+      } catch (/** @type {any} */ e) {
+        return void toast(`No key copied: ${said(e)}`, "err");
+      }
+      if (!ups.length) return void toast("This machine keeps no provider's key to copy: add one under Settings › Providers", "err");
+      const ids = await pickKeys({ name: String(x.name), providers: ups });
+      if (!ids) return;
+      if (!ids.length) return void toast("No key copied: none was ticked", "err");
+      const got = await app.copyKeys(x.id, ids);
+      tookThere(got);
+      toast(got?.said || `Copied to ${x.name}`, got?.failed ? "err" : undefined);
+    } catch (/** @type {any} */ e) {
+      toast(`No key copied: ${said(e)}`, "err");
+    } finally {
+      thereBusy.delete(x.id);
+      redraw();
+    }
+  };
+
   /** Forget: this Filament's agents' device revoked on that machine, its token let go here — by the app. @param {any} x */
   const forgetThere = async (x) => {
     if (!(await ask({ title: `Forget this Filament's agents on ${x.name}?`, description: `${x.name} revokes their device now, and this Filament lets its token go. Switched on again, ${x.name} makes a new one.`, confirmLabel: "Forget", destructive: true }))) return;
@@ -1296,6 +1377,11 @@ export function renderRemote(body, cb = {}, io = {}) {
     /** @type {any[]} */
     const lines = [lineOf(said, refused || gap || (!x.ready && !x.away) ? " is-warn" : "")];
     if (x.full === true) lines.push(lineOf(`Full control: this machine's agents act on ${x.name} as you, in any folder, without asking.`, " is-warn"));
+    // Its coding agents' sign-ins, as it lists them; signed in there from here by its own Settings › Coding agents.
+    /** @type {any[]} */
+    const accounts = x.ready && Array.isArray(x.agents) ? x.agents : [];
+    if (accounts.length) lines.push(lineOf(`Coding agents there: ${accounts.map(accountWords).join(" · ")}`));
+    const signsIn = accounts.some((a) => a.state === "out" || a.state === "unknown") && typeof app?.openOn === "function";
     const link = browsing ? ({ connected: "ok", connecting: "wait", refused: "bad" })[/** @type {string} */ (x.browserLink)] || "" : "";
     const pills = m("span", { class: "rset-pills", role: "group", "aria-label": `What this Filament may do on ${x.name}` },
       pill("Agents", agents, { aria: `Let this Filament's agents work on ${x.name}`, unknown, title: unknown ? unknownWords : !x.ready ? notReady : [thereWords(x.name), x.words].filter(Boolean).join(" "), disabled: !x.ready || busy, data: { "data-perm": "agents" }, onclick: () => void letThere(x, !agents) }),
@@ -1328,6 +1414,12 @@ export function renderRemote(body, cb = {}, io = {}) {
     const forgets = x.kept && !x.ready
       ? m("button", { class: "ghost sm", type: "button", title: `Forget this Filament's agents on ${x.name}`, "aria-label": `Forget this Filament's agents on ${x.name}`, disabled: busy ? "" : null, onclick: () => void forgetThere(x) }, "Forget")
       : null;
-    return wayOf(title, lines, [pills, forgets], x.ready ? "" : " is-away", { "data-machine": x.id });
+    const signIn = signsIn
+      ? m("button", { class: "ghost sm", type: "button", "data-act": "sign-in-there", title: `Opens ${x.name}'s Settings › Coding agents here: a sign-in shows on this screen, and a code to type in this computer's browser where the agent offers one`, onclick: () => void app.openOn(x.id, "#/settings/agents") }, "Sign in there…")
+      : null;
+    const copies = x.ready && typeof app?.copyKeys === "function"
+      ? m("button", { class: "ghost sm", type: "button", "data-act": "copy-keys", title: `Copy chosen providers' keys from this machine to ${x.name}`, disabled: busy ? "" : null, onclick: () => void copyKeysThere(x) }, "Copy keys…")
+      : null;
+    return wayOf(title, lines, [pills, signIn, copies, forgets], x.ready ? "" : " is-away", { "data-machine": x.id });
   }
 }

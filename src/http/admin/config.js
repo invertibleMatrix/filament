@@ -38,6 +38,16 @@ const keysStayHere = (r) => sendJson(r.res, 403, { error: "the inbound keys stay
 
 /** What a save that would set the inbound keys or the admin token from another machine is answered (`plantsKeys`). */
 export const KEYS_SET_HERE = "the inbound keys and the admin token are set on the machine they belong to: change them in Filament there";
+/**
+ * A provider's key set anew by a whole configuration's save — the console's Destinations — is this computer's own: where
+ * a key copied here came from (`keyFrom`, app/providers.js) goes with the key it named. @param {any} next @param {any} now
+ */
+const keyFromLetGo = (next, now) => {
+  for (const u of next?.upstreams || []) {
+    const was = (now?.upstreams || []).find((/** @type {any} */ x) => x.id === u.id);
+    if (u.keyFrom && was && was.apiKey !== u.apiKey) u.keyFrom = "";
+  }
+};
 /** Whether a configuration changes what lets a caller in for good: the inbound keys, the admin token. @param {any} next @param {any} now */
 const keysChange = (next, now) =>
   JSON.stringify(next?.server?.inboundKeys ?? []) !== JSON.stringify(now?.server?.inboundKeys ?? []) || String(next?.server?.adminToken ?? "") !== String(now?.server?.adminToken ?? "");
@@ -123,6 +133,7 @@ export function configRoutes(a) {
         // A secret this secret.key cannot open that the page sent back empty was removed on purpose: this save forgets it,
         // where a field merely left empty sends its placeholder and keeps it (`forgottenIn`).
         const forget = forgottenIn(incoming, config.unreadable());
+        keyFromLetGo(merged, config.get());
         const v = validateConfig(merged);
         if (!v.ok) return sendJson(res, 400, { error: "validation failed", errors: v.errors });
         if (plantsKeys(r, merged, config.get())) return sendJson(res, 403, { error: KEYS_SET_HERE });

@@ -1,6 +1,7 @@
 src/http/admin/browser.js 1
 src/http/admin/config.js 3
 src/http/admin/files.js 1
+src/http/admin/keys-copy.js 1
 src/http/admin/mcp-servers.js 1
 src/http/admin/owner.js 1
 src/http/admin/remote.js 5

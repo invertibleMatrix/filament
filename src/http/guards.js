@@ -340,9 +340,19 @@ export function ownerOf(req) {
   let said = "none";
   if ((sent || session) && !isLocalCaller(req)) owner?.proxied();
   else if (sent || session) said = owner && (owner.holds(sent) || owner.sessionHolds(session)) ? "owner" : "stale";
+  if (said === "owner" && sent && owner?.holds(sent)) keySent.add(req);
   ownerSaid.set(req, said);
   return said;
 }
+/** The requests that sent the owner key itself in OWNER_HEADER (`ownerOf`): not a window's session cookie. @type {WeakSet<object>} */
+const keySent = new WeakSet();
+/**
+ * Whether the request sent this computer's owner key itself (`ownerOf`) — a program that read owner.key: the command
+ * line, the desktop app's main process —, never a page, whose window holds a session alone, which its script cannot
+ * read. With the app's press key (`pressedWithKey`), which the command line never holds, it is the app's main process
+ * alone (http/admin/keys-copy.js). @param {import("node:http").IncomingMessage} req
+ */
+export const ownerKeySent = (req) => (ownerOf(req), keySent.has(req));
 /**
  * A call of this computer's that came without its owner key, counted by the program that sent it at the Filament
  * listening at its port (services/owner.js `tokenless`): what would be refused once the key is needed. Answered all the
@@ -512,6 +522,14 @@ export function hearPressKey(port) {
 hearPressKey(/** @type {any} */ (process).parentPort);
 /** The requests whose caller may not press (`pressRefusal`), each with why. @type {WeakMap<import("node:http").IncomingMessage, string>} */
 const unpressed = new WeakMap();
+/** The requests that carried the app's key itself (`pressRefusal`): not a device's press, nor one no key is held for. @type {WeakSet<import("node:http").IncomingMessage>} */
+const withKey = new WeakSet();
+/**
+ * Whether the request carried the key the desktop app holds (`pressRefusal`): the app's own window or its main process,
+ * on this computer — never a device, whose press the gate lets in all the same, nor any caller where no app holds a key.
+ * What only the app may ask asks this (http/admin/keys-copy.js). @param {import("node:http").IncomingMessage} req
+ */
+export const pressedWithKey = (req) => withKey.has(req);
 /** The requests whose caller may not pair, nor set a grant (`pressRefusal`), each with why. @type {WeakMap<import("node:http").IncomingMessage, string>} */
 const unopened = new WeakMap();
 /**
@@ -534,6 +552,7 @@ const unopened = new WeakMap();
 export function pressRefusal(req, who, devices = null) {
   const sent = req.headers[PRESS_HEADER];
   delete req.headers[PRESS_HEADER];
+  if (pressKey && safeEq(sent, pressKey)) withKey.add(req);
   if (!pressKey || safeEq(sent, pressKey)) return null;
   if (who?.kind === "admin") {
     unopened.set(req, DOOR_REFUSED);

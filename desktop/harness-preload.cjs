@@ -91,6 +91,12 @@ contextBridge.exposeInMainWorld("filamentApp", {
   /** Forget: this Filament's agents' device revoked on that machine, its token let go here. @param {string} id */
   agentsForget: (id) => ipcRenderer.invoke("filament:agents-forget", String(id)),
   /**
+   * Copy keys: your providers named (by their ids here) have their keys copied to that machine by the app, as your full
+   * device there — this page names them and never holds a key: → the machine as it stands after, and how each went
+   * (`copied`). @param {string} id @param {string[]} ids
+   */
+  copyKeys: (id, ids) => ipcRenderer.invoke("filament:keys-copy", { id: String(id), ids: Array.isArray(ids) ? ids.map(String) : [] }),
+  /**
    * The new-chat menu's other machines (pk-list): each this window keeps, with its projects as that machine lists them,
    * read by the app with its sign-in there; null and why where they could not be read (lib/machine-agents.js
    * `ProjectsRow`). @returns {Promise<{ machines: any[] } | null>}

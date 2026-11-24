@@ -964,6 +964,12 @@ export const UPSTREAM = group("An upstream is a place requests are forwarded to.
     "Credential for this upstream.",
     "Sent as `x-api-key`, `Authorization: Bearer`, or both, per `authStyle`.",
   ),
+  keyFrom: p(
+    "string",
+    "",
+    "Where this upstream's key came from: another machine's Filament app that copied it here, and the day.",
+    "Set by that machine's Copy keys (its Settings › Remote access), shown beside the key in Settings › Providers; a key set here clears it. Never the key itself.",
+  ),
   authStyle: p(
     "enum",
     "auto",

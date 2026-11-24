@@ -78,7 +78,8 @@ const lines = (el) => every(el, (n) => hasClass(n, "rset-line"));
  * The page over scripted routes: the devices as the server lists them, a grant PATCHed as it keeps it, a device revoked.
  * `held.on`: each read of the list is the list as it is when asked, its answer held until the test lets it go;
  * `patchHeld.on` holds a grant's answer so, the grant kept at once; `readFails.on` fails each read of the list.
- * @param {{ devices?: any[], state?: Record<string, any>, app?: any, confirm?: boolean, patchFails?: boolean, held?: { on: boolean, out: (() => void)[] }, patchHeld?: { on: boolean, out: (() => void)[] }, readFails?: { on: boolean } }} [o]
+ * `upstreams`: this computer's providers, as GET /upstreams lists them (none answered where not given); `pickKeys`: Copy keys' sheet.
+ * @param {{ devices?: any[], state?: Record<string, any>, app?: any, confirm?: boolean, patchFails?: boolean, held?: { on: boolean, out: (() => void)[] }, patchHeld?: { on: boolean, out: (() => void)[] }, readFails?: { on: boolean }, upstreams?: any[], pickKeys?: (o: any) => Promise<string[] | null> }} [o]
  */
 async function open(o = {}) {
   /** @type {any[]} */
@@ -93,6 +94,7 @@ async function open(o = {}) {
     const method = init.method || "GET";
     calls.push([method, path, init.body]);
     if (path === "/schema") return { config: {} };
+    if (path === "/upstreams" && method === "GET" && o.upstreams) return { upstreams: structuredClone(o.upstreams) };
     if (path === "/state") return { version: "9.9.9", machine: { id: "m-1", name: "Workstation" }, viewer: "local", device: null, config: {}, ...(o.state || {}) };
     if (path === "/remote/devices") {
       if (o.readFails?.on) throw Object.assign(new Error("refused"), { status: 502, body: { error: "the network went away" } });
@@ -140,6 +142,7 @@ async function open(o = {}) {
     every: () => () => {},
     go: () => {},
     app: o.app ?? null,
+    ...(o.pickKeys ? { pickKeys: o.pickKeys } : {}),
   });
   await settle();
   return { body, calls, toasts, asked, devices: () => devices };
@@ -644,7 +647,9 @@ test("the machines store keeps a machine with a token it was given: sealed, said
 /**
  * A machine's admin API as main reaches it, scripted: `/remote/me`'s answer, its device list, the mint, a grant and a
  * revoke as the server answers them; every call recorded with the Cookie it carried.
- * @param {{ me?: { status: number, json: any }, mint?: () => { status: number, json: any }, projects?: { status: number, json: any } }} [o]
+ * `accounts`: its coding agents' accounts (GET /agent-accounts); `upstreams`: its providers (GET /upstreams); a key added
+ * or set there is recorded (`sent`), refused in `keyRefused`'s words where given.
+ * @param {{ me?: { status: number, json: any }, mint?: () => { status: number, json: any }, projects?: { status: number, json: any }, accounts?: any[], upstreams?: any[], keyRefused?: string }} [o]
  */
 function scripted(o = {}) {
   /** @type {any[]} */
@@ -653,6 +658,8 @@ function scripted(o = {}) {
   const calls = [];
   /** The bodies the mint was sent. @type {any[]} */
   const mints = [];
+  /** The providers' keys sent there: method, path, body. @type {[string, string, any][]} */
+  const sent = [];
   let minted = 0;
   /** @param {number} status @param {any} json */
   const answer = (status, json) => new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json" } });
@@ -664,6 +671,12 @@ function scripted(o = {}) {
       calls.push([method, path, String(/** @type {any} */ (init.headers)?.cookie || "")]);
       if (path === "/remote/me") return o.me ? answer(o.me.status, o.me.json) : answer(200, { who: "device", device: devices[0], machine: { id: "m-mac", name: "Mac mini" }, pages: ["new"] });
       if (path === "/remote/devices") return answer(200, { devices });
+      if (path === "/agent-accounts" && o.accounts) return answer(200, { agents: o.accounts });
+      if (path === "/upstreams" && method === "GET" && o.upstreams) return answer(200, { upstreams: o.upstreams });
+      if ((path === "/upstreams" && method === "POST") || (/^\/upstreams\/[^/]+$/.test(path) && method === "PATCH")) {
+        sent.push([method, path, JSON.parse(String(init.body ?? "null"))]);
+        return o.keyRefused ? answer(403, { error: o.keyRefused }) : answer(200, { upstream: { id: path.split("/")[2] || "new" } });
+      }
       if (path === "/memory/projects" && method === "GET") return o.projects ? answer(o.projects.status, o.projects.json) : answer(200, { projects: [] });
       if (path === "/remote/agent-device" && method === "POST") {
         mints.push(JSON.parse(String(init.body ?? "null")));
@@ -693,7 +706,7 @@ function scripted(o = {}) {
       return answer(404, { error: `no route ${path}` });
     }
   );
-  return { fetchImpl, calls, devices, minted: () => minted, mints };
+  return { fetchImpl, calls, devices, minted: () => minted, mints, sent };
 }
 
 /** A machine the window keeps, reached at `routes`. @param {Record<string, any>} [o] @returns {import("../desktop/lib/machines.js").Machine} */
@@ -702,7 +715,7 @@ const kept = (o = {}) => ({ id: "m-mac", name: "Mac mini", routes: [{ kind: "lan
 /**
  * The flow over a scripted machine: `pick` answers as the machine at its first route, or as no one where `answers` is off.
  * @param {import("node:test").TestContext} t @param {ReturnType<typeof scripted>} there
- * @param {{ machine?: Record<string, any>, answers?: boolean, ownName?: () => string, signedAt?: (origin: string) => boolean }} [o]
+ * @param {{ machine?: Record<string, any>, answers?: boolean, ownName?: () => string, signedAt?: (origin: string) => boolean, keysOut?: (ids: string[]) => Promise<any[]>, log?: (line: string) => void, now?: () => number }} [o]
  *   `signedAt`: whether the window's partition holds a sign-in at an address (every one, unless said)
  */
 const flowOver = (t, there, o = {}) => {
@@ -719,6 +732,9 @@ const flowOver = (t, there, o = {}) => {
     },
     fetchOf: () => there.fetchImpl,
     ...(o.ownName ? { ownName: o.ownName } : {}),
+    ...(o.keysOut ? { keysOut: o.keysOut } : {}),
+    ...(o.log ? { log: o.log } : {}),
+    ...(o.now ? { now: o.now } : {}),
   });
   return { flow, store, picked };
 };
@@ -991,7 +1007,7 @@ test("main's switch against another Filament: the agents' device minted there an
   /** The device list as `there` keeps it. */
   const listed = async () => (await (await there.api("/api/remote/devices")).json()).devices;
 
-  assert.deepEqual(await flow.list(), [{ id: machine.id, name: "Workstation", on: false, models: false, full: false, kept: false, ready: true, words: null }]);
+  assert.deepEqual(await flow.list(), [{ id: machine.id, name: "Workstation", on: false, models: false, full: false, kept: false, ready: true, words: null, agents: [] }], "its coding agents' sign-ins read as the window's device there");
   const on = await flow.set(machine.id, true);
   assert.deepEqual([on.on, on.kept, on.said], [true, true, undefined]);
   const agents = (await listed()).filter((/** @type {any} */ d) => d.scope === "agent");
@@ -1107,4 +1123,144 @@ test("the new-chat menu's machines: one whose page opens no new chat at an addre
   assert.deepEqual(both[0].projects, [{ cwd: "/a", name: "a" }]);
   assert.deepEqual([both[1].id, both[1].projects], ["m-box", null]);
   assert.match(String(both[1].words), /^Build box's projects could not be read: .+\.$/);
+});
+
+const ACCOUNTS = [
+  { upstream: "claude-code", name: "Claude Code", account: { identity: { label: "me@example.com" }, signedOut: false } },
+  { upstream: "codex", name: "Codex", account: { signedOut: true } },
+  { upstream: "gemini", name: "Gemini CLI", off: true, account: null },
+  { upstream: "qwen", name: "Qwen Code", account: null },
+];
+const KEYS = {
+  anthropic: { id: "anthropic", name: "Anthropic", provider: "anthropic", plan: "api", type: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "sk-ant-COPIED-aaaaaaaaaaaa", authStyle: "auto", modelsPath: "", headers: {}, hiddenModels: [] },
+  openrouter: { id: "openrouter", name: "OpenRouter", type: "openai-compatible", baseUrl: "https://openrouter.ai/api/v1", apiKey: "sk-or-COPIED-bbbbbbbbbbbb", authStyle: "auto", wireApi: "auto", modelsPath: "", headers: {}, hiddenModels: [] },
+  groq: { id: "groq", name: "Groq", type: "openai-compatible", baseUrl: "https://api.groq.com/openai/v1", apiKey: "gsk-COPIED-cccccccccccc", authStyle: "auto", modelsPath: "", headers: {}, hiddenModels: [] },
+};
+/** The keys named, as this computer's Filament hands them. @param {string[]} ids */
+const keysOf = (ids) => ids.map((id) => structuredClone(/** @type {any} */ (KEYS)[id]));
+
+// (fails before: yes — s3c: a machine's card said nothing of its coding agents, and no key reached it but by hand there)
+test("main's card: a machine's coding agents' sign-ins as it lists them; Copy keys sends the keys named alone, as the window's full device there — added, set anew at the same address, left where its address is another — and says where each came from; no log line holds a key", async (t) => {
+  const there = scripted({ accounts: ACCOUNTS, upstreams: [{ id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1/" }, { id: "groq", name: "Groq", baseUrl: "https://elsewhere.example/v1" }] });
+  /** @type {string[][]} */
+  const asked = [];
+  /** @type {string[]} */
+  const logged = [];
+  const { flow } = flowOver(t, there, { ownName: () => "Desk", keysOut: async (ids) => (asked.push(ids), keysOf(ids)), log: (line) => void logged.push(line), now: () => Date.UTC(2026, 10, 24, 9) });
+  const [row] = await flow.list();
+  assert.deepEqual(row.agents, [
+    { name: "Claude Code", state: "in", who: "me@example.com" },
+    { name: "Codex", state: "out", who: null },
+    { name: "Gemini CLI", state: "off", who: null },
+    { name: "Qwen Code", state: "unknown", who: null },
+  ]);
+  const got = /** @type {any} */ (await flow.copyKeys("m-mac", ["anthropic", "openrouter", "groq", "anthropic"]));
+  assert.deepEqual(asked, [["anthropic", "openrouter", "groq"]], "named once each, read here at the press");
+  const { id: _id, apiKey: _k, ...anthropic } = KEYS.anthropic;
+  assert.deepEqual(there.sent, [
+    ["POST", "/upstreams", { ...anthropic, apiKey: KEYS.anthropic.apiKey, prefix: "anthropic", keyFrom: "Desk on 2026-11-24" }],
+    ["PATCH", "/upstreams/openrouter", { apiKey: KEYS.openrouter.apiKey, keyFrom: "Desk on 2026-11-24" }],
+  ]);
+  assert.ok(there.calls.every(([, , cookie]) => cookie === "__Host-filament_device=cookie-of-persist:machine-m-mac"), "every call as the window's sign-in there");
+  assert.deepEqual(got.copied, [
+    { id: "anthropic", name: "Anthropic", ok: true, words: null },
+    { id: "openrouter", name: "OpenRouter", ok: true, words: null },
+    { id: "groq", name: "Groq", ok: false, words: 'Mac mini has a provider "groq" of its own at another address: its key there is left as it is.' },
+  ]);
+  assert.equal(got.said, 'Copied to Mac mini: Anthropic, OpenRouter. Not copied: Groq (Mac mini has a provider "groq" of its own at another address: its key there is left as it is.)');
+  assert.equal(got.failed, true);
+  assert.deepEqual(logged, ["machines: providers' keys copied to Mac mini: Anthropic, OpenRouter; not: Groq"]);
+  for (const k of Object.values(KEYS)) assert.ok(!JSON.stringify([got, logged]).includes(k.apiKey), "no key in the answer to the page, nor in the log");
+  // Refused there: said in its words, nothing kept as copied.
+  const refused = scripted({ upstreams: [], keyRefused: "the press key is the app's alone" });
+  const r = await flowOver(t, refused, { ownName: () => "Workstation ".repeat(8), keysOut: async (ids) => keysOf(ids), now: () => Date.UTC(2026, 10, 24, 9) }).flow.copyKeys("m-mac", ["anthropic"]);
+  assert.equal(r.said, "Not copied: Anthropic (the press key is the app's alone)");
+  const from = String(refused.sent[0]?.[2]?.keyFrom);
+  assert.ok(from.length <= 64 && /^Workstation Workstation .+ on 2026-11-24$/.test(from), `a long name cut, the day said whole: ${from}`);
+  // Not reached: nothing is read here, and it says why.
+  /** @type {string[][]} */
+  const none = [];
+  const away = await flowOver(t, scripted(), { answers: false, keysOut: async (ids) => (none.push(ids), []) }).flow.copyKeys("m-mac", ["anthropic"]);
+  assert.deepEqual([away.failed, none], [true, []]);
+  assert.match(String(away.said), /^No key copied: Mac mini does not answer/);
+  // Nothing chosen, or this computer's Filament refused: no machine is sent a thing.
+  assert.equal((await flow.copyKeys("m-mac", [])).said, "No key copied: none was chosen");
+  const no = await flowOver(t, scripted({ upstreams: [] }), { keysOut: async () => Promise.reject(new Error("Only the Filament app on this computer copies its providers' keys")) }).flow.copyKeys("m-mac", ["anthropic"]);
+  assert.equal(no.said, "No key copied: Only the Filament app on this computer copies its providers' keys");
+  // (the review of s3c) Its own under another name at the same address takes the key, a name in other letters too;
+  // several there at that address, or a coding agent of that name, are left and said.
+  const other = scripted({
+    upstreams: [
+      { id: "claude", name: "Claude", baseUrl: "https://api.anthropic.com/" },
+      { id: "or-a", baseUrl: "https://openrouter.ai/api/v1" },
+      { id: "or-b", baseUrl: "https://openrouter.ai/api/v1/" },
+      { id: "Groq", name: "Groq", agent: true, baseUrl: "" },
+    ],
+  });
+  const o = await flowOver(t, other, { ownName: () => "Desk", keysOut: async (ids) => keysOf(ids), now: () => Date.UTC(2026, 10, 24, 9) }).flow.copyKeys("m-mac", ["anthropic", "openrouter", "groq"]);
+  assert.deepEqual(other.sent, [["PATCH", "/upstreams/claude", { apiKey: KEYS.anthropic.apiKey, keyFrom: "Desk on 2026-11-24" }]]);
+  assert.equal(o.said, 'Copied to Mac mini: Anthropic. Not copied: OpenRouter (Mac mini has 2 providers at that address ("or-a", "or-b"): set the key of the one you mean in its Settings › Providers.); Groq ("Groq" on Mac mini is a coding agent or another machine\'s models: it is left as it is.)');
+  // Its providers not read: no key read here, none sent.
+  /** @type {string[][]} */
+  const unread = [];
+  const blind = scripted();
+  const b = await flowOver(t, blind, { keysOut: async (ids) => (unread.push(ids), keysOf(ids)) }).flow.copyKeys("m-mac", ["anthropic"]);
+  assert.match(String(b.said), /^No key copied: Mac mini's providers could not be read — .+/);
+  assert.deepEqual([b.failed, unread, blind.sent], [true, [], []]);
+});
+
+// (fails before: yes — s3c)
+test("the page's card: its coding agents' line, an email masked; Sign in there opens that machine's Settings › Coding agents in its page here; Copy keys lists this computer's providers with a key, the ticked go by the app, its words said", async () => {
+  /** @type {any[][]} */
+  const did = [];
+  const agents = [{ name: "Claude Code", state: "in", who: "me@example.com" }, { name: "Codex", state: "out", who: null }];
+  /** Whether the machine's coding agents were read as the app answers. */
+  let read = true;
+  const b = bridge([{ id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null, agents }]);
+  const app = {
+    ...b.app,
+    openOn: async (/** @type {string} */ id, /** @type {string} */ route) => (did.push(["open", id, route]), true),
+    copyKeys: async (/** @type {string} */ id, /** @type {string[]} */ ids) => (did.push(["copy", id, ids]), { id, name: "Mac mini", on: false, kept: false, ready: true, words: null, ...(read ? { agents } : {}), said: "Copied to Mac mini: Anthropic" }),
+  };
+  const upstreams = [
+    { id: "anthropic", name: "Anthropic", type: "anthropic", key: { stored: true, masked: "sk-a…aa" } },
+    { id: "local", name: "Ollama", type: "openai-compatible", key: { stored: false, masked: "" } },
+    { id: "old", name: "Old", type: "openai", key: { stored: true, masked: "", unreadable: true } },
+    { id: "claude-code", name: "Claude Code", type: "acp", agent: true, key: { stored: false, masked: "" } },
+    { id: "studio", name: "Studio", type: "filament", machine: "m-studio", key: { stored: false, masked: "" } },
+    { id: "qoder", name: "Qoder", type: "qoder", key: { stored: true, masked: "pt-…zz" } },
+  ];
+  /** @type {any[]} */
+  const sheets = [];
+  /** @type {(string[] | null)[]} */
+  const picks = [["anthropic"], [], null];
+  const p = await open({ app, upstreams, pickKeys: async (o) => (sheets.push(o), picks.shift() ?? null) });
+  const mac = itemOf(p.body, "What this machine may do on Mac mini");
+  const said = lines(mac).map((l) => textOf(l));
+  assert.ok(said.includes("Coding agents there: Claude Code signed in as m••@example.com · Codex nobody signed in"), said.join(" | "));
+  const btns = buttonsOf(mac);
+  btns.find((x) => textOf(x) === "Sign in there…").attrs.onclick();
+  btns.find((x) => textOf(x) === "Copy keys…").attrs.onclick();
+  await settle();
+  assert.deepEqual(did, [["open", "m-mac", "#/settings/agents"], ["copy", "m-mac", ["anthropic"]]]);
+  assert.deepEqual(sheets.map((s) => [s.name, s.providers.map((/** @type {any} */ u) => u.id)]), [["Mac mini", ["anthropic"]]], "an API's provider with a key it can read alone");
+  assert.ok(p.toasts.some(([msg]) => msg === "Copied to Mac mini: Anthropic"), JSON.stringify(p.toasts));
+  // (the review of s3c) Copy with none ticked is said; Cancel says nothing; neither sends a thing.
+  const copyBtn = () => buttonsOf(itemOf(p.body, "What this machine may do on Mac mini")).find((x) => textOf(x) === "Copy keys…");
+  copyBtn().attrs.onclick();
+  await settle();
+  assert.ok(p.toasts.some(([msg]) => msg === "No key copied: none was ticked"), JSON.stringify(p.toasts));
+  const toasts = p.toasts.length;
+  copyBtn().attrs.onclick();
+  await settle();
+  assert.deepEqual([did.length, p.toasts.length], [2, toasts]);
+  // An answer that could not read its coding agents leaves no line standing from before.
+  read = false;
+  picks.push(["anthropic"]);
+  copyBtn().attrs.onclick();
+  await settle();
+  assert.ok(!lines(itemOf(p.body, "What this machine may do on Mac mini")).some((l) => textOf(l).startsWith("Coding agents there")));
+  // All signed in: no Sign in there; a browser (no copyKeys in its bridge) has no Copy keys.
+  const all = await open({ app: { ...bridge([{ id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null, agents: [agents[0]] }]).app, openOn: app.openOn } });
+  assert.deepEqual(buttonsOf(itemOf(all.body, "What this machine may do on Mac mini")).map((x) => textOf(x)).filter((x) => /Sign in|Copy keys/.test(x)), []);
 });

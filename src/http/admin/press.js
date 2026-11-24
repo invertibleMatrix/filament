@@ -693,6 +693,9 @@ export const PRESS_TABLE = [
   ["POST /star/seen", SETTING],
   // owner.js: the call proves the owner key itself.
   ["POST /owner/session", PROOF],
+  // keys-copy.js: your providers' keys, open, for the app to hand another machine — a key Filament keeps, sent where it
+  // did not go. A press whatever it carries; the row asks the app's key and the owner key itself besides.
+  ["POST /key-copies", ALWAYS],
   // remote-work.js: Run on. A send carries the person's project to another machine, and a bring back writes into
   // their folder what a chat there changed: presses both. Naming the chat started there allows no call.
   ["GET /remote-work", READS],

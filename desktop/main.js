@@ -1507,7 +1507,20 @@ async function run() {
       return "";
     }
   };
-  const agentsThere = createMachineAgents({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, keepSignIn, store: createMachines({ dataDir }), log: (line) => log.line(line), ownName });
+  /**
+   * Your providers' keys named, open, as this computer's Filament hands them to this process alone — its owner key and
+   * the app's press key on the call (src/http/admin/keys-copy.js) —, for Copy keys to hand another machine. Never logged.
+   * @param {string[]} ids @returns {Promise<any[]>}
+   */
+  const keysOut = async (ids) => {
+    // A Filament the app attached to holds none of its press key: it hands no key out, said as it stands.
+    if (!owned) throw new Error("this app is attached to a Filament it did not start, which hands no key to it: quit that Filament and start the app again, and the app's own Filament copies them");
+    const r = await ask("/api/key-copies", { method: "POST", body: JSON.stringify({ ids }), headers: { "x-filament-press": pressKey } });
+    const j = /** @type {any} */ (await r.json().catch(() => null));
+    if (!r.ok || !Array.isArray(j?.keys)) throw new Error(String(j?.error || `Filament here answered HTTP ${r.status}`));
+    return j.keys;
+  };
+  const agentsThere = createMachineAgents({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, keepSignIn, store: createMachines({ dataDir }), log: (line) => log.line(line), ownName, keysOut });
   // This Filament's agents fall back to every way the window has to a machine (lib/machine-agents.js `keepWays`): kept
   // as the app starts, and again as the machines' ways change.
   const keepAgentsWays = () => {
@@ -1891,6 +1904,8 @@ async function run() {
   ipcMain.handle("filament:agents-models", (e, p) => (paneOf(e) ? agentsThere.models(String(p?.id ?? ""), p?.on === true) : null));
   ipcMain.handle("filament:agents-full", (e, p) => (paneOf(e) ? agentsThere.full(String(p?.id ?? ""), p?.on === true) : null));
   ipcMain.handle("filament:agents-forget", (e, id) => (paneOf(e) ? agentsThere.forget(String(id ?? "")) : null));
+  // Copy keys: the page names the providers alone; their keys go from here, never through it.
+  ipcMain.handle("filament:keys-copy", (e, p) => (paneOf(e) ? agentsThere.copyKeys(String(p?.id ?? ""), Array.isArray(p?.ids) ? p.ids.map(String) : []) : null));
   // The new-chat menu's other machines (pk-list), from Filament's page in a harness window alone: their names at once,
   // nothing asked of them, then each one's projects, read there with this window's sign-in; a project picked opens that
   // machine's page in the rail at its address.

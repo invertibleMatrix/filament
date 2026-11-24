@@ -848,6 +848,10 @@
 .rset-way.is-muted .rset-name, .rset-way.is-muted .rset-line { color: var(--aq-label-3); }
 .rset-end { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; margin-left: auto; }
 .rset-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 0; }
+/* Copy keys' sheet: one provider a line, its masked key after its name. */
+.rset-keypicks { display: flex; flex-direction: column; gap: 6px; }
+.rset-keypick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.rset-keypick .prov-masked { margin-left: auto; }
 .rset-pill {
   display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border: 1px solid var(--aq-hairline);
   border-radius: 999px; background: none; color: var(--aq-label-2); font: inherit; font-size: var(--text-ui-xs);
