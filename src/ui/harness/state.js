@@ -16,6 +16,9 @@ import { store } from "../lib/store.js";
  * @property {boolean} [runOnBusy]  its first send is under way there: another Enter is refused, in words
  * @property {{ machine: string, name: string, chat: string, work: any, folder: string }} [runOnStarted]  a chat started
  *   there for it whose first message did not go: the next send from the folder, to that machine, goes to it
+ * @property {string} [runOnSaw]  the machine Auto's chip named last ("" none): a send whose pick read anew is another says so first
+ * @property {string} [runOnTold]  the machine and model a send said the model does not answer on: the next send there goes on its stand-in
+ * @property {string} [runOnBack]  its words a Run on send gave back while another folder's Start held the draft: back in its box when shown
  * @property {string} cwd  the project folder this chat works in (per chat, not per message)
  * @property {string | null} [projectId]  the project the archive filed its session in at its create (app.js `makeSession`, GW-D54), before the list names it
  * @property {{ branch: string, counts: any } | null} [git]  the project's git status, for the status panel
@@ -352,6 +355,20 @@ export const saveDraft = (chat, text) => {
     if (!text) sessionStorage.removeItem(draftKey(chat));
     else sessionStorage.setItem(draftKey(chat), chat?.chainId ? text : JSON.stringify({ text, cwd: chat?.cwd || "" }));
   } catch {}
+};
+/**
+ * Words given back to a chat with no session yet after its send went elsewhere and did not go (Run on, run-on.js
+ * `startThere`), while another chat is shown: kept in the Start's one draft, above what was typed there since, where it
+ * holds this chat's folder's words or none. Where it holds another folder's Start, nothing is written over them: false,
+ * and the caller keeps the words on the chat.
+ * @param {{ chainId?: string | null, cwd?: string }} chat @param {string} text @returns {boolean}
+ */
+export const keepStartWords = (chat, text) => {
+  const kept = startKept();
+  if (kept?.text.trim() && kept.cwd && placeOf(kept.cwd) !== placeOf(chat.cwd)) return false;
+  const since = (kept?.text || "").trim();
+  saveDraft(chat, since && since !== text.trim() ? `${text}\n\n${since}` : text);
+  return true;
 };
 /**
  * The files attached in each chat's box and not sent, under its draft's key: the page's alone — a picture is up to 20 MB,

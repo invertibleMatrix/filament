@@ -595,18 +595,25 @@ its memory free and the chats at work there; your model not answering there coun
 project ran last — and says its pick on the chip, *Auto → Studio*, and why on its hover. **Switch Run on on for a
 machine…** opens Settings › Remote access. The choice is the new chat's, and the send never changes it: a machine you
 named that does not answer is said so, and your message is back in the box; machines that could not be read are said
-so too, and read again at the send. A Start with no folder chosen runs on this computer. The first message starts the
+so too, and read again at the send. Auto's pick is read again at the send too: where it is another machine than the
+chip named, the send says which and why, the chip names it, and nothing goes until you send again. A Start with no
+folder chosen runs on this computer. Its **Works in** holds: another worktree is the folder that goes, and the chip
+reads the machines for it; a new worktree, made on this computer alone, and the Start's other changes to its settings
+are refused in words. The chat there starts in the mode you picked for it, on the switch or the Start; with none
+picked, in that machine's *New chats start in*. The first message starts the
 chat there: in a clean clone at your commit where that machine has one and nothing here is uncommitted — in this
 folder's place in it —; else in a copy of this folder sent with your work, asked first (*Send widgets to Studio?* — how
 many files and how much, the first of those in no commit, what stays here and why, Git LFS's), and named here, so what
 it changes can come back. A copy goes only from the app paired with that machine as the Full device that made this
 Filament's agents' device there: a tailnet login or a tunnel with no device there is told so before anything is
 sent, and another device of yours is told to forget that machine's agents' device and switch Run on on again. The
-chat starts on your model where it answers there, else on one that does. Then the message goes, and the chat opens in
+chat starts on your model; where that machine does not have it, the send says so and names the model it would start
+on, and nothing goes until you send again. Then the message goes, and the chat opens in
 place. A message that did not go leaves the chat standing there and your words back in the box: send them again, and
 they go to that chat — or pick another machine. One whose answer never came may have gone: its chat opens for you to
 look, and your words wait here too. Gone to another chat meanwhile, your words wait in this one's box, above what you
-typed there since. A first message there goes as plain words: files, a brief, `/flow`, `/plan`, `/goal`,
+typed there since, and never over what you typed in another new chat: they come back when you open this one. A send
+that fails on the way puts your words back in the box too. A first message there goes as plain words: files, a brief, `/flow`, `/plan`, `/goal`,
 `/steer-fork` and **@names** are refused, as is asking your agents before it — send them in the chat there once it
 opens. The project menu's rows say the other machines a project is on too (*also on Studio*), as their chats say it.
 

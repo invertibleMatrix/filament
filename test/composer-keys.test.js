@@ -216,6 +216,18 @@ describe("A message while the agent works (HS-D72)", () => {
     assert.deepEqual(b.c.files().map((/** @type {any} */ f) => f.name), ["notes.txt"], "the file attached since stays");
   });
 
+  // (fails before: yes — the review of s2c, plausible: a send that threw left its words nowhere, the box emptied)
+  test("a send that throws puts its words back before what the box holds by then, and says so", async () => {
+    /** @type {string[]} */
+    const said = [];
+    const b = box({ onToast: (/** @type {string} */ m) => said.push(m), onSend: () => Promise.reject(new Error("the bridge closed")) });
+    b.press("my words");
+    b.ta.value = "typed since";
+    await settle();
+    assert.equal(b.ta.value, "my words\n\ntyped since");
+    assert.deepEqual(said, ["Your message did not go: the bridge closed. It is back in the box"]);
+  });
+
   // (fails before: yes — the review of f4dc07c45: each set the box to its own words — "/btw what is this file?" and the
   // rest alone — and words typed while it was out were lost)
   test("a /btw, a /compaction card, a /craft and an ask to saved agents the page could not take come back before what the box holds by then", async () => {

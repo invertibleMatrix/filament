@@ -8,7 +8,8 @@ import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { stubDocument } from "./helpers/dom-stub.js";
 import { until } from "./helpers/wait.js";
-import { AUTO, HERE, autoPick, chipWords, cleanClone, cloneFolder, modelFor, placeFor, pointsOf, readPlaces, runOnSend } from "../src/ui/harness/lib/run-on.js";
+import { AUTO, HERE, atSend, autoPick, chipWords, cleanClone, cloneFolder, modelFor, placeFor, pointsOf, readPlaces, runOnSend, runOnStart, startThere, worksInFolder } from "../src/ui/harness/lib/run-on.js";
+import { keepStartWords, startKept, saveDraft } from "../src/ui/harness/state.js";
 
 const HEAD = "a".repeat(40);
 /** A machine as `places` says one. @param {Partial<import("../src/ui/harness/lib/run-on.js").Place> & { id: string }} o */
@@ -177,10 +178,168 @@ describe("the first message there", () => {
   });
 });
 
-// (fails before: yes — the review of s2c: a command or the agents a message names went as words to the chat there, a
-// message that did not go was dropped with the draft, and a send whose chat was left meanwhile put its words in the box
-// of the chat shown) The page's glue, which needs the desktop app's bridge, is pinned here by its lines.
-test("the page's send: plain words alone go there; a chat standing there takes the next send; a chat left meanwhile keeps its words", async () => {
+describe("the page's send (startThere)", () => {
+  /** What was asked, in order. @type {string[]} */
+  let asked = [];
+  /** The Start's one draft, as the tab keeps it. @type {Map<string, string>} */
+  const kept = new Map();
+  const was = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  before(() => {
+    Object.defineProperty(globalThis, "sessionStorage", {
+      configurable: true,
+      value: { getItem: (/** @type {string} */ k) => kept.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => void kept.set(k, String(v)), removeItem: (/** @type {string} */ k) => void kept.delete(k) },
+    });
+  });
+  after(() => {
+    if (was) Object.defineProperty(globalThis, "sessionStorage", was);
+    else delete (/** @type {any} */ (globalThis).sessionStorage);
+  });
+  beforeEach(() => {
+    asked = [];
+    kept.clear();
+  });
+  const studio = place({ id: "studio", name: "Studio", maker: "dev-1", load1: 7 });
+  const laptop = place({ id: "laptop", name: "Laptop", maker: "dev-1", load1: 1 });
+  /**
+   * The page as `startThere` asks it: the machines read (`wait` holds the read), the box shown or not, what it says.
+   * @param {any} chat @param {{ places?: any, shown?: boolean, wait?: Promise<void>, call?: (p: any) => Promise<any> }} [o]
+   */
+  const page = (chat, { places = readPlaces(placesOf([studio, laptop])), shown = true, wait, call } = {}) => {
+    const said = { refused: /** @type {string[]} */ ([]), toasts: /** @type {string[]} */ ([]) };
+    const io = {
+      places: async (/** @type {string} */ f) => {
+        asked.push(`places ${f}`);
+        await wait;
+        return places;
+      },
+      running: () => new Map(),
+      shown: () => shown,
+      refuse: (/** @type {string} */ w) => (said.refused.push(w), false),
+      keep: (/** @type {string} */ t) => keepStartWords(chat, t),
+      toast: (/** @type {string} */ w) => void said.toasts.push(w),
+      load: () => {},
+      api: async (/** @type {string} */ path, /** @type {any} */ init) => {
+        asked.push(`${init?.method || "GET"} ${path}${init?.body?.folder ? ` folder=${init.body.folder}` : ""}`);
+        return path === "/remote-work" ? { work: { id: "w1", cwd: "/copies/1/r" } } : {};
+      },
+      call:
+        call ||
+        (async (/** @type {any} */ p) => {
+          asked.push(`${p.op} ${p.cwd || p.chat || p.machine}${p.model ? ` model=${p.model}` : ""}${p.mode ? ` mode=${p.mode}` : ""}`);
+          return p.op === "me" ? { ok: true, json: { who: "device", device: "dev-1" } } : p.op === "create" ? { ok: true, json: { chat: "c-there" } } : { ok: true };
+        }),
+      allow: async () => true,
+      open: (/** @type {any} */ m, /** @type {string} */ c) => void asked.push(`open ${m.id} ${c}`),
+    };
+    return { io, said };
+  };
+  const creates = () => asked.filter((a) => a.startsWith("create "));
+
+  // (fails before: yes — the review of s2c: the mode was read from the one switch after the machines' read, so another
+  // chat's Full access shown meanwhile went, and a mode nobody picked pinned this computer's over that machine's)
+  test("the mode is the chat's own pick, read as the send begins; none picked, none goes", async () => {
+    /** @type {() => void} */
+    let release = () => {};
+    const wait = new Promise((r) => (release = () => r(undefined)));
+    const picked = { cwd: "/w/r", runOn: "studio", permTouched: true, pickedPerm: "auto" };
+    const other = { cwd: "/w/r", permTouched: false, pickedPerm: null };
+    const going = startThere(picked, { text: "fix it", folder: "/w/r", model: "" }, page(picked, { wait, shown: false }).io);
+    // Meanwhile the person shows another new chat and switches it to Full access.
+    Object.assign(other, { permTouched: true, pickedPerm: "full" });
+    release();
+    await going;
+    assert.deepEqual(creates(), ["create /copies/1/r mode=auto"]);
+    asked = [];
+    const untouched = { cwd: "/w/r", runOn: "studio" };
+    await startThere(untouched, { text: "x", folder: "/w/r", model: "" }, page(untouched).io);
+    assert.deepEqual(creates(), ["create /copies/1/r"], "no mode: that machine's New chats start in holds");
+    const board = { held: { "loop.permissions": "plan" } };
+    assert.deepEqual(runOnStart(board, "/w/r"), { folder: "/w/r", mode: "plan" }, "the board's held mode is a pick too");
+  });
+
+  // (fails before: yes — the review of s2c: every Start shares one draft, and a refused send wrote its words over
+  // another folder's; a finished one emptied it)
+  test("words that did not go never overwrite another Start's, and a finished send empties no Start", async () => {
+    saveDraft({ cwd: "/w/g" }, "typed in G's Start");
+    const f = { cwd: "/w/r", runOn: "gone" };
+    const out = await startThere(f, { text: "fix it", folder: "/w/r", model: "" }, page(f, { shown: false }).io);
+    assert.equal(out, undefined);
+    assert.deepEqual(startKept(), { text: "typed in G's Start", cwd: "/w/g" }, "G's words stand");
+    assert.equal(/** @type {any} */ (f).runOnBack, "fix it", "F's words wait on its chat, for its box");
+    // The same folder's Start: above what was typed there since.
+    saveDraft({ cwd: "/w/r" }, "typed since");
+    await startThere(f, { text: "again", folder: "/w/r", model: "" }, page(f, { shown: false }).io);
+    assert.deepEqual(startKept(), { text: "again\n\ntyped since", cwd: "/w/r" });
+    // A send that went: words typed meanwhile in a Start of the same folder stay.
+    saveDraft({ cwd: "/w/r" }, "another Start's words");
+    const went = { cwd: "/w/r", runOn: "studio" };
+    assert.equal(await startThere(went, { text: "go", folder: "/w/r", model: "" }, page(went).io), undefined);
+    assert.equal(asked.at(-1), "open studio c-there");
+    assert.deepEqual(startKept(), { text: "another Start's words", cwd: "/w/r" });
+    assert.equal(/** @type {any} */ (went).runOn, undefined, "the Start says This computer again");
+  });
+
+  // (fails before: yes — the review of s2c: Run on copied the Start's folder whatever Works in said, and dropped a new
+  // worktree and the board's changes)
+  test("Works in: another worktree is the folder that goes; a new worktree or the board's other changes are refused in words", async () => {
+    const lane = { cwd: "/w/r", runOn: "studio", worksIn: { folder: "/w/r", path: "/w/r-lane", cwd: "/w/r-lane/web", name: "lane" } };
+    await startThere(lane, { text: "x", folder: "/w/r", model: "" }, page(lane).io);
+    assert.deepEqual(asked.slice(0, 3), ["places /w/r-lane/web", "me studio", "POST /remote-work folder=/w/r-lane/web"]);
+    assert.equal(worksInFolder(lane.worksIn, "/w/r"), "/w/r-lane/web", "the chip reads that folder's machines too");
+    for (const chat of [
+      { cwd: "/w/r", runOn: "studio", worksIn: { folder: "/w/r", make: true, name: "fix-it" } },
+      { cwd: "/w/r", runOn: "studio", held: { "model.effort": "high" } },
+    ]) {
+      asked = [];
+      const { io, said } = page(chat);
+      assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
+      assert.deepEqual(asked, [], "nothing read, nothing sent");
+      assert.match(said.refused[0], chat.held ? /holds another change to its settings: reset it, or run the chat on This computer/ : /a new worktree is made on this computer alone/);
+    }
+  });
+
+  // (fails before: yes — the review of s2c: the chip named one machine and the send went to another, a toast alone said)
+  test("Auto's pick read anew that is not the chip's is said, and nothing goes until the next send", async () => {
+    const chat = { cwd: "/w/r", runOn: AUTO, runOnSaw: "studio" };
+    const { io, said } = page(chat);
+    assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
+    assert.match(said.refused[0], /^Auto picks Laptop now \(.*% idle.*\), and nothing went: send again/);
+    assert.deepEqual(asked, ["places /w/r"]);
+    // The chip, repainted, names Laptop: the next send goes there.
+    chat.runOnSaw = "laptop";
+    asked = [];
+    await startThere(chat, { text: "x", folder: "/w/r", model: "" }, page(chat).io);
+    assert.equal(asked.at(-1), "open laptop c-there");
+  });
+
+  // (fails before: yes — the review of s2c: a model that machine lacks became its first, the hover alone said)
+  test("a model that does not answer there is said with the one it would start on; the next send goes on it", async () => {
+    const own = place({ id: "studio", name: "Studio", maker: "dev-1", models: ["other", "third"] });
+    const chat = { cwd: "/w/r", runOn: "studio" };
+    const p = readPlaces(placesOf([own]));
+    const first = page(chat, { places: p });
+    assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "m1" }, first.io), false);
+    assert.equal(first.said.refused[0], "Your model m1 does not answer on Studio, and nothing went: send again to start your chat there on other, or pick another model or machine");
+    assert.deepEqual(creates(), []);
+    await startThere(chat, { text: "x", folder: "/w/r", model: "m1" }, page(chat, { places: p }).io);
+    assert.deepEqual(creates(), ["create /copies/1/r model=other"]);
+    assert.equal(atSend("studio", own, /** @type {any} */ (p), { model: "other" }), null, "a model it has");
+    assert.equal(atSend("studio", own, /** @type {any} */ (p), { model: "m1", told: "studio\nm2" })?.told, "studio\nm1", "told of another model: said again");
+  });
+
+  // (fails before: yes — the review of s2c, plausible: a call that threw left the words nowhere)
+  test("a call that throws gives the words back and lets the next send go", async () => {
+    const chat = { cwd: "/w/r", runOn: "studio" };
+    const { io, said } = page(chat, { call: async () => Promise.reject(new Error("the bridge closed")) });
+    assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
+    assert.equal(said.refused[0], "Your chat did not start on another machine: the bridge closed");
+    assert.equal(/** @type {any} */ (chat).runOnBusy, false);
+  });
+});
+
+// (fails before: yes — the review of s2c: a command or the agents a message names went as words to the chat there)
+// The page's glue, which needs the desktop app's bridge, is pinned here by its lines; what it does is startThere's above.
+test("the page's send: plain words alone go there; the model is read as the send begins; the choice holds while it goes", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync("src/ui/harness/app.js", "utf8");
   const send = app.slice(app.indexOf("async function sendMessage("), app.indexOf("async function stopCurrent("));
@@ -189,10 +348,8 @@ test("the page's send: plain words alone go there; a chat standing there takes t
   assert.ok(ask.indexOf("chat.runOn || chat.runOnBusy") > 0 && ask.indexOf("chat.runOn || chat.runOnBusy") < ask.indexOf("await readySession("), "asking agents before the first message there is refused before any session is made");
   const first = app.slice(app.indexOf("async function runOnFirst("), app.indexOf("function allowRunOnSend("));
   assert.match(first, /^async function runOnFirst\(chat, text, attachments\) \{\s+if \(chat\.runOnBusy\) return refuse\(/, "a second send while one goes is refused in words");
-  assert.match(first, /const started = kept && kept\.machine === chat\.runOn && runOnKey\(kept\.folder\) === runOnKey\(folder\) \? kept : null;/, "a chat standing there for this machine and folder takes the send");
-  assert.match(first, /if \(shown\(\)\) return refuse\(words\);\s+keep\(\);/, "refused in the box shown, else kept in the chat's own draft");
-  assert.match(first, /saveDraft\(chat, since && since !== text\.trim\(\) \? `\$\{text\}\\n\\n\$\{since\}` : text\);/, "above what was typed there since");
-  assert.match(first, /if \(!out\.ok\) \{\s+if \(out\.started\) standing\(out\.started\);\s+return no\(out\.words\);\s+\}\s+if \(out\.unsure\) \{[^}]*standing\(out\);\s+return no\(/, "a message that did not go, or may not have, keeps the chat there and the words here");
+  assert.match(first, /return await startThere\(chat, \{ text, folder, model: composer\.modelName\(\) \|\| "" \}, \{/, "the model read before any wait");
+  assert.match(first, /keep: \(words\) => keepStartWords\(chat, words\)/);
   assert.match(first, /open: \(m, chain\) => \(shown\(\) \? sidebar\.openOnMachine\(/, "opened in place only while the chat is shown");
   assert.match(app, /set: \(choice, name\) => \{\s+const c = chatOf\(state\.currentId\);\s+(?:\/\/[^\n]*\n\s+)*if \(!c \|\| c\.chainId \|\| c\.runOnBusy\) return;/, "the choice holds while its send goes");
 });

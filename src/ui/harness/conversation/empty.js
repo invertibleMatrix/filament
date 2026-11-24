@@ -17,7 +17,7 @@ import { state, recentFolders, rememberFolder, forgetFolder } from "../state.js"
 import { createStartBoard } from "./start-board.js";
 import { createWorksIn } from "./works-in.js";
 import { whose } from "../lib/words.js";
-import { AUTO, HERE, chipWords } from "../lib/run-on.js";
+import { AUTO, HERE, autoPick, chipWords } from "../lib/run-on.js";
 
 const leafOf = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 /** A folder as the project id compares it: forward slashes, no trailing one, lower case. @param {unknown} p */
@@ -158,10 +158,11 @@ export const VIEW_ONLY_START_WORDS = "This device is view-only: it reads this Fi
  * Run on (the remote desk's s2c), as the Start asks it of the page: whether it stands (the desktop app's desk, a folder
  * chosen), the draft's choice (`get`, `set`: This computer "", a machine's id, or Auto), the machines as this computer
  * reads them for the folder (`places`, kept a moment; `tried`: a read of them ended, answered or not), the chats at
- * work on each (`running`) and the chat's model, which Auto weighs, and Settings › Remote access, where a machine's Run
- * on is switched on.
+ * work on each (`running`) and the chat's model, which Auto weighs, the machine Auto's chip names as it paints (`saw`,
+ * "" none), and Settings › Remote access, where a machine's Run on is switched on.
  * @typedef {{ on: () => boolean, get: () => string, set: (choice: string, name: string) => void, places: (folder: string, fresh?: boolean) => Promise<import("../lib/run-on.js").Places | null>,
- *   known: (folder: string) => import("../lib/run-on.js").Places | null, tried: (folder: string) => boolean, running: () => ReadonlyMap<string, number>, model: () => string, settings: () => void }} RunOnHooks
+ *   known: (folder: string) => import("../lib/run-on.js").Places | null, tried: (folder: string) => boolean, running: () => ReadonlyMap<string, number>, model: () => string,
+ *   saw?: (id: string) => void, settings: () => void }} RunOnHooks
  */
 
 /**
@@ -422,7 +423,11 @@ export function createEmptyState(cb) {
     const known = r.known(folder);
     const failed = !known && r.tried(folder);
     if (choice && !known && !failed) void r.places(folder).then(() => cb.getFolder() === folder && paintRunOn());
-    const words = chipWords(choice, known, { running: r.running(), model: r.model(), name: cb.chatOf?.()?.runOnName || "" });
+    const running = r.running();
+    const model = r.model();
+    const words = chipWords(choice, known, { running, model, name: cb.chatOf?.()?.runOnName || "" });
+    // The machine Auto's chip names: a send whose pick, read anew, is another says so before anything goes.
+    if (choice === AUTO) r.saw?.((known && autoPick(known, { running, model }).pick?.id) || "");
     runOnLabel.textContent = words.label;
     runOnChip.title = choice && failed ? "Your machines could not be read: a send reads them again" : words.title;
     setHtml(runOnIcon, choice === HERE ? ICONS.monitor : ICONS.network);
@@ -501,7 +506,8 @@ export function createEmptyState(cb) {
   const boardBox = h("div", { class: "nt-host hidden" });
   // Where in the folder's repository the chat works (HarnessV4_Git_Plan step 5): the Start's second question, and the
   // folder's path and branch in the sentence. A choice moves what the Start board weighs (GWC-118).
-  const worksIn = createWorksIn({ chat: () => cb.chatOf?.() || null, folder: () => cb.getFolder(), text: () => cb.start?.text() || "", changed: () => ask(0) });
+  // Run on sends the folder Works in names: its chip reads that folder's machines.
+  const worksIn = createWorksIn({ chat: () => cb.chatOf?.() || null, folder: () => cb.getFolder(), text: () => cb.start?.text() || "", changed: () => (ask(0), paintRunOn()) });
   const chooser = h("div", { class: "chooser" }, h("span", { class: "chooser-lead" }, "Start a new chat in"), chip, runOnLead, runOnChip, worksIn.where);
   const el = h("div", { class: "empty-chat" },
     greet,

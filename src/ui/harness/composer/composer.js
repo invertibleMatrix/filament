@@ -456,15 +456,22 @@ export function createComposer(host, cb) {
     if (live || queue.paused()) return;
     const next = queue.shift();
     if (!next) return;
-    Promise.resolve(cb.onSend(queuedText(next), queuedFiles(next), "normal", { queued: true, overrules: queuedOverrules(next), ...queuedAnswer(next), ...queuedVia(next) })).then((ok) => {
-      // "queue": a turn runs after all, and takes no words — the message waits for its end, as the send said.
-      if (ok === "queue") queue.putBack(next);
-      else if (ok === false) {
-        const why = cb.whyRefused?.();
-        queue.refused(next, why?.said || "", why?.again ?? true);
-      } else return;
-      paintQueue();
-    });
+    Promise.resolve(cb.onSend(queuedText(next), queuedFiles(next), "normal", { queued: true, overrules: queuedOverrules(next), ...queuedAnswer(next), ...queuedVia(next) })).then(
+      (ok) => {
+        // "queue": a turn runs after all, and takes no words — the message waits for its end, as the send said.
+        if (ok === "queue") queue.putBack(next);
+        else if (ok === false) {
+          const why = cb.whyRefused?.();
+          queue.refused(next, why?.said || "", why?.again ?? true);
+        } else return;
+        paintQueue();
+      },
+      // A send that threw: the message waits in the queue, paused, with why.
+      (e) => {
+        queue.refused(next, `It did not go: ${String(e?.message || e).slice(0, 200)}`, true);
+        paintQueue();
+      },
+    );
   };
 
   const autosize = () => { ta.style.height = "0"; ta.style.height = Math.min(220, ta.scrollHeight + 2) + "px"; };
@@ -664,16 +671,23 @@ export function createComposer(host, cb) {
       cb.onToast?.("Queued with its files — it goes when this turn ends");
       return;
     }
-    Promise.resolve(cb.onSend(text, files, modifier, { overrules, ...(via ? { via } : {}) })).then((ok) => {
-      // Refused: back in the box, before what it holds by then — another message refused, words typed since.
-      if (ok === false) backInBox(text, files, overrules);
-      // Nothing can steer this turn (a coding agent's): the message waits in the queue for its end, whole — its
-      // pictures and a team's result with it (found by the Bug Hunter, 10-19: only the result was kept).
-      else if (ok === "queue") {
-        queue.push(asQueued(text, files, overrules, via));
-        paintQueue();
-      }
-    });
+    Promise.resolve(cb.onSend(text, files, modifier, { overrules, ...(via ? { via } : {}) })).then(
+      (ok) => {
+        // Refused: back in the box, before what it holds by then — another message refused, words typed since.
+        if (ok === false) backInBox(text, files, overrules);
+        // Nothing can steer this turn (a coding agent's): the message waits in the queue for its end, whole — its
+        // pictures and a team's result with it (found by the Bug Hunter, 10-19: only the result was kept).
+        else if (ok === "queue") {
+          queue.push(asQueued(text, files, overrules, via));
+          paintQueue();
+        }
+      },
+      // A send that threw: nothing says it went, and the box had let its words go.
+      (e) => {
+        backInBox(text, files, overrules);
+        cb.onToast?.(`Your message did not go: ${String(e?.message || e).slice(0, 200)}. It is back in the box`);
+      },
+    );
   };
 
   ta.addEventListener("input", (e) => {

@@ -17,7 +17,7 @@ import { applyWords } from "./lib/stream.js";
 import { TAB_ID, acting, whenShown, writerClaim } from "./lib/tab.js";
 import { createWaitingQueue, waitingStore, waitingOwes, holderFromView, waitingToast, MOVE_WINDOW } from "./waiting.js";
 import { settingsFollower } from "./live-topic.js";
-import { state, chatOf, putChat, newChatId, recentFolders, rememberFolder, forgetFolder, lastModel, rememberModel, newChatModelPref, startModel, applySessionView, onSessionView, draftFor, saveDraft, draftFilesFor, saveDraftFiles, startKept, atWork } from "./state.js";
+import { state, chatOf, putChat, newChatId, recentFolders, rememberFolder, forgetFolder, lastModel, rememberModel, newChatModelPref, startModel, applySessionView, onSessionView, draftFor, saveDraft, keepStartWords, draftFilesFor, saveDraftFiles, startKept, atWork } from "./state.js";
 import { settingsRead, viewSettingsOf } from "./view-settings.js";
 import { watchTheme, setThemePref, hintTheme, themeHinted } from "./theme.js";
 import { DESK_KEYS, chatOnlyOf, deskKeyOf, fullPageOf, themeHintOf } from "./lib/chat-only.js";
@@ -31,7 +31,7 @@ import { waitingOn } from "./conversation/waiting-on.js";
 import { createChargeBand } from "./conversation/in-charge.js";
 import { turnNow } from "./lib/overview.js";
 import { deskRoute, mergeKey } from "./lib/desk.js";
-import { HERE, placeFor, readPlaces, runOnSend } from "./lib/run-on.js";
+import { HERE, folderKey, readPlaces, startThere, worksInFolder } from "./lib/run-on.js";
 import { cancelledWords } from "./lib/come-back.js";
 import { setTabTitle, setTitleLead, notifyRunEnded, ensureNotificationPermission } from "./notify.js";
 import { createPopped, followSwitch, followable, mainLine, popBridgeOf, popTabOf } from "./panes/pop-out.js";
@@ -2538,8 +2538,10 @@ let keptBack = "";
  */
 const runOnReads = new Map();
 const RUN_ON_KEPT_MS = 30_000;
-/** A folder as Run on's reads key it. @param {string} folder */
-const runOnKey = (folder) => String(folder || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+/** A folder as Run on's reads key it. */
+const runOnKey = folderKey;
+/** The folder the chip reads the machines for: the one the chat shown's Works in names (run-on.js `worksInFolder`). @param {string} folder */
+const runOnAt = (folder) => worksInFolder(chatOf(state.currentId)?.worksIn, folder);
 /**
  * The machines a chat in the folder may run on, as this computer reads them — kept a moment, `fresh` asked again.
  * Null where they could not be read. @param {string} folder @param {boolean} [fresh]
@@ -2587,9 +2589,14 @@ const runOnHooks = {
     // A chat started there whose message did not go is the person's, in the desk's list: another choice is no longer it.
     if (c.runOnStarted && c.runOnStarted.machine !== choice) delete c.runOnStarted;
   },
-  places: (folder, fresh) => runOnPlaces(folder, fresh),
-  known: (folder) => runOnReads.get(runOnKey(folder))?.value ?? null,
-  tried: (folder) => runOnReads.has(runOnKey(folder)) && !runOnReads.get(runOnKey(folder))?.p,
+  // What Auto's chip names: a send whose pick, read anew, is another says so before anything goes.
+  saw: (id) => {
+    const c = chatOf(state.currentId);
+    if (c && !c.chainId) c.runOnSaw = id;
+  },
+  places: (folder, fresh) => runOnPlaces(runOnAt(folder), fresh),
+  known: (folder) => runOnReads.get(runOnKey(runOnAt(folder)))?.value ?? null,
+  tried: (folder) => runOnReads.has(runOnKey(runOnAt(folder))) && !runOnReads.get(runOnKey(runOnAt(folder)))?.p,
   running: () => runOnRunning(),
   model: () => {
     try {
@@ -2603,14 +2610,13 @@ const runOnHooks = {
   },
 };
 /**
- * A new chat's first message run on another machine (Run on, the remote desk's s2c): the machine the draft's choice
- * names — Auto's pick read again now, a machine named never swapped for another —, then `runOnSend`: its clean clone, or
- * a copy of this folder sent with your work, asked first; the chat started there, the message sent, the chat opened in
- * place. The draft here is spent once the chat stands there; until then the message is back in the box, and why said
- * — in this chat's box: where the person went to another chat meanwhile, its draft keeps it. A chat started there whose
- * message did not go takes the next send (`runOnStarted`).
+ * A new chat's first message run on another machine (Run on, the remote desk's s2c): run-on.js `startThere`, with the
+ * composer's model read as the send begins — the chip's machine, Auto's pick and a model missing there said before
+ * anything goes —, then its clean clone, or a copy of this folder sent with your work, asked first; the chat started
+ * there, the message sent, the chat opened in place. Until then the message is back in this chat's box, and why said;
+ * where the person went to another chat meanwhile, its Start keeps it. The chip says where the draft runs after.
  * @param {any} chat @param {string} text @param {any[]} attachments
- * @returns {Promise<boolean | undefined>}  false, refused; undefined, it went, or the words wait in the chat's draft
+ * @returns {Promise<boolean | undefined>}  false, refused; undefined, it went, or the words wait for the chat
  */
 async function runOnFirst(chat, text, attachments) {
   if (chat.runOnBusy) return refuse("Your chat is starting on another machine: send this in it once it opens");
@@ -2620,64 +2626,24 @@ async function runOnFirst(chat, text, attachments) {
   const call = /** @type {any} */ (globalThis).filamentMachines?.call;
   if (typeof call !== "function") return refuse("Run on starts a chat on another machine from the desktop app alone");
   const shown = () => chatOf(state.currentId) === chat;
-  /** Its words kept in the chat's draft, above what was typed there since. */
-  const keep = () => {
-    const since = draftFor(chat).trim();
-    saveDraft(chat, since && since !== text.trim() ? `${text}\n\n${since}` : text);
-  };
-  /** Refused after a wait: said in the box shown, else kept in the chat's draft. @param {string} words */
-  const no = (words) => {
-    if (shown()) return refuse(words);
-    keep();
-    toast(`${words}. Your message waits in that chat's box`, "err");
-    return undefined;
-  };
-  chat.runOnBusy = true;
   try {
-    const model = composer.modelName() || "";
-    const kept = chat.runOnStarted;
-    const started = kept && kept.machine === chat.runOn && runOnKey(kept.folder) === runOnKey(folder) ? kept : null;
-    const places = started ? null : await runOnPlaces(folder, true);
-    const at = started ? { place: /** @type {any} */ ({ id: started.machine, name: started.name }) } : placeFor(chat.runOn, places, { running: runOnRunning(), model });
-    if ("words" in at) return no(at.words);
-    toast(started ? `Sending your message to your chat on ${at.place.name}…` : `Starting your chat on ${at.place.name}…`);
-    const out = await runOnSend(
-      { place: at.place, here: places?.here ?? null, folder, text, model, mode: composer.permissionMode?.() || "", started: started && { chat: started.chat, work: started.work } },
-      {
-        api,
-        call: (/** @type {any} */ p) => call(p),
-        allow: (/** @type {any} */ ask) => allowRunOnSend(ask),
-        // Opened in place where the person still looks at this chat; else the desk's list has it.
-        open: (m, chain) => (shown() ? sidebar.openOnMachine(m, deskRoute({ chain, thread: null })) : toast(`Your chat started on ${m.name}: it is in the list`)),
-        // Its record read now: Bring back looks at the chat once its turn ends, however soon.
-        recorded: () => sidebar.workStarted(),
-      },
-    );
-    /** The chat stands there: the chip names its machine, and the next send from this Start goes to it. @param {{ chat: string, work: any }} s */
-    const standing = (s) => {
-      chat.runOnStarted = { machine: at.place.id, name: at.place.name, chat: s.chat, work: s.work, folder };
-      chat.runOn = at.place.id;
-      chat.runOnName = at.place.name;
-      sidebar.load();
-    };
-    if (!out.ok) {
-      if (out.started) standing(out.started);
-      return no(out.words);
-    }
-    if (out.unsure) {
-      // It may have gone: the chat there, opened, says. The words wait in this Start, should it not have.
-      standing(out);
-      return no(`Your chat started on ${at.place.name}, and its answer to your message never came: ${out.unsure}. Look in the chat there: if it did not go, send your words again from here and they go to that chat`);
-    }
-    // The chat stands there: the draft here is spent, its words with it, and the Start says This computer again.
-    saveDraft(chat, "");
-    delete chat.runOn;
-    delete chat.runOnName;
-    delete chat.runOnStarted;
-    sidebar.load();
-    return undefined;
+    return await startThere(chat, { text, folder, model: composer.modelName() || "" }, {
+      places: (f) => runOnPlaces(f, true),
+      running: () => runOnRunning(),
+      shown,
+      refuse: (words) => refuse(words),
+      keep: (words) => keepStartWords(chat, words),
+      toast,
+      load: () => sidebar.load(),
+      api,
+      call: (/** @type {any} */ p) => call(p),
+      allow: (/** @type {any} */ ask) => allowRunOnSend(ask),
+      // Opened in place where the person still looks at this chat; else the desk's list has it.
+      open: (m, chain) => (shown() ? sidebar.openOnMachine(m, deskRoute({ chain, thread: null })) : toast(`Your chat started on ${m.name}: it is in the list`)),
+      // Its record read now: Bring back looks at the chat once its turn ends, however soon.
+      recorded: () => sidebar.workStarted(),
+    });
   } finally {
-    chat.runOnBusy = false;
     if (shown()) transcript.refreshRunOn();
   }
 }
@@ -7130,7 +7096,10 @@ function selectChat(id, opts = {}) {
   // the box's too (`heldInRow`, the owner's of 11-09).
   const kept = draftFor(chat);
   const held = heldInRow(chat.turns, kept) === true;
-  const back = held ? "" : kept;
+  // Words a Run on send gave back while another folder's Start held the draft (run-on.js `startThere`): above the rest.
+  const given = chat.runOnBack || "";
+  delete chat.runOnBack;
+  const back = [given, held ? "" : kept].filter(Boolean).join("\n\n");
   // Its box as it was left, the files attached in it with its words: another chat's never go with its send.
   composer.setDraft(back, draftFilesFor(chat));
   // A new chat's Start says when its box holds words kept from before (the Designer's second walk of 10-29).
