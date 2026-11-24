@@ -2057,7 +2057,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `POST /api/remote/claim` | Claim a code (`{ code, name }`), the one call answered before the caller is known: a page gets its device's cookie, a command line (no `Origin`) its token, once. Over https, or from this machine (a proxy here, an SSH tunnel), alone: plain http from another machine is refused. |
 | `GET /api/remote/lan[?fresh=1][&firewall=0]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again; `firewall=0` reads it not, as another machine's app learning its ways asks); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
 | `POST /api/remote/lan/new-key` | New key: the network listener's key and certificate made anew and served at once, its artifacts' address too (this computer alone); every machine and command line paired over the network pairs again. Answers the listener's state, its new fingerprint in it. |
-| `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ cookie, token }`, which the app keeps as an HttpOnly cookie of its windows; any other call is refused (403). |
+| `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ token }`, which the app adds to its windows' calls to Filament's own address and port (`x-filament-owner-session`); any other call is refused (403). |
 | `POST /api/key-copies` | `{ ids }`: those providers' keys, open, for the desktop app to copy to another machine (Settings › Remote access › a machine's Copy keys). It answers the app's main process alone — the app's press key and the owner key itself on the call —; a page, a device, the command line and any other program are refused (403). Never logged. |
 | `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on; `tunnel-device`, a device's token through an SSH tunnel taken as that device's); a device signs itself out. A device's call through a tunnel says `device`. |
 | `GET /api/remote/devices`, `PATCH`/`DELETE /api/remote/devices/<id>[?forget=1]` | The devices paired; rename one (`{ name }`), or switch an agents' device's grant (`{ "grants": { "agents": true } }`; `copies` is Run on); an agents' device's `copies` says what its machine keeps here, your chats in its copies among it (`chats`); revoke it, or forget one revoked. This computer, the admin token or a full device. |
@@ -2193,9 +2193,12 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   API (the `x-filament-owner` header), read at each call, and only to the address and port that data folder's Filament
   says it listens on (`listening.json`) — never to another program that answers at a port it asked, the config's after a
   move, another account's, or one at that port on another of this computer's addresses (`localhost` reaching `::1`
-  where Filament listens on 127.0.0.1 alone); the app's windows hold a browser session made with it, a cookie the page
-  itself cannot read, kept in memory alone and made again at each start of Filament — by the key itself, never by a
-  session. It counts over this computer's own address
+  where Filament listens on 127.0.0.1 alone); the app's windows carry a browser session made with it, made again at each
+  start of Filament — by the key itself, never by a session — and kept in the app's memory alone: the app adds it to
+  its windows' own calls to Filament's address and port (the `x-filament-owner-session` header), never a cookie, which
+  a browser sends to every port of this computer's address. A server an agent runs on another port, an image a model
+  wrote into a chat, an artifact's frame and anything it holds get none, and the pages themselves cannot read it. It
+  counts over this computer's own address
   alone: a request a proxy hands on that carries it is refused, as any such request is, and said once in the log. It is taken out of
   each request as Filament reads it, so no record, log or answer holds it, nor any program's environment. For now
   nothing needs it: a program here that calls the admin API without it is answered all the same, and counted by the name it

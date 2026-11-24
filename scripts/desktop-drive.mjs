@@ -13,6 +13,7 @@
 //                                            Electron over the checkout: checks 1, 2, 9, 10, 11 and 26–30
 //   npm run test:desktop -- --pictures <dir>  what the browser's checks looked like, kept there as PNGs
 //   npm run test:desktop -- --desk           the desk's checks (35) alone, over two Filaments of their own
+//   npm run test:desktop -- --owner          the windows' owner session's check (36) alone
 import { spawn, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
@@ -27,6 +28,7 @@ import { anthropicReply, FAKE_SIDECAR, fakeUpstream } from "../test/helpers/app.
 import { RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
 import { MACHINES_FILE, addMachine, setMachineOff } from "../desktop/lib/machines.js";
 import { distDir, versionOf } from "./dist-win.mjs";
+import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerKeyOf } from "../src/services/owner.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MAIN = join(ROOT, "desktop", "main.js");
@@ -43,6 +45,7 @@ if (BUILT && !existsSync(BUILT)) {
 }
 if (BUILT) console.log(`the packaged app: ${BUILT}`);
 const DESK_ONLY = process.argv.includes("--desk");
+const OWNER_ONLY = process.argv.includes("--owner");
 if (process.platform !== "win32") {
   console.log("the desktop drive reads Windows' process list; on this platform it does not run yet");
   process.exit(0);
@@ -502,7 +505,67 @@ async function driveDesk() {
   endTree(/** @type {number} */ (S.pid));
 }
 
-// `--desk`: the desk's checks alone.
+// ---- 36: the windows' owner session (the plan's s0e) ------------------------------------------------------------------
+/**
+ * The app's windows call Filament as its owner, by the session the app adds to their calls to Filament's own origin
+ * alone: none of their calls is counted as one without the key (their user agent among the programs Filament counted),
+ * and a server at another port of this computer's address — one an agent runs — gets no session from them, as a header
+ * or a cookie, by a call or an image.
+ * @param {number} port @param {string} dataDir @param {{ webSocketDebuggerUrl: string }} page
+ */
+async function ownerSessionCheck(port, dataDir, page) {
+  /** @type {import("node:http").IncomingHttpHeaders[]} */
+  const heard = [];
+  const other = createServer((req, res) => {
+    heard.push(req.headers);
+    res.end("x");
+  });
+  await new Promise((r) => other.listen(0, "127.0.0.1", () => r(undefined)));
+  const at = /** @type {any} */ (other.address()).port;
+  const agent = String((await evalIn(page, "navigator.userAgent").catch(() => "")) || "").trim().slice(0, 120);
+  const own = await evalIn(page, `fetch("/api/state", { headers: { "x-filament-ui": "1" } }).then((r) => r.status)`).catch(() => 0);
+  await evalIn(page, `(fetch("http://127.0.0.1:${at}/probe", { mode: "no-cors" }).catch(() => null), (new Image().src = "http://127.0.0.1:${at}/img.png"), true)`).catch(() => null);
+  await until(() => heard.length >= 2, 10000, "the other port's two calls").catch(() => null);
+  await new Promise((r) => other.close(() => r(undefined)));
+  const said = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-filament-ui": "1", [OWNER_HEADER]: ownerKeyOf(dataDir) }, signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json())
+    .catch(() => null);
+  const windows = /** @type {{ agent: string, count: number }[]} */ (said?.ownerless?.programs || []).filter((p) => p.agent === agent);
+  const leaked = heard.filter((h) => h[OWNER_SESSION_HEADER] || /fos_/.test(String(h.cookie || "")));
+  check(
+    "36. the app's windows call Filament as its owner, by a session no other port of this computer's address gets",
+    !!agent && own === 200 && !!said?.ownerless && windows.length === 0 && heard.length >= 2 && leaked.length === 0,
+    `${windows.length ? `${windows[0].count} of the windows' calls counted without the key` : "none of the windows' calls counted without the key"}; another port heard ${heard.length} call(s)${leaked.length ? `, ${leaked.length} with a session` : ", none with a session"}`,
+  );
+}
+
+/** `--owner`: check 36 alone, over an app of its own. */
+async function driveOwner() {
+  const dataO = join(base, "o");
+  const portO = await freePort();
+  const debugO = await freePort();
+  writeConfig(dataO, portO, up.url, root);
+  const O = launch(dataO, { debug: debugO, label: "the app (owner)" });
+  await until(() => stateAt(portO), 60000, "answer from the app's Filament");
+  const page = await until(async () => (await pagesOf(debugO)).find((p) => p.url.startsWith(`http://127.0.0.1:${portO}/ui/harness.html`)), 30000, "harness window");
+  await until(() => evalIn(page, `!!document.querySelector(".app-shell")`), 30000, "harness drawn");
+  await ownerSessionCheck(portO, dataO, page);
+  const QO = launch(dataO, { args: ["--quit"], label: "quit the app (owner)" });
+  await until(() => QO.exited(), 20000, "end of its quitting launch");
+  await until(() => O.exited(), 30000, "the app's end");
+}
+
+// `--desk`: the desk's checks alone; `--owner`, the windows' owner session's.
+if (OWNER_ONLY) {
+  try {
+    await driveOwner();
+  } catch (/** @type {any} */ e) {
+    check("the drive ran to its end", false, String(e?.message || e));
+  } finally {
+    await cleanUp();
+  }
+  finish();
+}
 if (DESK_ONLY) {
   try {
     await driveDesk();
@@ -536,6 +599,7 @@ try {
   const harnessA = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 30000, "harness window");
   const shell = await until(() => evalIn(harnessA, `!!document.querySelector(".app-shell")`), 30000, "harness drawn");
   check("1. its window shows the harness", shell === true, harnessA.url);
+  await ownerSessionCheck(portA, dataA, harnessA);
   const stateA = await stateAt(portA);
   check("1. Filament says the app starts it again", stateA?.supervisor === "desktop", `supervisor: ${stateA?.supervisor}`);
 

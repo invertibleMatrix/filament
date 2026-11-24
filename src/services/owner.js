@@ -2,10 +2,11 @@
 // This computer's key to its own Filament (the "same computer = owner" gap, its phase 0): today any program here reaches
 // the admin API as `local` with no secret. Each start mints a key into `<dataDir>/owner.key`, readable by the person's
 // account alone, before the command line can find Filament (listening.json); the command line, the desktop app's own
-// calls and Filament's calls to itself send it in OWNER_HEADER, and the app's windows hold a browser session minted
-// with it (`session`, OWNER_COOKIE, HttpOnly). It counts on loopback alone, through no proxy (http/guards.js
-// `ownerOf`), and is taken out of the request as it is read, so no route, record or log holds it — never an
-// environment, an argument or an answer either. For now it changes nothing: this computer's calls without it are
+// calls and Filament's calls to itself send it in OWNER_HEADER, and the app's windows carry a browser session minted
+// with it (`session`, OWNER_SESSION_HEADER), which the app's main process adds to their calls to Filament's own origin
+// alone — no cookie, which would reach every port of this computer's address. It counts on loopback alone, through no
+// proxy (http/guards.js `ownerOf`), and is taken out of the request as it is read, so no route, record or log holds it
+// — never an environment, an argument or an answer either. For now it changes nothing: this computer's calls without it are
 // answered all the same, counted by the program that sent them (`tokenless`), which Settings › Remote access and
 // `filament doctor` say, so whatever would be refused once the key is needed is found first.
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -16,8 +17,11 @@ import { join } from "node:path";
 export const OWNER_FILE = "owner.key";
 /** The header this computer's programs send the key in. */
 export const OWNER_HEADER = "x-filament-owner";
-/** The cookie the desktop app's windows hold their browser session in (`session`). */
-export const OWNER_COOKIE = "filament_owner";
+/**
+ * The header the desktop app's windows carry their browser session in (`session`): added by the app's main process to
+ * their calls to Filament's own origin alone (desktop/lib/policy.js `ownerSessionGoes`), never readable by their pages.
+ */
+export const OWNER_SESSION_HEADER = "x-filament-owner-session";
 /** What a key starts with; a browser session's start. */
 const KEY_PREFIX = "fot_";
 const SESSION_PREFIX = "fos_";

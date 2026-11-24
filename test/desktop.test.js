@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { followPort, foundAt, hostOf, portOf, refusedWords } from "../desktop/lib/start.js";
 import { createSupervisor, END_WAIT_MS, LATE_MS, RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
-import { ACTIVATION_MS, askedByPerson, isPress, mayGrant, routeOf, serverArgs, serverEnv, SUPERVISOR } from "../desktop/lib/policy.js";
+import { ACTIVATION_MS, askedByPerson, isPress, mayGrant, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv, SUPERVISOR } from "../desktop/lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "../desktop/lib/window-state.js";
 import { trayRows, trayTip } from "../desktop/lib/tray.js";
 import { createLog, serverTail } from "../desktop/lib/log.js";
@@ -457,6 +457,42 @@ describe("what its windows may show, and what its server is given", () => {
     for (const p of ["clipboard-sanitized-write", "clipboard-read", "notifications", "fullscreen"]) assert.equal(grant(p), true, p);
     for (const p of ["media", "display-capture", "geolocation", "midi", "midiSysex", "hid", "serial", "usb", "openExternal", "pointerLock", "keyboardLock", "idle-detection", "window-management", "local-fonts", "storage-access", "unknown"])
       assert.equal(grant(p), false, p);
+  });
+
+  // (fails before: yes — the plan's s0e: the windows' owner session was a cookie of 127.0.0.1, which a browser sends to
+  // every port of it: an image a model wrote into a chat, at a server an agent runs, carried it there)
+  test("the windows' owner session goes to Filament's own origin alone, asked by its own frames: no other port, name or artifact's frame", () => {
+    const own = { origin, parent: null };
+    const art = { origin: "http://chart-1.art.localhost:20300", parent: own };
+    const goes = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame) => ownerSessionGoes({ url, resourceType, frame }, origin);
+    assert.deepEqual(ownerSessionUrls(origin), ["http://127.0.0.1:20300/*", "ws://127.0.0.1:20300/*"]);
+    assert.equal(goes("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null), true, "a window's own load");
+    assert.equal(goes("http://127.0.0.1:20300/api/state", "xhr", own), true);
+    assert.equal(goes("http://127.0.0.1:20300/api/events", "xhr", own), true, "its events stream");
+    assert.equal(goes("ws://127.0.0.1:20300/api/terminal/t1/stream", "webSocket", own), true, "a terminal's socket");
+    assert.equal(goes("http://127.0.0.1:20300/ui/frame.html", "subFrame", { origin, parent: own }), true, "a frame of its own in it");
+    assert.equal(goes("http://127.0.0.1:5173/logo.png", "image", own), false, "another port: a dev server an agent runs");
+    assert.equal(goes("http://localhost:20300/api/state", "xhr", own), false, "another name for this computer");
+    assert.equal(goes("https://127.0.0.1:20300/api/state", "xhr", own), false);
+    assert.equal(goes("http://chart-1.art.localhost:20300/", "subFrame", own), false, "an artifact's own address");
+    assert.equal(goes("http://127.0.0.1:20300/api/memory/sessions", "xhr", art), false, "an artifact's call to Filament");
+    assert.equal(goes("ws://127.0.0.1:20300/api/runs", "webSocket", art), false, "an artifact's socket to Filament");
+    assert.equal(goes("http://127.0.0.1:20300/api/state", "xhr", { origin, parent: art }), false, "a frame an artifact holds at Filament's own address");
+    assert.equal(goes("http://127.0.0.1:20300/api/state", "xhr", null), false, "a frame Electron can no longer read");
+    assert.equal(
+      goes("http://127.0.0.1:20300/api/state", "xhr", {
+        get origin() {
+          throw new Error("Render frame was disposed");
+        },
+        parent: null,
+      }),
+      false,
+    );
+    assert.equal(goes("not a url", "xhr", own), false);
+    const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.doesNotMatch(main, /cookies\.set\(/, "no cookie holds it");
+    assert.match(main, /onBeforeSendHeaders\(\{ urls: ownerSessionUrls\(origin\) \}/);
+    assert.match(main, /origin = `http:\/\/\$\{h\}:\$\{p\}`;\n {4}sendSession\(\);/, "listened on again as Filament moves");
   });
 
   test("the server runs with the app's environment less Electron's own, told the app starts it again, on this folder and port", () => {

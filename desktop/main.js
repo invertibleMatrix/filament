@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isCheckout, resolveDataDir } from "../src/config.js";
 import { attachWatch, followPort, foundAt, hostOf, portOf, refusedWords } from "./lib/start.js";
 import { createSupervisor } from "./lib/supervisor.js";
-import { askedByPerson, isPress, mayGrant, routeOf, serverArgs, serverEnv } from "./lib/policy.js";
+import { askedByPerson, isPress, mayGrant, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv } from "./lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "./lib/window-state.js";
 import { swatchBitmap, trayRows, trayTip } from "./lib/tray.js";
 import { createLog, serverTail } from "./lib/log.js";
@@ -52,7 +52,7 @@ import { createDesk } from "./lib/desk.js";
 import { createRouteLearner } from "./lib/learn-routes.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { usePinBook } from "../src/services/machines/key-pins.js";
-import { OWNER_COOKIE, OWNER_HEADER, ownerHeaders } from "../src/services/owner.js";
+import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerHeaders } from "../src/services/owner.js";
 import { mergedPath, readShellPath } from "./lib/shell-path.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -186,6 +186,18 @@ async function run() {
     });
   };
   grants(session.defaultSession, () => origin);
+  /** The app's windows' owner session, as Filament minted it for this start (`ownerSession`): "" before one. */
+  let windowsSession = "";
+  /**
+   * The windows' calls to Filament's own origin carry their owner session (lib/policy.js `ownerSessionGoes`), added
+   * here as each goes: never a cookie, which this computer's address would send to every port of it. Listened on again
+   * as Filament moves (`follow`), its filter naming the origin.
+   */
+  const sendSession = () =>
+    session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ownerSessionUrls(origin) }, (d, done) =>
+      done({ requestHeaders: windowsSession && ownerSessionGoes(d, origin) ? { ...d.requestHeaders, [OWNER_SESSION_HEADER]: windowsSession } : d.requestHeaders }),
+    );
+  sendSession();
   // A menu no one sees, for its keys alone: reload, the developer tools, zoom, full screen. Every other key is the page's
   // (the harness takes Ctrl+W, Ctrl+N, Ctrl+K and more). Reload and the developer tools are the focused page's: with
   // another machine shown in the window, its page — the window's own one, this computer's, stands hidden behind it. A
@@ -921,6 +933,7 @@ async function run() {
     port = p;
     host = h;
     origin = `http://${h}:${p}`;
+    sendSession();
   };
 
   // ---- the server: the app's own child, or the one it attached to ---------------------------------------------------
@@ -963,9 +976,9 @@ async function run() {
   /** The key the windows' browser session was last minted with: "" before the first. */
   let sessionFor = "";
   /**
-   * The app's windows' browser session: minted by Filament for this call, which holds its owner key, and kept as an
-   * HttpOnly cookie of their session, never written to disk — the page itself holds no secret. Taken again at each
-   * start of Filament, before its windows load: a session lasts while the start that minted it does.
+   * The app's windows' browser session: minted by Filament for this call, which holds its owner key, and kept in this
+   * process alone (`windowsSession`, `sendSession`), never written to disk — the page itself holds no secret. Taken
+   * again at each start of Filament, before its windows load: a session lasts while the start that minted it does.
    */
   const ownerSession = async () => {
     sessionFor = ownerHeaders(dataDir, origin)[OWNER_HEADER] || "";
@@ -977,10 +990,7 @@ async function run() {
       try {
         const r = await ask("/api/owner/session", { method: "POST", body: "{}" });
         const j = /** @type {any} */ (r.ok ? await r.json() : null);
-        if (typeof j?.token === "string" && j.token) {
-          await session.defaultSession.cookies.set({ url: origin, name: String(j.cookie || OWNER_COOKIE), value: j.token, path: "/", httpOnly: true, sameSite: "strict" });
-          return;
-        }
+        if (typeof j?.token === "string" && j.token) return void (windowsSession = j.token);
         why = `HTTP ${r.status}`;
         // Refused: no key read, or another Filament's — asked again, it says the same.
         if (r.status === 403) break;

@@ -120,3 +120,35 @@ export function mayGrant({ permission, requesting, embedding }, origin) {
   const network = own.protocol === "https:" && asker.protocol === "https:" && asker.hostname === own.hostname && own.port !== "" && asker.port === String(Number(own.port) + 1);
   return (here || network) && of(embedding)?.origin === own.origin && ARTIFACT_GRANTS.includes(permission);
 }
+
+/**
+ * The addresses the app's windows' session listens on for their owner session (`ownerSessionGoes`): Filament's own
+ * origin, over http and its sockets'. @param {string} origin
+ */
+export const ownerSessionUrls = (origin) => {
+  const host = new URL(origin).host;
+  return [`http://${host}/*`, `ws://${host}/*`];
+};
+
+/**
+ * Whether a call of the app's windows carries their owner session (main.js `ownerSession`): one to Filament's own
+ * origin — its host and port, over http or a socket —, asked by a window's own load or by a frame whose every frame up
+ * to its window's is at that origin. Never one to another port of this computer's address (a server an agent runs, an
+ * image a model wrote into a chat), another name for it, an artifact's frame's, nor a frame's that an artifact holds
+ * at Filament's own address. A frame Electron can no longer read is none of Filament's.
+ * @param {{ url: string, resourceType?: string, frame?: { origin: string, parent: any } | null }} call  Electron's
+ *   webRequest details @param {string} origin
+ */
+export function ownerSessionGoes({ url, resourceType, frame }, origin) {
+  try {
+    const to = new URL(url);
+    const own = new URL(origin);
+    if (own.protocol !== "http:" || (to.protocol !== "http:" && to.protocol !== "ws:") || to.host !== own.host) return false;
+    if (resourceType === "mainFrame") return true;
+    if (!frame) return false;
+    for (let f = frame; f; f = f.parent) if (f.origin !== own.origin) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}

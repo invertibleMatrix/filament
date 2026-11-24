@@ -7,7 +7,7 @@ import { lowerHeaders } from "../core/headers.js";
 import { credentialOf, isHouseCall } from "../services/house.js";
 import { modelsLentTo } from "../services/devices.js";
 import { lanNames } from "../services/lan-tls.js";
-import { OWNER_COOKIE, OWNER_HEADER, ownerAt } from "../services/owner.js";
+import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerAt } from "../services/owner.js";
 import { tailnetDoor } from "../services/tailscale.js";
 
 /** Constant-time string compare; both sides coerced to strings, a length mismatch answers false. */
@@ -319,11 +319,11 @@ const ownTailnetLogin = (req, server) => {
 /** What each request said of this computer's owner key (`ownerOf`), read once. @type {WeakMap<import("node:http").IncomingMessage, "owner" | "stale" | "none">} */
 const ownerSaid = new WeakMap();
 /**
- * What a request says of this computer's owner key (services/owner.js), read once and taken out of it — the header and
- * the app's session cookie both —, so no route, record or log holds either: `owner` where it came over loopback, through
- * no proxy, with the key of the Filament at the port it reached, or a browser session minted with it; `stale` where it
- * carried one that is not (a key or session of an earlier start: the app's window before it took the new one); `none`
- * where it carried neither, or came through a proxy, where the key counts for nothing.
+ * What a request says of this computer's owner key (services/owner.js), read once and taken out of it — the key's
+ * header and the app's windows' session header both —, so no route, record or log holds either: `owner` where it came
+ * over loopback, through no proxy, with the key of the Filament at the port it reached, or a browser session minted
+ * with it; `stale` where it carried one that is not (a key or session of an earlier start: the app's window before it
+ * took the new one); `none` where it carried neither, or came through a proxy, where the key counts for nothing.
  * @param {import("node:http").IncomingMessage} req
  * @returns {"owner" | "stale" | "none"}
  */
@@ -332,9 +332,9 @@ export function ownerOf(req) {
   if (was) return was;
   if (!req.headers) return "none";
   const sent = String(req.headers[OWNER_HEADER] ?? "");
+  const session = String(req.headers[OWNER_SESSION_HEADER] ?? "");
   delete req.headers[OWNER_HEADER];
-  const session = cookiesOf(req)[OWNER_COOKIE] || "";
-  if (session) dropCookie(req, OWNER_COOKIE);
+  delete req.headers[OWNER_SESSION_HEADER];
   const owner = ownerAt(/** @type {any} */ (req.socket)?.localPort);
   /** @type {"owner" | "stale" | "none"} */
   let said = "none";
@@ -344,7 +344,7 @@ export function ownerOf(req) {
   ownerSaid.set(req, said);
   return said;
 }
-/** The requests that sent the owner key itself in OWNER_HEADER (`ownerOf`): not a window's session cookie. @type {WeakSet<object>} */
+/** The requests that sent the owner key itself in OWNER_HEADER (`ownerOf`): not a window's session. @type {WeakSet<object>} */
 const keySent = new WeakSet();
 /**
  * Whether the request sent this computer's owner key itself (`ownerOf`) — a program that read owner.key: the command
@@ -364,19 +364,6 @@ export function countOwnerless(req, who) {
   if (who?.kind !== "local" || who.owner || ownerOf(req) !== "none" || deviceTokenOf(req)) return;
   ownerAt(/** @type {any} */ (req.socket)?.localPort)?.tokenless(req.headers?.["user-agent"]);
 }
-/** A request's Cookie header with one cookie taken out; the header itself where it held no other. @param {import("node:http").IncomingMessage} req @param {string} name */
-const dropCookie = (req, name) => {
-  const kept = String(req.headers.cookie || "")
-    .split(";")
-    .filter((part) => {
-      const at = part.indexOf("=");
-      return (at < 0 ? part : part.slice(0, at)).trim() !== name;
-    })
-    .join(";")
-    .trim();
-  if (kept) req.headers.cookie = kept;
-  else delete req.headers.cookie;
-};
 
 /**
  * Who calls (the owner's remote Filament of 11-06): this computer through no proxy (`local`) — `owner` where it sent

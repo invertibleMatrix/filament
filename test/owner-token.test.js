@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp } from "./helpers/app.js";
-import { OWNER_COOKIE, OWNER_FILE, OWNER_HEADER, createOwner, ownerAt, ownerHeaders, ownerKeyOf } from "../src/services/owner.js";
+import { OWNER_FILE, OWNER_HEADER, OWNER_SESSION_HEADER, createOwner, ownerAt, ownerHeaders, ownerKeyOf } from "../src/services/owner.js";
 import { ownerOf, whoIs } from "../src/http/guards.js";
 import { SESSION_REFUSED } from "../src/http/admin/owner.js";
 import { loopbackPost } from "../src/services/loopback.js";
@@ -64,25 +64,29 @@ describe("the owner key, read by the guards", () => {
   });
 
   // (fails before: yes — there was no key: services/owner.js and guards.js `ownerOf` were not there)
-  test("a call over loopback with the key is the owner's: the header and its session's cookie are taken out of the request, other cookies kept", () => {
+  test("a call over loopback with the key is the owner's: the key's header and the session's are taken out of the request", () => {
     const key = ownerKeyOf(dir);
     assert.match(key, /^fot_[A-Za-z0-9_-]{43}$/);
-    const req = fake({ [OWNER_HEADER]: key, cookie: `a=1; ${OWNER_COOKIE}=fos_none; b=2` }, PORT);
+    const req = fake({ [OWNER_HEADER]: key, [OWNER_SESSION_HEADER]: "fos_none", cookie: "a=1; b=2" }, PORT);
     assert.equal(ownerOf(req), "owner");
     assert.equal(req.headers[OWNER_HEADER], undefined, "the header is gone");
-    assert.equal(req.headers.cookie, "a=1; b=2", "its cookie is gone, the others stay");
+    assert.equal(req.headers[OWNER_SESSION_HEADER], undefined, "the session's too");
+    assert.equal(req.headers.cookie, "a=1; b=2", "cookies are the page's own");
     assert.deepEqual(whoIs(req, {}, null), { kind: "local", owner: true }, "read once: whoIs after it says the same");
     const session = owner.session();
-    const viaCookie = fake({ cookie: `${OWNER_COOKIE}=${session}` }, PORT);
-    assert.deepEqual(whoIs(viaCookie, {}, null), { kind: "local", owner: true }, "the app's window, by the session minted for it");
-    assert.equal(viaCookie.headers.cookie, undefined, "a Cookie header that held it alone is gone");
+    const viaSession = fake({ [OWNER_SESSION_HEADER]: session }, PORT);
+    assert.deepEqual(whoIs(viaSession, {}, null), { kind: "local", owner: true }, "the app's window, by the session minted for it");
+    assert.equal(viaSession.headers[OWNER_SESSION_HEADER], undefined);
+    // (fails before: yes — the plan's s0e: the windows held their session in a cookie of this computer's address, sent to
+    // every port of it, a server an agent runs among them)
+    assert.equal(ownerOf(fake({ cookie: `filament_owner=${session}` }, PORT)), "none", "a cookie is no session");
   });
 
   test("a key or session that is not this start's is stale; none is none; through a proxy the key counts for nothing, said once", () => {
     const wrong = fake({ [OWNER_HEADER]: `fot_${"A".repeat(43)}` }, PORT);
     assert.equal(ownerOf(wrong), "stale");
     assert.deepEqual(whoIs(wrong, {}, null), { kind: "local" }, "answered all the same");
-    assert.equal(ownerOf(fake({ cookie: `${OWNER_COOKIE}=fos_gone` }, PORT)), "stale");
+    assert.equal(ownerOf(fake({ [OWNER_SESSION_HEADER]: "fos_gone" }, PORT)), "stale");
     assert.equal(ownerOf(fake({}, PORT)), "none");
     assert.equal(ownerOf(fake({ [OWNER_HEADER]: ownerKeyOf(dir) }, 2)), "stale", "the key of the Filament at another port is no key there");
     const proxied = fake({ [OWNER_HEADER]: ownerKeyOf(dir), "x-forwarded-for": "100.64.0.9" }, PORT);
@@ -203,25 +207,28 @@ describe("the owner key, through a real Filament", () => {
     assert.equal((await counted()).count, was);
   });
 
-  test("the app's windows: a browser session minted for a call with the key alone, no-store; its cookie is the owner's; an earlier start's is stale and not counted", async () => {
+  test("the app's windows: a browser session minted for a call with the key alone, no-store; its header is the owner's, a cookie no one's; an earlier start's is stale and not counted", async () => {
     const refused = await call("/api/owner/session", { method: "POST", body: {} });
     assert.equal(refused.status, 403);
     assert.equal(refused.json.error, SESSION_REFUSED);
     const minted = await call("/api/owner/session", { method: "POST", body: {}, headers: ownerHeaders(shim.dataDir, shim.url) });
     assert.equal(minted.status, 200, minted.text);
-    assert.equal(minted.json.cookie, OWNER_COOKIE);
+    assert.deepEqual(Object.keys(minted.json), ["token"]);
     assert.match(minted.json.token, /^fos_/);
     assert.equal(minted.headers["cache-control"], "no-store");
+    assert.equal(minted.headers["set-cookie"], undefined, "no cookie: the app adds the session to its windows' calls to Filament alone");
     assert.ok(!minted.text.includes(ownerKeyOf(shim.dataDir)), "never the key itself");
     const was = (await counted()).count;
-    const page = await call("/api/state", { headers: { cookie: `${OWNER_COOKIE}=${minted.json.token}` } });
+    const page = await call("/api/state", { headers: { [OWNER_SESSION_HEADER]: minted.json.token } });
     assert.equal(page.status, 200);
     assert.ok(page.json.ownerless, "the window's read is this computer's own");
-    await call("/api/state", { headers: { cookie: `${OWNER_COOKIE}=fos_an-earlier-start` } });
+    await call("/api/state", { headers: { [OWNER_SESSION_HEADER]: "fos_an-earlier-start" } });
     await call("/api/state", { headers: { [OWNER_HEADER]: `fot_${"B".repeat(43)}` } });
     assert.equal((await counted()).count, was, "the window's session, and an earlier start's, are not counted");
+    await call("/api/state", { headers: { cookie: `filament_owner=${minted.json.token}` } });
+    assert.equal((await counted()).count, was + 1, "a session sent as a cookie is a call without the key");
     // (fails before: yes — the hunt on s0a: a session minted a session, so whatever read one held one for the start)
-    const again = await call("/api/owner/session", { method: "POST", body: {}, headers: { cookie: `${OWNER_COOKIE}=${minted.json.token}` } });
+    const again = await call("/api/owner/session", { method: "POST", body: {}, headers: { [OWNER_SESSION_HEADER]: minted.json.token } });
     assert.deepEqual([again.status, again.json.error], [403, SESSION_REFUSED], "a session mints none: the key itself does");
   });
 
