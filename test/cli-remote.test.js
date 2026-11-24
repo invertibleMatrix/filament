@@ -11,8 +11,10 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
+import { spawnSync } from "node:child_process";
 import { runCli } from "../src/cli/main.js";
 import { EXIT } from "../src/cli/client.js";
+import { pairLinkWords } from "../src/cli/commands.js";
 import { REMOTES_FILE, connectRemote, connectTo, disconnect, pairingOf, readRemotes } from "../src/cli/remotes.js";
 import { startApp, fakeUpstream, anthropicReply } from "./helpers/app.js";
 
@@ -66,6 +68,28 @@ test("pairingOf: the link's address, the code and the certificate's fingerprint 
   assert.deepEqual(pairingOf("http://box:1/ui/pair.html#code=AAAA-AAAA", "BBBB-BBBB"), { url: "http://box:1", code: "BBBB-BBBB", fingerprint: "" }, "a code typed wins");
   assert.throws(() => pairingOf("ftp://box/x"), { code: EXIT.usage });
   assert.throws(() => pairingOf("http://"), { code: EXIT.usage });
+});
+
+// (fails before: yes — the review of s4e: with the network listener off and the tailnet link alone, `filament pair` said
+// the fingerprint "must be null", and it named a certificate warning for a link whose certificate a public authority signs)
+test("filament pair's links: the certificate's fingerprint said for the network's links alone, never for the tailnet's, never null", () => {
+  const fp = `${"AB:".repeat(31)}AB`;
+  const lan = `https://192.168.1.20:20343/ui/pair.html#code=ABCD-EFGH&fp=${"ab".repeat(32)}`;
+  const tail = "https://box.tail1234.ts.net/ui/pair.html#code=ABCD-EFGH";
+  assert.deepEqual(pairLinkWords({ links: [tail], fingerprint: null }), ["On the other machine, open:", `  ${tail}`, `or run there: filament connect ${tail}`]);
+  assert.deepEqual(pairLinkWords({ links: [lan], fingerprint: fp }), ["On the other machine, open:", `  ${lan}`, `or run there: filament connect ${lan}`, `Its browser warns of the certificate once: the fingerprint it shows must be ${fp}.`]);
+  assert.equal(pairLinkWords({ links: [lan, tail], fingerprint: fp }).at(-1), `On a link of the network, its browser warns of the certificate once: the fingerprint it shows must be ${fp}.`);
+  assert.ok(!pairLinkWords({ links: [lan], fingerprint: null }).join("\n").includes("null"), "a fingerprint unknown is not said");
+  assert.deepEqual(pairLinkWords({ links: [] }), []);
+});
+
+// (fails before: yes — the review of s4e: `--from` with no folder threw a TypeError from path.join)
+test("scripts/vendor-qr.mjs --from with no folder is a usage error, and nothing is vendored", () => {
+  const r = spawnSync(process.execPath, [join("scripts", "vendor-qr.mjs"), "--from"], { encoding: "utf8" });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /^usage: node scripts\/vendor-qr\.mjs \[--from <folder>\]/);
+  assert.ok(!/TypeError/.test(r.stderr));
+  assert.ok(existsSync(join("src", "ui", "harness", "vendor", "qr", "qrcode.mjs")), "the vendored module stays");
 });
 
 // (fails before: yes — the command line asked the Filament of its own data folder alone, over loopback, and had no pair)

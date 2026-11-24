@@ -191,6 +191,21 @@ export function statusWords(s) {
   return lines.join("\n");
 }
 
+/**
+ * What `filament pair` says of a pairing's links (`POST /remote/pair`): each, and how to connect there; and where a link
+ * of the network's carries its certificate's fingerprint (`fp=`), the fingerprint the browser's one warning shows. A
+ * tailnet link's certificate a public authority signs: no warning is said of it, nor a fingerprint it has none of.
+ * @param {{ links?: string[], fingerprint?: string | null }} p @returns {string[]}
+ */
+export function pairLinkWords(p) {
+  const links = Array.isArray(p.links) ? p.links : [];
+  if (!links.length) return [];
+  const network = links.filter((l) => /[#&]fp=/.test(l));
+  const lines = ["On the other machine, open:", ...links.map((l) => `  ${l}`), `or run there: filament connect ${links[0]}`];
+  if (p.fingerprint && network.length) lines.push(`${network.length < links.length ? "On a link of the network, its" : "Its"} browser warns of the certificate once: the fingerprint it shows must be ${p.fingerprint}.`);
+  return lines;
+}
+
 /** @type {Command[]} */
 export const COMMANDS = [
   {
@@ -744,7 +759,7 @@ export const COMMANDS = [
       const mins = Math.max(1, Math.round((Number(p.expiresAt) - Date.now()) / 60_000));
       r.out(`Code ${p.code} — a ${p.scope === "view" ? "view-only" : "full"} device, for ${p.machine?.name || "this machine"}; good for ${mins} min, once.`);
       if (p.links?.length) {
-        r.out(["On the other machine, open:", ...p.links.map((/** @type {string} */ l) => `  ${l}`), `or run there: filament connect ${p.links[0]}`, `Its browser warns of the certificate once: the fingerprint it shows must be ${p.fingerprint}.`].join("\n"));
+        r.out(pairLinkWords(p).join("\n"));
         if (p.hostOnly) r.out(p.hostOnly);
       } else
         r.out(`No other machine reaches Filament on the network yet: turn on Settings › Remote access › Reach this machine on my network, and run this again for its links. Through tailscale serve or an SSH tunnel, open the pairing page at that address and type the code, or run there: filament connect <that address> ${p.code}`);

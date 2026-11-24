@@ -20,8 +20,13 @@ const VERSION = "2.0.4";
 const COPYRIGHT = "Copyright (c) 2009 Kazuhiko Arase";
 
 const fromAt = process.argv.indexOf("--from");
+const named = fromAt < 0 ? "" : String(process.argv[fromAt + 1] || "");
+if (fromAt >= 0 && (!named || named.startsWith("--"))) {
+  console.error("usage: node scripts/vendor-qr.mjs [--from <folder>] — --from names the folder whose node_modules holds the package");
+  process.exit(2);
+}
 const made = fromAt < 0 ? mkdtempSync(join(tmpdir(), "filament-qr-")) : null;
-const from = made || process.argv[fromAt + 1];
+const from = made || named;
 if (made) {
   writeFileSync(join(made, "package.json"), JSON.stringify({ name: "filament-qr", private: true }));
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
