@@ -1958,6 +1958,8 @@ export function sessionRoutes(a) {
       guard(async (r) => {
         const fork = memory.forkLine(String(r.params.id || ""), String(r.params.line || ""));
         if (!fork || fork.error) return sendJson(r.res, 404, { error: fork?.error || "no such rewound line" });
+        // A line of the person's chat in the copy Run on placed for it works in that copy as its chat does.
+        if (fork.id) native().adoptCopy(String(r.params.id || ""), String(fork.id));
         return sendJson(r.res, 200, fork);
       }),
     ],

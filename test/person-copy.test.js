@@ -130,6 +130,47 @@ test("a copy placed for the person: kept past 2 h idle and a new launch, never l
   assert.deepEqual(heard.flatMap((c) => c.chats), ["chat-p"]);
 });
 
+// (fails before: yes — the review of s2a: a copy held one chat, so a fork, a thread or a replay of the person's chat in it
+// was bound to nothing, two turns in it at once left it unheld when the first ended, and a chat moved out went with a Clear)
+test("chats made from the person's chat in its copy: bound beside it, each turn holds it, a Clear takes them all; one moved out leaves it, back is its again", async (t) => {
+  const data = folder(t, "data");
+  const root = join(folder(t, "root"), COPIES);
+  const { devices, laptop } = paired(data);
+  const copies = createCopies({ dataDir: data, root, devices });
+  const taken = copies.take(laptop.agents, "widgets", { owned: true, fresh: true });
+  assert.ok(taken.ok);
+  const c = taken.copy;
+  assert.equal(copies.bind(c.id, "chat-p"), true);
+  assert.equal(copies.adopt(c.id, "fork-1", "nobody", c.folder), false, "made from no chat of its");
+  assert.equal(copies.adopt(c.id, "fork-1", "chat-p", join(tmpdir(), "elsewhere")), false, "a folder out of it: its own worktree");
+  assert.equal(copies.adopt(c.id, "fork-1", "chat-p", join(c.folder, "src")), true);
+  assert.equal(copies.ownFolder(c.id, "fork-1"), c.folder, "it works there whatever agentLoop.roots lists");
+  assert.equal(copies.ownFolder(c.id, "stranger"), "");
+  // Two turns at once: the one that ends first leaves the copy held, and half written, for the other.
+  assert.equal(copies.lease(c.id, "chat-p"), "");
+  assert.equal(copies.lease(c.id, "fork-1"), "");
+  copies.grace(c.id, 0, "chat-p");
+  assert.equal(copies.get(c.id)?.turn, true, "the fork's turn still runs there");
+  copies.grace(c.id, 0, "fork-1");
+  assert.equal(copies.get(c.id)?.turn, false);
+  assert.equal(copies.lease(c.id, "stranger", true), "its copy here went to another chat started there: Run on sends a fresh one with your next new chat there");
+  // Its chat moved out leaves it, the fork its chat now; moved back in, it is the copy's again.
+  assert.equal(copies.leave(c.id, "chat-p"), true);
+  assert.equal(copies.get(c.id)?.chat, "fork-1");
+  assert.equal(copies.ownFolder(c.id, "chat-p"), "");
+  assert.equal(copies.rejoin(c.id, "chat-p", join(tmpdir(), "elsewhere")), false);
+  assert.equal(copies.rejoin(c.id, "chat-p", c.folder), true);
+  assert.deepEqual(copies.get(c.id)?.also, ["chat-p"]);
+  // Kept across a restart; a Clear takes every one of them.
+  const again = createCopies({ dataDir: data, root, devices });
+  assert.deepEqual(again.usage(laptop.agents)?.chats, ["fork-1", "chat-p"]);
+  /** @type {import("../src/services/copies.js").Cleared[]} */
+  const heard = [];
+  again.onCleared((x) => void heard.push(x));
+  await again.clear(laptop.agents);
+  assert.deepEqual(heard.flatMap((x) => x.chats), ["fork-1", "chat-p"]);
+});
+
 // (fails before: yes — an idle copy of any kind went for room, the person's chat's among them; then, the review of s2a:
 // one whose chat never came, or was deleted, held its place for a week, and their agents ran commands in it)
 test("room: the person's copy is never let go for it while its chat is there, and the words say so; one whose chat never came or was deleted is any idle copy; their agents are fenced out of it", async (t) => {
@@ -320,10 +361,22 @@ test("between two Filaments: the app's full device starts its chat in the copy p
     const listed = await (await there.api("/api/remote/devices")).json();
     assert.deepEqual(listed.devices.find((/** @type {any} */ d) => d.id === id)?.copies?.chats, [{ id: chat.id, title: "Fix the widgets" }]);
 
+    // (fails before: yes — the review of s2a: a fork of it, or a thread it started, was bound to nothing, and its turns
+    // were refused for agentLoop.roots) Made from it, each works in the copy too, and its turns run there.
+    const forked = await app(`/api/sessions/${encodeURIComponent(chat.id)}/fork`, { atTurn: 1 });
+    const fork = await forked.json();
+    assert.equal(forked.status, 200, JSON.stringify(fork));
+    assert.deepEqual(there.app.remoteCopies.get(taken.copy.id)?.also, [fork.chainId]);
+    const forkTurn = await app(`/api/sessions/${encodeURIComponent(fork.chainId)}/turns`, { content: "and again", stream: false });
+    assert.equal(forkTurn.status, 200, await forkTurn.clone().text());
+    const thread = there.app.sessions.create({ cwd, model: "agent/brain-model", title: "A thread", thread: chat.id });
+    assert.deepEqual(there.app.remoteCopies.get(taken.copy.id)?.also, [fork.chainId, thread.id]);
+
     const cleared = await there.api(`/api/remote/devices/${encodeURIComponent(id)}/copies/clear`, { method: "POST" });
     assert.equal(cleared.status, 200);
     assert.equal(existsSync(cwd), false);
     assert.equal((await there.api(`/api/sessions/${encodeURIComponent(chat.id)}`)).status, 404, "the person's chat in it went with it");
+    for (const made of [fork.chainId, thread.id]) assert.equal((await there.api(`/api/sessions/${encodeURIComponent(made)}`)).status, 404, "and those made from it");
     // (fails before: yes — the review of s2a: the project stayed in the list after its copy went)
     assert.ok(there.app.memory.archive && !there.app.memory.archive.getProject(chat.projectId), "and its project, which held no other chat");
     assert.ok(!(await (await there.api("/api/memory/projects")).json()).projects?.some((/** @type {any} */ p) => p.id === chat.projectId), "none in the list");

@@ -570,15 +570,20 @@ number folder; that project goes with the copy once it holds no other chat.
 its agents' device places the copy for you (`for: "person"`), and its app starts the chat in it as your device paired
 here — the one that made that agents' device. That chat is the copy's: it works there whatever `agentLoop.roots` lists,
 its turns hold the copy, and what it changed is read back to the machine that sent it, as a launch's change is. Their
-agents start no chat there, their own machine's included, and without Full control run no command there and read
-nothing of it. Another chat
-started in that folder — one of this computer's, another device's, a fork or a thread of that chat — is bound to no
-copy, and is made only where `agentLoop.roots` lets it, as in any folder. While its chat is there — or, before one is
-started, for the quarter hour after the copy is placed — the copy is never taken by a launch of the same project nor let
-go to make room; it still counts in the 12 copies and 20 GB. Once its chat is deleted, or none came, it is an idle copy
-as any. It goes a week after its chat last worked there, the chat with it. One copy holds one chat: a second start
-there once the first ran a turn is refused; one before that takes the copy, and the first chat, which never ran, is
-deleted. The **Run on** pill on that machine's line lets it do this with **Agents** off — send copies, place them for
+agents start no chat there, their own machine's included. Without Full control they run no command there and read
+nothing of it; with Full control on for that machine, its agents may run commands in your copy as anywhere here. A chat
+made from that chat — a fork, a rewound line opened as its own chat, a thread it starts, a replay, a team beside it —
+works in the copy too where its folder lies in it (a fork with a worktree of its own does not): its turns hold the
+copy, two turns at once keep it held until the last one ends, and it goes with the copy. A chat of the copy's moved to
+a folder out of it leaves the copy, and stays when the copy goes; moved back, it is the copy's again. Any other chat
+started in that folder — one of this computer's, another device's — is bound to no copy, and is made only where
+`agentLoop.roots` lets it, as in any folder. While its chats are there — or, before one is started, for the quarter
+hour after the copy is placed — the copy is never taken by a launch of the same project nor let go to make room; it
+still counts in the 12 copies and 20 GB. Once they are deleted, or none came, it is an idle copy as any. It goes a week
+after its chats last worked there, the chats with it. One copy holds one chat started there: a second start there once
+the first ran a turn is refused; one before that takes the copy, and the first chat, which never ran, is deleted. A
+turn of a chat whose copy went is refused in words: Run on sends a fresh one with your next new chat there. The
+**Run on** pill on that machine's line lets it do this with **Agents** off — send copies, place them for
 your chats, read back what changed —, and nothing more: no chat or command of its agents runs here by it. Agents holds
 Run on while it is on. **Clear copies** names your chats it would delete with the copies — *Your chat running there
 from Laptop is deleted too: “Fix the widgets”.* — before it asks. On the machine that sends, `/api/remote-work`

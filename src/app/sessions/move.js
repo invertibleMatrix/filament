@@ -116,13 +116,14 @@ export function movedSince(meta, n) {
 
 /**
  * `copies` copy a project's worktree template into a worktree a move made, `templateOf` names a place's list
- * (HarnessV4_Four_Plan E19); absent, nothing is copied.
+ * (HarnessV4_Four_Plan E19); absent, nothing is copied. `moved`: told once a chat's folder changed, a move's or its
+ * taking back (the sessions service's `copyMoved`: a chat out of the copy Run on placed for it leaves it).
  * @param {{ memory: any, config: { get: () => any },
  *   sessionTurns?: import("../../services/session-turns.js").SessionTurns | null, cwdOf: (chain: any) => string,
  *   busyOf: (chain: any) => string | null, log?: (level: string, msg: string) => void, now?: () => number,
- *   copies?: import("./copies.js").WorktreeCopies | null, templateOf?: (place: string) => string[] }} deps
+ *   copies?: import("./copies.js").WorktreeCopies | null, templateOf?: (place: string) => string[], moved?: (chainId: string) => void }} deps
  */
-export function createChatMove({ memory, config, sessionTurns = null, cwdOf, busyOf, log = () => {}, now = Date.now, copies = null, templateOf = () => [] }) {
+export function createChatMove({ memory, config, sessionTurns = null, cwdOf, busyOf, log = () => {}, now = Date.now, copies = null, templateOf = () => [], moved = () => {} }) {
   /** The chats moving now: a second click is told so. @type {Set<string>} */
   const moving = new Set();
   const archive = () => {
@@ -480,6 +481,7 @@ export function createChatMove({ memory, config, sessionTurns = null, cwdOf, bus
       ...(was.worktree ? { tree: { ...meta.tree, worktree: cwd } } : {}),
     });
     memory.sessionLists?.clear?.();
+    moved(chain.id);
     log("info", `move: chat ${chain.id} moved from ${p.from.cwd} to ${cwd} with ${rec.files.length} file(s)`);
     if (made && copy.length) copies?.start(chain.id, { from: p.from.place, to: made.folder, paths: copy });
     return { ok: true, move: movedBoundary(rec, { newest: true, turns: turnN }), cwd, running: p.running };
@@ -575,6 +577,7 @@ export function createChatMove({ memory, config, sessionTurns = null, cwdOf, bus
       ...(meta.tree?.worktree || rec.was.worktree ? { tree: { ...meta.tree, worktree: rec.was.worktree ?? undefined } } : {}),
     });
     memory.sessionLists?.clear?.();
+    moved(chain.id);
     log(left ? "warn" : "info", `move: chat ${chain.id} moved back to ${rec.from.cwd}${left ? `; ${left}` : ""}`);
     return { ok: true, cwd: cwdOf(chainOf(chain.id)), left };
   }

@@ -145,8 +145,9 @@ export function createReplayCompare({ sessions, archive, usage, runs, events, co
           throw Object.assign(new Error(`the copy ${forkId} could not take the settings: ${e?.message || e}`), { status: 400 });
         }
     } else {
-      // A fresh copy starts as a new chat does, from your defaults, the patch over them.
-      const row = sessions.create({ cwd: chain.meta?.cwd || a.getProject(chain.project_id)?.cwd || process.cwd(), model: chain.model || null, title: `replay of ${chain.title || id}`, settings: patch, kind: "fork" });
+      // A fresh copy starts as a new chat does, from your defaults, the patch over them — made from its chat, so one of
+      // the person's in the copy Run on placed for it works there too (sessions `create`'s `source`).
+      const row = sessions.create({ cwd: chain.meta?.cwd || a.getProject(chain.project_id)?.cwd || process.cwd(), model: chain.model || null, title: `replay of ${chain.title || id}`, settings: patch, kind: "fork", source: id });
       forkId = String(row.id);
       a.mergeMeta(forkId, { replayOf: { from: id, atTurn: 0 } });
     }

@@ -473,7 +473,8 @@ export function settingsChangeOfLine(line) {
  *   chatWatchers?: ((chainId: string) => import("../../core/routines.js").ChatWatcher[]) | null,
  *   chatWatching?: Pick<ReturnType<typeof import("../chat-watchers.js").createChatWatchers>, "reviews" | "guide" | "woke"> | null,
  *   copies?: import("./copies.js").WorktreeCopies | null,
- *   copyLease?: { start: (copy: string, chat: string) => string, end: (copy: string, until: number) => void } | null,
+ *   copyLease?: { start: (copy: string, chat: string, person?: boolean) => string, end: (copy: string, until: number, chat?: string) => void, own?: (chat: string) => string,
+ *     adopt?: (copy: string, chat: string, from: string, folder: string) => boolean, leave?: (copy: string, chat: string) => boolean, rejoin?: (copy: string, chat: string, folder: string) => boolean } | null,
  *   agentTakesMcp?: ((upstreamId: string) => boolean) | null,
  *   graphKept?: ((chainId: string) => import("../../core/task-graph.js").Kept | null) | null,
  *   graphWhere?: ((chainId: string, crew: import("../../core/task-graph.js").Crew, o?: { starting?: boolean }) => string | null) | null,
@@ -1392,7 +1393,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     if (pausedNow(chain)) return "a question waits for your answer";
     return null;
   };
-  const chatMove = createChatMove({ memory, config, sessionTurns, cwdOf, busyOf, log, now, copies, templateOf: (place) => worktreeTemplate(place).copy });
+  const chatMove = createChatMove({ memory, config, sessionTurns, cwdOf, busyOf, log, now, copies, templateOf: (place) => worktreeTemplate(place).copy, moved: (id) => copyMoved(id) });
   /**
    * The folder the agent loop works in for this session, judged and resolved as the loop judges it (`folderVerdict`):
    * where what comes back after a summary is read from (HarnessV3-AtHome AH-D9 b). "" for a session Filament does not
@@ -2123,7 +2124,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
   /**
    * A new session: the folder validated, its project row ensured (D3), the chain created with the harness as client
    * and the given session layer (plus `model.name`).
-   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean, ownCopy?: string, projectName?: string }} args
+   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean, ownCopy?: string, projectName?: string, source?: string | null }} args
    *   `preset`: none, as `draftOf` reads it. `autoTitle` (no `title`): named by the first line of its first message
    *   that reaches the model, never by a command Filament answers (backlog 18) — the archive writes it when that turn
    *   begins. `beside`: the chat a team's chat runs beside
@@ -2135,9 +2136,11 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    *   `agents`: another machine's agents' device starts it (http/admin/sessions.js) — `draftOf`'s `theirs`; one made
    *   from a chat of theirs is theirs without it. `ownCopy`: as `draftOf` reads it. `projectName`: what its project is
    *   called where this makes it — a copy's, for the project it is a copy of (services/copies.js `projectName`), never
-   *   its number folder; a project there already keeps its name.
+   *   its number folder; a project there already keeps its name. `source`: the chat it is made from where no link names
+   *   it (a replay's fresh copy). One made from the person's chat in the copy Run on placed for it works in that copy
+   *   too, where its folder lies in it (`adoptCopy`).
    */
-  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false, ownCopy = "", projectName = "" }) {
+  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false, ownCopy = "", projectName = "", source = null }) {
     const a = archive();
     if (kind === "team" ? !beside || !a.hasChain(String(beside)) : kind !== "interactive" && kind !== "fork") throw refusal(400, `kind must be interactive or fork, not "${kind}"`);
     if (thread != null && (kind !== "interactive" || !a.hasChain(String(thread)))) throw refusal(400, "a thread is an interactive chat started from one that is there");
@@ -2145,10 +2148,12 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     // started — is theirs as that chat is (the remote-agents plan's f-fence2): their device kept on it, so the person's
     // folders never count its own (archive `chatFolders`), and memory's recall and tools off while it runs fenced, as
     // their chat's (archive.js `fenced`).
-    const madeFrom = beside || parentId || thread;
+    const madeFrom = beside || parentId || thread || source;
     const theirs = madeFrom ? a.metaOf(String(madeFrom), ["agentDevice", "agentFrom"]) : null;
     const device = theirs?.agentDevice;
-    const draft = draftOf({ cwd, model, settings, preset, theirs: agents || typeof device === "string", ownCopy });
+    // Made from the person's chat in the copy Run on placed for it: that copy is a folder it may work in too.
+    const fromCopy = madeFrom && !agents && typeof device !== "string" && !ownCopy ? copyLease?.own?.(String(madeFrom)) || "" : "";
+    const draft = draftOf({ cwd, model, settings, preset, theirs: agents || typeof device === "string", ownCopy: ownCopy || fromCopy });
     const real = draft.cwd;
     // The project is the folder's, or its main folder's for a worktree (GW-D46); the chat's own folder is `meta.cwd`.
     const project = a.ensureProject(draft.home, { name: String(projectName || "").trim().slice(0, 200) || null });
@@ -2160,6 +2165,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     if (title && String(title).trim()) a.setTitle(chain.id, String(title).trim().slice(0, 200));
     const named = !!(title && String(title).trim());
     a.mergeMeta(chain.id, { native: true, cwd: real, ...(autoTitle && !named ? { autoTitle: true } : {}), ...(from?.space && from.space !== project.id ? { from: { space: String(from.space) } } : {}), ...(typeof device === "string" ? { agentDevice: device, ...(typeof theirs?.agentFrom === "string" ? { agentFrom: theirs.agentFrom } : {}) } : {}) });
+    if (fromCopy) adoptCopy(String(madeFrom), chain.id);
     // The layer goes through the one writer (D7): validated, mirrored (memory.enabled, privacy, the model
     // column). It records only the session's creation (nothing else happened). The draft already passed the writer's
     // own validation, so a refusal here is a broken invariant, said loudly rather than leaving a session that silently
@@ -2176,6 +2182,40 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     });
     const s = settingsOf(chain.id);
     return { id: chain.id, key: `n:${chain.id}`, projectId: project.id, cwd: real, model: s.effective.model?.name || null, kind, title: title || null, settingsHash: s.hash };
+  }
+
+  /**
+   * A chat made from the person's chat in the copy Run on placed for it — a fork, a rewound line opened as its own chat,
+   * a thread, a replay, a team's beside it — works in that copy as its chat does, where its folder lies in it: bound to
+   * it too (services/copies.js `adopt`, `meta.copy`), so its turns hold the copy and run there whatever agentLoop.roots
+   * lists, and it goes with the copy. → whether it is the copy's. @param {string} from @param {string} to
+   */
+  function adoptCopy(from, to) {
+    const a = archive();
+    const copy = copyLease?.adopt ? a.metaOf(String(from), ["copy"])?.copy : null;
+    const made = a.getChain(String(to));
+    if (typeof copy !== "string" || !copy || !made || !copyLease?.adopt) return false;
+    if (!copyLease.adopt(copy, String(to), String(from), cwdOf(made))) return false;
+    a.mergeMeta(String(to), { copy });
+    return true;
+  }
+
+  /**
+   * A chat moved (sessions/move.js), or moved back: one whose folder left the copy Run on placed for the person's chat
+   * leaves it — its turns hold it no more, and a Clear of the copy leaves it be (`meta.copyLeft` names the copy it left);
+   * one back in its folder is the copy's again. Another machine's agents' chats keep their copies as they are.
+   * @param {string} chainId
+   */
+  function copyMoved(chainId) {
+    const a = archive();
+    const m = copyLease?.leave ? a.metaOf(chainId, ["copy", "copyLeft", "agentDevice"]) : null;
+    const chain = a.getChain(chainId);
+    if (!m || !chain || typeof m.agentDevice === "string" || !copyLease?.leave || !copyLease.rejoin) return;
+    const id = typeof m.copy === "string" && m.copy ? m.copy : typeof m.copyLeft === "string" ? m.copyLeft : "";
+    if (!id) return;
+    if (copyLease.rejoin(id, chainId, cwdOf(chain))) {
+      if (m.copy !== id) a.mergeMeta(chainId, { copy: id, copyLeft: undefined });
+    } else if (m.copy === id && copyLease.leave(id, chainId)) a.mergeMeta(chainId, { copy: undefined, copyLeft: id });
   }
 
   /**
@@ -2608,12 +2648,15 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
         throw refusal(409, `this chat's coding agent runs in the mode its model's name sets (${named}), in which it asks Filament nothing before it acts: a turn held to reading cannot be held here`, { watch: "unheld", mode: named });
     }
     const cwd = cwdOf(chain);
-    // A chat another machine's agents started in a copy here holds it while its turn runs (services/copies.js `lease`):
-    // one whose copy went to a newer launch, or went, is refused, its folder no longer what its agent worked in.
-    const copy = copyLease ? archive().metaOf(chain.id, ["copy"])?.copy : null;
+    // A chat another machine's agents started in a copy here, or the person's own chat in the copy Run on placed for it
+    // (or one made from it), holds it while its turn runs (services/copies.js `lease`): one whose copy went to a newer
+    // launch, or went, is refused, its folder no longer what its agent worked in.
+    const copyMeta = copyLease ? archive().metaOf(chain.id, ["copy", "agentDevice"]) : null;
+    const copy = copyMeta?.copy;
     if (typeof copy === "string" && copy) {
-      const no = /** @type {NonNullable<typeof copyLease>} */ (copyLease).start(copy, chain.id);
-      if (no) throw refusal(410, `this chat works in a copy another machine sent: ${no}`);
+      const person = typeof copyMeta?.agentDevice !== "string";
+      const no = /** @type {NonNullable<typeof copyLease>} */ (copyLease).start(copy, chain.id, person);
+      if (no) throw refusal(410, `${person ? "this chat works in the copy of your project Run on sent here" : "this chat works in a copy another machine sent"}: ${no}`);
     }
     // The lock is taken LAST, right before the try that releases it — the refusals above must never hold it
     // (only its release frees it: a refused turn leaking it would hold the session until Filament restarts). Lost the
@@ -2647,7 +2690,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     try {
       if (typeof copy === "string" && copy && copyLease) {
         const lease = copyLease;
-        renew = setInterval(() => void lease.start(copy, chain.id), COPY_RENEW_MS);
+        renew = setInterval(() => void lease.start(copy, chain.id, typeof copyMeta?.agentDevice !== "string"), COPY_RENEW_MS);
         renew.unref?.();
       }
       memory.assertPrivacy(chain.id);
@@ -3665,7 +3708,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
       if (renew) clearInterval(renew);
       if (typeof copy === "string" && copy) {
         const waits = archive().metaOf(chain.id, ["paused"])?.paused;
-        copyLease?.end(copy, waits && PAUSE_KINDS.includes(waits.kind) ? Number(waits.expires) || Infinity : 0);
+        copyLease?.end(copy, waits && PAUSE_KINDS.includes(waits.kind) ? Number(waits.expires) || Infinity : 0, chain.id);
       }
       gaveBack();
       stretchEnded(chain.id);
@@ -6630,6 +6673,8 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
       if (Object.keys(flatten(next)).length) a.setChainSettings(forkId, next);
       else if (layerMode === "project" || ownParallel) a.setChainSettings(forkId, null);
       a.mergeMeta(forkId, { native: true, cwd: cwdOf(chain), forkStrategy: { transcript: transcriptMode, results: resultsMode || undefined } });
+      // A fork of the person's chat in the copy Run on placed for it works in that copy too, unless it has a worktree of its own.
+      adoptCopy(chain.id, forkId);
       memory.assertPrivacy(forkId);
       const inherited = modelTurns(forkId);
       if (transcriptMode === "folds" && inherited.length)
@@ -6719,6 +6764,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     instructionsFor,
     skillsOf,
     create,
+    adoptCopy,
     check,
     folderProject,
     draftStart,

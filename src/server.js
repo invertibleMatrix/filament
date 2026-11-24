@@ -1840,6 +1840,16 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const skillStore = createSkillStore({ dataDir, shippedDir: join(__dirname, "skills"), log });
   // A made skill's books (HarnessV4_Skills_Plan step 2): split into parts, a table of contents, a full-text index.
   const skillLibrary = createSkillLibrary({ log });
+  /**
+   * The copy placed for a chat of the person's, bound to it as their machine's app started it there (http/admin/
+   * sessions.js), or to a chat made from that one (copies.js `adopt`): its turns work in it whatever agentLoop.roots
+   * lists. @param {string} chat
+   */
+  const ownCopy = (chat) => {
+    if (!chat) return "";
+    const id = memory.archive?.metaOf?.(chat, ["copy"])?.copy;
+    return typeof id === "string" ? remoteCopies.ownFolder(id, chat) : "";
+  };
   const deps = {
     config: config.get,
     selfPort,
@@ -1856,14 +1866,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     // as it started (http/admin/remote.js `agentFolderRefusal`; the fc-review's).
     agentsFolder: (/** @type {string} */ cwd, /** @type {string | null | undefined} */ device) =>
       agentFolderRefusal(cwd, { dataDir, roots: config.get().agentLoop?.roots || [], folders: memory.chatFolders({ person: true }), doing: "work", ...remoteCopies.fenceOf(device || "") }),
-    // The copy placed for a chat of the person's, bound to it as their machine's app started it there (http/admin/
-    // sessions.js): its turns work in it whatever agentLoop.roots lists.
-    ownCopy: (/** @type {string} */ chat) => {
-      if (!chat) return "";
-      const id = memory.archive?.metaOf?.(chat, ["copy"])?.copy;
-      const c = typeof id === "string" ? remoteCopies.get(id) : null;
-      return c?.owned && c.chat === chat ? c.folder : "";
-    },
+    ownCopy,
     secondLook,
     // Parallelize tasks for a chat: its own switch, else Settings › Experimental's (`parallelFor`).
     parallelFor,
@@ -2048,7 +2051,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     records: usage,
     // A chat another machine's agents started in a copy here holds it while its turns run, and a while after for a
     // follow-up; one whose copy went to a newer launch is refused (services/copies.js `lease`, `grace`).
-    copyLease: { start: (id, chat) => remoteCopies.lease(id, chat), end: (id, until) => void remoteCopies.grace(id, until) },
+    copyLease: {
+      start: (id, chat, person) => remoteCopies.lease(id, chat, person),
+      end: (id, until, chat) => void remoteCopies.grace(id, until, chat),
+      own: ownCopy,
+      adopt: (id, chat, from, folder) => remoteCopies.adopt(id, chat, from, folder),
+      leave: (id, chat) => remoteCopies.leave(id, chat),
+      rejoin: (id, chat, folder) => remoteCopies.rejoin(id, chat, folder),
+    },
     // A running compaction's progress rides the events feed every page holds, with its session's id
     // (HarnessV3-FailurePoints §5.1 item 3; HarnessV4_Tasks U3-5).
     publish: (chainId, e) => events.publish("compactions", { ...e, chainId }),
