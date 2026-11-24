@@ -349,11 +349,38 @@ describe("the desk's rows and Bring back, in a stand-in page", () => {
     await desk.reload();
     await until(() => desk.waiting("m-studio", "c-there"), "looked at, once read");
     assert.deepEqual(calls, ["GET /remote-work", "GET /remote-work", "POST /remote-work/w1/check"]);
-    // The page's Run on send reads them so, as the chat stands there.
-    const { readFileSync } = await import("node:fs");
-    const app = readFileSync("src/ui/harness/app.js", "utf8");
-    const send = app.slice(app.indexOf("async function runOnFirst("), app.indexOf("function allowRunOnSend("));
-    assert.equal(send.match(/sidebar\.workStarted\(\);/g)?.length, 2, "where it stands there, and where it went");
+    // (The send's own call of it: run-on.test.js, `recorded`.)
+  });
+
+  // (fails before: yes — the review of x26: a reload joined a read already under way, asked before the record was made,
+  // and its answer without the record was all it read)
+  test("a reload while a read is under way reads again after it: the record made meanwhile is read, and its chat looked at", async () => {
+    const { createDeskWork } = await import("../src/ui/harness/desk-work.js");
+    let made = false;
+    /** @type {string[]} */
+    const calls = [];
+    /** The first read's answer, held until the test lets it go. @type {(v?: unknown) => void} */
+    let letGo = () => {};
+    const held = new Promise((r) => (letGo = r));
+    const api = async (/** @type {string} */ path, /** @type {any} */ init = {}) => {
+      calls.push(`${init.method || "GET"} ${path}`);
+      if (path === "/remote-work") {
+        // Asked before the record was made: it answers without it, however late.
+        const had = made;
+        if (calls.length === 1) await held;
+        return { works: had ? [work()] : [] };
+      }
+      return { work: work({ seen: init.body?.seen, waiting: { at: "c1", files: 1, conflicts: 0 } }) };
+    };
+    const desk = createDeskWork({ api, toast: () => {}, dialog: dialogs().dialog, onChange: () => {}, now: () => 1_000_000 });
+    desk.sync(deskOf({ when: 500 }));
+    await until(() => calls.length === 1, "a read under way");
+    made = true;
+    const reread = desk.reload();
+    letGo();
+    await reread;
+    await until(() => desk.waiting("m-studio", "c-there"), "looked at, once read");
+    assert.deepEqual(calls, ["GET /remote-work", "GET /remote-work", "POST /remote-work/w1/check"]);
   });
 
   test("while its turn runs there, Bring back says so and asks nothing", async () => {

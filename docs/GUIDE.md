@@ -610,7 +610,9 @@ typed there since. A first message there goes as plain words: files, a brief, `/
 `/steer-fork` and **@names** are refused, as is asking your agents before it — send them in the chat there once it
 opens. The project menu's rows say the other machines a project is on too (*also on Studio*), as their chats say it.
 
-What a chat in a copy of your work changes there waits in that copy until you bring it back. Once a turn of it ends —
+What a chat in a copy of your work changes there waits in that copy until you bring it back. (A chat started in a
+clean clone works in that machine's own clone of your project: what it changes comes back by git — commit and push
+there, then pull here —, never by Bring back.) Once a turn of it ends —
 not while it works, nor while it waits for you — the desk looks at what it changed: while its row stands in Now, a
 card under it says *3 files changed on Studio*, with **Bring back**, and its row under its project wears *↩ 3*. Bring
 back says which files would come into your folder and how much each changed, and what stayed there; a file you changed

@@ -2649,6 +2649,8 @@ async function runOnFirst(chat, text, attachments) {
         allow: (/** @type {any} */ ask) => allowRunOnSend(ask),
         // Opened in place where the person still looks at this chat; else the desk's list has it.
         open: (m, chain) => (shown() ? sidebar.openOnMachine(m, deskRoute({ chain, thread: null })) : toast(`Your chat started on ${m.name}: it is in the list`)),
+        // Its record read now: Bring back looks at the chat once its turn ends, however soon.
+        recorded: () => sidebar.workStarted(),
       },
     );
     /** The chat stands there: the chip names its machine, and the next send from this Start goes to it. @param {{ chat: string, work: any }} s */
@@ -2657,7 +2659,6 @@ async function runOnFirst(chat, text, attachments) {
       chat.runOn = at.place.id;
       chat.runOnName = at.place.name;
       sidebar.load();
-      sidebar.workStarted();
     };
     if (!out.ok) {
       if (out.started) standing(out.started);
@@ -2674,8 +2675,6 @@ async function runOnFirst(chat, text, attachments) {
     delete chat.runOnName;
     delete chat.runOnStarted;
     sidebar.load();
-    // Its record read now: Bring back looks at the chat once its turn ends, however soon.
-    sidebar.workStarted();
     return undefined;
   } finally {
     chat.runOnBusy = false;

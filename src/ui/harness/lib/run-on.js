@@ -229,13 +229,19 @@ export function copyRefusal(place, me) {
  * as the server said it; true sends it) —; the chat started there by the app's own device (the desk bridge's `create`,
  * on the chat's model, or one that answers there, and in its mode), named to the record, the message sent, and the
  * chat opened in place. `started`: a chat started there before whose message did not go — the message alone goes now.
+ * `recorded`: a copy's record names the chat there, for the desk to read now (desk-work.js `reload`). A chat in a clean
+ * clone has no record: it works in that machine's own clone, and what it changes comes back by git, never Bring back.
  * → the chat there; else why not, in words, and the chat where one stands there (`started`), whose message did not go.
  * @param {{ place: Place, here: Here, folder: string, text: string, model?: string, mode?: string, started?: { chat: string, work: any | null } | null }} o
- * @param {{ api: (path: string, init?: any) => Promise<any>, call: (p: any) => Promise<any>, allow: (ask: any) => Promise<boolean>, open: (machine: { id: string, name: string }, chat: string) => void }} io
+ * @param {{ api: (path: string, init?: any) => Promise<any>, call: (p: any) => Promise<any>, allow: (ask: any) => Promise<boolean>, open: (machine: { id: string, name: string }, chat: string) => void, recorded?: () => void }} io
  * @returns {Promise<{ ok: true, chat: string, work: any | null, unsure?: string } | { ok: false, words: string, said?: boolean, started?: { chat: string, work: any | null } }>}
  */
 export async function runOnSend({ place, here, folder, text, model = "", mode = "", started = null }, io) {
-  if (started) return turnThere(place, started, text, io);
+  if (started) {
+    // A record its first send's read may have missed: read again with this one.
+    if (started.work) io.recorded?.();
+    return turnThere(place, started, text, io);
+  }
   const clone = cleanClone(place, here);
   /** @type {any} */
   let work = null;
@@ -269,6 +275,8 @@ export async function runOnSend({ place, here, folder, text, model = "", mode = 
     } catch (/** @type {any} */ e) {
       return { ok: false, words: `The chat started on ${place.name}, and could not be named here, so what it changes cannot come back: ${line(e?.message || e, 300)}` };
     }
+    // Its record names the chat now: read at once, so a turn that ends however soon is looked at for Bring back.
+    io.recorded?.();
   }
   return turnThere(place, { chat, work }, text, io);
 }

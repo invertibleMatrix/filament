@@ -113,6 +113,7 @@ describe("the first message there", () => {
       return allow;
     },
     open: (/** @type {any} */ m, /** @type {string} */ chat) => void asked.push(`open ${m.id} ${chat}`),
+    recorded: () => void asked.push("the desk reads its record"),
   });
   beforeEach(() => {
     asked = [];
@@ -121,7 +122,9 @@ describe("the first message there", () => {
   test("Bring my work: asked, sent with your yes, the chat started in the copy, named here, the message sent, opened in place", async () => {
     const out = await runOnSend({ place: place({ id: "studio", name: "Studio", models: ["m1"], maker: "dev-1" }), here: placesOf([]).here, folder: "/w/r", text: "fix it", model: "m1", mode: "auto" }, io());
     assert.deepEqual(out, { ok: true, chat: "c-there", work: { id: "w1", cwd: "/copies/1/r" } });
-    assert.deepEqual(asked, ["me studio", "POST /remote-work", "asked the person", "POST /remote-work allow=ask-1", "create /copies/1/r model=m1 mode=auto", "POST /remote-work/w1/chat chat=c-there", "turn c-there", "open studio c-there"]);
+    // (fails before: yes — the review of x26: the page read the records after the send, counted in its source) The desk
+    // reads the record as soon as it names the chat, before the turn there can end.
+    assert.deepEqual(asked, ["me studio", "POST /remote-work", "asked the person", "POST /remote-work allow=ask-1", "create /copies/1/r model=m1 mode=auto", "POST /remote-work/w1/chat chat=c-there", "the desk reads its record", "turn c-there", "open studio c-there"]);
   });
 
   test("a no sends nothing; a model that does not answer there gives way to one that does; a chat not started says the copy waits", async () => {
@@ -151,7 +154,7 @@ describe("the first message there", () => {
     const here = { remote: "r", head: HEAD, branch: "main", dirty: false, sub: "web" };
     const out = await runOnSend({ place: place({ id: "studio", clones: [{ path: "/w/r", head: HEAD, branch: "main", dirty: false }] }), here, folder: "/w/r/web", text: "x" }, io({ me: null }));
     assert.equal(out.ok, true);
-    assert.deepEqual(asked, ["create /w/r/web", "turn c-there", "open studio c-there"]);
+    assert.deepEqual(asked, ["create /w/r/web", "turn c-there", "open studio c-there"], "no record: its work comes back by git, not Bring back");
   });
 
   // (fails before: yes — the review of s2c: a message that did not go was dropped with the draft, the chat opened)
@@ -159,6 +162,10 @@ describe("the first message there", () => {
     const out = await runOnSend({ place: place({ id: "studio", name: "Studio" }), here: null, folder: "/w/r", text: "x" }, io({ ask: false, turn: { ok: false, words: "Studio refused it" } }));
     assert.deepEqual(out, { ok: false, words: "Your chat stands on Studio, and your message did not go: Studio refused it. Send it again to send it there, or pick another in Run on", started: { chat: "c-there", work: { id: "w1", cwd: "/copies/1/r" } } });
     assert.ok(!asked.some((a) => a.startsWith("open")));
+    assert.ok(asked.includes("the desk reads its record"), "its record named: read, though the message did not go");
+    asked = [];
+    await runOnSend({ place: place({ id: "studio" }), here: null, folder: "/w/r", text: "x", started: { chat: "c-there", work: { id: "w1" } } }, io());
+    assert.deepEqual(asked, ["the desk reads its record", "turn c-there", "open studio c-there"], "sent again in a copy's chat: its record read again");
     asked = [];
     const again = await runOnSend({ place: place({ id: "studio" }), here: null, folder: "/w/r", text: "x", started: { chat: "c-there", work: null } }, io());
     assert.deepEqual(again, { ok: true, chat: "c-there", work: null });

@@ -350,9 +350,11 @@ export function createDeskWork(io) {
     },
     /**
      * The records read now: a Run on send made one (app.js `runOnFirst`), which the desk's next move would not read
-     * within `READ_AGAIN_MS` — a turn that ends that soon would never be looked at (the review of s5b's drive).
+     * within `READ_AGAIN_MS` — a turn that ends that soon would never be looked at (the review of s5b's drive). A read
+     * under way was asked before the record was made, and may answer without it: this one reads after it (the review
+     * of x26).
      */
-    reload: () => load(),
+    reload: () => (reading ? reading.then(load) : load()),
     /** The record of a machine's chat whose changes wait, else null. @param {string} machine @param {string} chain */
     waiting: (machine, chain) => {
       const w = of(machine, chain);
