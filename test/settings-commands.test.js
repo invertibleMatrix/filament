@@ -202,7 +202,7 @@ describe("Phase 2B: the commands through the real pipeline", () => {
     const upPort = up.address().port;
     dataDir = mkdtempSync(join(tmpdir(), "filament-2b-app-"));
     const cfg = defaultConfig();
-    cfg.server.port = 0;
+    cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
     cfg.server.inboundKeys = ["k"];
     cfg.observability.logFile = "";
     cfg.upstreams = [{ id: "oai", name: "oai", type: "openai-compatible", baseUrl: `http://127.0.0.1:${upPort}`, apiKey: "s" }];

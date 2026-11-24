@@ -37,7 +37,7 @@ const configChangesForOp = (diff) => changeLines(diff);
 const keysStayHere = (r) => sendJson(r.res, 403, { error: "the inbound keys stay on the machine they belong to: read or make them in Filament there" });
 
 /** What a save that would set the inbound keys or the admin token from another machine is answered (`plantsKeys`). */
-export const KEYS_SET_HERE = "the inbound keys and the admin token are set on the machine they belong to: change them in Filament there";
+export const KEYS_SET_HERE = "the inbound keys, the admin token and what a program on this computer needs are set on the machine they belong to: change them in Filament there";
 /**
  * A provider's key set anew by a whole configuration's save — the console's Destinations — is this computer's own: where
  * a key copied here came from (`keyFrom`, app/providers.js) goes with the key it named. @param {any} next @param {any} now
@@ -48,14 +48,19 @@ const keyFromLetGo = (next, now) => {
     if (u.keyFrom && was && was.apiKey !== u.apiKey) u.keyFrom = "";
   }
 };
-/** Whether a configuration changes what lets a caller in for good: the inbound keys, the admin token. @param {any} next @param {any} now */
-const keysChange = (next, now) =>
-  JSON.stringify(next?.server?.inboundKeys ?? []) !== JSON.stringify(now?.server?.inboundKeys ?? []) || String(next?.server?.adminToken ?? "") !== String(now?.server?.adminToken ?? "");
 /**
- * Whether a configuration about to be saved changes what lets a caller in for good — the inbound keys, the admin token
- * — for a caller not on this computer: refused, as /keys are, for one set from elsewhere would let its setter in past
- * its revoking (the hunt of p1-keys: a full device's PUT /config planted a key of its own). A save that leaves them as
- * they are is saved.
+ * Whether a configuration changes what lets a caller in for good: the inbound keys, the admin token, and whether a
+ * program on this computer needs the owner key (`server.loopbackTrust`). @param {any} next @param {any} now
+ */
+const keysChange = (next, now) =>
+  JSON.stringify(next?.server?.inboundKeys ?? []) !== JSON.stringify(now?.server?.inboundKeys ?? []) ||
+  String(next?.server?.adminToken ?? "") !== String(now?.server?.adminToken ?? "") ||
+  String(next?.server?.loopbackTrust ?? "") !== String(now?.server?.loopbackTrust ?? "");
+/**
+ * Whether a configuration about to be saved changes what lets a caller in for good — the inbound keys, the admin token,
+ * `server.loopbackTrust` — for a caller not on this computer: refused, as /keys are, for one set from elsewhere would let
+ * its setter in past its revoking (the hunt of p1-keys: a full device's PUT /config planted a key of its own). A save
+ * that leaves them as they are is saved.
  * @param {any} r  the request, its caller (`who`) @param {any} next @param {any} now
  */
 export const plantsKeys = (r, next, now) => r.who?.kind !== "local" && keysChange(next, now);
@@ -170,7 +175,7 @@ export function configRoutes(a) {
       async (r) => {
         const b = (await r.json()) || {};
         try {
-          const out = changeFields(config, { set: b.set, unset: b.unset, base: b.base == null ? null : Number(b.base) }, listening(), { refuse: (was, next) => pressNeeded(r, next, was) });
+          const out = changeFields(config, { set: b.set, unset: b.unset, base: b.base == null ? null : Number(b.base) }, listening(), { refuse: (was, next) => (plantsKeys(r, next, was) ? KEYS_SET_HERE : pressNeeded(r, next, was)) });
           if (out.changes.length)
             ops.record("config", `settings changed in the harness (${out.changes.length} change${out.changes.length === 1 ? "" : "s"})`, {
               sub: "fields",

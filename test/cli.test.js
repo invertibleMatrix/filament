@@ -75,6 +75,11 @@ describe("where Filament listens", () => {
       assert.deepEqual([not?.code, not?.message.startsWith("The Filament at http://127.0.0.1:1 runs from ")], [EXIT.noFilament, true]);
       const same = /** @type {any} */ (async () => new Response(JSON.stringify({ version: "1", dataDir: process.platform === "win32" ? dir.toUpperCase() : dir }), { status: 200 }));
       assert.equal((await connect(dir, { fetchImpl: same })).version, "1", "the same folder, however its letters are cased on Windows");
+      // (fails before: yes — s0c: a Filament that refused this folder's owner key read as none, and setup offered to start one)
+      const keyed = /** @type {any} */ (async () => new Response(JSON.stringify({ error: "…", ownerKey: true, pair: "/ui/pair.html" }), { status: 403 }));
+      const taken = await connect(dir, { fetchImpl: keyed }).then(() => null, (x) => x);
+      assert.deepEqual([taken?.code, taken?.body?.taken], [EXIT.noFilament, true]);
+      assert.match(String(taken?.message), /^The Filament at http:\/\/127\.0\.0\.1:1 \(its config's port\) did not take the owner key in .+: it runs from another data folder/);
     } finally {
       await removeDirs(dir);
     }

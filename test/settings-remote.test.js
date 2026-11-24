@@ -234,15 +234,34 @@ test("Remote access sits under Filament after Connect other apps; its search row
 
 // (fails before: yes — the page said nothing of this computer's calls without the owner key: /state had no `ownerless`)
 test("this computer's read says the calls that came without the owner key, and from which programs; a read without it says nothing", async () => {
-  const p = await open({ state: { ownerless: { count: 3, programs: [{ agent: "curl/8.4.0", count: 2, lastAt: T0 }, { agent: "python-requests/2.32", count: 1, lastAt: T0 }] } } });
-  assert.deepEqual(labels(p.body).slice(0, 2), ["This machine", "Calls without the owner key"]);
+  const p = await open({ state: { ownerless: { count: 3, refused: true, programs: [{ agent: "curl/8.4.0", count: 2, lastAt: T0 }, { agent: "python-requests/2.32", count: 1, lastAt: T0 }] } } });
+  assert.deepEqual(labels(p.body).slice(0, 3), ["This machine", "Programs on this computer", "Calls without the owner key"]);
   const row = textOf(rowOf(p.body, "Calls without the owner key"));
-  assert.match(row, /3 calls since Filament started came from a program here without its owner key, answered all the same: curl\/8\.4\.0 \(2\), python-requests\/2\.32 \(1\)/);
+  assert.match(row, /3 calls since Filament started came from a program here without its owner key, refused: curl\/8\.4\.0 \(2\), python-requests\/2\.32 \(1\)/);
   assert.match(row, /owner\.key/);
+  assert.match(row, /a browser pairs with filament open/);
+  const legacy = await open({ state: { ownerless: { count: 1, refused: false, programs: [{ agent: "curl/8.4.0", count: 1, lastAt: T0 }] } } });
+  assert.match(textOf(rowOf(legacy.body, "Calls without the owner key")), /without its owner key, answered all the same: curl/);
   const none = await open({ state: { ownerless: { count: 0, programs: [] } } });
-  assert.match(textOf(rowOf(none.body, "Calls without the owner key")), /Every program on this computer that called Filament since it started sent its owner key/);
+  assert.match(textOf(rowOf(none.body, "Calls without the owner key")), /Every program on this computer that called Filament since it started sent its owner key or a pairing/);
   const elsewhere = await open({ state: { viewer: "remote" } });
   assert.ok(!labels(elsewhere.body).includes("Calls without the owner key"), "another machine's read carries none");
+  assert.ok(!labels(elsewhere.body).includes("Programs on this computer"), "nor what a program here needs");
+});
+
+// (fails before: yes — s0c: nothing said, or set, what a program on this computer needs)
+test("Programs on this computer: Owner key by default, said in words; Any program sets server.loopbackTrust legacy, said as every account's", async () => {
+  const p = await open({ state: { ownerless: { count: 0, programs: [] } } });
+  const trust = rowOf(p.body, "Programs on this computer");
+  assert.match(textOf(trust), /any other program here is refused/);
+  assert.equal(button(trust, "Owner key").attrs["aria-selected"], "true", "the schema's own, where the config names none");
+  button(trust, "Any program").attrs.onclick();
+  await settle();
+  assert.deepEqual(p.calls.find(([m, path]) => m === "PATCH" && path === "/config/fields")?.[2]?.set, { "server.loopbackTrust": "legacy" });
+  const open2 = await open({ state: { ownerless: { count: 0, programs: [] }, config: { server: { loopbackTrust: "legacy" } } } });
+  const said = rowOf(open2.body, "Programs on this computer");
+  assert.equal(button(said, "Any program").attrs["aria-selected"], "true");
+  assert.match(textOf(said), /every other account on this computer/);
 });
 
 // (fails before: yes — Settings had no Remote access: nothing paired another machine)
@@ -970,6 +989,12 @@ test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's n
   const there = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, me: { who: "local" } });
   assert.deepEqual(there.loc.replaced, []);
   assert.deepEqual(there.posted.map((b) => b.code), ["ABCD-EFGH"], "at the name: claimed at once");
+  // (fails before: yes — s0c: a browser here is no one's until it pairs, and its link's code waited for a press)
+  const owned = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, refused: { error: "Filament answers a program on this computer by its owner key…", ownerKey: true, pair: "/ui/pair.html" } });
+  assert.deepEqual(owned.posted.map((b) => b.code), ["ABCD-EFGH"], "refused as no one, at the name: claimed at once");
+  assert.match(owned.el("pair-lead").textContent, /^Paired as|^Pairing this browser with Workstation/);
+  const typed = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: "#code=ABCD-EFGH" });
+  assert.deepEqual(typed.posted, [], "a link with no name, a code from another machine's Settings: typed, not claimed unasked");
 });
 
 // (fails before: yes — a link opened on the pairing page changed its fragment alone, and the code was neither read nor taken off the address)

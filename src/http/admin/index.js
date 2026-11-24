@@ -7,7 +7,7 @@
 // server-locals the areas need.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { BACK_PATH } from "../../app/sessions/mcp-sign-in.js";
-import { agentsDevice, cookieAgain, cookieDevice, countOwnerless, doorRefused, endsWithDevice, lapsedDevice, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, PAIR_PAGE } from "../guards.js";
+import { agentsDevice, cookieAgain, cookieDevice, countOwnerless, doorRefused, endsWithDevice, isLocalCaller, lapsedDevice, ownerNeeded, whoIs, ownOrigin, pressRefusal, readBody, BodyRefused, OWNER_NEEDED, PAIR_PAGE } from "../guards.js";
 import { CLAIM_PATH, SIGN_OUT_PATH, VIEW_FOLDER_ROWS, agentBodyRefusal, agentFileRefusal, agentFolderRefusal, agentHeaderRefusal, agentRefusal, aliasedPath, copiesRefusal, remoteRoutes, viewFolderRefusal, viewReads } from "./remote.js";
 import { LAPSED_WORDS, UNUSED_DAYS, fullControl } from "../../services/devices.js";
 import { lowerHeaders } from "../../core/headers.js";
@@ -100,25 +100,34 @@ export function createAdminHandler(a) {
     const path = url.pathname.replace(/^\/api/, "");
     const method = req.method;
     // Who calls (guards.js whoIs): this computer, the admin token, or a paired device (the owner's remote Filament of
-    // 11-06). A pairing's claim is the one row answered before any is known — its code is what it proves — and it
-    // passes the Origin and JSON checks below as every write does. A caller it does not know is told where a browser
-    // pairs: the harness or console of a device revoked meanwhile goes there (ui/lib/standing.js).
+    // 11-06). A pairing's claim is the one write answered before any is known — its code is what it proves — and it
+    // passes the Origin and JSON checks below as every write does; an MCP server's sign-in coming back (`back`) is the one
+    // read. A caller it does not know is told where a browser pairs: the harness or console of a device revoked meanwhile
+    // goes there (ui/lib/standing.js).
     const who = whoIs(req, a.config.get().server, a.devices || null);
-    // This computer's call without its owner key (services/owner.js): answered all the same, and counted by the program
-    // that sent it — what would be refused once the key is needed (guards.js `countOwnerless`).
-    countOwnerless(req, who);
     // Read once, and taken out of the request whatever the row: the desktop app's key (guards.js `pressRefusal`).
     const pressNo = pressRefusal(req, who, a.devices || null);
     const claim = method === "POST" && path === CLAIM_PATH;
+    // A sign-in to an MCP server coming back to this computer's browser, from the server's page (its `state` proves it):
+    // a browser here at 127.0.0.1, which no key or pairing names (`server.loopbackTrust` "token").
+    const back = method === "GET" && url.pathname === BACK_PATH && isLocalCaller(req);
+    // This computer's call without its owner key (services/owner.js), counted by the program that sent it — refused, or
+    // answered where any program here is let in (guards.js `countOwnerless`); a claim and a sign-in coming back are
+    // answered to anyone, and not counted.
+    if (!claim && !back) countOwnerless(req, who);
     // One whose device went unused past its days is told so (`lapsed`, and how many: `days`, which its pages, the app and
     // the command line say): nothing was revoked, it pairs again. It may
     // still sign itself out — the desktop app and `filament connect` do so as they pair again —, so the device it
     // replaces goes, and its machine's agents' device with it (the review of s4f).
     const lapsed = who ? null : lapsedDevice(req, a.devices || null);
-    if (!who && !claim && !(lapsed && method === "POST" && path === SIGN_OUT_PATH))
+    // A program on this computer without its owner key, under `server.loopbackTrust` "token", is told so (`ownerKey`):
+    // the command line and the desktop app read it as another data folder's Filament holding the port.
+    if (!who && !claim && !back && !(lapsed && method === "POST" && path === SIGN_OUT_PATH))
       return sendJson(res, 403, lapsed
         ? { error: LAPSED_WORDS, lapsed: true, days: UNUSED_DAYS, pair: PAIR_PAGE }
-        : { error: "admin API answers this machine, a paired device, or server.adminToken: pair this device from Settings on the machine it reaches", pair: PAIR_PAGE });
+        : ownerNeeded(req)
+          ? { error: OWNER_NEEDED, ownerKey: true, pair: PAIR_PAGE }
+          : { error: "admin API answers this machine, a paired device, or server.adminToken: pair this device from Settings on the machine it reaches", pair: PAIR_PAGE });
     // A device's request ends as the device does, revoked or signed out — every stream it follows (a run's events, the
     // claims, the events feed, a turn's words) at once, whichever row answers it (the hunt of sec-revoke: a run's
     // events went on following) —, and another machine's agents' as their grant `agents` is switched off. An answer not

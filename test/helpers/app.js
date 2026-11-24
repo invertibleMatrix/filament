@@ -460,6 +460,9 @@ export async function startApp({
   cfg.experimental.cursorSdk = true;
   // Teams run where a test sends one, their Experimental switch on (core/teams-on.js): a test of the switch turns it off.
   cfg.experimental.teams = true;
+  // A test calls the admin API as a script here would, with no owner key: let in where `server.loopbackTrust` is
+  // "legacy". A test of the owner key sets "token", the schema's own (http/guards.js `loopbackTrusted`).
+  cfg.server.loopbackTrust = "legacy";
   configure(cfg, { dataDir });
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
   // A sub-agent that changes files starts at its launch, as before the card that holds it while Parallelize tasks is off

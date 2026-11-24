@@ -49,6 +49,8 @@ describe("what the app finds on Filament's port", () => {
     assert.deepEqual(await at(json(200, { version: "0.1.0", dataDir: "C:\\d", supervisor: "tray", config: {} })), { kind: "attach", version: "0.1.0", dataDir: "C:\\d", supervisor: "tray" });
     assert.deepEqual(await at(json(200, { hello: "world" })), { kind: "refuse", why: "another program answers on port 20411 (HTTP 200), not Filament" });
     assert.deepEqual(await at(json(404, null)), { kind: "refuse", why: "another program answers on port 20411 (HTTP 404), not Filament" });
+    // (fails before: yes — s0c: a Filament that did not take this folder's owner key read as another program)
+    assert.deepEqual(await at(json(403, { error: "…", ownerKey: true, pair: "/ui/pair.html" })), { kind: "refuse", why: "port 20411 is held by a Filament that did not take this data folder's owner key: another data folder's, or one this account cannot read the key of" });
     assert.deepEqual(await at(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } })), { kind: "refuse", why: "port 20411 could not be asked (ECONNRESET)" });
     // One that holds the connection and never answers.
     const silent = await foundAt(20411, { waitMs: 30, fetch: /** @type {any} */ ((/** @type {any} */ _u, /** @type {any} */ o) => new Promise((_r, rej) => o.signal.addEventListener("abort", () => rej(new Error("aborted"))))) });

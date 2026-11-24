@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { PRESS_HEADER, setPressKey } from "../src/http/guards.js";
 import { runCli } from "../src/cli/main.js";
 import { EXIT } from "../src/cli/client.js";
+import { OWNER_HEADER, ownerKeyOf } from "../src/services/owner.js";
 import { startApp } from "./helpers/app.js";
 
 const KEY = randomBytes(32).toString("base64url");
@@ -248,7 +249,7 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
     const code = await runCli(["open", "--no-open"], { dataDir: shim.dataDir, out: (s) => out.push(s), err: () => {}, write: () => {} });
     assert.equal(code, EXIT.ok, out.join("\n"));
     assert.match(out[0], /\/ui\/harness\.html$/);
-    assert.equal(out[1], "The Filament app runs here, and pairs a browser with its tray's Open in browser: this page opens unpaired.");
+    assert.equal(out[1], "The Filament app runs here, and pairs a browser with its tray's Open in browser: use that, or type a code from the app's Settings › Remote access on the page this opens.");
     assert.deepEqual(await pending(), []);
   });
 
@@ -321,5 +322,93 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
       await call("/api/remote/pair", { method: "DELETE" });
       setPressKey(KEY);
     }
+  });
+});
+
+describe("the flip: a Filament whose server.loopbackTrust is token, the schema's own", () => {
+  /** @type {Awaited<ReturnType<typeof startApp>>} */
+  let shim;
+  /** This start's owner key, as the command line and the desktop app send it. @type {Record<string, string>} */
+  let owner = {};
+  /** @param {string} path @param {{ method?: string, headers?: Record<string, string>, body?: any }} [o] */
+  const call = (path, o) => ask(shim.port, path, o);
+  before(async () => {
+    setPressKey("");
+    shim = await startApp({ configure: (c) => void (c.server.loopbackTrust = "token") });
+    owner = { [OWNER_HEADER]: ownerKeyOf(shim.dataDir) };
+  });
+  after(async () => {
+    await shim.stop();
+  });
+
+  // (fails before: yes — s0c: any program on this computer, another account's too, read every chat with no key)
+  test("a program here with no key is refused in words that name `filament open`; the owner key, the command line and the doors anyone opens answer", async () => {
+    const no = await call("/api/memory/sessions");
+    assert.equal(no.status, 403, no.text);
+    assert.match(String(no.json?.error), /`filament open`/);
+    assert.deepEqual([no.json?.ownerKey, no.json?.pair], [true, "/ui/pair.html"]);
+    assert.equal((await call("/api/state", { headers: owner })).status, 200, "the owner key");
+    const page = await call("/ui/harness.html");
+    assert.equal(page.status, 302, page.text);
+    assert.match(String(page.headers.location), /\/ui\/pair\.html/, "a browser here with no pairing is sent to pair");
+    assert.equal((await call("/ui/pair.html")).status, 200);
+    assert.equal((await call("/health")).status, 200);
+    assert.equal((await call("/.well-known/filament")).status, 200);
+    const back = await call("/api/mcp-servers/sign-in/back?code=c&state=s");
+    assert.notEqual(back.status, 403, `an MCP server's sign-in coming back to this computer's browser: ${back.text}`);
+    /** @type {string[]} */
+    const out = [];
+    /** @type {string[]} */
+    const err = [];
+    assert.equal(await runCli(["status"], { dataDir: shim.dataDir, out: (s) => out.push(s), err: (s) => err.push(s), write: () => {} }), EXIT.ok, err.join("\n"));
+    assert.match(out.join("\n"), /harness : filament open \(/, "the harness said by `filament open`");
+    const st = await call("/api/state", { headers: owner });
+    assert.ok(Number(st.json?.ownerless?.count) >= 1 && st.json?.ownerless?.refused === true, JSON.stringify(st.json?.ownerless));
+  });
+
+  // (fails before: yes — s0c: a browser here was let in by its address alone)
+  test("a browser here pairs by the tray's or `filament open`'s code at this Filament's name, and is let in there alone", async () => {
+    const name = `${JSON.parse(readFileSync(join(shim.dataDir, "machine.json"), "utf8")).page}.localhost`;
+    const at = { host: `${name}:${shim.port}`, origin: `http://${name}:${shim.port}` };
+    const made = await call("/api/remote/pair", { method: "POST", headers: owner, body: { scope: "full", here: true } });
+    assert.equal(made.status, 200, made.text);
+    const claimed = await call("/api/remote/claim", { method: "POST", headers: at, body: { code: made.json.code, name: "Chrome here" } });
+    assert.equal(claimed.status, 200, `no key, no pairing yet: the claim alone: ${claimed.text}`);
+    const cookie = String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0];
+    assert.equal((await call("/api/memory/sessions", { headers: { host: at.host, cookie } })).status, 200, "at its name, this computer's owner");
+    assert.equal((await call("/api/memory/sessions", { headers: { cookie } })).status, 403, "at 127.0.0.1, its cookie is no one's");
+  });
+
+  // (fails before: yes — the review of s0b, its (4): a revoked desk's cookie through an SSH tunnel fell back to this computer)
+  test("a device's cookie that does not verify over loopback — a revoked desk's through an SSH tunnel — is no one's", async () => {
+    const made = await call("/api/remote/pair", { method: "POST", headers: owner, body: { scope: "full" } });
+    assert.equal(made.status, 200, made.text);
+    const claimed = await call("/api/remote/claim", { method: "POST", headers: { ...FAR, origin: `http://127.0.0.1:${shim.port}` }, body: { code: made.json.code, name: "Filament app on Studio" } });
+    assert.equal(claimed.status, 200, claimed.text);
+    const cookie = String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0];
+    const id = String(claimed.json?.device?.id || "");
+    assert.equal((await call("/api/memory/sessions", { headers: { cookie } })).status, 200, "through the tunnel: its device");
+    assert.equal((await call(`/api/remote/devices/${id}`, { method: "DELETE", headers: owner })).status, 200);
+    const gone = await call("/api/memory/sessions", { headers: { cookie } });
+    assert.equal(gone.status, 403, gone.text);
+    assert.notEqual(gone.json?.ownerKey, true, "told to pair again, not to send a key");
+  });
+
+  // (fails before: yes — s0c: nothing set what a program here needs)
+  test("server.loopbackTrust: set by this computer's owner, at once; never by a device", async () => {
+    const made = await call("/api/remote/pair", { method: "POST", headers: owner, body: { scope: "full" } });
+    const claimed = await call("/api/remote/claim", { method: "POST", headers: { ...FAR, origin: `http://127.0.0.1:${shim.port}` }, body: { code: made.json.code, name: "Phone" } });
+    const cookie = String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0];
+    const theirs = await call("/api/config/fields", { method: "PATCH", headers: { ...FAR, cookie }, body: { set: { "server.loopbackTrust": "legacy" } } });
+    assert.equal(theirs.status, 403, theirs.text);
+    assert.match(String(theirs.json?.error), /what a program on this computer needs are set on the machine they belong to/, "refused as a key's change");
+    try {
+      const mine = await call("/api/config/fields", { method: "PATCH", headers: owner, body: { set: { "server.loopbackTrust": "legacy" } } });
+      assert.equal(mine.status, 200, mine.text);
+      assert.equal((await call("/api/memory/sessions")).status, 200, "legacy: any program here, at once");
+    } finally {
+      await call("/api/config/fields", { method: "PATCH", headers: owner, body: { set: { "server.loopbackTrust": "token" } } });
+    }
+    assert.equal((await call("/api/memory/sessions")).status, 403, "token again, at once");
   });
 });

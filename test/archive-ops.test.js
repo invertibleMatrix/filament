@@ -146,7 +146,7 @@ test("a throwing recorder cannot break an archive operation, and no recorder is 
 let app, port, srvDir;
 before(async () => {
   srvDir = mkdtempSync(join(tmpdir(), "filament-archiveops-srv-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   writeFileSync(join(srvDir, "config.json"), JSON.stringify(cfg));
   app = createApp({ dataDir: srvDir, overrides: { port: 0 } }); port = (await app.start()).port;
 });

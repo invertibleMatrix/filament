@@ -1227,7 +1227,9 @@ describe("a coding agent's artifact tool (agent-tools.js)", () => {
 describe("the fence where an upgrade passes no front door, and another machine (AFC-56)", () => {
   /** A raw socket that keeps what is written to it. */
   const socketOf = () => ({ written: /** @type {string[]} */ ([]), destroyed: false, write(/** @type {any} */ b, /** @type {any} */ cb) { this.written.push(String(b)); cb?.(); return true; }, destroy() { this.destroyed = true; }, end() {}, on() {} });
-  const upgrade = terminalUpgrade({ config: { get: () => ({ server: { host: "127.0.0.1", allowedHosts: [] } }) }, terminal: { attach: () => () => {}, input() {}, resize() {} } });
+  // A program here is let in with no key (`server.loopbackTrust` "legacy"): these are about the page that asks.
+  const trust = { loopbackTrust: "legacy" };
+  const upgrade = terminalUpgrade({ config: { get: () => ({ server: { host: "127.0.0.1", allowedHosts: [], ...trust } }) }, terminal: { attach: () => () => {}, input() {}, resize() {} } });
   const ask = (/** @type {Record<string, string>} */ headers) => {
     const socket = socketOf();
     upgrade(/** @type {any} */ ({ url: "/api/terminal/t1/stream", headers: { "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...headers }, socket: { remoteAddress: "127.0.0.1" } }), socket, Buffer.alloc(0));
@@ -1249,6 +1251,17 @@ describe("the fence where an upgrade passes no front door, and another machine (
     assert.equal(ask({ host: "127.0.0.1:20300", origin: "null" }), "HTTP/1.1 403 Forbidden", "a sandboxed frame or a file");
     assert.equal(ask({ host: "127.0.0.1:20300", origin: "http://127.0.0.1:20300" }), "HTTP/1.1 101 Switching Protocols");
     assert.equal(ask({ host: "127.0.0.1:20300", origin: "http://localhost:20300" }), "HTTP/1.1 101 Switching Protocols");
+  });
+
+  // (fails before: yes — s0c: any program on this computer opened a terminal's stream with no key)
+  test("a terminal's stream with no owner key, window session or pairing is refused where server.loopbackTrust is token, the schema's own", () => {
+    trust.loopbackTrust = "token";
+    try {
+      assert.equal(ask({ host: "127.0.0.1:20300" }), "HTTP/1.1 403 Forbidden");
+      assert.equal(ask({ host: "127.0.0.1:20300", origin: "http://127.0.0.1:20300" }), "HTTP/1.1 403 Forbidden", "the harness's page with no session");
+    } finally {
+      trust.loopbackTrust = "legacy";
+    }
   });
 
   // (fails before: yes — there was no artifact's address)

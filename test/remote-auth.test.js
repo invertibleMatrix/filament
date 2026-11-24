@@ -311,7 +311,8 @@ test("a browser here is this computer's owner at this Filament's own name alone:
   const cookie = `filament_device=${got.token}`;
   assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie }), {}, devices), { kind: "local", owner: true }, "at its own name: the owner's");
   assert.deepEqual(whoIs(req({ host: `${H.toUpperCase()}:8080`, cookie }), {}, devices), { kind: "local", owner: true }, "at an SSH tunnel's port, its name kept");
-  assert.deepEqual(whoIs(req({ host: "127.0.0.1:20300", cookie }), {}, devices), { kind: "local" }, "at 127.0.0.1: no one's cookie, this computer's call as any program's");
+  assert.equal(whoIs(req({ host: "127.0.0.1:20300", cookie }), {}, devices), null, "at 127.0.0.1: no one's cookie, and no key: no one");
+  assert.deepEqual(whoIs(req({ host: "127.0.0.1:20300", cookie }), { loopbackTrust: "legacy" }, devices), { kind: "local" }, "legacy: this computer's call as any program's");
   assert.equal(whoIs(req({ host: "127.0.0.1:20300", authorization: `Bearer ${got.token}` }), {}, devices), null, "its token as a Bearer there: no one");
   assert.equal(whoIs(req({ host: `${H}:20300`, cookie }, "192.168.1.9"), {}, devices), null, "from the network: no one");
   assert.ok(!JSON.stringify(devices.list()).includes(H), "the name it was paired at is never listed");
@@ -327,7 +328,7 @@ test("a browser here is this computer's owner at this Filament's own name alone:
   writeFileSync(join(dir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: Date.now(), devices: [row("d-loop", {})] }));
   const kept = createDevices({ dataDir: dir, pageHost: () => H });
   assert.deepEqual(kept.strays(), ["d-loop"]);
-  assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie: `filament_device=${token}` }), {}, kept), { kind: "local" }, "its cookie no one's at the name");
+  assert.equal(whoIs(req({ host: `${H}:20300`, cookie: `filament_device=${token}` }), {}, kept), null, "its cookie no one's at the name");
   assert.equal(whoIs(req({ host: `${H}:20300`, authorization: `Bearer ${token}` }), {}, kept), null, "its token as a Bearer: no one");
   writeFileSync(join(dir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: Date.now(), devices: [row("d-gone", { at: "filament-ffffffffffff.localhost" })] }));
   assert.deepEqual(createDevices({ dataDir: dir, pageHost: () => H }).strays(), ["d-gone"], "a name this Filament no longer has");
@@ -356,7 +357,8 @@ test("the guards' pieces: cookies, a device's token, the caller's address a prox
   const devices = createDevices();
   const got = devices.claim(devices.startPairing({ scope: "view" }).code, { name: "Phone" });
   assert.ok(got.ok);
-  assert.deepEqual(whoIs(req({}), {}, devices), { kind: "local" });
+  assert.equal(whoIs(req({}), {}, devices), null, "this computer with no key: no one (server.loopbackTrust token)");
+  assert.deepEqual(whoIs(req({}), { loopbackTrust: "legacy" }, devices), { kind: "local" });
   assert.equal(whoIs(req({ ...FAR }), {}, devices), null);
   assert.deepEqual(whoIs(req({ ...FAR, "x-filament-admin": "tok" }), { adminToken: "tok" }, devices), { kind: "admin" });
   const who = /** @type {any} */ (whoIs(req({ ...FAR, cookie: `filament_device=${got.token}` }), {}, devices));

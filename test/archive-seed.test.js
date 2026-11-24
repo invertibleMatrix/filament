@@ -225,7 +225,7 @@ test("end to end: a new agent session is seeded from the ARCHIVE, not from the c
   await new Promise((r) => api.listen(0, "127.0.0.1", r));
 
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.experimental.cursorSdk = true; // its `sd` upstream is Cursor through its SDK, behind Settings › Experimental
   // The agent loop, always on (the owner's of 11-09), claims the `agent/*` names this suite routes to its fake ACP
   // upstream only on a harness chat's turn or Filament's own call, and these are a client's requests.

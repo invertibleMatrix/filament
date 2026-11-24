@@ -143,7 +143,7 @@ describe("agents at work: the profile kept, failures by kind, sessions let go of
   before(async () => {
     mkdirSync(projDir);
     const cfg = defaultConfig();
-    cfg.server.port = 0;
+    cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
     cfg.server.inboundKeys = ["k"];
     cfg.observability.logFile = "";
     cfg.memory.enabled = false;
@@ -411,7 +411,7 @@ describe("agents at work: the profile kept, failures by kind, sessions let go of
 test("an agent removed from the config takes what it declared with it: on the save, and at start for one removed while Filament was down", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "filament-acp-profiles-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0;
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
   cfg.server.inboundKeys = ["k"];
   cfg.observability.logFile = "";
   cfg.memory.enabled = false;

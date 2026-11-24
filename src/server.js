@@ -202,7 +202,7 @@ import { captureEnvironment, cachedCapture, cliCommand } from "./app/agent/envir
 import { initTokenCalib, disposeTokenCalib } from "./services/token-calib.js";
 import { describeDiff } from "./services/config/diff.js";
 import { teamsSpendOf, usageOf } from "./services/spend.js";
-import { readBody, checkInboundAuth, readsEverySession } from "./http/guards.js";
+import { readBody, checkInboundAuth, loopbackTrusted, readsEverySession } from "./http/guards.js";
 import { createTelemetry, officialBuild, takeInstallChoice } from "./services/telemetry.js";
 import { changeFields } from "./app/config-fields.js";
 
@@ -3791,6 +3791,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           // A listener open beyond this machine with no folder in agentLoop.roots works, and is said plainly as it starts.
           const exposed = exposedWords(config.get());
           if (exposed) log("warn", exposed);
+          // Any program here let in with no key is said as it starts (http/guards.js `loopbackTrusted`).
+          if (loopbackTrusted(config.get().server))
+            log("warn", 'server.loopbackTrust is "legacy": any program on this computer — another account\'s too — reaches Filament\'s admin API as you, with no key. Settings › Remote access sets it back to the owner key.');
           // The bash hand's spill files a Filament that was killed before its stop left behind, past their 30 minutes.
           const swept = sweepSpills();
           if (swept) log("info", `removed ${swept} command output file${swept === 1 ? "" : "s"} an earlier Filament left in the temp folder`);

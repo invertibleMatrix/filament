@@ -155,7 +155,7 @@ before(async () => {
 
   dataDir = mkdtempSync(join(tmpdir(), "filament-test-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["test-key"]; cfg.observability.logFile = ""; cfg.observability.storeBodies = "full";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["test-key"]; cfg.observability.logFile = ""; cfg.observability.storeBodies = "full";
   cfg.upstreams = [
     { id: "fake", name: "fake", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fakePort}`, apiKey: "up-secret", authStyle: "x-api-key", rules: { headers: { identity: "claude-code" } } },
     { id: "fake2", name: "fake2", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fakePort}`, apiKey: "up-secret-2" },
@@ -436,7 +436,7 @@ test("durable daily usage: today's totals per upstream and model, CSV export, ba
 
 test("POST /api/shutdown stops gracefully: refuses new model requests, then exits through the supervisor hook", async () => {
   let exited = false; const dir = mkdtempSync(join(tmpdir(), "filament-shut-"));
-  const c = defaultConfig(); c.server.port = 0; c.server.inboundKeys = ["k"]; c.observability.logFile = ""; writeFileSync(join(dir, "config.json"), JSON.stringify(c));
+  const c = defaultConfig(); c.server.port = 0; c.server.loopbackTrust = "legacy"; c.server.inboundKeys = ["k"]; c.observability.logFile = ""; writeFileSync(join(dir, "config.json"), JSON.stringify(c));
   const app2 = createApp({ dataDir: dir, overrides: { port: 0 }, onShutdown: () => { exited = true; } }); const { port } = await app2.start();
   const r = await fetch(`http://127.0.0.1:${port}/api/shutdown`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   assert.equal(r.status, 200); const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.inflight, 0);
@@ -459,7 +459,7 @@ test("POST /api/shutdown { ifIdle } stops only while nothing is in flight; a sto
     });
   });
   await new Promise((res) => slow.listen(0, "127.0.0.1", () => res(undefined)));
-  const c = defaultConfig(); c.server.port = 0; c.server.inboundKeys = ["k"]; c.observability.logFile = ""; c.memory.enabled = false;
+  const c = defaultConfig(); c.server.port = 0; c.server.loopbackTrust = "legacy"; c.server.inboundKeys = ["k"]; c.observability.logFile = ""; c.memory.enabled = false;
   c.upstreams = [{ id: "s", name: "s", type: "anthropic", baseUrl: `http://127.0.0.1:${/** @type {any} */ (slow.address()).port}`, apiKey: "x", enabled: true }];
   c.routes = [{ match: "slow-*", upstream: "s", upstreamModel: "{model}", enabled: true }];
   writeFileSync(join(dir, "config.json"), JSON.stringify(c));

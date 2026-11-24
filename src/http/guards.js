@@ -361,14 +361,35 @@ export const ownerKeySent = (req) => (ownerOf(req), keySent.has(req));
  * @param {import("node:http").IncomingMessage} req @param {Caller | null} who  as `whoIs` said it
  */
 export function countOwnerless(req, who) {
-  if (who?.kind !== "local" || who.owner || ownerOf(req) !== "none" || deviceTokenOf(req)) return;
-  ownerAt(/** @type {any} */ (req.socket)?.localPort)?.tokenless(req.headers?.["user-agent"]);
+  if ((who && (who.kind !== "local" || who.owner)) || !isLocalCaller(req) || ownerOf(req) !== "none" || deviceTokenOf(req)) return;
+  ownerAt(/** @type {any} */ (req.socket)?.localPort)?.tokenless(req.headers?.["user-agent"], !who);
 }
 
 /**
+ * Whether a program on this computer is let in with no key (`server.loopbackTrust` "legacy"): any program here is this
+ * computer's owner then — every other account here, and whatever hands calls on over its loopback, too. Under "token",
+ * the schema's own, a call over loopback with no owner key, no window's session and no pairing is no one's (`whoIs`).
+ * @param {any} server  the `server` config section
+ */
+export const loopbackTrusted = (server) => server?.loopbackTrust === "legacy";
+
+/**
+ * What a program on this computer is told without the owner key (`ownerNeeded`), under `server.loopbackTrust` "token".
+ */
+export const OWNER_NEEDED =
+  "Filament answers a program on this computer by its owner key: the Filament app and the filament command line send it. Open Filament in your browser with `filament open` (or the Filament app's tray › Open in browser), which pairs the browser; a script of yours sends owner.key from Filament's data folder as the x-filament-owner header.";
+
+/**
+ * Whether a refused caller is a program on this computer that sent no owner key that holds (`OWNER_NEEDED`): over
+ * loopback, through no proxy, no device's token. A device's that does not verify is told to pair again instead.
+ * @param {import("node:http").IncomingMessage} req
+ */
+export const ownerNeeded = (req) => isLocalCaller(req) && ownerOf(req) !== "owner" && !deviceTokenOf(req);
+
+/**
  * Who calls (the owner's remote Filament of 11-06): this computer through no proxy (`local`) — `owner` where it sent
- * this computer's owner key or the app's window's session (`ownerOf`), or is a browser here, which for now changes
- * nothing —, a holder of
+ * this computer's owner key or the app's window's session (`ownerOf`), or is a browser here; with none of them, `local`
+ * where `server.loopbackTrust` is "legacy" (`loopbackTrusted`), no one's under "token" —, a holder of
  * `server.adminToken` (`admin`), a machine signed in to the tailnet as this one is, where that is trusted (`tailnet`,
  * `ownTailnetLogin`), a paired device by its token — its scope, full or view, or another machine's agents' (`agent`,
  * `agentsDevice`), its grants on `device.grants` — over a sealed way (`sealedWay`), or nobody Filament knows (null).
@@ -395,7 +416,12 @@ export function whoIs(req, server, devices = null) {
     // session, keys copied) or, while the app holds its key, a press.
     if (device?.here) return { kind: "local", owner: true };
     if (device) return { kind: "device", device, scope: device.scope };
-    return !device && devices && deviceBearer(req) ? null : { kind: "local" };
+    if (devices && deviceBearer(req)) return null;
+    // No key, no session, no pairing — or a cookie that does not verify (a revoked desk's through an SSH tunnel, another
+    // port's): this computer's owner where `server.loopbackTrust` trusts loopback alone; else the admin token's holder,
+    // a script here as from anywhere, or no one.
+    if (loopbackTrusted(server)) return { kind: "local" };
+    return adminTokenIn(req, server) ? { kind: "admin" } : null;
   }
   if (adminTokenIn(req, server)) return { kind: "admin" };
   const login = ownTailnetLogin(req, server);

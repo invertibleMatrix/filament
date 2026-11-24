@@ -375,7 +375,8 @@ describe("the network's artifacts address, over TLS", () => {
     const devices = createDevices();
     const full = /** @type {any} */ (devices.claim(devices.startPairing({ scope: "full" }).code, { name: "Laptop" }));
     const view = /** @type {any} */ (devices.claim(devices.startPairing({ scope: "view" }).code, { name: "Phone" }));
-    const server = { port: 20300 };
+    // This machine with no key is let in where any program here is (`server.loopbackTrust` "legacy"): this is about the passes.
+    const server = { port: 20300, loopbackTrust: "legacy" };
     const answer = createArtifactsHandler({ store, server: () => server, port: () => 20300 });
     const net = artifactsListener({ dataDir: dir, answer, server: () => server, devices, host: "127.0.0.1", nets: () => NETS, name: () => "Workstation" });
     try {

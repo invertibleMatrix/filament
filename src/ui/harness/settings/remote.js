@@ -30,6 +30,7 @@ import { openSshSetup } from "../ssh-setup.js";
 export const SEARCH_ROWS = Object.freeze([
   { label: "This machine", words: "name hostname remote access" },
   { label: "This device", words: "sign out remote" },
+  { path: "server.loopbackTrust", label: "Programs on this computer", words: "loopback trust owner key token legacy local programs scripts other accounts security" },
   { label: "Calls without the owner key", words: "owner key token programs scripts curl command line api security local this computer" },
   { path: "server.lan.enabled", label: "Reach this machine on my network", words: "lan local network https tls wifi remote access listen" },
   { path: "server.lan.port", label: "Port", words: "network lan https port" },
@@ -57,15 +58,22 @@ export const NEW_KEY_WORDS =
 
 /**
  * This computer's calls without Filament's owner key since it started (/state `ownerless`, services/owner.js), in
- * words: none, or how many and the programs that made them, newest first.
- * @param {{ count?: number, programs?: { agent: string, count: number }[] } | null | undefined} o
+ * words: none, or how many and the programs that made them, newest first — refused (`server.loopbackTrust` "token"),
+ * or answered all the same ("legacy").
+ * @param {{ count?: number, programs?: { agent: string, count: number }[], refused?: boolean } | null | undefined} o
  */
 export const ownerlessWords = (o) => {
   const n = Number(o?.count) || 0;
-  if (!n) return "Every program on this computer that called Filament since it started sent its owner key: the Filament app and the filament command line do.";
+  if (!n) return "Every program on this computer that called Filament since it started sent its owner key or a pairing: the Filament app, the filament command line and a browser paired by filament open do.";
   const named = (o?.programs || []).slice(0, 3).map((p) => `${p.agent} (${p.count})`).join(", ");
-  return `${n} call${n === 1 ? "" : "s"} since Filament started came from a program here without its owner key, answered all the same${named ? `: ${named}` : ""}. The Filament app and the filament command line send it; a script sends owner.key from Filament's data folder as the x-filament-owner header.`;
+  return `${n} call${n === 1 ? "" : "s"} since Filament started came from a program here without its owner key, ${o?.refused ? "refused" : "answered all the same"}${named ? `: ${named}` : ""}. The Filament app and the filament command line send it; a browser pairs with filament open; a script sends owner.key from Filament's data folder as the x-filament-owner header.`;
 };
+
+/** What each choice of `server.loopbackTrust` lets in, as Settings says it. */
+export const TRUST_CHOICES = Object.freeze([
+  { value: "token", label: "Owner key" },
+  { value: "legacy", label: "Any program" },
+]);
 
 /** How often a page with a code open looks for the device that claimed it. */
 export const CLAIM_LOOK_MS = 2000;
@@ -1096,7 +1104,19 @@ export function renderRemote(body, cb = {}, io = {}) {
     if (s.device)
       out.push(kit.row("This device", `You reach this Filament from another machine, as ${s.device.name} (${scopeWords(s.device.scope)}).`, m("button", { class: "ghost sm danger", type: "button", onclick: () => void signOut() }, "Sign out")));
     // This computer's own read alone carries it.
-    if (s.ownerless) out.push(kit.row("Calls without the owner key", ownerlessWords(s.ownerless), m("span", { class: "cset-plain" }, String(Number(s.ownerless.count) || 0))));
+    if (s.ownerless) {
+      const trust = String(kit.value("server.loopbackTrust") || "token");
+      out.push(
+        kit.row(
+          "Programs on this computer",
+          trust === "legacy"
+            ? "Any program here reaches this Filament as you, with no key — every other account on this computer, and whatever hands calls on over its loopback, too. Owner key lets in the Filament app, the filament command line and the browsers they pair alone."
+            : "The Filament app, the filament command line and a browser paired by filament open (or the tray's Open in browser) reach this Filament; any other program here is refused. Any program lets every program on this computer in with no key.",
+          segment(m, [...TRUST_CHOICES], trust, (v) => { if (v !== trust) void kit.setField("server.loopbackTrust", v); }, "What a program on this computer needs"),
+        ),
+      );
+      out.push(kit.row("Calls without the owner key", ownerlessWords(s.ownerless), m("span", { class: "cset-plain" }, String(Number(s.ownerless.count) || 0))));
+    }
     out.push(...machinesRows(kit, s, here, elsewhere));
     if (s.device?.scope !== "view") out.push(...network(kit, here, elsewhere), ...tailnet(kit, here));
 

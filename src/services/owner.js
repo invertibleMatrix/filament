@@ -6,9 +6,9 @@
 // with it (`session`, OWNER_SESSION_HEADER), which the app's main process adds to their calls to Filament's own origin
 // alone — no cookie, which would reach every port of this computer's address. It counts on loopback alone, through no
 // proxy (http/guards.js `ownerOf`), and is taken out of the request as it is read, so no route, record or log holds it
-// — never an environment, an argument or an answer either. For now it changes nothing: this computer's calls without it are
-// answered all the same, counted by the program that sent them (`tokenless`), which Settings › Remote access and
-// `filament doctor` say, so whatever would be refused once the key is needed is found first.
+// — never an environment, an argument or an answer either. This computer's calls without it, or a pairing, are no one's
+// (`server.loopbackTrust` "token", the schema's own), or answered all the same where it is "legacy"; either way they are
+// counted by the program that sent them (`tokenless`), which Settings › Remote access and `filament doctor` say.
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -186,16 +186,23 @@ export function createOwner({ dataDir, log = () => {}, now = Date.now }) {
     },
     /**
      * A call of this computer's without the key, counted by what it calls itself; its first is said in the log.
-     * @param {unknown} userAgent
+     * `refused`: it was (`server.loopbackTrust` "token"), not answered all the same ("legacy").
+     * @param {unknown} userAgent @param {boolean} [refused]
      */
-    tokenless(userAgent) {
+    tokenless(userAgent, refused = false) {
       const agent = String(userAgent ?? "").trim().slice(0, 120) || "(no user agent)";
       count++;
       const had = programs.get(agent);
       programs.delete(agent);
       programs.set(agent, { agent, count: (had?.count ?? 0) + 1, lastAt: now() });
       while (programs.size > PROGRAMS_KEPT) programs.delete(/** @type {string} */ (programs.keys().next().value));
-      if (!had) log("info", `a program on this computer reached the admin API without the owner key (${agent}): answered all the same; it would need the key once this computer's calls need one`);
+      if (!had)
+        log(
+          refused ? "warn" : "info",
+          refused
+            ? `a program on this computer called Filament without the owner key (${agent}): refused — a browser pairs with \`filament open\`, a script sends owner.key as x-filament-owner`
+            : `a program on this computer reached the admin API without the owner key (${agent}): answered all the same, as server.loopbackTrust is "legacy"`,
+        );
     },
     /** The calls without the key since this start, and the programs that made them, newest first. */
     said: () => ({ count, programs: [...programs.values()].reverse().map((p) => ({ ...p })) }),

@@ -21,10 +21,16 @@ test("safeEq: equal strings only, never an empty one, and a length mismatch is s
   assert.equal(safeEq(12, "12"), true, "both sides are coerced to strings");
 });
 
-test("adminAllowed: loopback passes without a token; anywhere else needs server.adminToken in a header", () => {
+// (fails before: yes — s0c, the flip: any program on this computer was its owner with no key, another account's too)
+test("adminAllowed: loopback with no key, session or pairing is no one's (server.loopbackTrust token, the schema's own), any program's under legacy; anywhere else needs server.adminToken in a header", () => {
   const noToken = { adminToken: "" };
-  for (const a of ["127.0.0.1", "::1", "::ffff:127.0.0.1"])
-    assert.equal(adminAllowed(request({}, a), noToken), true, `loopback ${a}`);
+  for (const a of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) {
+    assert.equal(adminAllowed(request({}, a), noToken), false, `loopback ${a}, no key`);
+    assert.equal(adminAllowed(request({}, a), { adminToken: "", loopbackTrust: "token" }), false, `loopback ${a}, token said`);
+    assert.equal(adminAllowed(request({}, a), { adminToken: "", loopbackTrust: "legacy" }), true, `loopback ${a}, legacy`);
+  }
+  assert.equal(guards.loopbackTrusted({}), false, "no word is the owner key's");
+  assert.equal(guards.loopbackTrusted({ loopbackTrust: "legacy" }), true);
   assert.equal(adminAllowed(request({}), noToken), false, "a LAN address with no token configured");
   assert.equal(
     adminAllowed(request({ "x-filament-admin": "anything" }), noToken),
@@ -52,11 +58,14 @@ test("adminAllowed: loopback passes without a token; anywhere else needs server.
     "a prefix is not the token",
   );
   assert.equal(adminAllowed(request({ "x-filament-admin": "tok-12345" }), withToken), false);
-  assert.equal(
-    adminAllowed(request({ "x-filament-admin": "wrong" }, "127.0.0.1"), withToken),
-    true,
-    "loopback still passes with a wrong header",
-  );
+  assert.equal(adminAllowed(request({ "x-filament-admin": "wrong" }, "127.0.0.1"), withToken), false, "loopback with a wrong header is no one's");
+  assert.equal(adminAllowed(request({ "x-filament-admin": "tok-1234" }, "127.0.0.1"), withToken), true, "a script here with the admin token, as from anywhere");
+  assert.deepEqual(guards.whoIs(request({ "x-filament-admin": "tok-1234" }, "127.0.0.1"), withToken), { kind: "admin" });
+  assert.equal(adminAllowed(request({ "x-filament-admin": "wrong" }, "127.0.0.1"), { ...withToken, loopbackTrust: "legacy" }), true, "legacy: loopback passes with a wrong header");
+  assert.equal(guards.ownerNeeded(request({}, "127.0.0.1")), true, "told it needs the owner key");
+  assert.equal(guards.ownerNeeded(request({ cookie: "filament_device=fdt_x" }, "127.0.0.1")), false, "a device's that does not verify pairs again");
+  assert.equal(guards.ownerNeeded(request({})), false, "another machine is no program here");
+  assert.match(guards.OWNER_NEEDED, /`filament open`/);
 });
 
 // What `tailscale serve` hands on: it listens on this machine, so the request reaches Filament over loopback.
@@ -92,12 +101,14 @@ test("readsEverySession: the admin API's own answer — this machine named, over
   assert.equal(typeof reads, "function");
   const noToken = { adminToken: "" };
   const withToken = { adminToken: "tok-1234" };
-  assert.equal(reads(request({ host: "127.0.0.1:20300" }, "127.0.0.1"), noToken), true, "a client on this machine");
-  assert.equal(reads(request({}, "::1"), noToken), true, "no Host: a client that is no page");
+  const legacy = { adminToken: "", loopbackTrust: "legacy" };
+  assert.equal(reads(request({ host: "127.0.0.1:20300" }, "127.0.0.1"), noToken), false, "a client on this machine with no owner key (s0c)");
+  assert.equal(reads(request({ host: "127.0.0.1:20300" }, "127.0.0.1"), legacy), true, "a client on this machine, legacy");
+  assert.equal(reads(request({}, "::1"), legacy), true, "no Host: a client that is no page, legacy");
   assert.equal(reads(request({ host: "10.0.0.5:20300" }), noToken), false, "another machine, no token configured");
   assert.equal(reads(request({ host: "10.0.0.5:20300" }), withToken), false, "another machine without the token");
   assert.equal(reads(request({ host: "10.0.0.5:20300", "x-filament-admin": "tok-1234" }), withToken), true, "another machine with it");
-  assert.equal(reads(request({ host: "evil.example:20300" }, "127.0.0.1"), noToken), false, "a page that rebound its name to this machine");
+  assert.equal(reads(request({ host: "evil.example:20300" }, "127.0.0.1"), legacy), false, "a page that rebound its name to this machine");
 });
 
 test("hostAllowed: this machine's names pass, a hostname a page controls does not", () => {

@@ -475,7 +475,7 @@ async function clearWay(r, dataDir, port) {
       // Filament, whose listening.json says its live process listens there: the service would fail at each start, and
       // systemd start it again every 3 s.
       if (url === at && !(where.from === "listening" && at === own) && (await listensAt(at)))
-        throw new CliError(`Something other than Filament listens at ${at}: the service would find its port taken, and fail at each start. Stop it, or give --port with a port nothing holds.`, EXIT.failed);
+        throw new CliError(`Something other than this data folder's Filament listens at ${at} — another program, or a Filament that refuses this folder's owner key —: the service would find its port taken, and fail at each start. Stop it, or give --port with a port nothing holds.`, EXIT.failed);
       continue;
     }
     if (typeof state.dataDir === "string" && pathKey(state.dataDir) !== pathKey(dataDir)) {

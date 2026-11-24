@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { lowerHeaders } from "../core/headers.js";
 import { credentialOf, isHouseCall } from "../services/house.js";
-import { isLocalCaller, readBody, readsEverySession, safeEq } from "./guards.js";
+import { isLocalCaller, loopbackTrusted, ownerOf, readBody, readsEverySession, safeEq } from "./guards.js";
 import { MEMORY_MCP_TOOLS, memoryMcpCall, memoryMcpOpening } from "../app/memory-mcp.js";
 
 const VERSION = "1";
@@ -50,7 +50,8 @@ export const memoryKeys = (server) => (server.inboundKeys || []).map(String).fil
 
 /**
  * Who may call (M7-D39): never a browser page from elsewhere; Filament's own house key; with inbound keys set, one of
- * them, whatever `requireAuth` says; with none set, loopback only. → null, or the refusal.
+ * them, whatever `requireAuth` says; with none set, loopback only — a program there with the owner key, under
+ * `server.loopbackTrust` "token". → null, or the refusal.
  * @param {import("node:http").IncomingMessage} req @param {any} server  the `server` config section
  * @returns {{ status: number, error: string, headers?: Record<string, string> } | null}
  */
@@ -64,7 +65,11 @@ export function memoryMcpRefusal(req, server) {
     if (key && keys.some((k) => safeEq(k, key))) return null;
     return { status: 401, error: "Filament's memory needs one of its inbound keys, as Authorization: Bearer <key> or x-api-key", headers: { "www-authenticate": 'Bearer realm="Filament memory"' } };
   }
-  return isLocalCaller(req) ? null : { status: 403, error: "Filament has no inbound key set, so its memory answers this machine only" };
+  if (!isLocalCaller(req)) return { status: 403, error: "Filament has no inbound key set, so its memory answers this machine only" };
+  // This machine's program: any one where `server.loopbackTrust` trusts loopback alone; else one that holds the owner key.
+  return loopbackTrusted(server) || ownerOf(req) === "owner"
+    ? null
+    : { status: 401, error: "Filament has no inbound key set, so its memory answers Filament's own calls and a program here that sends its owner key (owner.key in its data folder, as x-filament-owner): set an inbound key in Settings for any other" };
 }
 
 /**

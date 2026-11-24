@@ -2348,7 +2348,7 @@ chain }` on memory's own model calls. `rec.changes` holds the `memory: …` note
    learning, which go to a provider you chose.
 7. **Memory's door for other agents (`/mcp/memory`, chapter 10.1) is shut to the network and to web pages.**
    - With an inbound key set, it asks for one, whatever `requireAuth` says.
-   - With none set, it answers this machine only.
+   - With none set, it answers this machine only: Filament's own calls, and a program here with its owner key (`owner.key`) where `server.loopbackTrust` is `token`, the default.
    - A browser page from elsewhere is refused by its `Origin` before any key is read.
    - A caller with an inbound key that could not read every session anyway keeps to the sessions of the project its folder names: `search`, `sessions`, `load` and `brief`, as chapter 12 says.
    - The operation log names the tool, the client and the session, never what was asked or answered.

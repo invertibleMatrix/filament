@@ -69,6 +69,7 @@ async function made({ seed = () => {}, onShutdown = () => {}, configure = () => 
   const port = await freePort();
   const cfg = defaultConfig();
   cfg.server.port = port;
+  cfg.server.loopbackTrust = "legacy";
   cfg.server.inboundKeys = ["k"];
   cfg.observability.logFile = "";
   cfg.memory = { enabled: true, folder, autopilot: { enabled: false }, capture: { turns: true, learn: false }, privacy: { encryptArchive: false } };
@@ -508,6 +509,7 @@ test("the desktop app's Quit during memory's open: /api/shutdown answers at once
  */
 async function heldDoor(g, { admin = (_req, res) => res.writeHead(200, { "content-type": "application/json" }).end('{"ok":true}') } = {}) {
   const cfg = defaultConfig();
+  cfg.server.loopbackTrust = "legacy";
   const door = createFrontDoor(
     /** @type {any} */ ({
       config: { get: () => cfg },

@@ -79,7 +79,7 @@ before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-acp-")); projDir = join(dataDir, "project"); mkdirSync(projDir);
   holdDir = join(dataDir, "hold"); mkdirSync(holdDir);
   logFile = join(dataDir, "prompts.jsonl");
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   // This suite routes `agent/*` to its fake ACP upstream. The agent loop, always on (the owner's of 11-09), claims an
   // `agent/<model>` name only on a harness chat's turn or Filament's own call: a client's request reaches the fake, and
   // a harness chat here is on another route's name.
@@ -1157,7 +1157,7 @@ test("sessionIdleMinutes controls when a conversation mapping is forgotten", asy
 
 test("conversation map survives a restart and the agent session is reloaded", async () => {
   const dir = mkdtempSync(join(tmpdir(), "filament-acp-restart-")); const log2 = join(dir, "p.jsonl");
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   // This suite routes `agent/*` to its fake ACP upstream: the agent loop, always on (the owner's of 11-09), claims an
   // `agent/<model>` name only on a harness chat's turn or Filament's own call, and these are a client's requests.
   cfg.upstreams = [{ id: "fake", name: "fake", type: "acp", acp: { command: process.execPath, args: [FAKE], env: { FAKE_ACP_LOG: log2, FAKE_ACP_ALLOW_LOAD: "1" }, cwdDefault: dir } }];

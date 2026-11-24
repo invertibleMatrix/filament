@@ -122,7 +122,7 @@ before(async () => {
   }); });
   await new Promise((r) => fake.listen(0, "127.0.0.1", r));
   dataDir = mkdtempSync(join(tmpdir(), "filament-autofit-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "m", name: "m", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s", pricing: { "claude-x": { input: 1, output: 1, contextTokens: 8000 } } }];
   cfg.routes = [{ match: "claude-*", upstream: "m", upstreamModel: "{model}" }];
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));

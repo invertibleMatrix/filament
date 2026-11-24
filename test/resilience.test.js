@@ -57,7 +57,7 @@ before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-res-"));
   // `stallTimeoutSeconds: 1`: the cut a stream quiet that long met until no clock cut a call (HarnessV3-FailurePoints
   // FP-D1), kept as the condition the pause's test below failed under; nothing reads it now.
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.rules.resilience = { failover: true, cooldownBaseSeconds: 30, cooldownMaxSeconds: 300, stallTimeoutSeconds: 1 }; // failover is off until switched on (the owner's of 11-09)
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.rules.resilience = { failover: true, cooldownBaseSeconds: 30, cooldownMaxSeconds: 300, stallTimeoutSeconds: 1 }; // failover is off until switched on (the owner's of 11-09)
   cfg.upstreams = [{ id: "flaky", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${flaky.address().port}`, apiKey: "k" }, { id: "pause", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${pause.address().port}`, apiKey: "k" }];
   cfg.routes = [{ match: "pool-*", upstream: "flaky", upstreamModel: "{model}", strategy: "least_latency", fallbacks: [{ upstream: "pause", upstreamModel: "{model}" }] }, { match: "pause-*", upstream: "pause", upstreamModel: "{model}" }];
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
@@ -92,7 +92,7 @@ test("the start says once that Node's fetch keeps its limits when its dispatcher
   const g = /** @type {any} */ (globalThis);
   const own = g[slot];
   const dir = mkdtempSync(join(tmpdir(), "filament-res-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.memory.enabled = false;
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.memory.enabled = false;
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));
   /** @type {any} */
   let other = null;

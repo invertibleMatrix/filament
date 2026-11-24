@@ -145,7 +145,7 @@ test("1.8 the grep fallback cannot be handed an unbounded pattern (ReDoS guard)"
 test("1.9 a local memory failure is a 500, not a 502 (nothing upstream was involved)", async () => {
   const { createApp } = await import("../src/server.js");
   const dir = mkdtempSync(join(tmpdir(), "filament-status-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.memory.enabled = false; // its learner does not run, so learning fails here (a fresh config has memory on — HarnessV3-AtHome AH-D1)
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));
   const app = createApp({ dataDir: dir, overrides: { port: 0 } }); const port = (await app.start()).port;
@@ -163,7 +163,7 @@ test("1.10 auto-fit does not fire on the Responses passthrough wire (it would re
     res.end(JSON.stringify({ error: { message: "prompt is too long: 90000 tokens > 8000 maximum", type: "invalid_request_error" } })); }); });
   await new Promise((r) => fake.listen(0, "127.0.0.1", r));
   const dir = mkdtempSync(join(tmpdir(), "filament-resp-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.observability.storeBodies = "full";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.observability.storeBodies = "full";
   cfg.upstreams = [{ id: "rw", name: "rw", type: "openai-compatible", wireApi: "responses", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s" }];
   cfg.routes = [{ match: "gpt-*", upstream: "rw", upstreamModel: "{model}" }];
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));

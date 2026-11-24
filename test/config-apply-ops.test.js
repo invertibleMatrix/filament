@@ -14,7 +14,7 @@ const H = { "content-type": "application/json", "x-api-key": "k", "x-filament-ui
 
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-cfgapply-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
   app = createApp({ dataDir, overrides: { port: 0 } }); port = (await app.start()).port;
 });

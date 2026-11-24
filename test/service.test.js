@@ -503,7 +503,7 @@ describe("filament service, on a Linux server with systemd's user manager", () =
     try {
       const r = await m.run(["service", "install", "--port", String(port)]);
       assert.equal(r.code, EXIT.failed, `${r.out}\n${r.err}`);
-      assert.equal(r.err, `filament service: Something other than Filament listens at http://127.0.0.1:${port}: the service would find its port taken, and fail at each start. Stop it, or give --port with a port nothing holds.`);
+      assert.equal(r.err, `filament service: Something other than this data folder's Filament listens at http://127.0.0.1:${port} — another program, or a Filament that refuses this folder's owner key —: the service would find its port taken, and fail at each start. Stop it, or give --port with a port nothing holds.`);
       assert.ok(!existsSync(m.unitFile));
       assert.deepEqual(m.calls(), [["systemctl", "--user", "show-environment"]]);
       // No Filament runs the data folder (no listening.json): its config's port is the service's.
@@ -511,7 +511,7 @@ describe("filament service, on a Linux server with systemd's user manager", () =
       writeFileSync(join(m.data, "config.json"), JSON.stringify({ server: { port } }));
       const own = await m.run(["service", "install"]);
       assert.equal(own.code, EXIT.failed, `${own.out}\n${own.err}`);
-      assert.match(own.err, new RegExp(`Something other than Filament listens at http://127\\.0\\.0\\.1:${port}:`));
+      assert.match(own.err, new RegExp(`Something other than this data folder's Filament listens at http://127\\.0\\.0\\.1:${port} `));
       assert.ok(!existsSync(m.unitFile));
       assert.equal(m.read().enabled, "not-found");
     } finally {

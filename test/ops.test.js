@@ -124,7 +124,7 @@ let app, port, dataDir;
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-ops-srv-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   // An upstream that nothing is listening on, so a request to it fails and the health board cools it down.
   cfg.upstreams = [{ id: "dead", name: "dead", type: "anthropic-compatible", baseUrl: "http://127.0.0.1:1", apiKey: "s", authStyle: "x-api-key" }];
   cfg.routes = [{ match: "dead-*", upstream: "dead", upstreamModel: "{model}" }];

@@ -219,7 +219,7 @@ before(async () => {
   }); });
   await new Promise((r) => fakeA.listen(0, "127.0.0.1", r)); await new Promise((r) => fakeO.listen(0, "127.0.0.1", r));
   dataDir = mkdtempSync(join(tmpdir(), "filament-xlat-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "anth", name: "a", type: "anthropic", baseUrl: `http://127.0.0.1:${fakeA.address().port}`, apiKey: "s" }, { id: "oai", name: "o", type: "openai-compatible", baseUrl: `http://127.0.0.1:${fakeO.address().port}`, apiKey: "s" }];
   cfg.routes = [{ match: "claude-*", upstream: "anth", upstreamModel: "{model}" }, { match: "glm-*", upstream: "oai", upstreamModel: "{model}" }];
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));

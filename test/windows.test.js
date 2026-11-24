@@ -190,7 +190,7 @@ describe("D3's suspicion: a Claude Code tool loop whose person message loses its
     await new Promise((r) => up.listen(0, "127.0.0.1", r));
     dataDir = mkdtempSync(join(tmpdir(), "filament-cc-"));
     const cfg = defaultConfig();
-    cfg.server.port = 0;
+    cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
     cfg.server.inboundKeys = ["k"];
     cfg.observability.logFile = "";
     cfg.upstreams = [{ id: "oai", name: "oai", type: "openai-compatible", baseUrl: `http://127.0.0.1:${up.address().port}`, apiKey: "s" }];

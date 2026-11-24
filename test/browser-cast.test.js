@@ -586,7 +586,7 @@ function upgraded(browsers, { device = "" } = {}) {
     verify: (token) => (token === "tok-view" ? { id: "dv", scope: "view" } : token === "tok-full" ? { id: "df", scope: "full" } : null),
     onRevoke: () => () => {},
   };
-  const config = { get: () => ({ server: { host: "127.0.0.1", maxBodyBytes: 1 << 20 } }) };
+  const config = { get: () => ({ server: { host: "127.0.0.1", maxBodyBytes: 1 << 20, loopbackTrust: "legacy" } }) };
   const headers = { host: "127.0.0.1:20300", connection: "Upgrade", upgrade: "websocket", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...(device ? { "x-forwarded-for": "100.64.0.7", cookie: `filament_device=${device}` } : {}) };
   const req = /** @type {any} */ ({ url: "/api/runs/socket", headers, socket: { remoteAddress: "127.0.0.1" } });
   const sock = new FakeSocket();
@@ -1141,7 +1141,7 @@ describe("end to end", () => {
     pages.place(tab, new f.Win(), { x: 0, y: 0, width: 640, height: 400 });
     const wc = f.made.views[0].webContents;
     const dbg = wc.debugger;
-    const config = { get: () => ({ server: { host: "127.0.0.1", maxBodyBytes: 1 << 20 } }) };
+    const config = { get: () => ({ server: { host: "127.0.0.1", maxBodyBytes: 1 << 20, loopbackTrust: "legacy" } }) };
     const upgrade = runSocketUpgrade({ config, runs: /** @type {any} */ ({}), browsers });
     const server = http.createServer((_q, r) => void r.writeHead(404).end());
     server.on("upgrade", (req, socket, head) => void (upgrade(req, socket, head) || socket.destroy()));

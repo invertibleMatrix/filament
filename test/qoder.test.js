@@ -147,7 +147,7 @@ before(async () => {
   const base = `http://127.0.0.1:${fake.address().port}`;
   Object.assign(QODER, { chatBase: base, chatBaseJob: base, devicePoll: `${base}/api/v1/deviceToken/poll`, userInfo: `${base}/api/v1/userinfo`, patExchange: `${base}/api/v1/jobToken/exchange`, quota: `${base}/api/v2/quota/usage` });
   dataDir = mkdtempSync(join(tmpdir(), "filament-qoder-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [
     { id: "qc", name: "Qoder cloud", type: "qoder", apiKey: "", qoder: { authMethod: "device", accessToken: "dt-existing", userId: "u1", machineId: "m1", email: "me@x", expiresAt: Date.now() + 86400000 } },
     { id: "qpat", name: "Qoder via PAT", type: "qoder", apiKey: "pt-secret" },

@@ -53,7 +53,7 @@ describe("a coding agent's compaction that keeps refilling, through the app", ()
   before(async () => {
     mkdirSync(projDir);
     const cfg = defaultConfig();
-    cfg.server.port = 0;
+    cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
     cfg.server.inboundKeys = ["k"];
     cfg.observability.logFile = "";
     cfg.memory.enabled = false;

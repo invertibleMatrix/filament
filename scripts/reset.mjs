@@ -25,6 +25,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { normalizeConfig, sparseConfig, resolveDataDir } from "../src/services/config/store.js";
 import { loadKey, sealConfig, isSealed, open } from "../src/services/config/secrets.js";
+import { ownerHeaders } from "../src/services/owner.js";
 
 /** @param {string} message @param {number} [code] @returns {never} */
 const fail = (message, code = 2) => {
@@ -149,7 +150,8 @@ const adminHeaders = (() => {
 /** What answers at `base`: nothing, or a server and the data folder its /api/state names. */
 const probe = async () => {
   try {
-    const r = await fetch(`${base}/api/state`, { headers: adminHeaders, signal: AbortSignal.timeout(1500) });
+    // This folder's owner key, where its Filament listens at `base` (src/services/owner.js): another's refuses it.
+    const r = await fetch(`${base}/api/state`, { headers: { ...adminHeaders, ...ownerHeaders(dataDir, base) }, signal: AbortSignal.timeout(1500) });
     const st = await r.json().catch(() => null);
     return { up: true, status: r.status, dataDir: typeof st?.dataDir === "string" ? resolve(st.dataDir) : null };
   } catch {
@@ -168,7 +170,7 @@ const stopServer = async () => {
     return;
   }
   try {
-    await fetch(`${base}/api/shutdown`, { method: "POST", headers: adminHeaders, signal: AbortSignal.timeout(5000) });
+    await fetch(`${base}/api/shutdown`, { method: "POST", headers: { ...adminHeaders, ...ownerHeaders(dataDir, base) }, signal: AbortSignal.timeout(5000) });
   } catch {}
   for (let i = 0; i < 60; i++) {
     // in-flight turns can hold the exit for up to 20 s

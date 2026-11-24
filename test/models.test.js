@@ -53,7 +53,7 @@ before(async () => {
   });
   await new Promise((r) => fake.listen(0, "127.0.0.1", r));
   dataDir = mkdtempSync(join(tmpdir(), "filament-models-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.server.advertiseEffortSuffixes = ["max"];
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = ""; cfg.server.advertiseEffortSuffixes = ["max"];
   cfg.upstreams = [
     { id: "router", name: "r", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s" },
     { id: "nine", name: "n", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s" },

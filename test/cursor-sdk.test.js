@@ -36,7 +36,7 @@ const events = () => (existsSync(logFile) ? readFileSync(logFile, "utf8").trim()
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-sdk-")); projDir = join(dataDir, "project"); mkdirSync(projDir); logFile = join(dataDir, "sdk.log");
   process.env.FAKE_SDK_LOG = logFile;
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.experimental.cursorSdk = true; // Cursor through its SDK, behind Settings › Experimental (off by default)
   cfg.upstreams = [
     // `toolActivity: "text"` is pinned here because the rendering test below asserts fenced diff and output blocks —

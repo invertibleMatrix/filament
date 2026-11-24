@@ -39,7 +39,7 @@ describe("Phase 2B: Filament's own texts stay out of the model's context", () =>
     }));
     process.env.FILAMENT_MEMORY_SIDECAR = JSON.stringify({ command: process.execPath, args: [FAKE_SIDECAR], env: { FAKE_SIDECAR_STATE: stateFile, FAKE_SIDECAR_RECALL_ALL: "1" } });
     const cfg = defaultConfig();
-    cfg.server.port = 0;
+    cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
     cfg.server.inboundKeys = ["k"];
     cfg.observability.logFile = "";
     cfg.upstreams = [{ id: "oai", name: "oai", type: "openai-compatible", baseUrl: `http://127.0.0.1:${upPort}`, apiKey: "s" }];

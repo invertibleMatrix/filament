@@ -213,7 +213,7 @@ test("commands a session published before its conversation was kept are the conv
 
 test("/api/acp/detect adds missing agents to an existing config without disabling anything", async () => {
   const dir = mkdtempSync(join(tmpdir(), "filament-detect-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "cursor", name: "my cursor", type: "acp", enabled: false, acp: { command: "agent", args: ["acp"] } }];
   cfg.routes = [{ match: "cursor/*", upstream: "cursor", upstreamModel: "{1}", enabled: false }, { match: "*", upstream: "cursor", upstreamModel: "{model}" }];
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));

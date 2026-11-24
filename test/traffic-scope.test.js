@@ -31,7 +31,7 @@ before(async () => {
   await new Promise((r) => fake.listen(0, "127.0.0.1", r)); fakePort = fake.address().port;
   dataDir = mkdtempSync(join(tmpdir(), "filament-scope-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.observability.storeBodies = "full"; // so the body-withholding rule has something to withhold
   cfg.upstreams = [{ id: "fake", name: "fake", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fakePort}`, apiKey: "up-secret", authStyle: "x-api-key" }];
   cfg.routes = [{ match: "claude-*", upstream: "fake", upstreamModel: "{model}" }];

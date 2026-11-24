@@ -34,7 +34,7 @@ import { leadWords } from "../../app/agent-lead.js";
 import { CONTEXT_HEAD, UPDATE_HEAD } from "../../adapters/agents/context.js";
 import { MCP_TOOLS, serverInstructions } from "../mcp.js";
 import { AGENT_WORK } from "../../adapters/agents/acp/bridge.js";
-import { agentsDevice, isLocalCaller, onTailnetDoor } from "../guards.js";
+import { agentsDevice, isLocalCaller, loopbackTrusted, onTailnetDoor } from "../guards.js";
 import { fullControl } from "../../services/devices.js";
 import { artifactsAt } from "../../core/artifacts.js";
 import { tailnetDoor } from "../../services/tailscale.js";
@@ -169,8 +169,9 @@ export function systemRoutes(a) {
           // The paired device that reads it, and its scope — the page draws a view-only device's controls off.
           device: r.who?.kind === "device" ? { id: r.who.device.id, name: r.who.device.name, scope: r.who.scope } : null,
           // This computer's calls without its owner key since this start, and the programs that made them
-          // (services/owner.js): this computer's to read, which Settings › Remote access and `filament doctor` say.
-          ...(r.who?.kind === "local" && a.owner ? { ownerless: a.owner.said() } : {}),
+          // (services/owner.js): this computer's to read, which Settings › Remote access and `filament doctor` say —
+          // refused under `server.loopbackTrust` "token", answered under "legacy".
+          ...(r.who?.kind === "local" && a.owner ? { ownerless: { ...a.owner.said(), refused: !loopbackTrusted(config.get().server) } } : {}),
           // Where it listens since it started; a host or port saved since waits for a restart (HC-67).
           listening: listening(),
           configFile: config.loaded.file,

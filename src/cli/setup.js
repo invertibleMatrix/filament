@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import { appDataDir, isCheckout } from "../services/config/store.js";
 import { CliError, EXIT, connect } from "./client.js";
 import { askLine, askYes } from "./ask.js";
-import { accountsNamed, addKey, named, openPage, pause, screenHere, signIn, signedInOf } from "./flows.js";
-import { statusOf, statusWords } from "./commands.js";
+import { accountsNamed, addKey, named, pause, screenHere, signIn, signedInOf } from "./flows.js";
+import { openHere, statusOf, statusWords } from "./commands.js";
 
 /** The words of a step's heading. @param {(s: string) => void} out @param {number} n @param {string} title */
 const step = (out, n, title) => out(`\n${n}. ${title}\n${"-".repeat(title.length + 3)}`);
@@ -154,7 +154,7 @@ export async function runSetup(r) {
     out(`Filament ${client.version} runs at ${client.url}.`);
   } catch (/** @type {any} */ e) {
     // Another data folder's Filament holds the port: starting this one would find it taken.
-    if (e?.code !== EXIT.noFilament || e?.body?.otherDataDir) throw e;
+    if (e?.code !== EXIT.noFilament || e?.body?.otherDataDir || e?.body?.taken) throw e;
     if (!(await askYes(term, "Filament is not running. Start it now?"))) throw e;
     client = await startFilament(r);
     out(`✓ Filament ${client.version} runs at ${client.url}.`);
@@ -170,6 +170,7 @@ export async function runSetup(r) {
   const s = await statusOf(client, { shown: !!term.output.isTTY });
   out(statusWords(s));
   // Not asked where no page shows here (over SSH, a server): the status above says the harness's address.
-  if (!s.firstRun && r.flags["no-open"] !== true && screenHere() && (await askYes(term, "Open the harness in your browser?"))) openPage(s.harness, r.flags, out);
+  // Opened as `filament open` opens it: paired by a one-time link, as this computer's own browser.
+  if (!s.firstRun && r.flags["no-open"] !== true && screenHere() && (await askYes(term, "Open the harness in your browser?"))) await openHere(client, { out, flags: r.flags });
   out(`\nFrom here: filament --help lists every command; filament chat "<message>" sends a chat one.`);
 }

@@ -217,7 +217,7 @@ describe("AH-D11: the fresh install, end to end", () => {
     const first = loadConfig(data);
     assert.equal(first.created, true, "the config was built from nothing");
     // The one change a test makes: any free port, never the 20300 a fresh config names (a port override of 0 is no override).
-    saveConfig(data, { .../** @type {any} */ (first.config), server: { .../** @type {any} */ (first.config).server, port: 0 } });
+    saveConfig(data, { .../** @type {any} */ (first.config), server: { .../** @type {any} */ (first.config).server, port: 0, loopbackTrust: "legacy" } });
     // No stand-in engine (an earlier test's may still be named): a stranger's machine before its engine is installed.
     const hook = process.env.FILAMENT_MEMORY_SIDECAR;
     delete process.env.FILAMENT_MEMORY_SIDECAR;

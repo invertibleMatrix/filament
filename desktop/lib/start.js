@@ -94,6 +94,9 @@ export async function foundAt(port, { fetch = globalThis.fetch, waitMs = 5000, h
       if (dataDir && !sameFolder(body.dataDir, dataDir)) return { kind: "refuse", why: `port ${port} is held by a Filament of another data folder (${body.dataDir})` };
       return { kind: "attach", version: body.version, dataDir: body.dataDir, supervisor: typeof body.supervisor === "string" ? body.supervisor : null };
     }
+    // A Filament that did not take this folder's owner key (src/http/guards.js OWNER_NEEDED): another folder's — its own
+    // key is in its own folder — or one whose key file this account cannot read.
+    if (r.status === 403 && body?.ownerKey === true) return { kind: "refuse", why: `port ${port} is held by a Filament that did not take this data folder's owner key: another data folder's, or one this account cannot read the key of` };
     return { kind: "refuse", why: `another program answers on port ${port} (HTTP ${r.status}), not Filament` };
   } catch (/** @type {any} */ e) {
     const code = e?.cause?.code || e?.code;

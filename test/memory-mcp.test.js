@@ -119,8 +119,11 @@ function client(mcp, { name = "claude-code", cwd = "", roots = false, sse = fals
     },
   };
 }
-/** The handler on a world's memory, its server section as given. @param {any} w @param {any} [server] */
-const rig = (w, server = { inboundKeys: ["k"] }, o = {}) => new MemoryMcp({ memory: w.svc, config: { get: () => ({ ...w.cfg, server }) }, rootsWaitMs: 300, ...o });
+/**
+ * The handler on a world's memory, its server section as given: a client here reads every session where any program
+ * here is let in (`server.loopbackTrust` "legacy"). @param {any} w @param {any} [server]
+ */
+const rig = (w, server = { inboundKeys: ["k"], loopbackTrust: "legacy" }, o = {}) => new MemoryMcp({ memory: w.svc, config: { get: () => ({ ...w.cfg, server }) }, rootsWaitMs: 300, ...o });
 /** A tool answer's last text, parsed. @param {any} r */
 const answer = (r) => JSON.parse(r.content.at(-1).text);
 const pid = projectOf({ cwdHint: CWD }).id;
@@ -135,9 +138,15 @@ test("M7-D39: who may call — never a page elsewhere; the house key; with keys 
   assert.equal(memoryMcpRefusal(req({ authorization: "Bearer k2" }, "10.0.0.9"), keyed), null, "a key passes from anywhere");
   assert.equal(memoryMcpRefusal(req({ "x-api-key": "k1" }), keyed), null);
   assert.equal(memoryMcpRefusal(req(houseAuth(), "10.0.0.9"), keyed), null, "Filament's own key");
-  const open = { inboundKeys: [], requireAuth: true };
-  assert.equal(memoryMcpRefusal(req({}), open), null, "no key set: this machine");
+  const open = { inboundKeys: [], requireAuth: true, loopbackTrust: "legacy" };
+  assert.equal(memoryMcpRefusal(req({}), open), null, "no key set: this machine, where any program here is let in");
   assert.equal(memoryMcpRefusal(req({}, "::1"), open), null);
+  // (fails before: yes — s0c: with no inbound key set, any program here, another account's too, read every memory)
+  const owned = { inboundKeys: [], requireAuth: true, loopbackTrust: "token" };
+  const refused = memoryMcpRefusal(req({}), owned);
+  assert.equal(refused?.status, 401, "no key set, server.loopbackTrust token: a program here sends the owner key");
+  assert.match(String(refused?.error), /owner key/);
+  assert.equal(memoryMcpRefusal(req(houseAuth()), owned), null, "Filament's own calls");
   assert.equal(memoryMcpRefusal(req({}, "10.0.0.9"), open)?.status, 403, "no key set: never another");
   assert.equal(memoryMcpRefusal(req({}, "10.0.0.9"), { inboundKeys: [""] })?.status, 403, "an empty key is none");
   assert.equal(memoryMcpRefusal(req(houseAuth(), "10.0.0.9"), open), null);
@@ -679,6 +688,11 @@ test("a search of its project's memory keeps to it — its claims, those that ho
     const ids = async (/** @type {any} */ who, /** @type {any} */ args) => answer(await who.tool("search", { query: "heron queue stuck", limit: 30, ...args })).results.map((/** @type {any} */ r) => r.id);
     const every = await ids(c, {});
     assert.ok(every.includes(far) && every.some((/** @type {string} */ id) => id.startsWith("s:") && !id.startsWith(`s:${own}:`)), `every project's, unasked: ${every}`);
+    // (fails before: yes — s0c: an inbound key, which every agent here holds, read every project's sessions over loopback)
+    const fenced = client(rig(w, { inboundKeys: ["k"], loopbackTrust: "token" }), { cwd: CWD });
+    await fenced.init();
+    const theirs = await ids(fenced, {});
+    assert.ok(theirs.length > 0 && !theirs.some((/** @type {string} */ id) => id.startsWith("s:") && !id.startsWith(`s:${own}:`)), `under the owner key, an inbound key's client reads its own project's sessions alone: ${theirs}`);
     const kept = await ids(c, { project_only: true });
     assert.ok(kept.includes(mine) && kept.includes(everywhere), `its own claims and those that hold everywhere: ${kept}`);
     assert.ok(!kept.includes(far), "never another project's claim");

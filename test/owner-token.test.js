@@ -85,7 +85,8 @@ describe("the owner key, read by the guards", () => {
   test("a key or session that is not this start's is stale; none is none; through a proxy the key counts for nothing, said once", () => {
     const wrong = fake({ [OWNER_HEADER]: `fot_${"A".repeat(43)}` }, PORT);
     assert.equal(ownerOf(wrong), "stale");
-    assert.deepEqual(whoIs(wrong, {}, null), { kind: "local" }, "answered all the same");
+    assert.equal(whoIs(wrong, {}, null), null, "no one (server.loopbackTrust token, the schema's own)");
+    assert.deepEqual(whoIs(wrong, { loopbackTrust: "legacy" }, null), { kind: "local" }, "legacy: answered all the same");
     assert.equal(ownerOf(fake({ [OWNER_SESSION_HEADER]: "fos_gone" }, PORT)), "stale");
     assert.equal(ownerOf(fake({}, PORT)), "none");
     assert.equal(ownerOf(fake({ [OWNER_HEADER]: ownerKeyOf(dir) }, 2)), "stale", "the key of the Filament at another port is no key there");

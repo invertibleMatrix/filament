@@ -151,8 +151,8 @@ ssh -N -L 20400:127.0.0.1:20300 you@server
 ```
 
 Then open `http://127.0.0.1:20400` there. Any free port on your laptop will do; 20300 is taken where Filament runs on
-the laptop too. The server answers a caller through the tunnel that sends no device's token as itself: whoever can
-open the tunnel — any program on your laptop — can sign in to the server already. `filament open --no-open` on the
+the laptop too. A caller through the tunnel that sends no device's token is a program on the server as the server
+sees it: no one's without its owner key, so its browser is sent to the pairing page. `filament open --no-open` on the
 server says a one-time link (`http://127.0.0.1:20300/ui/pair.html#code=…`) that pairs that browser by name, opened on
 your laptop at the tunnel's own address and port (`http://127.0.0.1:20400/ui/pair.html#code=…`).
 A command line connects with a code from `filament pair`: `filament connect http://127.0.0.1:20400 <code>`.

@@ -16,7 +16,7 @@ import { redactHeaders } from "../src/core/redact.js";
 let app, port, dataDir;
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-sec-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["sk-filament-secret-key-1234"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["sk-filament-secret-key-1234"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "u", type: "anthropic-compatible", baseUrl: "http://127.0.0.1:9", apiKey: "sk-up", enabled: true }]; cfg.routes = [{ match: "*", upstream: "u", upstreamModel: "{model}" }];
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
   app = createApp({ dataDir, overrides: { port: 0 } }); port = (await app.start()).port;

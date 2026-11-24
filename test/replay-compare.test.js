@@ -80,7 +80,7 @@ before(async () => {
   }); });
   await new Promise((r) => fake.listen(0, "127.0.0.1", r));
   dataDir = mkdtempSync(join(tmpdir(), "filament-replaycmp-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.observability.storeBodies = "full"; // replays need the stored inbound body
   cfg.upstreams = [{ id: "m", name: "m", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s", pricing: { "claude-opus-5": { input: 15, output: 75 }, "claude-sonnet-5": { input: 3, output: 15 }, "glm-4.6": { input: 0.6, output: 2.2 } } },
     // A coding agent on its own route, for the refusal test: `x-*` reaches the API upstream, bare `x` reaches the

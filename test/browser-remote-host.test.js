@@ -1,6 +1,6 @@
 // @ts-check
 // A viewer's app hosts the agent's browser (b-remote, the owner's design of 11-08): the browser host's socket
-// (`/api/browser/host`) takes, beside this machine's own app on loopback by Filament's inbound key, the desktop app of a
+// (`/api/browser/host`) takes, beside this machine's own app on loopback by Filament's inbound key and its owner key, the desktop app of a
 // paired full device at the network's door or the tailnet's, by that device's sign-in — and the chat it drives opens its
 // pages there. A view-only device, another machine's agents' device, a page (an Origin), an unknown or revoked token are
 // refused in words; a revoke closes the link at once, its own pages going with it alone; a viewer that answers no ping
@@ -18,6 +18,7 @@ import { createBrowsers } from "../src/app/browser/registry.js";
 import { HOST_PATH, browserUpgrade, driverOf } from "../src/http/admin/browser.js";
 import { deviceCaller } from "../src/http/guards.js";
 import { createDevices } from "../src/services/devices.js";
+import { OWNER_HEADER, createOwner } from "../src/services/owner.js";
 import { WsDecoder } from "../src/http/ws.js";
 import { clientFrame, dialSocket } from "../desktop/lib/pinned-socket.js";
 import { startTwoMachines } from "./helpers/two-machines.js";
@@ -130,6 +131,10 @@ async function serve({ pingMs } = {}) {
   server.on("upgrade", (req, socket, head) => void (upgrade(req, socket, head) || socket.destroy()));
   await new Promise((r) => server.listen(0, "127.0.0.1", () => r(undefined)));
   const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+  // This machine's owner key at the port, as server.js mints it as it listens: its app sends it beside the inbound key.
+  const dataDir = mkdtempSync(join(tmpdir(), "filament-host-owner-"));
+  const owner = createOwner({ dataDir });
+  owner.listen(port);
   /** @param {"full" | "view"} scope @param {string} name */
   const paired = (scope, name) => {
     const got = devices.claim(devices.startPairing({ scope }).code, { name, from: FAR["x-forwarded-for"] });
@@ -150,9 +155,15 @@ async function serve({ pingMs } = {}) {
     desk,
     phone,
     agents,
+    /** The owner key's header, as this machine's app sends it. */
+    ownerKey: () => ({ [OWNER_HEADER]: owner.key() }),
     /** @param {Record<string, string>} headers @param {{ mute?: boolean }} [o] */
     dial: (headers, o) => dialRaw(port, headers, o),
-    close: () => new Promise((r) => server.close(() => r(undefined))),
+    close: async () => {
+      await new Promise((r) => server.close(() => r(undefined)));
+      owner.close();
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    },
   };
 }
 
@@ -238,7 +249,7 @@ describe("the browser host's socket, at the tailnet's door", () => {
   // (fails before: yes, by its time alone — its answers held as they were, and the app's socket, ended with no close
   // frame, stayed half open: the listener's close waited on it for good; and s0b: a device's sign-in on loopback was
   // refused, the caller taken for this computer, so an SSH tunnel's app held no link)
-  test("this machine's own app: on loopback by the inbound key, no other; a device's sign-in there — an SSH tunnel's app — is its device's link", async () => {
+  test("this machine's own app: on loopback by the inbound key and the owner key, no other; a device's sign-in there — an SSH tunnel's app — is its device's link", async () => {
     const s = await serve();
     try {
       const none = await s.dial({});
@@ -251,7 +262,10 @@ describe("the browser host's socket, at the tailnet's door", () => {
       await until(() => s.host.linked(deviceHost(s.laptop.device.id)), "the device's app linked");
       assert.equal(s.host.linked("here"), false, "never this machine's own app");
       tunnel.end?.();
-      const app = await s.dial({ authorization: `Bearer ${KEY}` });
+      const keyAlone = await s.dial({ authorization: `Bearer ${KEY}` });
+      assert.equal(keyAlone.status, 403, "the inbound key without the owner key: another program here (s0c)");
+      assert.match(keyAlone.words, /the browser's host is this computer's Filament app, by the owner key it sends/);
+      const app = await s.dial({ authorization: `Bearer ${KEY}`, ...s.ownerKey() });
       assert.equal(app.status, 101);
       await until(() => s.host.linked("here"), "this machine's app linked");
       app.end?.();

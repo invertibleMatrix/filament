@@ -611,7 +611,7 @@ test("through the server: armed only once it listens and only when asked; the en
   const dataDir = tmp();
   const cfg = defaultConfig();
   assert.equal(cfg.memory.engine.autoInstall, true, "a fresh config installs memory's engine by itself");
-  cfg.server.port = 0;
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy";
   cfg.server.inboundKeys = ["k"];
   cfg.observability.logFile = "";
   cfg.memory.folder = join(dataDir, "mem");

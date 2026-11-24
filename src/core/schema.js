@@ -1145,6 +1145,13 @@ export const SERVER = group("Listener and access control.", {
     "Token that lets a script on another machine call the admin API, sent as `x-filament-admin` or a Bearer token.",
     "Leave empty for none: this computer and the full devices paired in Settings › Remote access administer Filament still — a view-only one reads. A browser on another machine pairs instead.",
   ),
+  loopbackTrust: p(
+    "enum",
+    "token",
+    "What a program on this computer needs to reach the admin API, the console and the harness.",
+    "`token`: Filament's owner key, which the Filament app and the `filament` command line send (`owner.key` in the data folder, made anew at each start), or a pairing — a browser here pairs with `filament open` or the tray's Open in browser. `legacy`: any program on this computer, with no key, is you — every other account here, and whatever answers on its loopback, too. Takes effect at once; this computer alone changes it.",
+    { options: ["token", "legacy"] },
+  ),
   allowedHosts: p(
     "array",
     [],

@@ -165,7 +165,7 @@ before(async () => {
   });
   await new Promise((r) => fake.listen(0, "127.0.0.1", r));
   dataDir = mkdtempSync(join(tmpdir(), "filament-resp-"));
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "oai", name: "oai", type: "openai-compatible", baseUrl: `http://127.0.0.1:${fake.address().port}`, apiKey: "s" }];
   cfg.routes = [{ match: "gpt-*", upstream: "oai", upstreamModel: "{model}" }];
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));

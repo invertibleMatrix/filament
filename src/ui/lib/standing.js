@@ -11,15 +11,19 @@
 export const PAIR_PAGE = "/ui/pair.html";
 
 /**
- * @param {{ fetchImpl?: typeof fetch, go?: (path: string) => void }} [o]
+ * @param {{ fetchImpl?: typeof fetch, go?: (path: string) => void, inApp?: boolean }} [o]  `inApp`: this page is the
+ *   desktop app's own window (its bridge, `filamentApp`), whose owner session the app makes again as Filament starts
  * @returns {Promise<boolean>} whether the page went
  */
-export async function leaveIfRefused({ fetchImpl = fetch, go = (p) => location.assign(p) } = {}) {
+export async function leaveIfRefused({ fetchImpl = fetch, go = (p) => location.assign(p), inApp = !!(/** @type {any} */ (globalThis).filamentApp) } = {}) {
   try {
     const r = await fetchImpl("/api/remote/me");
     if (r.ok) return false;
     const body = await r.json().catch(() => null);
     if (!body || typeof body !== "object" || !("pair" in body)) return false;
+    // The app's own window told it needs the owner key: its session is a Filament's that started again, and the app
+    // hands it the new one as that Filament answers (desktop/main.js `ownerSession`) — it stays, and its stream retries.
+    if (inApp && /** @type {any} */ (body).ownerKey === true) return false;
     go(PAIR_PAGE);
     return true;
   } catch {

@@ -175,6 +175,14 @@ test("the harness leaves for the pairing page on a refusal that names it, and on
   for (const elsewhere of ["https://evil.example/pair", "//evil.example/pair", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/%2F/evil.example"])
     assert.deepEqual(await run(answer(403, { pair: elsewhere })), { left: true, went: ["/ui/pair.html"] }, `never an address an answer names: ${JSON.stringify(elsewhere)}`);
   assert.deepEqual(await run(answer(403, null)), { left: false, went: [] }, "a refusal with no body");
+  // (fails before: yes — the review of s0c: the app's window, its session a Filament's that started again, left for the
+  // pairing page before the app handed it the new one)
+  const keyless = answer(403, { error: "…owner key…", ownerKey: true, pair: "/ui/pair.html" });
+  /** @type {string[]} */
+  const went = [];
+  assert.equal(await leaveIfRefused({ fetchImpl: /** @type {any} */ (keyless), go: (p) => went.push(p), inApp: true }), false, "the app's window stays: its session comes again");
+  assert.equal(await leaveIfRefused({ fetchImpl: /** @type {any} */ (keyless), go: (p) => went.push(p), inApp: false }), true, "a browser here with no pairing pairs");
+  assert.deepEqual(went, ["/ui/pair.html"]);
   assert.equal(PAGE_HERE, PAIR_PAGE, "the page's pairing page is the server's");
   // The harness's stream and the console's ask it once a refusal closes them (the console's: the review of 35049d31f).
   const bus = readFileSync("src/ui/harness/lib/bus.js", "utf8");

@@ -59,7 +59,7 @@ before(async () => {
   await Promise.all([dead, alive, neutral, late, pausing].map((s) => new Promise((r) => s.listen(0, "127.0.0.1", r))));
   dataDir = mkdtempSync(join(tmpdir(), "filament-gate-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.rules.resilience.failover = true; // the backups below are tried: off until switched on (the owner's of 11-09)
   cfg.upstreams = [
     { id: "dead", name: "quota-walled", type: "openai-compatible", baseUrl: `http://127.0.0.1:${dead.address().port}`, apiKey: "x", enabled: true },

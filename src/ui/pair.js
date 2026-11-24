@@ -175,6 +175,9 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     $("pair-print-fp").textContent = words && print ? print : "";
     $("pair-print-fp").hidden = !(words && print);
   };
+  // A browser here's link at the name it pairs at (`pageMove` brought it): its code is claimed at once, whoever the
+  // browser is so far — under `server.loopbackTrust` "token" this computer's browser is no one's until it pairs.
+  const hereLink = !!pageNameOf(loc.hash) && String(loc.hostname || "").toLowerCase() === pageNameOf(loc.hash);
   const fromLink = takeLink();
   win.addEventListener("hashchange", () => {
     if (!takeLink()) return;
@@ -234,6 +237,10 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     // A device that went unused past its days is refused so, and how many it says (http/admin/index.js): this browser was
     // paired, and pairs again.
     const j = await r.json().catch(() => null);
+    if (hereLink && fromLink) {
+      $("pair-lead").textContent = `Pairing this browser with ${machine}…`;
+      return claim(fromLink);
+    }
     const unused = Number.isInteger(j?.days) && j.days > 0 ? `for ${j.days} days` : "too long";
     if (j?.lapsed === true)
       $("pair-lead").textContent = `This browser went unused on ${machine} ${unused}, so its pairing ran out. Type a new code from Settings › Remote access on that machine to pair it again.`;

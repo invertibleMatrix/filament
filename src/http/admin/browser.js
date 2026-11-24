@@ -11,7 +11,7 @@
 // sign-in, and holds the pages of the chats it drives there until it goes, is revoked, or stops answering the pings.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
-import { countOwnerless, deviceCaller, deviceTokenOf, endsWithDevice, hostAllowed, hostNameOf, isLocalCaller, safeEq, whoIs } from "../guards.js";
+import { countOwnerless, deviceCaller, deviceTokenOf, endsWithDevice, hostAllowed, hostNameOf, isLocalCaller, loopbackTrusted, safeEq, whoIs } from "../guards.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
 import { HEADLESS, HERE, deviceHost } from "../../app/browser/host.js";
@@ -172,9 +172,13 @@ export function browserUpgrade(a) {
     // afar (guards.js `whoIs`); this computer's own app sends none.
     if (isLocalCaller(req) && !deviceTokenOf(req)) {
       // The app's link without this computer's owner key, counted as its calls are (guards.js `countOwnerless`).
-      countOwnerless(req, whoIs(req, server, devices));
+      const here = whoIs(req, server, devices);
+      countOwnerless(req, here);
       const key = String(h.authorization || "").replace(/^bearer\s+/i, "");
       if (!key || !(server.inboundKeys || []).some((/** @type {string} */ k) => safeEq(String(k), key))) return refuse("the browser's host needs Filament's inbound key", 403);
+      // The inbound key every agent here may hold is no app's: under `server.loopbackTrust` "token" the app's link sends
+      // the owner key too (desktop/lib/browser-host.js), as its calls do.
+      if (!loopbackTrusted(server) && !(here?.kind === "local" && here.owner)) return refuse("the browser's host is this computer's Filament app, by the owner key it sends", 403);
     } else {
       // A device's own sign-in is its device's here, over the tailnet too where its login is trusted (`deviceCaller`).
       const who = deviceCaller(req, devices) ?? whoIs(req, server, devices);

@@ -265,7 +265,7 @@ let app, port, dataDir;
 before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-engineops-srv-"));
   const cfg = defaultConfig();
-  cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   const { writeFileSync } = await import("node:fs");
   writeFileSync(join(dataDir, "config.json"), JSON.stringify(cfg));
   app = createApp({ dataDir, overrides: { port: 0 } });

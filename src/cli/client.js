@@ -39,7 +39,8 @@ const pathKey = (p) => (process.platform === "win32" ? resolve(p).toLowerCase() 
 /**
  * A client of the Filament the data folder names, once it answers; else a CliError (exit 3) that says where it looked.
  * One that answers at that address from another data folder is not it: the port was another's — its error's body says
- * that folder (`otherDataDir`), so a caller that would start one knows the port is taken.
+ * that folder (`otherDataDir`), so a caller that would start one knows the port is taken; one that refused this folder's
+ * owner key says `taken` alone.
  * @param {string} dataDir @param {{ timeoutMs?: number, fetchImpl?: typeof fetch, signal?: AbortSignal }} [o]
  */
 export async function connect(dataDir, { timeoutMs = 3000, fetchImpl = fetch, signal } = {}) {
@@ -48,12 +49,19 @@ export async function connect(dataDir, { timeoutMs = 3000, fetchImpl = fetch, si
   const owner = () => ownerHeaders(dataDir, at.url);
   /** @type {any} */
   let state;
+  /** A Filament that answered, and did not take this folder's owner key (http/guards.js `OWNER_NEEDED`). */
+  let keyRefused = false;
   try {
     const r = await fetchImpl(`${at.url}/api/state`, { headers: { "x-filament-ui": "1", ...owner() }, signal: AbortSignal.timeout(timeoutMs) });
+    if (r.status === 403) keyRefused = (await r.json().catch(() => null))?.ownerKey === true;
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     state = await r.json();
   } catch (/** @type {any} */ e) {
     const where = at.from === "listening" ? `at ${at.url}, where it said it listens` : `at ${at.url} (${at.from === "config" ? "its config's port" : "the default port"})`;
+    // Another data folder's Filament at the port, or this one's whose owner.key this account cannot read: starting one
+    // would find the port taken.
+    if (keyRefused)
+      throw new CliError(`The Filament ${where} did not take the owner key in ${dataDir}: it runs from another data folder (--data-dir names the one it runs from), or its owner.key could not be read here.`, EXIT.noFilament, { taken: true });
     throw new CliError(`No Filament answers ${where}: start it with \`filament start\` or open the Filament app. (${e?.message || e})`, EXIT.noFilament);
   }
   if (typeof state?.dataDir === "string" && state.dataDir && pathKey(state.dataDir) !== pathKey(dataDir))

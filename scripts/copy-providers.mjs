@@ -13,13 +13,17 @@
 //
 // It refuses a Filament that serves the install's own data folder.
 //
-//   node scripts/copy-providers.mjs <port> [--agents] [--only <id,id…>] [--key <its inbound key>] [--data-dir <install's folder>]
+// The other Filament answers a program on this computer by its owner key (`server.loopbackTrust` "token", its default):
+// `--to <its data folder>` sends the key it keeps there (`owner.key`), as the command line does.
+//
+//   node scripts/copy-providers.mjs <port> --to <its data folder> [--agents] [--only <id,id…>] [--key <its inbound key>] [--data-dir <install's folder>]
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { appDataDir } from "../src/services/config/store.js";
 import { SECRET_ENV_RE, loadKey, openConfig } from "../src/services/config/secrets.js";
 import { withoutUpstreams } from "../src/core/routing.js";
+import { ownerHeaders } from "../src/services/owner.js";
 
 /** Upstream types never copied, and why. */
 const NEVER = { "cursor-sdk": "a Cursor SDK key", qoder: "a Qoder sign-in, whose refresh token two Filament runs would share" };
@@ -33,7 +37,7 @@ function fail(message) {
 }
 
 const { values: opts, positionals } = parseArgs({
-  options: { agents: { type: "boolean", default: false }, only: { type: "string" }, key: { type: "string" }, "data-dir": { type: "string" } },
+  options: { agents: { type: "boolean", default: false }, only: { type: "string" }, key: { type: "string" }, "data-dir": { type: "string" }, to: { type: "string" } },
   allowPositionals: true,
 });
 const port = Number(positionals[0]);
@@ -76,11 +80,13 @@ for (const u of picked.upstreams) {
 
 // The other Filament as it stands, and never the install itself.
 const base = `http://127.0.0.1:${port}`;
-const headers = { "content-type": "application/json", ...(opts.key ? { "x-api-key": opts.key } : {}) };
+const headers = { "content-type": "application/json", ...(opts.key ? { "x-api-key": opts.key } : {}), ...(opts.to ? ownerHeaders(resolve(opts.to), base) : {}) };
 /** @type {any} */
 let state;
 try {
   const r = await fetch(`${base}/api/state`, { headers });
+  if (r.status === 403 && (await r.clone().json().catch(() => null))?.ownerKey === true)
+    fail(`${base} answers a program here by its owner key: give its data folder with --to <folder>${opts.to ? ` (${opts.to} holds none for that port)` : ""}`);
   if (!r.ok) fail(`${base}/api/state answered ${r.status}`);
   state = await r.json();
 } catch (e) {

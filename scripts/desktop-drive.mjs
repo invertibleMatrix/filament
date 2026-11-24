@@ -28,7 +28,7 @@ import { anthropicReply, FAKE_SIDECAR, fakeUpstream } from "../test/helpers/app.
 import { RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
 import { MACHINES_FILE, addMachine, setMachineOff } from "../desktop/lib/machines.js";
 import { distDir, versionOf } from "./dist-win.mjs";
-import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerKeyOf } from "../src/services/owner.js";
+import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerHeaders, ownerKeyOf } from "../src/services/owner.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MAIN = join(ROOT, "desktop", "main.js");
@@ -112,14 +112,26 @@ function endTree(pid) {
 }
 
 // ---- Filament's answers and the app's pages ----------------------------------------------------------------------------
+/**
+ * The owner key of the Filament this drive runs at `port`, as a script of the person's sends it: read from whichever of
+ * the drive's data folders says it listens there (src/services/owner.js `ownerHeaders`); none where none does.
+ * @param {number} port @returns {Record<string, string>}
+ */
+const ownerOfPort = (port) => {
+  for (const d of readdirSync(base)) {
+    const h = ownerHeaders(join(base, d), `http://127.0.0.1:${port}`);
+    if (h[OWNER_HEADER]) return h;
+  }
+  return {};
+};
 /** @param {number} port */
 const stateAt = (port) =>
-  fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-filament-ui": "1" }, signal: AbortSignal.timeout(3000) })
+  fetch(`http://127.0.0.1:${port}/api/state`, { headers: { "x-filament-ui": "1", ...ownerOfPort(port) }, signal: AbortSignal.timeout(3000) })
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
 /** @param {number} port @param {string} path @param {any} [body] @param {string} [method] */
 const call = (port, path, body, method = body === undefined ? "GET" : "POST") =>
-  fetch(`http://127.0.0.1:${port}${path}`, { method, headers: { "content-type": "application/json", "x-api-key": KEY, authorization: `Bearer ${KEY}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+  fetch(`http://127.0.0.1:${port}${path}`, { method, headers: { "content-type": "application/json", "x-api-key": KEY, authorization: `Bearer ${KEY}`, ...(path.startsWith("/api/") ? ownerOfPort(port) : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
 /** The app's pages, as its DevTools port lists them; a page keeps its `id` as it loads another address. @param {number} debug @returns {Promise<{ id: string, url: string, webSocketDebuggerUrl: string }[]>} */
 const pagesOf = (debug) =>
   fetch(`http://127.0.0.1:${debug}/json/list`, { signal: AbortSignal.timeout(3000) })
@@ -168,16 +180,18 @@ const startsIn = (text) => [...text.matchAll(/^\[desktop\] (\S+) Filament starte
 // ---- a throwaway Filament's folder ---------------------------------------------------------------------------------------
 /**
  * @param {string} dir @param {number} port @param {string} upstream @param {string} root
- * @param {{ memory?: boolean, failing?: string }} [o]  `memory`: on, with the stand-in engine (`FILAMENT_MEMORY_SIDECAR` in the
- *   app's env); `failing`: the route's provider is one that fails there, `upstream` its backup (a failover, an alert)
+ * @param {{ memory?: boolean, failing?: string, loopbackTrust?: string }} [o]  `memory`: on, with the stand-in engine (`FILAMENT_MEMORY_SIDECAR` in the
+ *   app's env); `failing`: the route's provider is one that fails there, `upstream` its backup (a failover, an alert);
+ *   `loopbackTrust`: its `server.loopbackTrust`, the schema's own unless said
  */
-function writeConfig(dir, port, upstream, root, { memory = false, failing = "" } = {}) {
+function writeConfig(dir, port, upstream, root, { memory = false, failing = "", loopbackTrust = "" } = {}) {
   if (port === LIVE_PORT) throw new Error("never the Filament you run");
   mkdirSync(dir, { recursive: true });
   const cfg = /** @type {any} */ (defaultConfig());
   cfg.server.port = port;
   cfg.server.inboundKeys = [KEY];
   cfg.observability.logFile = "";
+  if (loopbackTrust) cfg.server.loopbackTrust = loopbackTrust;
   cfg.memory = memory
     ? { enabled: true, folder: join(dir, "mem"), models: { summarizer: "" }, autopilot: { enabled: false }, capture: { turns: true, learn: false }, commands: { enabled: true, prefix: "@mem" }, privacy: { encryptArchive: false } }
     : // Memory off: its engine would install itself on a first start.
@@ -272,7 +286,7 @@ async function driveDesk() {
   if (S.pid) mine.push({ pid: S.pid, label: "Studio's Filament" });
   await until(() => stateAt(portS), 60000, "answer from Studio's Filament");
   const pairS = /** @type {any} */ (await until(async () => {
-    const r = await fetch(`http://127.0.0.1:${portS}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
+    const r = await fetch(`http://127.0.0.1:${portS}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json", ...ownerOfPort(portS) }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
     const j = r?.ok ? await r.json() : null;
     return j?.links?.length ? j : null;
   }, 20000, "Studio's pairing link").catch(() => null));
@@ -1293,7 +1307,9 @@ try {
     writeFileSync(join(dataH, "desktop", "settings.json"), JSON.stringify({ notify: false }));
     const dataR = join(base, "r");
     const portR = await freePort();
-    writeConfig(dataR, portR, up.url, root);
+    // Another machine stood in for by a Filament on this computer, opened with no pairing: any program here is let in
+    // there (`server.loopbackTrust` "legacy"), as this check is of the window, not of the way in — a pairing, check 35's.
+    writeConfig(dataR, portR, up.url, root, { loopbackTrust: "legacy" });
     // Named Studio there too: the window takes the name a machine answers by (lib/rail.js), else this computer's.
     writeFileSync(join(dataR, "machine.json"), JSON.stringify({ version: 1, id: randomUUID(), name: "Studio", named: true }));
     const R = spawn(process.execPath, [join(ROOT, "bin", "filament.js"), "--data-dir", dataR, "--port", String(portR)], { env: plainEnv(), stdio: "ignore", windowsHide: true });
@@ -1457,7 +1473,7 @@ try {
     await until(() => stateAt(portW), 60000, "answer from the Filament on the network");
     const whoW = /** @type {any} */ (await fetch(`http://127.0.0.1:${portW}/.well-known/filament`).then((r) => r.json()));
     const pairW = /** @type {any} */ (await until(async () => {
-      const r = await fetch(`http://127.0.0.1:${portW}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
+      const r = await fetch(`http://127.0.0.1:${portW}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json", ...ownerOfPort(portW) }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
       const j = r?.ok ? await r.json() : null;
       return j?.links?.length ? j : null;
     }, 20000, "a pairing link on the network").catch(() => null));
@@ -1507,7 +1523,7 @@ try {
         return null;
       }
     })();
-    const devices33 = /** @type {any} */ (await fetch(`http://127.0.0.1:${portW}/api/remote/devices`).then((r) => r.json()).catch(() => null));
+    const devices33 = /** @type {any} */ (await fetch(`http://127.0.0.1:${portW}/api/remote/devices`, { headers: ownerOfPort(portW) }).then((r) => r.json()).catch(() => null));
     const device33 = (devices33?.devices || []).find((/** @type {any} */ d) => d.name === `Filament app on ${hostname()}`);
     check(
       "33. paired: the cookie in the machine's partition — its harness opens there, not the pairing page —, shown, kept with its pinned way, its Filament lists this window",
@@ -1526,7 +1542,7 @@ try {
     const fetchIn = (/** @type {any} */ page) => (page ? evalIn(page, `fetch("/api/state").then((r) => (r.status === 200 ? "taken" : "HTTP " + r.status), () => "refused")`).catch(() => "no page") : Promise.resolve("no page"));
     const refused33 = await until(async () => ((await fetchIn(view33)) === "refused" ? "refused" : null), 20000, "the new certificate refused in its page").catch(() => fetchIn(view33));
     const pair2 = /** @type {any} */ (await until(async () => {
-      const r = await fetch(`http://127.0.0.1:${portW}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
+      const r = await fetch(`http://127.0.0.1:${portW}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json", ...ownerOfPort(portW) }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
       const j = r?.ok ? await r.json() : null;
       return j?.links?.length ? j : null;
     }, 20000, "a new pairing link").catch(() => null));
@@ -1547,7 +1563,7 @@ try {
     const taken33 = await until(async () => ((await fetchIn(view2)) === "taken" ? "taken" : null), 20000, "the new certificate taken").catch(() => fetchIn(view2));
     await picture(railH2, "33-sheet-repaired");
     await picture(view2, "33-machine-view-repaired");
-    const devices2 = /** @type {any} */ (await fetch(`http://127.0.0.1:${portW}/api/remote/devices`).then((r) => r.json()).catch(() => null));
+    const devices2 = /** @type {any} */ (await fetch(`http://127.0.0.1:${portW}/api/remote/devices`, { headers: ownerOfPort(portW) }).then((r) => r.json()).catch(() => null));
     const ours2 = (devices2?.devices || []).filter((/** @type {any} */ d) => d.name === `Filament app on ${hostname()}`);
     check(
       "33. paired again after its certificate was made anew: refused in its page before, taken after; this window's old device there signed out, one left",

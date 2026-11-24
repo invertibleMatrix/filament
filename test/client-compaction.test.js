@@ -45,7 +45,7 @@ before(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "filament-client-compaction-"));
   const stateFile = join(dataDir, "fake-engine-state.json"); writeFileSync(stateFile, JSON.stringify({ memories: [], canonical: [], seq: 1 }));
   process.env.FILAMENT_MEMORY_SIDECAR = JSON.stringify({ command: process.execPath, args: [FAKE_SIDECAR], env: { FAKE_SIDECAR_STATE: stateFile } });
-  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
+  const cfg = defaultConfig(); cfg.server.port = 0; cfg.server.loopbackTrust = "legacy"; cfg.server.inboundKeys = ["k"]; cfg.observability.logFile = "";
   cfg.upstreams = [{ id: "u", name: "u", type: "anthropic-compatible", baseUrl: `http://127.0.0.1:${/** @type {any} */ (up.address()).port}`, apiKey: "s", pricing: { "cheap-1": { input: 1, output: 1, contextTokens: 64000 }, "cheap-small": { input: 1, output: 1, contextTokens: 8000 }, "big-1": { input: 10, output: 50, contextTokens: 200000 } } }];
   cfg.routes = [{ match: "cheap-*", upstream: "u", upstreamModel: "{model}" }, { match: "big-*", upstream: "u", upstreamModel: "{model}" }];
   cfg.memory = { enabled: true, folder: join(dataDir, "mem"), models: { summarizer: "cheap-1" }, autopilot: { enabled: true, mode: "conservative", briefingTokens: 400, turnTokens: 200, minScore: 0.2, tools: false }, capture: { turns: true, learn: false }, commands: { enabled: true, prefix: "@mem" }, privacy: { encryptArchive: true } };
