@@ -187,7 +187,7 @@ import { engineState } from "./adapters/sidecar/install.js";
 import { createDrafts } from "./app/space-drafts.js";
 import { accountWords, ownAuthorization } from "./core/oauth.js";
 import { runActionCommand, runCommand as runSourceCommand } from "./adapters/tools/source-command.js";
-import { allowedFolder } from "./http/admin/folder.js";
+import { allowedFolderSoon } from "./http/admin/folder.js";
 import { fewAtOnce } from "./core/at-once.js";
 import { createTeamsBeside } from "./app/teams-beside.js";
 import { createThreads } from "./app/threads.js";
@@ -438,14 +438,15 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     // The records store: the facts fold's lineage walk reads it (Facade D2).
     records: usage,
     // Where a session's repository stands, read by git as its briefing is built (the owner's of 10-29); a folder the
-    // fence refuses is not read, as the Worktrees page reads none (GWC-89). The briefing names the newest commit alone
-    // (the memory plan's e1): one of each is read.
+    // fence refuses is not read, as the Worktrees page reads none (GWC-89), nor one whose share does not answer, looked
+    // at off the server's thread first. The briefing names the newest commit alone (the memory plan's e1): one of each
+    // is read.
     repoState: (/** @type {string} */ folder) =>
       repoStandingOf(folder, {
         commits: 1,
         own: 1,
-        refusedOf: (path) => {
-          const f = allowedFolder(config.get(), path);
+        refusedOf: async (path) => {
+          const f = await allowedFolderSoon(config.get(), path);
           return f.ok || f.status === 404 ? null : f.error;
         },
       }),
@@ -1600,8 +1601,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     const into = wt.worktrees.find((w) => w.main)?.branch || null;
     const others = wt.worktrees.filter((w) => !w.main && !forkAt.has(normalizeCwd(w.path)));
     // Each read as Space › places reads it: one the folder fence refuses is not read, and so never said (GWC-89).
-    const reads = await fewAtOnce(others, (w) => {
-      const f = allowedFolder(config.get(), w.path);
+    const reads = await fewAtOnce(others, async (w) => {
+      const f = await allowedFolderSoon(config.get(), w.path);
       return readWorktree(w, { refused: f.ok || f.status === 404 ? null : f.error, into }).catch(() => null);
     });
     const slugs = new Map((spaceStore.routinesAll?.() || []).map((/** @type {{ r: { title: string } }} */ { r }) => [runSlug(r.title), r.title]));
@@ -2648,16 +2649,16 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   });
   /**
    * The places of the repository a folder is in, as the Space's lanes read them: each worktree whole, a folder the fence
-   * refuses said so. @param {string} folder
+   * refuses said so, each looked at off the server's thread first — a chat's turn end reads them. @param {string} folder
    * @returns {Promise<{ ok: true, places: any[] } | { ok: false, error: string }>}
    */
   const projectPlaces = async (folder) => {
-    const f = allowedFolder(config.get(), folder);
+    const f = await allowedFolderSoon(config.get(), folder);
     if (!f.ok) return { ok: false, error: f.error };
     const wt = await worktreesOf(f.root);
     if (!wt.ok) return { ok: false, error: String(wt.error || "git could not read it") };
-    const read = await fewAtOnce(wt.worktrees, (w) => {
-      const g = allowedFolder(config.get(), w.path);
+    const read = await fewAtOnce(wt.worktrees, async (w) => {
+      const g = await allowedFolderSoon(config.get(), w.path);
       return readWorktree(w, { refused: g.ok || g.status === 404 ? null : g.error });
     });
     return { ok: true, places: read };
@@ -2694,7 +2695,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     places: projectPlaces,
     chatsIn: (folders, self) => memory.chatsIn(folders, { readFor: self || "" }),
     filesOf: async (path) => {
-      const f = allowedFolder(config.get(), path);
+      const f = await allowedFolderSoon(config.get(), path);
       if (!f.ok) return { path, ok: false, error: f.status === 404 ? "the folder is gone" : f.error, branch: null, base: null, ahead: null, commits: 0, files: [], more: 0 };
       return placeFiles(await branchOf(f.root), path);
     },
@@ -2953,7 +2954,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       // The project's settings could not be read: none added, so a place there is not followed.
     }
     const wt = await worktreesOf(own);
-    const trees = wt.ok ? wt.worktrees.map((w) => w.path).filter((p) => allowedFolder(config.get(), p).ok) : [];
+    const paths = wt.ok ? wt.worktrees.map((w) => w.path) : [];
+    const fenced = await Promise.all(paths.map((p) => allowedFolderSoon(config.get(), p)));
+    const trees = paths.filter((_, i) => fenced[i].ok);
     return [own, ...added, ...trees];
   };
   // What a watcher's trigger names, checked as an agent proposes it (the space tool): a commit's place a folder of the

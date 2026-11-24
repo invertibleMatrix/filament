@@ -89,6 +89,10 @@ test("a worktree the fence refuses, or one git is slow on, is named as git liste
   assert.ok(slow?.worktrees.every((x) => x.unread === "git did not answer in time" && x.branch), JSON.stringify(slow?.worktrees));
   assert.equal(slow?.commits.length, 3, "the commits stand");
   assert.equal(await repoStandingOf(w.feat, { refusedOf: () => "outside the folders Filament may read" }), null, "this folder refused: nothing read");
+  // (the review of x31) The fence that looks off the server's thread first answers later: waited for, alike.
+  const later = await repoStandingOf(w.feat, { ...WHOLE, refusedOf: async (p) => (top(w.main) === p.replace(/\\/g, "/") ? "does not answer: its drive or share is offline" : null) });
+  assert.equal(later?.worktrees.find((x) => x.main)?.unread, "does not answer: its drive or share is offline");
+  assert.equal(await repoStandingOf(w.feat, { refusedOf: async () => "does not answer" }), null);
 });
 
 test("on the base branch itself: nothing of its own, main's commits; a folder in no repository reads as none", async () => {

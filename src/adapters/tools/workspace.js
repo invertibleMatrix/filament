@@ -10,6 +10,7 @@ import { resolveInside } from "./fs-fence.js";
 import { withoutOwnSwitch } from "./own-programs.js";
 import { OWN_CONFIG, gitAbove, gitProgram, notStarted, refusedWords } from "../git/snapshot.js";
 import { execFileOffThread } from "../git/spawn-pool.js";
+import { folderThere } from "../git/folder-there.js";
 
 export const MAX_TREE_ENTRIES = 2000;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -354,14 +355,17 @@ async function listFiles(root) {
 /**
  * The folder browser's one level: the subdirectories of `path`, its parent, and — with no path — the top level,
  * which is the allowed roots when some are listed, else this machine's filesystem roots (the drives on Windows,
- * `/` elsewhere). Hidden folders (dot-prefixed) are left out unless asked for. The caller has already allowed
- * `path`; the parent is offered only when it is allowed too (`allowed(parent)`).
- * @param {{ path?: string, hidden?: boolean, roots: string[], allowed: (p: string) => boolean }} opts
+ * `/` elsewhere), each looked at off the server's thread, a moment at most: a drive or share that does not answer — a
+ * mapped drive gone offline — is left out, never waited on there (folder-there.js `folderThere`). Hidden folders
+ * (dot-prefixed) are left out unless asked for. The caller has already allowed `path`, looked at off the thread; the
+ * parent is offered only when it is allowed too (`allowed(parent)`).
+ * @param {{ path?: string, hidden?: boolean, roots: string[], allowed: (p: string) => boolean, there?: { ms?: number, statOf?: (path: string) => Promise<unknown> } }} opts
  */
-export function listDirs({ path = "", hidden = false, roots, allowed }) {
+export async function listDirs({ path = "", hidden = false, roots, allowed, there }) {
   if (!path) {
-    const top = roots.length ? roots.map((r) => resolve(r)) : driveRoots();
-    return { path: "", parent: null, top: true, dirs: top.filter((p) => existsSync(p)).map((p) => ({ name: p, path: p })) };
+    const top = roots.length ? roots.map((r) => resolve(r)) : driveLetters();
+    const answered = await Promise.all(top.map((p) => folderThere(p, there)));
+    return { path: "", parent: null, top: true, dirs: top.filter((_, i) => answered[i] === true).map((p) => ({ name: p, path: p })) };
   }
   const abs = resolve(path);
   if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(`no such folder: ${path}`);
@@ -397,13 +401,8 @@ function samePath(a, b) {
   };
   return norm(a) === norm(b);
 }
-/** The filesystem roots a browser starts from when no roots are listed. */
-function driveRoots() {
+/** The filesystem roots a browser may start from when no roots are listed: `/`, or each drive letter Windows has. */
+function driveLetters() {
   if (process.platform !== "win32") return ["/"];
-  const out = [];
-  for (let c = 65; c <= 90; c++) {
-    const d = `${String.fromCharCode(c)}:${sep}`;
-    if (existsSync(d)) out.push(d);
-  }
-  return out;
+  return Array.from({ length: 26 }, (_, i) => `${String.fromCharCode(65 + i)}:${sep}`);
 }

@@ -5,6 +5,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs, { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -325,32 +326,41 @@ describe("the workspace adapter", () => {
     }
   });
 
-  test("the folder browser: the roots on top when some are listed, one level of subfolders below, hidden on request, the parent only when allowed", () => {
+  test("the folder browser: the roots on top when some are listed, one level of subfolders below, hidden on request, the parent only when allowed", async () => {
     const allowed = (p) => folderVerdict({ agentLoop: { roots: [dir] }, server: { host: "127.0.0.1" } }, p).ok;
-    const top = listDirs({ roots: [dir], allowed });
+    const top = await listDirs({ roots: [dir], allowed });
     assert.equal(top.top, true);
     assert.deepEqual(
       top.dirs.map((d) => d.path),
       [resolve(dir)],
     );
-    const inside = listDirs({ path: dir, roots: [dir], allowed });
+    // (fails before: yes — the review of x31: each root, or each drive letter, was looked for on the server's thread) A
+    // root on a share that does not answer is left out within its wait, and the others listed.
+    let open = () => {};
+    const shut = new Promise((r) => (open = () => r(undefined)));
+    const at = Date.now();
+    const some = await listDirs({ roots: ["//gone-nas/files/x", dir], allowed, there: { ms: 50, statOf: (p) => (/^[\\/]{2}/.test(p) ? shut : stat(p)) } });
+    open();
+    assert.deepEqual(some.dirs.map((d) => d.path), [resolve(dir)]);
+    assert.ok(Date.now() - at < 1000, `answered in ${Date.now() - at} ms`);
+    const inside = await listDirs({ path: dir, roots: [dir], allowed });
     assert.deepEqual(
       inside.dirs.map((d) => d.name),
       ["src"],
     );
     assert.equal(inside.parent, null, "a root's parent is outside the fence");
-    const withHidden = listDirs({ path: dir, hidden: true, roots: [dir], allowed });
+    const withHidden = await listDirs({ path: dir, hidden: true, roots: [dir], allowed });
     assert.deepEqual(
       withHidden.dirs.map((d) => d.name),
       [".hidden", "src"],
     );
-    const src = listDirs({ path: join(dir, "src"), roots: [dir], allowed });
+    const src = await listDirs({ path: join(dir, "src"), roots: [dir], allowed });
     assert.deepEqual(
       src.dirs.map((d) => d.name),
       ["deep"],
     );
     assert.equal(src.parent, resolve(dir));
-    const noRoots = listDirs({ roots: [], allowed: () => true });
+    const noRoots = await listDirs({ roots: [], allowed: () => true });
     assert.ok(noRoots.dirs.length >= 1, "the machine's filesystem roots");
   });
 });

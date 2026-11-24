@@ -179,17 +179,17 @@ export function fileRoutes(a) {
     [
       "GET",
       "/files/dirs",
-      guard((r) => {
+      guard(async (r) => {
         const q = r.url.searchParams;
         const cfg = config.get();
         const roots = (Array.isArray(cfg.agentLoop?.roots) ? cfg.agentLoop.roots : []).map(String).filter(Boolean);
         const path = q.get("path") || "";
         if (path) {
-          const f = allowedFolder(cfg, path);
+          const f = await allowedFolderSoon(cfg, path);
           if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         }
         // What the person picks here is a folder for a chat of their own: Filament's copies folder is no root of it.
-        return sendJson(r.res, 200, listDirs({ path, hidden: q.get("hidden") === "1", roots, allowed: (p) => folderVerdict(cfg, p, { person: true }).ok }));
+        return sendJson(r.res, 200, await listDirs({ path, hidden: q.get("hidden") === "1", roots, allowed: (p) => folderVerdict(cfg, p, { person: true }).ok }));
       }),
     ],
     // Existence answers, one per path, no content read: the harness prunes remembered folders that left the disk

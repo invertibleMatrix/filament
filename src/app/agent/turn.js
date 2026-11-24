@@ -73,7 +73,7 @@ import { loopbackHost } from "../../services/config/store.js";
 import { createTurnTree } from "../turn-tree.js";
 import { git } from "../../adapters/git/snapshot.js";
 import { parseWorktrees } from "../../adapters/git/places.js";
-import { folderHung } from "../../adapters/git/folder-there.js";
+import { folderHung, folderThere } from "../../adapters/git/folder-there.js";
 import { linkedIn } from "../agent-permits.js";
 import { PATCH_HANDS, instructionsOver, patchHand } from "../../adapters/tools/patch-hands.js";
 import { serverFor } from "../../adapters/lsp/servers.js";
@@ -797,6 +797,11 @@ export function createAgentLoopTurn(deps) {
     // (`folderVerdict`'s `person`), its folder, the folders it adds and its repository's other worktrees alike — but for
     // the copy placed for it, where it was started (`deps.ownCopy`, services/copies.js `owned`).
     const whose = { person: !agentsChat, copy: agentsChat ? "" : deps.ownCopy?.(String(sessionChain || chainRef || "")) || "" };
+    // A folder on a drive or share that does not answer is refused in words before the fence looks at it on the
+    // server's thread, which would wait as long as the share (folder-there.js `folderThere`); one the folder rules keep
+    // out is never asked.
+    if (cwd && !shareKeptOut(cfg, String(cwd)) && (await folderThere(String(cwd))) === null)
+      return refuse(`I can't reach ${cwd}: its drive or share does not answer. Ask again once it does.`, "agent: refused — the folder does not answer");
     const verdict = folderVerdict(cfg, cwd, whose);
     const root = verdict.root;
     if (verdict.why === "empty")

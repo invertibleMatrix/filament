@@ -45,14 +45,15 @@ function within(work, ms, late) {
 /**
  * The repository a folder works in, read whole once; null where the folder is in no repository, git could not read it,
  * or the fence refuses it. `commits`, `own` and `worktrees`: how many of each are read at most. `refusedOf`: why the
- * fence refuses a folder, or null — another worktree it refuses is named as git listed it, never read (GWC-89).
+ * fence refuses a folder, or null, now or once it has looked (one on a share that does not answer, off the server's
+ * thread) — another worktree it refuses is named as git listed it, never read (GWC-89).
  * `siblingMs`: how long each other worktree is waited on.
  * @param {string} folder
- * @param {{ commits?: number, own?: number, worktrees?: number, refusedOf?: (path: string) => string | null, siblingMs?: number }} [o]
+ * @param {{ commits?: number, own?: number, worktrees?: number, refusedOf?: (path: string) => string | null | Promise<string | null>, siblingMs?: number }} [o]
  * @returns {Promise<RepoStanding | null>}
  */
 export async function repoStandingOf(folder, { commits = 30, own = 10, worktrees = 6, refusedOf = () => null, siblingMs = SIBLING_MS } = {}) {
-  if (refusedOf(folder)) return null;
+  if (await refusedOf(folder)) return null;
   const info = await placeInfo(folder, { whole: true });
   if (!info.ok || !info.place) return null;
   const place = info.place;
@@ -61,7 +62,7 @@ export async function repoStandingOf(folder, { commits = 30, own = 10, worktrees
   /** One other worktree, read within its time; as git listed it where it was not read, and why. @param {import("./places.js").Worktree} w */
   const sibling = async (w) => {
     const listed = { path: w.path, main: !!w.main, branch: w.branch, head: w.head ? w.head.slice(0, 9) : null, onBase: false, ahead: null, behind: null, fresh: false, uncommitted: null };
-    const p = await within(readWorktree(w, { refused: refusedOf(w.path) }), siblingMs, null);
+    const p = await within(Promise.resolve(refusedOf(w.path)).then((refused) => readWorktree(w, { refused })), siblingMs, null);
     if (!p) return { ...listed, missing: false, unread: "git did not answer in time" };
     if (p.missing) return { ...listed, missing: true, unread: null };
     if (p.refused || !p.ok) return { ...listed, missing: false, unread: p.error || "git could not read it" };
