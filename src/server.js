@@ -184,6 +184,7 @@ import { createConnectorCatalogue } from "./app/connector-catalogue.js";
 import { createSpaceTools } from "./app/space-tools.js";
 import { createFilamentRows } from "./app/filament-rows.js";
 import { fetchSource } from "./adapters/tools/source-fetch.js";
+import { keepFromAgents } from "./adapters/tools/fs-fence.js";
 import { engineState } from "./adapters/sidecar/install.js";
 import { createDrafts } from "./app/space-drafts.js";
 import { accountWords, ownAuthorization } from "./core/oauth.js";
@@ -228,6 +229,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const selfBase = () => selfAddress(boundAt ?? { host: config.get().server.host, port: selfPort() });
   // The live configuration; the first-run seed (which coding agents this machine has) is the bridge's knowledge, handed in here.
   const config = createConfigStore({ dataDir, overrides, agents: detectedAgentSeed });
+  // This data folder kept from another machine's agents' calls (adapters/tools/fs-fence.js `keepFromAgents`, s0d): its
+  // owner key makes a reader this computer's owner. Let go of at the stop.
+  const unkeepData = keepFromAgents(dataDir);
   // Token calibration learns from receipts only (the usage every real reply states) — never a provider call. Off in
   // the config stands it down entirely: nothing observed, nothing applied.
   const calibFile = config.get().observability?.tokenCalibration === false ? null : join(dataDir, "token-calib.json");
@@ -4024,6 +4028,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           try {
             owner.close();
           } catch {}
+          unkeepData();
           // The network's listener closes with what it holds open: a device's terminal, its stream.
           await Promise.race([Promise.all([lan.close(), artLan.close(), tailnet.close()]), new Promise((r) => setTimeout(r, 2000).unref())]);
           if (twin.listening) {

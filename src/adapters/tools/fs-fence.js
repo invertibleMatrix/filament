@@ -68,12 +68,71 @@ export const resolvedPath = (abs) => {
 };
 
 /**
- * `keptFromAgents` by a path's names alone, as they stand: a credentials folder anywhere in it, or `.git` below the
- * folder of `bases` that holds it most closely — a worktree Filament keeps inside its repository's `.git`
- * (`filament-worktrees`) is a folder like any other, read below itself.
+ * Whether a path names a share (`\\host\share`, `//host/share`) on Windows: a look at one goes out over the network to
+ * that host, so what judges a path by its words never asks the disk of one. `\\?\C:\…` and `\\.\C:\…` are this
+ * computer's own disk. @param {string} p
+ */
+export const sharePath = (p) => process.platform === "win32" && /^[\\/]{2}(?![?.][\\/][a-z]:)/i.test(p);
+
+/** What `keptFromAgents` says of a path in Filament's own data folder (`keepFromAgents`). */
+export const FILAMENT_KEPT = "filament-data";
+/** Filament's own folders, as `keepFromAgents` was told them: each kept whole, by its long name and where it resolves, while any teller holds it. @type {Map<string, { real: string, n: number }>} */
+const filamentFolders = new Map();
+/**
+ * Filament's data folder kept from another machine's agents (s0d): the owner key, secret.key, its config, the devices
+ * paired and the machines it reaches — what turns a reader into this computer's owner. Told once Filament knows its
+ * folder (server.js); the answer lets go of it, as a stop does, and a folder two servers in one process were told is
+ * kept until both let go. @param {string} dir @returns {() => void}
+ */
+export function keepFromAgents(dir) {
+  const d = resolve(dir);
+  const had = filamentFolders.get(d);
+  filamentFolders.set(d, { real: had?.real ?? resolvedPath(d), n: (had?.n ?? 0) + 1 });
+  let gone = false;
+  return () => {
+    const k = filamentFolders.get(d);
+    if (gone || !k) return;
+    gone = true;
+    if (--k.n <= 0) filamentFolders.delete(d);
+  };
+}
+/** Filament's own folders kept from another machine's agents, as `keepFromAgents` was told them, and where each resolves. */
+export const keptFolders = () => [...filamentFolders].flatMap(([d, { real }]) => (real === d ? [d] : [d, real]));
+/**
+ * Whether a path is in Filament's own data folder (`keepFromAgents`), by its names and, on this computer's disk, where
+ * the filesystem resolves it: the one place another machine's agents never touch, whatever their mode (s0d).
+ * @param {string} abs
+ */
+export const inFilamentFolder = (abs) => {
+  const folders = keptFolders();
+  if (!folders.length) return false;
+  if (folders.some((d) => contained(abs, d))) return true;
+  if (sharePath(abs)) return false;
+  const real = resolvedPath(abs);
+  return folders.some((d) => contained(real, d));
+};
+/**
+ * Whether a file found below `dir` is in Filament's own data folder, judged where the filesystem resolves `dir`: the
+ * search of a chat of theirs that goes where it says (Auto) reports nothing of it. @param {string} dir
+ * @returns {(file: string) => boolean}
+ */
+export function filamentBelow(dir) {
+  const at = resolve(dir);
+  const real = sharePath(at) ? at : resolvedPath(at);
+  return (file) => {
+    const f = resolve(file);
+    return keptFolders().some((d) => contained(f, d) || contained(join(real, relative(at, f)), d));
+  };
+}
+
+/**
+ * `keptFromAgents` by a path's names alone, as they stand: Filament's own data folder (`keepFromAgents`), a
+ * credentials folder anywhere in it, or `.git` below the folder of `bases` that holds it most closely — a worktree
+ * Filament keeps inside its repository's `.git` (`filament-worktrees`) is a folder like any other, read below itself.
  * @param {string} p @param {readonly string[]} bases
  */
 const keptByNames = (p, bases) => {
+  if (keptFolders().some((d) => contained(p, d))) return FILAMENT_KEPT;
   const cred = credentialFolderOf(p);
   if (cred) return cred;
   const base = bases.filter((b) => contained(p, b)).sort((a, b) => b.length - a.length)[0];
@@ -113,9 +172,12 @@ export function inGitFolder(path, bases) {
 }
 
 /** What `keptFromAgents` found, in words. @param {string} kept */
-export const keptWords = (kept) => (kept === ".git" ? "a repository's own .git folder" : `a credentials folder (${kept})`);
+export const keptWords = (kept) => (kept === ".git" ? "a repository's own .git folder" : kept === FILAMENT_KEPT ? "Filament's data folder" : `a credentials folder (${kept})`);
 /** Why a read of `asked` is refused another machine's agents, in words. @param {string} asked  as named @param {string} kept  `keptFromAgents`'s */
-export const keptRefusal = (asked, kept) => `another machine's agents never read ${kept === ".git" ? "a repository's own .git folder" : "a credentials folder"}; ${asked} is in ${kept === ".git" ? "one" : kept}`;
+export const keptRefusal = (asked, kept) =>
+  kept === FILAMENT_KEPT
+    ? `another machine's agents never read Filament's data folder, which holds its owner key; ${asked} is in it`
+    : `another machine's agents never read ${kept === ".git" ? "a repository's own .git folder" : "a credentials folder"}; ${asked} is in ${kept === ".git" ? "one" : kept}`;
 
 /**
  * Whether a file found under `dir` — by a walk that follows no link, so each lies where its names say — is kept from
@@ -180,7 +242,12 @@ export function resolveInside(root, p, { fenced = true, reads = [], theirs = fal
   const rootAbs = resolve(root);
   if (!existsSync(rootAbs)) throw new HandError(`the hands root does not exist: ${root}`);
   const abs = landing(rootAbs, p);
-  if (!fenced) return abs;
+  if (!fenced) {
+    // A chat of theirs that reads where it says (Auto, where their device may run without asking) never reads
+    // Filament's data folder all the same (s0d).
+    if (theirs && inFilamentFolder(abs)) throw Object.assign(new HandError(keptRefusal(`"${p}"`, FILAMENT_KEPT)), { kept: FILAMENT_KEPT });
+    return abs;
+  }
   /** @param {string} base */
   const lexically = (base) => contained(abs, resolve(base));
   const bases = [rootAbs, ...reads];

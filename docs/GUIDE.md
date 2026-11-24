@@ -502,7 +502,15 @@ paired with it presses it; the agents' device switches nothing itself. With Agen
   where the agent asks before it (Claude Code's Read and Grep do past its folder), and Filament's own Glob and Grep,
   where the agent works through them, stay in those folders by the same rule — but
   under *auto* with **Without asking**; Codex's sandbox and Cursor's own tools read without asking, as far as your
-  account there can, and so does Claude Code inside its folder, so switch **Coding agents** on only for a machine of yours;
+  account there can, and so does Claude Code inside its folder, so switch **Coding agents** on only for a machine of yours.
+  Nothing of theirs touches Filament's data folder, which holds its owner key, `secret.key`, its config, the devices
+  paired and the machines it reaches: a call that names it, or a folder that holds it (a search of your home folder, a
+  `cd` up to `AppData`) — a command by its path in any way a shell says one, through a variable (`%APPDATA%`, `$HOME`),
+  `..`, a link or a wildcard, a file tool's, an MCP tool's, a command they send here
+  ([A command on another machine](#a-command-on-another-machine)) — is refused in words in
+  every mode, Filament's loop and a coding agent's alike, and a command that only reads it no longer runs unasked.
+  Under *auto*, their reads never land in it and their searches leave its files out. Its words are read, not run: a
+  program of theirs that makes the name itself, which **Without asking** lets run unasked, reads what you can;
 - act as you once **Full control** is on with Agents: the last pill on their device's line, which asks first in
   words that say what it crosses, and goes off with Agents. Their chats then run as yours do there: offered
   Filament's tools that reach past a folder (artifacts, the Space, teams, flows, the browser, skills, the web), that
@@ -2236,7 +2244,11 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   sets it, never a device. A script of yours that calls the admin API sends the key from `owner.key`, read at each
   call, as the command line does. It guards against another account on this computer, and programs that reach
   Filament without being able to read your files; a program running as you can read the key as it can read every file
-  of yours.
+  of yours. Another machine's agents' chats never touch the data folder that holds it, without **Full control**
+  ([Their chats](#remote-access-this-filament-from-another-machine)): a call that names it, or a folder that holds it,
+  is refused in words. What
+  that cannot stop: a program of theirs that **Without asking** lets run, which makes the name itself, and a program
+  that stops the desktop app and answers at its port.
 - **While the desktop app runs, pairing and another machine's agents' grants are its window's too.** A pairing code
   (Make a code, `filament pair`) and a pill on another machine's agents' line (Agents, Full control and the rest) let
   another machine in, so they need the app's key as an answer does, from this computer's programs, a tailnet login

@@ -53,7 +53,7 @@ import { ANSWERED_THERE } from "./remote-agents.js";
 import { answerWords, checkAnswer } from "../../adapters/agents/asks.js";
 import { grantFor, grantedBy } from "./grants.js";
 import { alwaysWords, keepsFor, keptFor } from "./chat-always.js";
-import { climbsOut, namesOutside, strayOf, strayWhy, strayWords } from "../agent-permits.js";
+import { FILAMENT_FOLDER_WORDS, climbsOut, filamentFolderNamed, namesOutside, strayOf, strayWhy, strayWords } from "../agent-permits.js";
 import { describeHook, hookLabel } from "./hooks.js";
 import { createNowIn } from "../now-in.js";
 import { isHandTool, isCommandHand, guardResult, safeEnv } from "../../adapters/tools/hands.js";
@@ -74,6 +74,11 @@ import { failureLine, keptRounds, saidOf, worded } from "../../core/failure.js";
 import { changedSecond, driftChanged, failedAgain, failingLine, newDriftState, outsideLine } from "../../core/drift.js";
 import { PIN_STOPPED } from "../../core/web-pins.js";
 import { WATCHER, guideBlocks, isGuideBlock } from "../../core/watchers.js";
+
+/** What the gate answers a call of another machine's agents' chat that names Filament's data folder (s0d): no yes or mode lets it run. */
+const FOLDER_REFUSAL = `Not run: ${FILAMENT_FOLDER_WORDS}.`;
+/** Why the record says it was refused. */
+const FOLDER_NOTE = "it names Filament's data folder, which another machine's agents never touch";
 
 /** @typedef {import("./prompt.js").PermissionMode} PermissionMode */
 /**
@@ -971,6 +976,8 @@ async function loopTurn(a, ctl) {
    * @returns {ReturnType<typeof gate>}
    */
   const gateOf = (mode, u, learned, reads = readsOnly) => {
+    // Another machine's agents' chat without Full control never touches Filament's data folder, in any mode (s0d).
+    if (a.agentsChat === true && filamentFolderNamed(u, root)) return { verdict: /** @type {const} */ ("refuse"), text: FOLDER_REFUSAL };
     if (u.name === BROWSER) return browserGate(mode, u.input, { page: a.browser?.page() || "", allowed: (site) => !!a.browser?.allowed(site), team: a.browser?.team || null });
     const g = gate(mode, u.name, u.input, learned, kindOf(u.name), reads, root);
     // A routine's run acts through the connections' tools the person switched it on with, read-only or not (A2c); the
@@ -1187,9 +1194,10 @@ async function loopTurn(a, ctl) {
     /** @type {typeof judged} */
     const g = granted ? { verdict: "run", grant: granted } : chats ? { verdict: "run", kept: chats } : judged;
     if (g.verdict === "refuse") {
-      notes.push(g.rule ? `agent: ${u.name} refused by the rule ${describeRule(g.rule)}` : `agent: ${u.name} refused (${mode} mode)`);
+      const ours = g.text === FOLDER_REFUSAL;
+      notes.push(g.rule ? `agent: ${u.name} refused by the rule ${describeRule(g.rule)}` : ours ? `agent: ${u.name} refused — ${FOLDER_NOTE}` : `agent: ${u.name} refused (${mode} mode)`);
       if (g.rule) denied++;
-      return { result: refusedCall(u, s.press && !g.rule ? pressSaid(PRESS_READ_ONLY, s.input) : g.text, g.rule ? describeRule(g.rule) : null) };
+      return { result: refusedCall(u, s.press && !g.rule && !ours ? pressSaid(PRESS_READ_ONLY, s.input) : g.text, g.rule ? describeRule(g.rule) : null) };
     }
     // A loop tool the session did not offer — switched off by `loop.tools`, a web hand it did not switch on — is
     // answered, never run or asked about: the offered set is the contract. (Read-only's missing hands are refused
@@ -1305,6 +1313,10 @@ async function loopTurn(a, ctl) {
       emit({ type: "tool-start", round, name: p.name, args: argSummary(p.name, p.input), id: p.id, input: p.input });
       emit({ type: "tool-end", round, name: p.name, ok: false, ms: 0, id: p.id, chars: 0, refused: true, rule: describeRule(hit.rule) });
       return errResult(p.id, denialText(p.name, hit.rule, hit.subject, `Not run: ${who} said yes, but`));
+    }
+    if (g.verdict === "refuse" && g.text === FOLDER_REFUSAL) {
+      notes.push(`agent: ${whose} allowed ${p.name}, but ${FOLDER_NOTE}`);
+      return refusedCall(p, g.text.replace(/^Not run: /, `Not run: ${who} said yes, but `), null);
     }
     if (g.verdict === "refuse") {
       notes.push(`agent: ${whose} allowed ${p.name}, but this session is read-only now`);
@@ -1883,7 +1895,7 @@ async function loopTurn(a, ctl) {
     if (stray && fence) return { text: strayWords(stray, root, fence.folder), why: ` — ${strayWhy(stray, root, fence.folder)},` };
     const mode = modeHere();
     const g = gateOf(mode, c, null, reads);
-    return g.verdict === "refuse" ? { text: g.text.replace(/^Not run: /, ""), why: ` (${mode} mode)` } : null;
+    return g.verdict === "refuse" ? { text: g.text.replace(/^Not run: /, ""), why: g.text === FOLDER_REFUSAL ? ` — ${FOLDER_NOTE},` : ` (${mode} mode)` } : null;
   };
   /** Whether the session's pre-tool hooks (§5.6) see a call: a hand's, a web hand's, an MCP tool's. @param {any} u */
   const preHooked = (u) => !!hooks && (isHandTool(u.name) || isWebTool(u.name) || isMcpTool(u.name));
@@ -2165,7 +2177,7 @@ async function loopTurn(a, ctl) {
           const v = judge(gateOf(modeHere(), call, permissions ? permissions.allowed : null), ruleFor(rules, call.name, subjectOf(call), here), call.name, call.input);
           if (v.verdict === "run") return { ok: /** @type {const} */ (true) };
           if (v.verdict === "ask" && pressYes.get(id) === String(call.input?.press?.runs ?? "")) return { ok: /** @type {const} */ (true) };
-          if (v.verdict === "refuse") return { ok: /** @type {const} */ (false), error: v.rule ? v.text : pressSaid(PRESS_READ_ONLY, call.input) };
+          if (v.verdict === "refuse") return { ok: /** @type {const} */ (false), error: v.rule || v.text === FOLDER_REFUSAL ? v.text : pressSaid(PRESS_READ_ONLY, call.input) };
           return { ok: /** @type {const} */ (false), error: "it asks the developer first, and they were not asked about it as it runs now: call it again" };
         };
         const r = await spaceRun(u.input, { ...a.space, judge: judgeNow, signal: cut || null });

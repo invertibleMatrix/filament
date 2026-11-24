@@ -10,7 +10,7 @@ import { globToRegExp } from "../core/path-glob.js";
 import { canonicalOf } from "../core/tool-vocab.js";
 import { WRITING_REFUSAL } from "../adapters/agents/turn-bridge.js";
 import { runHand, ENV_WORDS, RESULT_BUDGET_BYTES } from "../adapters/tools/hands.js";
-import { keptBelow, resolveInside } from "../adapters/tools/fs-fence.js";
+import { filamentBelow, keptBelow, resolveInside } from "../adapters/tools/fs-fence.js";
 import { widenFor } from "../adapters/git/worktree.js";
 import { widenedWords } from "../adapters/git/sparse.js";
 import { SPACE } from "../app/agent/space.js";
@@ -109,11 +109,12 @@ async function walk(root, { maxFiles = 20000 } = {}) {
  * beside its own. The search stays in them, out of a repository's own `.git` and of a credentials folder
  * (tools/fs-fence.js `keptFromAgents`), as the loop's own hands keep it. Null for any other chat, whose searches go
  * where they say, and under Auto, which their chat runs in only where their device may run without asking: a command
- * runs unread there, as the person's own.
+ * runs unread there, as the person's own — but for Filament's own data folder (`theirChat`, s0d).
  * @param {any} ctx @returns {{ reads: string[] } | null}
  */
-const theirFence = (ctx) =>
-  (ctx.turn?.toolsAt?.agentsChat === true || ctx.conv?.opened?.fenced === true) && ctx.modeNow?.() !== "auto" ? { reads: Array.isArray(ctx.turn?.toolsAt?.dirs) ? ctx.turn.toolsAt.dirs : [] } : null;
+const theirFence = (ctx) => (theirChat(ctx) && ctx.modeNow?.() !== "auto" ? { reads: Array.isArray(ctx.turn?.toolsAt?.dirs) ? ctx.turn.toolsAt.dirs : [] } : null);
+/** Whether the call is a chat another machine's agents drive without Full control: under Auto too, its searches never reach Filament's data folder. @param {any} ctx */
+const theirChat = (ctx) => ctx.turn?.toolsAt?.agentsChat === true || ctx.conv?.opened?.fenced === true;
 
 /**
  * Where a call to Filament's own tools stands, from what the token's bridge knows of its session.
@@ -442,9 +443,9 @@ export class McpToolServer {
       }
       case "Glob": {
         sink.via = "filament"; // search always runs here: the client's own tools are for reading, writing and commands
-        const root = abs(args.path) || cwd; const fence = theirFence(ctx);
-        if (fence) resolveInside(cwd, root, { reads: fence.reads, theirs: true });
-        const kept = fence ? keptBelow(root, [cwd, ...fence.reads]) : null;
+        const root = abs(args.path) || cwd; const fence = theirFence(ctx); const theirs = theirChat(ctx);
+        if (theirs) resolveInside(cwd, root, { fenced: !!fence, reads: fence?.reads ?? [], theirs: true });
+        const kept = fence ? keptBelow(root, [cwd, ...fence.reads]) : theirs ? filamentBelow(root) : null;
         const re = globToRegExp(String(args.pattern || "*")); const files = await walk(root);
         const hits = []; for (const f of files) { const rel = relative(root, f).split(sep).join("/"); if ((re.test(rel) || re.test(f.replace(/\\/g, "/"))) && !kept?.(f)) hits.push(f); }
         const withTime = await Promise.all(hits.slice(0, 2000).map(async (f) => ({ f, t: (await stat(f).catch(() => ({ mtimeMs: 0 }))).mtimeMs }))); withTime.sort((a, b) => b.t - a.t);
@@ -457,7 +458,7 @@ export class McpToolServer {
         // default output is the files that match.
         const { fields } = /** @type {any} */ (canonicalOf("Grep", args));
         const fence = theirFence(ctx);
-        return runHand("grep", { ...fields, output: fields.output ?? "files" }, { root: cwd, ...(fence ? { fenced: true, reads: fence.reads, theirs: true } : { fenced: false }), fullPaths: true, maxBytes: RESULT_BUDGET_BYTES });
+        return runHand("grep", { ...fields, output: fields.output ?? "files" }, { root: cwd, ...(fence ? { fenced: true, reads: fence.reads, theirs: true } : { fenced: false, theirs: theirChat(ctx) }), fullPaths: true, maxBytes: RESULT_BUDGET_BYTES });
       }
       default: throw Object.assign(new Error(`unknown tool: ${name}`), { code: -32601 });
     }

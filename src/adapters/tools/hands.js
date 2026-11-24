@@ -39,7 +39,7 @@ const GREP_MAX_LINE = 500;
 const GREP_MAX_MATCHES = 100;
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // read/edit refuse bigger files before loading them: the proxy must not OOM on a model's whim
 
-import { HandError, keptBelow, resolveInside } from "./fs-fence.js";
+import { HandError, filamentBelow, keptBelow, keptFolders, resolveInside } from "./fs-fence.js";
 import { globToRegExp } from "../../core/path-glob.js";
 import { keptOut } from "../../core/read-rules.js";
 import { headBytes, tailBytes, headChars } from "../../core/text.js";
@@ -2731,11 +2731,11 @@ const GREP_OUTPUTS = ["content", "files", "count"];
  */
 /**
  * Whether a file a search or a listing found under `dir` is kept from another machine's agents (fs-fence.js
- * `keptBelow`): a walk named no such folder, but comes by one that has no dot to hide it (a browser's profile). Null
- * for any other caller, and where the hands are not fenced.
+ * `keptBelow`): a walk named no such folder, but comes by one that has no dot to hide it (a browser's profile). Where
+ * their hands are not fenced (Auto), Filament's own data folder alone (`filamentBelow`, s0d). Null for any other caller.
  * @param {string} dir @param {string} root @param {{ theirs?: boolean, fenced?: boolean, reads?: readonly string[] }} opts
  */
-const theirsKept = (dir, root, opts) => (opts.theirs && opts.fenced !== false ? keptBelow(dir, [root, ...(opts.reads || [])]) : null);
+const theirsKept = (dir, root, opts) => (!opts.theirs ? null : opts.fenced !== false ? keptBelow(dir, [root, ...(opts.reads || [])]) : keptFolders().length ? filamentBelow(dir) : null);
 
 /** A JSON text field from rg: text, or base64 bytes for what is not UTF-8. @param {any} o */
 const rgText = (o) => (typeof o?.text === "string" ? o.text : o?.bytes ? Buffer.from(String(o.bytes), "base64").toString("utf8") : "");

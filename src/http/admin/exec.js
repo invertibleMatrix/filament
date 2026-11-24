@@ -19,6 +19,7 @@ import { SHELL, startCommand } from "../../adapters/tools/shell.js";
 import { TIMED_OUT_CEILING_MS, safeEnv } from "../../adapters/tools/hands.js";
 import { readOnlyCommand } from "../../adapters/tools/read-only-commands.js";
 import { gate, permissionMode, ruled } from "../../app/agent/tools.js";
+import { FILAMENT_FOLDER_WORDS, filamentFolderNamed } from "../../app/agent-permits.js";
 import { PERMISSION_MODES } from "../../app/agent/prompt.js";
 import { describeRule, ruleFor, rulesFrom } from "../../app/agent/rules.js";
 import { folderRefusalOf, folderVerdict, loopConfig, outsideRootsWords } from "../../app/agent/turn.js";
@@ -250,6 +251,8 @@ export function execRoutes(a) {
     const mode = set === "auto" && device !== null && !heldGrant(a.devices?.get?.(device), "unasked") ? "edit" : set;
     const input = { command };
     const fenced = device !== null && !fullControl(a.devices, device);
+    // Nor does a command of theirs touch Filament's data folder, in any mode, as their chat's bash never does (s0d).
+    if (fenced && filamentFolderNamed({ name: "bash", input }, root)) return { mode, redact: redactorOf(doc?.privacy?.redact), verdict: /** @type {const} */ ("refuse"), text: `Not run: ${FILAMENT_FOLDER_WORDS}.`, rule: null };
     const readsOnly = (/** @type {string} */ c) => readOnlyCommand(c, { root, shell: SHELL, env: safeEnv(), agentsDevice: fenced });
     const g = gate(mode, "bash", input, null, undefined, readsOnly, root);
     return { mode, redact: redactorOf(doc?.privacy?.redact), ...ruled(g, ruleFor(rulesFrom(doc), "bash", input, { root, shell: SHELL.kind }), "bash", input, root, (c) => !!readsOnly(c)?.ok) };

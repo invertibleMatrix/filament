@@ -50,10 +50,10 @@ import { readOnlyCommand } from "../adapters/tools/read-only-commands.js";
 import { readOnlyPowerShell } from "../adapters/tools/read-only-powershell.js";
 import { SHELL } from "../adapters/tools/shell.js";
 import { isCommandHand, safeEnv } from "../adapters/tools/hands.js";
-import { keptWords, resolveInside } from "../adapters/tools/fs-fence.js";
+import { keptFolders, keptWords, resolvedPath, resolveInside, sharePath } from "../adapters/tools/fs-fence.js";
 import { DEPENDENCY_DIRS } from "../adapters/git/worktree.js";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, hostname, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { permissionShape } from "../services/memory/permissions.js";
 
@@ -179,11 +179,11 @@ const undotted = (p) => p.replace(/([^\\/.\s])\.+(?=[\\/]|\s|$)/g, "$1");
 const SHORT_NAME = /~\d/;
 /**
  * Where a path with a short name in it leads by the long names: the deepest folder on its way that is there, read on
- * the disk, and the rest after it as said. The path as it is where nothing on its way is there, and elsewhere than
- * Windows. @param {string} p  absolute
+ * the disk, and the rest after it as said. The path as it is where nothing on its way is there, elsewhere than
+ * Windows, and on a share, whose look would go out to its host (`sharePath`). @param {string} p  absolute
  */
 const longNamed = (p) => {
-  if (process.platform !== "win32" || !SHORT_NAME.test(p)) return p;
+  if (process.platform !== "win32" || !SHORT_NAME.test(p) || sharePath(p)) return p;
   /** @type {string[]} */
   const rest = [];
   for (let at = p; ; ) {
@@ -609,6 +609,127 @@ const pathsIn = (v, out = [], depth = 0) => {
 };
 
 /**
+ * A variable a command names a folder by: cmd's `%NAME%`, PowerShell's `${env:NAME}` and `$env:NAME`, a POSIX shell's
+ * `${NAME}` and `$NAME`.
+ */
+const VARIABLE = /%([a-z_][a-z0-9_]*)%|\$\{env:([a-z_][a-z0-9_]*)\}|\$env:([a-z_][a-z0-9_]*)|\$\{([a-z_][a-z0-9_]*)\}|\$([a-z_][a-z0-9_]*)/gi;
+/** The variables a shell keeps of its own, which say nothing of where this process stands: left as said. */
+const SHELL_OWN = new Set(["oldpwd", "_"]);
+/**
+ * A command with each variable this process knows put in its value — by any case of its name on Windows, by its own
+ * elsewhere (`%APPDATA%`, `$HOME`) —, and the folder it runs in for the shell's own (`$PWD`, cmd's `%CD%`). One it
+ * does not know stays as said. @param {string} command @param {string} from
+ */
+const withVariables = (command, from) => {
+  const win = process.platform === "win32";
+  const names = new Map(Object.keys(process.env).map((k) => [win ? k.toLowerCase() : k, k]));
+  return command.replace(VARIABLE, (m, ...n) => {
+    const name = String(n.slice(0, 5).find(Boolean) || "");
+    const key = win ? name.toLowerCase() : name;
+    if (key === (win ? "pwd" : "PWD") || (win && m.startsWith("%") && key === "cd")) return from;
+    if (SHELL_OWN.has(key.toLowerCase())) return m;
+    const k = names.get(key);
+    return k ? String(process.env[k]) : m;
+  });
+};
+/** This computer by a name a share's path says it by: `localhost`, a loopback address, its own name. @param {string} host */
+const thisHost = (host) => {
+  const h = host.toLowerCase();
+  return h === "localhost" || /^127\.\d+\.\d+\.\d+$/.test(h) || h === "[::1]" || h === "0--1.ipv6-literal.net" || h === hostname().toLowerCase();
+};
+/**
+ * A path a call names as Windows reads its device and share forms, by its words alone: `\\?\C:\…`, and a drive's own
+ * share on this computer (`\\localhost\c$\…`, `\\127.0.0.1\c$`, by this computer's name, `\\?\UNC\…`), as the drive's
+ * path; any other as said. @param {string} p
+ */
+const ownPath = (p) => {
+  if (process.platform !== "win32" || !/^[\\/]{2}/.test(p)) return p;
+  const s = p.replace(/\//g, "\\").replace(/^\\\\[?.]\\(?=[a-z]:)/i, "").replace(/^\\\\[?.]\\UNC\\/i, "\\\\");
+  const share = /^\\\\([^\\]+)\\([a-z])\$(\\.*)?$/i.exec(s);
+  return share && thisHost(share[1]) ? `${share[2]}:${share[3] || "\\"}` : s;
+};
+/**
+ * Where a share's path leads, judged with no look (`sharePath`: a look goes out to its host): another share of this
+ * computer's may lead anywhere on it ("anywhere"); another host's leads nowhere here (""). @param {string} p  `ownPath`'s
+ */
+const shareLeads = (p) => {
+  const host = /^\\\\([^\\]+)/.exec(p);
+  return host && thisHost(host[1]) ? "anywhere" : "";
+};
+/** What a call that names Filament's data folder in another machine's agents' chat is answered (s0d). */
+export const FILAMENT_FOLDER_WORDS = "another machine's agents never touch Filament's data folder, which holds its owner key; this call names it or a folder that holds it";
+/** The characters past which a path's words say no folder for certain: a wildcard, a brace's list, a variable not known here. */
+const UNSURE = /[*?[{$%]/;
+/**
+ * Filament's own folder a call names (fs-fence.js `keepFromAgents`: its data folder), or "": named itself, a place
+ * inside it, or a folder that holds it, from which a search, a copy or an archive reads it whole (`grep -r`, `cd ..`,
+ * `Get-ChildItem -Recurse $env:APPDATA`). A command's by any way a shell says a path — as `namesOutside` reads one,
+ * through a variable (`%APPDATA%`, `$HOME`), from the folder it runs in or with `..`, where a link or a short name on
+ * its way leads, and up to where a wildcard or a name not known here begins (`~/.config/fil{,}ament`) —, a file tool's
+ * by its paths, an MCP tool's by a path among its arguments. For another machine's agents' chat without Full control,
+ * whose calls never touch it (s0d), in every mode. Its words are read, never run: a program that makes the name itself
+ * is the limit the guide says. Another host's share is judged by its words, with no look that would reach it.
+ * @param {{ name: string, input?: any }} c @param {string} root  the folder the call runs in
+ */
+export function filamentFolderNamed(c, root) {
+  const folders = keptFolders();
+  if (!folders.length) return "";
+  /** The folder of Filament's that `at` is in or holds, by its words and where the disk resolves it. @param {string} at */
+  const hit = (at) => {
+    if (!at) return "";
+    if (at === "anywhere") return folders[0];
+    const real = sharePath(at) ? at : resolvedPath(at);
+    return folders.find((d) => within(d, at) || within(at, d) || within(d, real) || within(real, d)) || "";
+  };
+  /** Where a path said from `from` lands. @param {string} p @param {string} from */
+  const landed = (p, from) => {
+    const at = ownPath(/^~(?=[\\/]|$)/.test(p) ? homedir() + p.slice(1) : p);
+    return sharePath(at) ? shareLeads(at) : leadsTo(at, from, root);
+  };
+  if (isCommandHand(c.name)) {
+    const from = typeof c.input?.cwd === "string" && c.input.cwd ? resolve(root, c.input.cwd) : root;
+    const there = hit(from);
+    if (there) return there;
+    const command = withVariables(String(c.input?.command ?? ""), from);
+    const named = folders.find((d) => namesOutside(command, d, null, []));
+    if (named) return named;
+    const drives = WINDOWS_PATH.test(root);
+    for (const raw of unquoted(command).split(WORD_BREAK)) {
+      const word = ownPath(asWindows(raw, drives));
+      if (!/[\\/]/.test(word) && !/^[.~]/.test(word)) continue;
+      const unsure = word.search(UNSURE);
+      if (unsure < 0) {
+        const at = hit(landed(word, from));
+        if (at) return at;
+        continue;
+      }
+      // Past a wildcard or a name not known here, any folder below the base may be meant: the base is judged, as a
+      // folder that holds the data folder is.
+      const cut = Math.max(word.lastIndexOf("/", unsure), word.lastIndexOf("\\", unsure));
+      const at = hit(landed(cut >= 0 ? word.slice(0, cut + 1) : ".", from));
+      if (at) return at;
+    }
+    return "";
+  }
+  if (isMcpTool(c.name)) {
+    for (const p of pathsIn(c.input)) {
+      const at = hit(landed(p, root));
+      if (at) return at;
+    }
+    return "";
+  }
+  const input = c.input ?? {};
+  const paths = [input.path, ...(Array.isArray(input.paths) ? input.paths : []), ...pathsIn(input)].filter((p) => typeof p === "string" && p);
+  // A search with no path searches the folder it runs in.
+  if (!paths.length && (c.name === "grep" || c.name === "glob")) paths.push(".");
+  for (const p of paths) {
+    const at = hit(landed(p, root));
+    if (at) return at;
+  }
+  return "";
+}
+
+/**
  * The strings among an MCP tool's call's arguments, at any depth, that may be a relative path: one line, and none of
  * `pathsIn`'s — not absolute, not in the home, not climbing — nor an address (`://`). Whether one names a place at all,
  * nobody but its server knows.
@@ -934,6 +1055,8 @@ export function createAgentPermits({ rules, modeNow, learned, confine = null, fo
       const reads = readsOnce(root);
       const out = stray(calls, root, reads);
       if (out) return strayed(out, mode, notes);
+      // Nor does it touch Filament's data folder, in any mode (s0d): its owner key makes a reader this computer's owner.
+      if (agentsDevice && calls.some((c) => filamentFolderNamed(c, root))) return { verdict: "refuse", mode, notes, how: `refused: ${FILAMENT_FOLDER_WORDS}`, why: `Filament, as ${FILAMENT_FOLDER_WORDS}` };
       // Another machine's agents' chat without Full control reads where its folder lets it, but under Auto, which runs
       // their work as the person's own once their device may run without asking (`readPast`).
       const past = agentsDevice && mode !== "auto" ? calls.map((c) => readPast(c, root)).find(Boolean) : "";
@@ -1048,6 +1171,8 @@ export function createAgentPermits({ rules, modeNow, learned, confine = null, fo
       // The person's yes does not move a worker's change out of its worktree either.
       const out = stray(calls, root, reads);
       if (out) return strayed(out, mode, notes);
+      // Nor another machine's agents' call into Filament's data folder (s0d).
+      if (agentsDevice && calls.some((c) => filamentFolderNamed(c, root))) return { verdict: "refuse", mode, notes, how: `refused: ${FILAMENT_FOLDER_WORDS}`, why: `Filament, as ${FILAMENT_FOLDER_WORDS}` };
       // A worker's lead's yes (HarnessV3-TaskGraph-v2 TG2-D41) is judged as the person's is, in its own name.
       const who = by === "lead" ? "its lead" : "the person";
       for (const c of calls) {
