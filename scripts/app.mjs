@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Open the harness as its own window (tray/filament-app.ps1): a Chromium app window over the running server — the same
 // page the browser tab shows, so a fix in the tree is live there on the next reload. Windows-only (Edge/Chrome app
-// mode); elsewhere this prints the URL to open in a browser and starts nothing.
+// mode); elsewhere this says how to open it in a browser and starts nothing.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
@@ -9,7 +9,7 @@ import { join, dirname } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (process.platform !== "win32") {
   console.error("The app window is Windows-only (it drives Edge/Chrome app mode through PowerShell).");
-  console.error("Open http://127.0.0.1:<port>/ui/harness.html in a browser instead (`npm start` first; the port is server.port in your config, 20300 by default).");
+  console.error("Run `node bin/filament.js open` instead (`npm start` first): it opens the harness in your browser, paired as this computer's own.");
   process.exit(0);
 }
 const ps = process.env.SystemRoot ? `${process.env.SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : "powershell.exe";

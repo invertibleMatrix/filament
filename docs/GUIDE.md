@@ -2037,9 +2037,13 @@ says which.
 a Chromium **app window**: Edge or Chrome, whichever is installed, with no address bar or tabs, its own taskbar entry,
 and its own browser profile under the data folder (`app-profile`, which `npm run reset` wipes), so nothing it stores mixes with your everyday
 browsing. It is the same page the browser tab shows, served by the same running server — there is nothing packaged or
-copied, so a fix in the tree is live in that window on the next reload (Ctrl+R). When the server is not running the
-launcher starts it (`-NoStart` waits instead); `-Page /` opens the console; `-Browser chrome` prefers Chrome;
-`-SharedProfile` uses the browser's normal profile.
+copied, so a fix in the tree is live in that window on the next reload (Ctrl+R). The window opens at the one-time link
+`filament open --no-open` makes, so it is paired as this computer's own at Filament's own name, and its profile keeps
+the pairing: a window paired already goes straight on, its link's code left to run out unused. While the Filament app
+holds its key, the link is the app's tray's to make (Open in browser), and the window opens at the pairing page. The
+launcher looks for a running Filament at its `/health`, which answers without the owner key, and starts one only where
+none answers (`-NoStart` waits instead); `-Page /` opens the console; `-Browser chrome` prefers Chrome;
+`-SharedProfile` uses the browser's normal profile, paired as its own device.
 
 ---
 
@@ -2963,8 +2967,8 @@ each console element shows. Design notes: `docs/memory-architecture.md`.
 
 ## 23. The harness
 
-The harness is Filament's own chat app, at `http://127.0.0.1:20300/ui/harness.html` (or `npm run app` for its own
-window, see [The harness as its own window](#the-harness-as-its-own-window)). Everything else in this guide is about
+The harness is Filament's own chat app, at `/ui/harness.html` on Filament's port: `filament open` opens it in your
+browser, paired as this computer's own (or `npm run app` for its own window, see [The harness as its own window](#the-harness-as-its-own-window)). Everything else in this guide is about
 Filament standing between your tool and a provider. In the harness there is no other tool: **Filament owns the
 conversation.** The archive is the transcript, and for every turn Filament builds the request itself from the archive,
 under the session's settings.
