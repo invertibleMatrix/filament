@@ -489,6 +489,16 @@ describe("what its windows may show, and what its server is given", () => {
       false,
     );
     assert.equal(goes("not a url", "xhr", own), false);
+    // (fails before: yes — the hunt on s0e: a window an artifact opened at Filament's address loaded with the session,
+    // which the SameSite=Strict cookie it replaced never went with) Started by an artifact, as Electron 45 says it: a
+    // pop-up (its opener the artifact), one with no opener and a form sent to a new window (no frame) alike.
+    const started = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame, /** @type {string | undefined} */ initiatorOrigin) => ownerSessionGoes({ url, resourceType, frame, initiatorOrigin }, origin);
+    assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", art, art.origin), false, "an artifact's pop-up");
+    assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null, art.origin), false, "one with no opener, a form to a new window");
+    assert.equal(started("http://127.0.0.1:20300/api/state", "xhr", own, "null"), false, "a sandboxed frame's, its origin opaque");
+    assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", own, origin), true, "a pop-up of Filament's own page");
+    assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null, undefined), true, "the app's own load");
+    assert.equal(started("ws://127.0.0.1:20300/api/runs/socket", "webSocket", own, origin), true);
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
     assert.doesNotMatch(main, /cookies\.set\(/, "no cookie holds it");
     assert.match(main, /onBeforeSendHeaders\(\{ urls: ownerSessionUrls\(origin\) \}/);

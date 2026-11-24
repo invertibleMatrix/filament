@@ -132,18 +132,21 @@ export const ownerSessionUrls = (origin) => {
 
 /**
  * Whether a call of the app's windows carries their owner session (main.js `ownerSession`): one to Filament's own
- * origin — its host and port, over http or a socket —, asked by a window's own load or by a frame whose every frame up
- * to its window's is at that origin. Never one to another port of this computer's address (a server an agent runs, an
- * image a model wrote into a chat), another name for it, an artifact's frame's, nor a frame's that an artifact holds
- * at Filament's own address. A frame Electron can no longer read is none of Filament's.
- * @param {{ url: string, resourceType?: string, frame?: { origin: string, parent: any } | null }} call  Electron's
- *   webRequest details @param {string} origin
+ * origin — its host and port, over http or a socket —, started by the app itself or by Filament's own page, and asked
+ * by a window's own load or by a frame whose every frame up to its window's is at that origin. Never one to another
+ * port of this computer's address (a server an agent runs, an image a model wrote into a chat), another name for it,
+ * an artifact's frame's, a frame's that an artifact holds at Filament's own address, nor a window's an artifact opens
+ * there — a pop-up, one with no opener, a form it sends to a new window: Electron's `initiatorOrigin` names it (the
+ * hunt on s0e). A frame Electron can no longer read is none of Filament's.
+ * @param {{ url: string, resourceType?: string, initiatorOrigin?: string, frame?: { origin: string, parent: any } | null }} call
+ *   Electron's webRequest details @param {string} origin
  */
-export function ownerSessionGoes({ url, resourceType, frame }, origin) {
+export function ownerSessionGoes({ url, resourceType, initiatorOrigin, frame }, origin) {
   try {
     const to = new URL(url);
     const own = new URL(origin);
     if (own.protocol !== "http:" || (to.protocol !== "http:" && to.protocol !== "ws:") || to.host !== own.host) return false;
+    if (initiatorOrigin && initiatorOrigin !== own.origin) return false;
     if (resourceType === "mainFrame") return true;
     if (!frame) return false;
     for (let f = frame; f; f = f.parent) if (f.origin !== own.origin) return false;

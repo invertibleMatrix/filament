@@ -2201,7 +2201,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   start of Filament — by the key itself, never by a session — and kept in the app's memory alone: the app adds it to
   its windows' own calls to Filament's address and port (the `x-filament-owner-session` header), never a cookie, which
   a browser sends to every port of this computer's address. A server an agent runs on another port, an image a model
-  wrote into a chat, an artifact's frame and anything it holds get none, and the pages themselves cannot read it. It
+  wrote into a chat, an artifact's frame and anything it holds or opens get none, and the pages themselves cannot read it. It
   counts over this computer's own address
   alone: a request a proxy hands on that carries it is refused, as any such request is, and said once in the log. It is taken out of
   each request as Filament reads it, so no record, log or answer holds it, nor any program's environment. For now
