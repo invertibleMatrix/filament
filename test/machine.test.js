@@ -4,10 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, pageAt, protocolGap } from "../src/services/machine.js";
+import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, pageLabelOf, protocolGap } from "../src/services/machine.js";
 import { harnessOrigins } from "../src/core/artifacts.js";
 import { createFrontDoor } from "../src/http/front-door.js";
 import { defaultConfig } from "../src/config.js";
@@ -141,18 +141,15 @@ test("this Filament's own name under localhost: made once and kept, never said t
     assert.equal(again.get().id, id, "its id kept");
     assert.match(again.pageHost(), /^filament-[0-9a-f]{12}\.localhost$/, "a label that is none is made anew");
     assert.equal(`${JSON.parse(readFileSync(join(dir, "machine.json"), "utf8")).page}.localhost`, again.pageHost(), "and kept");
+    // (fails before: yes — the hunt on s0f: written as any file is, other accounts on a Linux machine read it)
+    if (process.platform !== "win32") assert.equal(statSync(join(dir, "machine.json")).mode & 0o777, 0o600, "this account's alone");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
   const H = "filament-0123456789ab.localhost";
-  assert.equal(pageAt("http://127.0.0.1:20300", H), `http://${H}:20300`);
-  assert.equal(pageAt("http://127.0.0.1:20300/", H), `http://${H}:20300/`);
-  assert.equal(pageAt("http://localhost:20300/ui/harness.html", H), `http://${H}:20300/ui/harness.html`);
-  assert.equal(pageAt("http://192.168.1.20:20300", H), "http://192.168.1.20:20300", "a network address, as it is");
-  assert.equal(pageAt("http://[::1]:20300", H), "http://[::1]:20300", "an IPv6 one, which a .localhost name may not reach");
-  assert.equal(pageAt("https://127.0.0.1:20343", H), "https://127.0.0.1:20343");
-  assert.equal(pageAt("http://127.0.0.1:20300", null), "http://127.0.0.1:20300");
-  assert.equal(pageAt("http://127.0.0.1:20300", "evil.example"), "http://127.0.0.1:20300", "no name of another's");
+  assert.equal(pageLabelOf(H), "filament-0123456789ab");
+  assert.equal(pageLabelOf(H.toUpperCase()), "filament-0123456789ab");
+  for (const other of ["evil.example", "filament-0123456789ab", "filament-0123456789ab.localhost.evil", "x.filament-0123456789ab.localhost", "", null]) assert.equal(pageLabelOf(other), "", String(other));
   assert.deepEqual(harnessOrigins(20300, {}, null, H), ["http://127.0.0.1:20300", "http://localhost:20300", `http://${H}:20300`]);
   assert.deepEqual(harnessOrigins(20300, {}, null, "evil.example"), ["http://127.0.0.1:20300", "http://localhost:20300"]);
 
@@ -177,7 +174,7 @@ test("this Filament's own name under localhost: made once and kept, never said t
     await shim.stop();
   }
   assert.match(readFileSync(new URL("../src/server.js", import.meta.url), "utf8"), /createArtifactsHandler\(\{[^}]*pageHost: \(\) => machine\.pageHost\(\) \}\)/, "artifacts framed by its page");
-  assert.match(readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8"), /shell\.openExternal\(`\$\{pageAt\(origin, p\.pageHost\)\}\/ui\/pair\.html#code=/, "the tray's Open in browser pairs it there");
+  assert.match(readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8"), /const label = pageLabelOf\(p\.pageHost\);\n\s+await shell\.openExternal\(`\$\{origin\}\/ui\/pair\.html#code=\$\{encodeURIComponent\(p\.code\)\}\$\{label \? `&name=\$\{label\}` : ""\}`\);/, "the tray's Open in browser: its page moves on to the name");
 });
 
 // (fails before: yes — nothing answered /.well-known/filament, and /api/state said neither the machine nor who reads it)

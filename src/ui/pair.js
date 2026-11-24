@@ -78,6 +78,36 @@ export function claimWords(status, body, machine, now = Date.now()) {
   return `Not paired: ${body?.error || `HTTP ${status}`}`;
 }
 
+/**
+ * The name a browser here is paired at, as `filament open`'s link or the tray's carries it (`&name=filament-<12 hex>`,
+ * services/machine.js `pageHost`): `<it>.localhost`, or "" for none or any other.
+ * @param {string} hash
+ */
+export const pageNameOf = (hash) => {
+  const n = String(new URLSearchParams(String(hash || "").replace(/^#/, "")).get("name") || "").toLowerCase();
+  return /^filament-[0-9a-f]{12}$/.test(n) ? `${n}.localhost` : "";
+};
+
+/**
+ * Where a browser here's link goes before it claims (the hunt on s0f): this page at the name it is paired at, on this
+ * page's port, its fragment kept — so its cookie is that name's alone, never 127.0.0.1's, sent to every port there. The
+ * link lands here first, at 127.0.0.1, which every browser opens: one that cannot open a name under localhost (Safari)
+ * is told so (`NO_NAME_WORDS`) rather than left at its own error page. Null where the page stays: no name, or there.
+ * @param {{ protocol?: string, hostname?: string, port?: string, pathname?: string, hash?: string }} loc
+ */
+export function pageMove(loc) {
+  const name = pageNameOf(String(loc?.hash || ""));
+  if (!name || String(loc?.protocol || "") !== "http:" || String(loc?.hostname || "").toLowerCase() === name) return null;
+  return `http://${name}${loc.port ? `:${loc.port}` : ""}${loc.pathname || "/ui/pair.html"}${loc.hash}`;
+}
+
+/** What a browser that cannot open this Filament's own name is told: its pairing would hold a cookie every server here reads. @param {string} machine */
+export const NO_NAME_WORDS = (machine) =>
+  `This browser cannot open ${machine}'s own name for Filament (a name under localhost), where its sign-in is kept from every other server on this computer — Safari cannot. Open this link in Chrome, Firefox or Edge, or use the Filament app.`;
+
+/** How long the page waits to learn whether the browser opens the name. */
+const NAME_LOOK_MS = 3000;
+
 /** Where a paired browser goes: the harness. */
 export const HARNESS = "/ui/harness.html";
 
@@ -90,6 +120,7 @@ export const goesTo = (hash) => (new URLSearchParams(String(hash || "").replace(
 /**
  * The page's behaviour over its elements (pair.html).
  * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void } }} [o]
+ *   `loc.replace`: a browser here's link moved to its name (`pageMove`)
  *   `win`: where a link opened on this page already says its new code (hashchange)
  */
 export async function mountPair({ doc = document, fetchImpl = fetch, loc = location, hist = history, ua = navigator.userAgent, win = window } = {}) {
@@ -104,6 +135,23 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     said.textContent = text;
     said.classList.toggle("is-err", err);
   };
+  // A browser here's link: on to the name it is paired at, where the browser opens it — a look at Filament's /health
+  // there, which a name the browser cannot open fails —; else the words, and no code claimed here.
+  const move = pageMove(loc);
+  if (move) {
+    const opens = await fetchImpl(new URL("/health", move).href, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(NAME_LOOK_MS) }).then(
+      () => true,
+      () => false,
+    );
+    if (opens) return void loc.replace(move);
+    hist.replaceState(null, "", loc.pathname + loc.search);
+    form.hidden = true;
+    let named = "this computer";
+    try {
+      named = String((await (await fetchImpl("/.well-known/filament")).json())?.name || named);
+    } catch {}
+    return say(NO_NAME_WORDS(named), true);
+  }
   /** The fingerprint the last link carried, to compare with the browser's own certificate details. */
   let print = "";
   /** Where the browser goes once paired, as the link said. */

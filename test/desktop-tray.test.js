@@ -1267,7 +1267,7 @@ test("the tray's Open in browser: a one-time code made with the app's press key,
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
   assert.match(main, /if \(id === "browser"\) return void openInBrowser\(\);/);
   assert.match(main, /ask\("\/api\/remote\/pair", \{ method: "POST", body: JSON\.stringify\(\{ scope: "full", here: true \}\), headers: \{ "x-filament-press": pressKey \} \}\)/);
-  assert.match(main, /shell\.openExternal\(`\$\{origin\}\/ui\/pair\.html#code=\$\{encodeURIComponent\(p\.code\)\}`\)/);
+  assert.match(main, /shell\.openExternal\(`\$\{origin\}\/ui\/pair\.html#code=\$\{encodeURIComponent\(p\.code\)\}\$\{label \? `&name=\$\{label\}` : ""\}`\)/);
   assert.match(main, /dialog\.showErrorBox\("Filament did not open in your browser"/);
   assert.ok(trayRows({ owned: false, state: "attached", port: 20300 }).some((r) => "id" in r && r.id === "browser" && r.label === "Open in browser"), "attached to a Filament started elsewhere too");
 });

@@ -10,7 +10,7 @@ import { accountLabel, accountOf, accountWord, accountsNamed, addKey, flagValue,
 import { runSetup } from "./setup.js";
 import { runService, startUnit, underSystemd } from "./service.js";
 import { runUpdate } from "./update.js";
-import { pageAt } from "../services/machine.js";
+import { pageLabelOf } from "../services/machine.js";
 
 /**
  * What a command is given: the words after its name, the flags, the data folder, the terminal, and where it writes —
@@ -241,7 +241,7 @@ export const COMMANDS = [
     name: "open",
     usage: "open [console] [--no-open]",
     summary: "Open the harness in your browser, paired with this Filament by a one-time link (console: the Filament console)",
-    more: "Here, the link is the pairing page's with a code made for it (good for five minutes and one claim, on this computer or through an SSH tunnel to it alone), at this Filament's own name under localhost, so the browser's cookie is sent to no other port of this computer: the browser that opens it is paired as this computer's own, then opens it. --no-open says the link instead, for a browser at an SSH tunnel's other end (ssh -L): open it at the tunnel's own port, the name kept. While the Filament app runs, its tray's Open in browser does this; here the page opens unpaired. With --machine, the page there asks the browser for a code.",
+    more: "Here, the link is the pairing page's with a code made for it (good for five minutes and one claim, on this computer or through an SSH tunnel to it alone), its page moving on to this Filament's own name under localhost, so the browser's cookie is sent to no other port of this computer: the browser that opens it is paired as this computer's own, then opens it. --no-open says the link instead, for a browser at an SSH tunnel's other end (ssh -L): open it at the tunnel's own address and port. While the Filament app runs, its tray's Open in browser does this; here the page opens unpaired. With --machine, the page there asks the browser for a code.",
     async run(r) {
       const { client } = await ready(r);
       const toConsole = r.words[0] === "console";
@@ -260,20 +260,18 @@ export const COMMANDS = [
         if (e?.body?.press) return null;
         throw e;
       });
-      // At this Filament's own name under localhost (services/machine.js `pageAt`): the browser's cookie is that
-      // name's alone, never sent to another port of this computer's address.
       if (!p?.code) {
-        /** @type {any} */
-        const kept = await client.get("/remote/pair").catch(() => null);
-        const page = pageAt(url, kept?.pageHost);
-        r.out(page);
+        r.out(url);
         r.out("The Filament app runs here, and pairs a browser with its tray's Open in browser: this page opens unpaired.");
-        return void openPage(page, r.flags);
+        return void openPage(url, r.flags);
       }
-      const link = `${pageAt(client.url, p.pageHost)}/ui/pair.html#code=${encodeURIComponent(p.code)}${toConsole ? "&to=console" : ""}`;
+      // Its page moves on to this Filament's own name under localhost, where the browser opens it (src/ui/pair.js
+      // `pageMove`): the browser's cookie is that name's alone, never sent to another port of this computer's address.
+      const label = pageLabelOf(p.pageHost);
+      const link = `${client.url}/ui/pair.html#code=${encodeURIComponent(p.code)}${label ? `&name=${label}` : ""}${toConsole ? "&to=console" : ""}`;
       r.out(link);
       const mins = Math.max(1, Math.round((Number(p.expiresAt) - Date.now()) / 60_000));
-      if (!openPage(link, r.flags)) r.out(`A one-time link, good for ${mins} min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own port, its name kept.`);
+      if (!openPage(link, r.flags)) r.out(`A one-time link, good for ${mins} min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own address and port.`);
     },
   },
   {

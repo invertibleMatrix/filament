@@ -165,15 +165,16 @@ test("filament pair here, connect there, then --machine: status, a chat with no 
     // goes on to the console.
     const here = await run(home.dataDir, ["open", "--no-open"]);
     assert.equal(here.code, EXIT.ok, here.all);
-    // (fails before: yes — the plan's s0f: the link was 127.0.0.1's, whose cookies a browser sends to every port of it)
-    // At this Filament's own name under localhost, its port kept.
-    const pageHost = `${JSON.parse(readFileSync(join(home.dataDir, "machine.json"), "utf8")).page}.localhost`;
-    assert.match(pageHost, /^filament-[0-9a-f]{12}\.localhost$/);
-    assert.match(here.out[0], /^http:\/\/filament-[0-9a-f]{12}\.localhost:\d+\/ui\/pair\.html#code=[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    assert.equal(new URL(here.out[0]).host, `${pageHost}:${new URL(home.url).port}`);
-    assert.equal(here.out[1], "A one-time link, good for 5 min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own port, its name kept.");
+    // (fails before: yes — the plan's s0f and its hunt: the link was 127.0.0.1's, whose cookies a browser sends to every
+    // port of it) At 127.0.0.1, which every browser opens, carrying this Filament's own name under localhost, where its
+    // page moves on to claim (src/ui/pair.js `pageMove`).
+    const label = JSON.parse(readFileSync(join(home.dataDir, "machine.json"), "utf8")).page;
+    assert.match(label, /^filament-[0-9a-f]{12}$/);
+    assert.equal(here.out[0], `${home.url}/ui/pair.html#code=${new URLSearchParams(here.out[0].split("#")[1]).get("code")}&name=${label}`);
+    assert.match(here.out[0], /#code=[A-Z2-9]{4}-[A-Z2-9]{4}&name=/);
+    assert.equal(here.out[1], "A one-time link, good for 5 min: the browser that opens it, on this computer or through an SSH tunnel to it, is paired as this computer's own. Over a tunnel, open it at the tunnel's own address and port.");
     const toConsole = await run(home.dataDir, ["open", "console", "--no-open"]);
-    assert.match(toConsole.out[0], /#code=[A-Z2-9]{4}-[A-Z2-9]{4}&to=console$/);
+    assert.match(toConsole.out[0], /#code=[A-Z2-9]{4}-[A-Z2-9]{4}&name=filament-[0-9a-f]{12}&to=console$/);
     const open = (await (await home.api("/api/remote/pair")).json()).pending;
     assert.ok(open.length >= 2 && open.every((/** @type {any} */ c) => c.scope === "full"), "full devices' codes");
     await home.api("/api/remote/pair", { method: "DELETE" });

@@ -50,25 +50,20 @@ export const NAME_MAX = 64;
 
 /**
  * This Filament's own name under `localhost` for a browser on this computer (`pageHost`): a label made once, kept in
- * machine.json. A browser paired by `filament open` or the tray's Open in browser holds its cookie there, a name no
- * other program's server answers at, never on 127.0.0.1, whose cookies a browser sends to every port of it — a server
- * an agent runs among them. Said to this computer's owner alone (the pairing rows), never in `get`.
+ * machine.json. A browser paired by `filament open` or the tray's Open in browser holds its cookie there, never on
+ * 127.0.0.1, whose cookies a browser sends to every port of it — a server an agent runs among them, which any page the
+ * person opens there reaches. Any server on this computer answers the name at its own port too, so the name is kept from
+ * agents (said to this computer's owner alone, the pairing rows; never in `get`; machine.json its account's alone).
  */
 const PAGE_LABEL = /^filament-[0-9a-f]{12}$/;
-/** A browser's address on this computer at its page name (`pageHost`), where `url` is loopback by IPv4 or the name
- * localhost: the scheme, port and path kept; any other address as it is (a network address, an IPv6 one, which a
- * `.localhost` name may not reach). @param {string} url @param {string | null | undefined} pageHost */
-export function pageAt(url, pageHost) {
-  try {
-    const u = new URL(url);
-    const h = u.hostname.toLowerCase();
-    if (!pageHost || !/^filament-[0-9a-f]{12}\.localhost$/.test(pageHost) || u.protocol !== "http:" || !(h === "localhost" || /^127(?:\.\d{1,3}){3}$/.test(h))) return url;
-    u.hostname = pageHost;
-    return url.endsWith("/") || u.pathname !== "/" ? u.href : u.href.replace(/\/$/, "");
-  } catch {
-    return url;
-  }
-}
+/**
+ * The label of a page name (`pageHost`), as a browser here's link carries it (`&name=`, src/ui/pair.js `pageMove`): ""
+ * for none or any other. @param {unknown} pageHost
+ */
+export const pageLabelOf = (pageHost) => {
+  const label = String(pageHost ?? "").toLowerCase().replace(/\.localhost$/, "");
+  return PAGE_LABEL.test(label) && String(pageHost).toLowerCase() === `${label}.localhost` ? label : "";
+};
 
 /**
  * A name as kept: control characters and runs of spaces gone, and the invisible format characters — bidi controls that
@@ -141,7 +136,8 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
     try {
       // Written beside the file, then put in its place: a write cut short leaves the id as it was, never torn.
       const tmp = `${file}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ version: 1, id: kept.id, name: kept.name, ...(named ? { named: true } : {}), page }, null, 1));
+      // This account's alone: it keeps the page name (`PAGE_LABEL`).
+      writeFileSync(tmp, JSON.stringify({ version: 1, id: kept.id, name: kept.name, ...(named ? { named: true } : {}), page }, null, 1), { mode: 0o600 });
       renameSync(tmp, file);
     } catch (/** @type {any} */ e) {
       log("warn", `[machine] could not keep this machine's id and name: ${e.message}`);
@@ -157,7 +153,7 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
   return {
     /** This machine's id and name. @returns {Machine} */
     get: () => ({ id: self.id, name: self.name }),
-    /** This Filament's own name under localhost for a browser on this computer (`PAGE_LABEL`, `pageAt`). */
+    /** This Filament's own name under localhost for a browser on this computer (`PAGE_LABEL`, `pageLabelOf`). */
     pageHost: () => `${page}.localhost`,
     /** A new name; an empty one is the machine's own (its Computer Name, or its hostname). @param {unknown} name @returns {Machine} */
     rename(name) {

@@ -13,7 +13,7 @@ import { renderRemote, leftWords, deviceWords, expiryWords, NEW_KEY_WORDS, links
 import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
-import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, printOf, printWords } from "../src/ui/pair.js";
+import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, NO_NAME_WORDS, pageMove, pageNameOf, printOf, printWords } from "../src/ui/pair.js";
 import { startApp } from "./helpers/app.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -848,8 +848,9 @@ test("the pairing page: the code a link's fragment carries, this device's name f
 /**
  * The pairing page over a fake document: its elements by id, the address, its history and the window's events, and a
  * server that answers who it is, who the caller is, and the claim.
- * @param {{ hash?: string, me?: any, refused?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said;
- *   `refused`: the admin gate's refusal of a caller it does not know, as it says it
+ * @param {{ hash?: string, me?: any, refused?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string, port?: string, opensName?: boolean }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said;
+ *   `refused`: the admin gate's refusal of a caller it does not know, as it says it; `opensName`: false where the browser
+ *   cannot open a name under localhost (Safari)
  */
 const pairPage = async (o = {}) => {
   /** @type {Record<string, any>} */
@@ -857,7 +858,7 @@ const pairPage = async (o = {}) => {
   const el = (/** @type {string} */ id) =>
     (els[id] ??= { id, value: "", textContent: "", hidden: id === "pair-open", disabled: false, focused: false, err: false, classList: { toggle: (/** @type {string} */ _c, /** @type {boolean} */ on) => (els[id].err = on) }, focus: () => (els[id].focused = true) });
   const doc = /** @type {any} */ ({ title: "", getElementById: el });
-  const loc = /** @type {any} */ ({ protocol: o.protocol ?? "http:", hostname: o.hostname ?? "localhost", hash: o.hash ?? "", pathname: "/ui/pair.html", search: "", went: /** @type {string[]} */ ([]), assign: (/** @type {string} */ p) => loc.went.push(p) });
+  const loc = /** @type {any} */ ({ protocol: o.protocol ?? "http:", hostname: o.hostname ?? "localhost", port: o.port ?? "", hash: o.hash ?? "", pathname: "/ui/pair.html", search: "", went: /** @type {string[]} */ ([]), assign: (/** @type {string} */ p) => loc.went.push(p), replaced: /** @type {string[]} */ ([]), replace: (/** @type {string} */ p) => loc.replaced.push(p) });
   const hist = /** @type {any} */ ({ replaceState: (/** @type {any} */ _s, /** @type {string} */ _t, /** @type {string} */ url) => (loc.hash = new URL(url, "http://x").hash) });
   /** @type {Record<string, () => void>} */
   const heard = {};
@@ -866,6 +867,12 @@ const pairPage = async (o = {}) => {
   const posted = [];
   const fetchImpl = /** @type {any} */ (async (/** @type {string} */ path, /** @type {any} */ init) => {
     const reply = (/** @type {number} */ status, /** @type {any} */ body) => ({ ok: status < 400, status, json: async () => body });
+    // A look at a name under localhost (src/ui/pair.js `pageMove`): an opaque answer where the browser opens it, else a
+    // failed fetch, as a name it cannot resolve gives.
+    if (/^http:\/\/filament-[0-9a-f]{12}\.localhost(:\d+)?\/health$/.test(path)) {
+      if (o.opensName === false) throw new TypeError("Failed to fetch");
+      return { ok: false, status: 0, json: async () => null };
+    }
     if (path === "/.well-known/filament") return reply(200, { name: "Workstation" });
     if (path === "/api/remote/me") return o.me ? reply(200, o.me) : reply(403, o.refused ?? { error: "admin API answers…", pair: "/ui/pair.html" });
     if (path === "/api/remote/claim") {
@@ -934,6 +941,35 @@ test("the pairing page over plain http from another machine sends no code: it sa
   const tunnel = await pairPage({ hash: "#code=ABCD-EFGH" });
   await tunnel.submit();
   assert.deepEqual(tunnel.posted.map((b) => b.code), ["ABCD-EFGH"], "localhost — this machine, an SSH tunnel — pairs");
+});
+
+// (fails before: yes — the link opened at the name itself, which Safari cannot open: the person met the browser's own
+// error page, the hunt on s0f)
+test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's name where the browser opens it; one that cannot is told so, and claims nothing", async () => {
+  const NAME = "filament-0123456789ab";
+  assert.equal(pageNameOf(`#code=ABCD-EFGH&name=${NAME}`), `${NAME}.localhost`);
+  assert.equal(pageNameOf(`#code=ABCD-EFGH&name=${NAME.toUpperCase()}`), `${NAME}.localhost`);
+  for (const bad of ["", "#code=ABCD-EFGH", "#name=filament-0123", "#name=evil.example", `#name=${NAME}.localhost`, "#name=filament-0123456789ag"]) assert.equal(pageNameOf(bad), "", bad);
+  const at127 = { protocol: "http:", hostname: "127.0.0.1", port: "7777", pathname: "/ui/pair.html", hash: `#code=ABCD-EFGH&name=${NAME}&to=console` };
+  assert.equal(pageMove(at127), `http://${NAME}.localhost:7777/ui/pair.html#code=ABCD-EFGH&name=${NAME}&to=console`, "the port and the fragment kept");
+  assert.equal(pageMove({ ...at127, hostname: `${NAME}.localhost` }), null, "there already");
+  assert.equal(pageMove({ ...at127, hash: "#code=ABCD-EFGH" }), null, "no name: the page stays");
+  assert.equal(pageMove({ ...at127, protocol: "https:" }), null, "the network's listener is no browser here");
+
+  const opens = await pairPage({ hostname: "127.0.0.1", port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}` });
+  assert.deepEqual(opens.loc.replaced, [`http://${NAME}.localhost:7777/ui/pair.html#code=ABCD-EFGH&name=${NAME}`]);
+  assert.deepEqual(opens.posted, [], "the claim waits for the name");
+
+  const safari = await pairPage({ hostname: "127.0.0.1", port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, opensName: false, me: { who: "local" } });
+  assert.deepEqual(safari.loc.replaced, []);
+  assert.equal(safari.loc.hash, "", "the code is off the address");
+  assert.deepEqual([safari.el("pair-form").hidden, safari.el("pair-said").textContent, safari.el("pair-said").err], [true, NO_NAME_WORDS("Workstation"), true]);
+  assert.match(NO_NAME_WORDS("Workstation"), /Safari cannot\. Open this link in Chrome, Firefox or Edge, or use the Filament app\.$/);
+  assert.deepEqual(safari.posted, [], "a cookie at 127.0.0.1 is never made");
+
+  const there = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, me: { who: "local" } });
+  assert.deepEqual(there.loc.replaced, []);
+  assert.deepEqual(there.posted.map((b) => b.code), ["ABCD-EFGH"], "at the name: claimed at once");
 });
 
 // (fails before: yes — a link opened on the pairing page changed its fragment alone, and the code was neither read nor taken off the address)
