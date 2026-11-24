@@ -6,7 +6,7 @@
 // fresh install or a restore, and is absent while memory is off.
 import { execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -121,6 +121,14 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
       stale = !!name && !named && isIP(name) !== 0 && isIP(hostName()) === 0;
       kept = { id: j.id.trim(), name: (!stale && name) || hostName() };
       page = typeof j.page === "string" && PAGE_LABEL.test(j.page) ? j.page : "";
+      // This account's alone as it is read too (the hunt on x38): one a copy, a restore or another program left readable
+      // to others gives away the page name a browser here is paired at.
+      if (process.platform !== "win32")
+        try {
+          chmodSync(file, 0o600);
+        } catch (/** @type {any} */ e) {
+          log("warn", `[machine] could not make ${file} this account's alone: ${e?.message || e}`);
+        }
     } catch (/** @type {any} */ e) {
       if (e?.code !== "ENOENT") {
         // Set aside, never overwritten: the id another machine paired with may still be read out of it by hand.

@@ -107,6 +107,28 @@ export const NO_NAME_WORDS = (machine) =>
 
 /** How long the page waits to learn whether the browser opens the name. */
 const NAME_LOOK_MS = 3000;
+/** What the page looks for at the name: Filament's own picture, which no browser blocks as Firefox may /health's JSON read with no-cors. */
+export const LOOK_PATH = "/ui/filament-icon.png";
+
+/**
+ * Whether the browser opens an address — the name a browser here is paired at (`pageMove`) — by a picture loaded from
+ * it, within `NAME_LOOK_MS`: a name it cannot open (Safari's under localhost) fails, or never answers. A clock of its
+ * own, for browsers with no `AbortSignal.timeout` (Safari before 16). @param {string} url
+ * @returns {Promise<boolean>}
+ */
+export const opensAt = (url) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    const done = (/** @type {boolean} */ ok) => {
+      clearTimeout(clock);
+      img.onload = img.onerror = null;
+      resolve(ok);
+    };
+    const clock = setTimeout(() => done(false), NAME_LOOK_MS);
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = url;
+  });
 
 /** Where a paired browser goes: the harness. */
 export const HARNESS = "/ui/harness.html";
@@ -119,11 +141,12 @@ export const goesTo = (hash) => (new URLSearchParams(String(hash || "").replace(
 
 /**
  * The page's behaviour over its elements (pair.html).
- * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void } }} [o]
+ * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void }, opens?: (url: string) => Promise<boolean> }} [o]
  *   `loc.replace`: a browser here's link moved to its name (`pageMove`)
  *   `win`: where a link opened on this page already says its new code (hashchange)
+ *   `opens`: whether the browser opens an address (`opensAt`)
  */
-export async function mountPair({ doc = document, fetchImpl = fetch, loc = location, hist = history, ua = navigator.userAgent, win = window } = {}) {
+export async function mountPair({ doc = document, fetchImpl = fetch, loc = location, hist = history, ua = navigator.userAgent, win = window, opens = opensAt } = {}) {
   const $ = (/** @type {string} */ id) => /** @type {any} */ (doc.getElementById(id));
   const form = $("pair-form");
   const codeIn = $("pair-code");
@@ -135,34 +158,19 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     said.textContent = text;
     said.classList.toggle("is-err", err);
   };
-  // A browser here's link: on to the name it is paired at, where the browser opens it — a look at Filament's /health
-  // there, which a name the browser cannot open fails —; else the words, and no code claimed here.
-  const move = pageMove(loc);
-  if (move) {
-    const opens = await fetchImpl(new URL("/health", move).href, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(NAME_LOOK_MS) }).then(
-      () => true,
-      () => false,
-    );
-    if (opens) return void loc.replace(move);
-    hist.replaceState(null, "", loc.pathname + loc.search);
-    form.hidden = true;
-    let named = "this computer";
-    try {
-      named = String((await (await fetchImpl("/.well-known/filament")).json())?.name || named);
-    } catch {}
-    return say(NO_NAME_WORDS(named), true);
-  }
   /** The fingerprint the last link carried, to compare with the browser's own certificate details. */
   let print = "";
   /** Where the browser goes once paired, as the link said. */
   let then = HARNESS;
+  /** The address with no fragment: what a link's code and name leave. */
+  const bare = () => hist.replaceState(null, "", loc.pathname + loc.search);
   // The code off the address at once: it stays in no history, no bookmark, no screen share. A link opened on this page
   // already changes its fragment alone, and is read the same way.
   const takeLink = () => {
     const code = codeOf(loc.hash);
     print = printOf(loc.hash) || print;
     if (code) then = goesTo(loc.hash);
-    if (loc.hash) hist.replaceState(null, "", loc.pathname + loc.search);
+    if (loc.hash) bare();
     if (code) codeIn.value = code;
     return code;
   };
@@ -175,15 +183,38 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
     $("pair-print-fp").textContent = words && print ? print : "";
     $("pair-print-fp").hidden = !(words && print);
   };
-  // A browser here's link at the name it pairs at (`pageMove` brought it): its code is claimed at once, whoever the
-  // browser is so far — under `server.loopbackTrust` "token" this computer's browser is no one's until it pairs.
-  const hereLink = !!pageNameOf(loc.hash) && String(loc.hostname || "").toLowerCase() === pageNameOf(loc.hash);
-  const fromLink = takeLink();
+  /** The browser cannot open this Filament's name: no code is claimed on this page, a link opened on it later neither. */
+  let nameless = false;
+  // A browser here's link: on to the name it is paired at, where the browser opens it — a picture of Filament's own
+  // there, which a name the browser cannot open fails —; else the words, the code off the address, none claimed here.
+  /** @param {string} move  where `pageMove` sends it */
+  const moveOn = async (move) => {
+    if (await opens(new URL(`${LOOK_PATH}?look=${Date.now()}`, move).href)) return void loc.replace(move);
+    bare();
+    form.hidden = true;
+    nameless = true;
+    let named = "this computer";
+    try {
+      named = String((await (await fetchImpl("/.well-known/filament")).json())?.name || named);
+    } catch {}
+    say(NO_NAME_WORDS(named), true);
+  };
+  // (the hunt on x38) A link opened on this page — at 127.0.0.1, where an earlier one landed — moves on as one opened
+  // afresh; on a page the browser could not move, its code comes off the address and is claimed nowhere.
   win.addEventListener("hashchange", () => {
+    const move = pageMove(loc);
+    if (nameless) return void (loc.hash && bare());
+    if (move) return void moveOn(move);
     if (!takeLink()) return;
     showPrint();
     nameIn.focus?.();
   });
+  const move = pageMove(loc);
+  if (move) return moveOn(move);
+  // A browser here's link at the name it pairs at (`pageMove` brought it): its code is claimed at once, whoever the
+  // browser is so far — under `server.loopbackTrust` "token" this computer's browser is no one's until it pairs.
+  const hereLink = !!pageNameOf(loc.hash) && String(loc.hostname || "").toLowerCase() === pageNameOf(loc.hash);
+  const fromLink = takeLink();
   nameIn.value = deviceName(ua);
   open.onclick = () => loc.assign(then);
   try {

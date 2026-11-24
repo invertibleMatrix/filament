@@ -243,8 +243,10 @@ A browser on this computer — `filament open`, the tray's **Open in browser** �
 under localhost (`filament-` and twelve letters, `.localhost`, made once and kept in the data folder's `machine.json`),
 so its cookie is that name's alone: a browser sends 127.0.0.1's cookies to every port of it, a server an agent runs
 there among them. Its link opens at 127.0.0.1, which every browser opens, and the page moves on to the name where the
-browser opens it; one that cannot (Safari) is told so — open the link in Chrome, Firefox or Edge, or use the app — and
-pairs nothing. Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
+browser opens it (it loads Filament's own picture there to tell), a link opened on a pairing page already there too;
+one that cannot (Safari) is told so — open the link in Chrome, Firefox or Edge, or use the app — and pairs nothing,
+taking the code of any later link off the address as well. `machine.json` is made readable by your account alone each
+time Filament reads it (not on Windows). Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
 browser is this computer's owner: it does what this computer does, but press while the Filament app runs (answer an
 ask, Always allow — those come from the app's window). Its code is refused at 127.0.0.1, its cookie or token anywhere
 but that name is no one's, and a browser paired at 127.0.0.1 before this computer's Filament had a name of its own goes

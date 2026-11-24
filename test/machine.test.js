@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, pageLabelOf, protocolGap } from "../src/services/machine.js";
@@ -143,6 +143,12 @@ test("this Filament's own name under localhost: made once and kept, never said t
     assert.equal(`${JSON.parse(readFileSync(join(dir, "machine.json"), "utf8")).page}.localhost`, again.pageHost(), "and kept");
     // (fails before: yes — the hunt on s0f: written as any file is, other accounts on a Linux machine read it)
     if (process.platform !== "win32") assert.equal(statSync(join(dir, "machine.json")).mode & 0o777, 0o600, "this account's alone");
+    // (fails before: yes — the hunt on x38: one left readable to others — a copy, a restore — stayed so, read as it was)
+    if (process.platform !== "win32") {
+      chmodSync(join(dir, "machine.json"), 0o644);
+      assert.equal(createMachine({ dataDir: dir }).pageHost(), again.pageHost(), "read, nothing made anew");
+      assert.equal(statSync(join(dir, "machine.json")).mode & 0o777, 0o600, "made this account's alone as it is read");
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

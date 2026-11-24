@@ -13,7 +13,8 @@ import { renderRemote, leftWords, deviceWords, expiryWords, NEW_KEY_WORDS, links
 import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
-import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, NO_NAME_WORDS, pageMove, pageNameOf, printOf, printWords } from "../src/ui/pair.js";
+import { readFileSync } from "node:fs";
+import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, LOOK_PATH, NO_NAME_WORDS, opensAt, pageMove, pageNameOf, printOf, printWords } from "../src/ui/pair.js";
 import { startApp } from "./helpers/app.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -884,14 +885,11 @@ const pairPage = async (o = {}) => {
   const win = { addEventListener: (/** @type {string} */ type, /** @type {() => void} */ fn) => (heard[type] = fn) };
   /** @type {any[]} */
   const posted = [];
+  /** The addresses the page looked at (src/ui/pair.js `opensAt`): a picture at a name under localhost, which a browser that cannot open it fails. @type {string[]} */
+  const looked = [];
+  const opens = async (/** @type {string} */ url) => (looked.push(url), o.opensName !== false);
   const fetchImpl = /** @type {any} */ (async (/** @type {string} */ path, /** @type {any} */ init) => {
     const reply = (/** @type {number} */ status, /** @type {any} */ body) => ({ ok: status < 400, status, json: async () => body });
-    // A look at a name under localhost (src/ui/pair.js `pageMove`): an opaque answer where the browser opens it, else a
-    // failed fetch, as a name it cannot resolve gives.
-    if (/^http:\/\/filament-[0-9a-f]{12}\.localhost(:\d+)?\/health$/.test(path)) {
-      if (o.opensName === false) throw new TypeError("Failed to fetch");
-      return { ok: false, status: 0, json: async () => null };
-    }
     if (path === "/.well-known/filament") return reply(200, { name: "Workstation" });
     if (path === "/api/remote/me") return o.me ? reply(200, o.me) : reply(403, o.refused ?? { error: "admin API answers…", pair: "/ui/pair.html" });
     if (path === "/api/remote/claim") {
@@ -902,11 +900,11 @@ const pairPage = async (o = {}) => {
     throw new Error(`unexpected ${path}`);
   });
   const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
-  await mountPair({ doc, fetchImpl, loc, hist, ua, win });
+  await mountPair({ doc, fetchImpl, loc, hist, ua, win, opens });
   const submit = async () => {
     await el("pair-form").onsubmit({ preventDefault() {} });
   };
-  return { el, loc, heard, posted, submit, doc };
+  return { el, loc, heard, posted, submit, doc, looked };
 };
 
 // (fails before: yes — the pairing page said nothing of the certificate, and a link carried no fingerprint)
@@ -978,6 +976,10 @@ test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's n
   const opens = await pairPage({ hostname: "127.0.0.1", port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}` });
   assert.deepEqual(opens.loc.replaced, [`http://${NAME}.localhost:7777/ui/pair.html#code=ABCD-EFGH&name=${NAME}`]);
   assert.deepEqual(opens.posted, [], "the claim waits for the name");
+  // (fails before: yes — the hunt on x38: the look read /health's JSON with no-cors, which Firefox's opaque-response
+  // blocking may refuse, telling a browser that opens the name it cannot)
+  assert.equal(opens.looked.length, 1);
+  assert.match(opens.looked[0], new RegExp(`^http://${NAME}\\.localhost:7777/ui/filament-icon\\.png\\?look=\\d+$`), "a picture of Filament's own, at the name");
 
   const safari = await pairPage({ hostname: "127.0.0.1", port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, opensName: false, me: { who: "local" } });
   assert.deepEqual(safari.loc.replaced, []);
@@ -985,6 +987,19 @@ test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's n
   assert.deepEqual([safari.el("pair-form").hidden, safari.el("pair-said").textContent, safari.el("pair-said").err], [true, NO_NAME_WORDS("Workstation"), true]);
   assert.match(NO_NAME_WORDS("Workstation"), /Safari cannot\. Open this link in Chrome, Firefox or Edge, or use the Filament app\.$/);
   assert.deepEqual(safari.posted, [], "a cookie at 127.0.0.1 is never made");
+  // (fails before: yes — the hunt on x38: a second link opened on this page kept its code in the address)
+  safari.loc.hash = "#code=WXYZ-2345";
+  safari.heard.hashchange();
+  assert.deepEqual([safari.loc.hash, safari.el("pair-code").value, safari.posted], ["", "", []], "a later code off the address too, and claimed nowhere");
+
+  // (fails before: yes — the hunt on x38: a link opened on a pairing page already open at 127.0.0.1 changed its
+  // fragment alone, and its code waited at 127.0.0.1)
+  const typedHere = await pairPage({ hostname: "127.0.0.1", port: "7777" });
+  typedHere.loc.hash = `#code=ABCD-EFGH&name=${NAME}`;
+  typedHere.heard.hashchange();
+  await settle();
+  assert.deepEqual(typedHere.loc.replaced, [`http://${NAME}.localhost:7777/ui/pair.html#code=ABCD-EFGH&name=${NAME}`], "moved on as a link opened afresh");
+  assert.deepEqual([typedHere.el("pair-code").value, typedHere.posted], ["", []]);
 
   const there = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, me: { who: "local" } });
   assert.deepEqual(there.loc.replaced, []);
@@ -995,6 +1010,36 @@ test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's n
   assert.match(owned.el("pair-lead").textContent, /^Paired as|^Pairing this browser with Workstation/);
   const typed = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: "#code=ABCD-EFGH" });
   assert.deepEqual(typed.posted, [], "a link with no name, a code from another machine's Settings: typed, not claimed unasked");
+});
+
+// (fails before: yes — the hunt on x38: the look's clock was AbortSignal.timeout, which Safari before 16 lacks: the page
+// threw there before it said a word)
+test("the look at the name: a picture that loads, one that fails, one that never answers within its own clock", async (t) => {
+  const g = /** @type {any} */ (globalThis);
+  const was = g.Image;
+  /** @type {any[]} */
+  const made = [];
+  g.Image = class {
+    constructor() {
+      made.push(this);
+    }
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const loads = opensAt(`http://filament-0123456789ab.localhost:7777${LOOK_PATH}`);
+    assert.equal(made[0].src, `http://filament-0123456789ab.localhost:7777${LOOK_PATH}`);
+    made[0].onload();
+    assert.equal(await loads, true);
+    const fails = opensAt("http://filament-0123456789ab.localhost:7777/x.png");
+    made[1].onerror();
+    assert.equal(await fails, false);
+    const silent = opensAt("http://filament-0123456789ab.localhost:7777/y.png");
+    t.mock.timers.tick(3000);
+    assert.equal(await silent, false, "no answer in its time: the name is not opened");
+  } finally {
+    g.Image = was;
+  }
+  assert.doesNotMatch(readFileSync(new URL("../src/ui/pair.js", import.meta.url), "utf8"), /AbortSignal\.timeout\(/, "called nowhere on the page");
 });
 
 // (fails before: yes — a link opened on the pairing page changed its fragment alone, and the code was neither read nor taken off the address)
