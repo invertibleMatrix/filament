@@ -14,9 +14,10 @@
 //   npm run test:desktop -- --pictures <dir>  what the browser's checks looked like, kept there as PNGs
 //   npm run test:desktop -- --desk           the desk's checks (35) alone, over two Filaments of their own
 //   npm run test:desktop -- --owner          the windows' owner session's check (36) alone
+//   npm run test:desktop -- --artifacts      an artifact's own pass's check (37) alone
 import { spawn, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -46,6 +47,7 @@ if (BUILT && !existsSync(BUILT)) {
 if (BUILT) console.log(`the packaged app: ${BUILT}`);
 const DESK_ONLY = process.argv.includes("--desk");
 const OWNER_ONLY = process.argv.includes("--owner");
+const ARTIFACTS_ONLY = process.argv.includes("--artifacts");
 if (process.platform !== "win32") {
   console.log("the desktop drive reads Windows' process list; on this platform it does not run yet");
   process.exit(0);
@@ -138,6 +140,27 @@ const pagesOf = (debug) =>
     .then((r) => r.json())
     .then((all) => all.filter((/** @type {any} */ t) => t.type === "page"))
     .catch(() => []);
+/** The frames of another site in the app's pages (an artifact's), each a target of its own on its DevTools port. @param {number} debug @returns {Promise<{ id: string, url: string, webSocketDebuggerUrl: string }[]>} */
+const framesOf = (debug) =>
+  fetch(`http://127.0.0.1:${debug}/json/list`, { signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json())
+    .then((all) => all.filter((/** @type {any} */ t) => t.type === "iframe"))
+    .catch(() => []);
+/**
+ * A load of `path` at `host` on this machine's `port`, as a browser's tab asks it: its status and words.
+ * @param {number} port @param {string} host @param {string} path @returns {Promise<{ status: number, body: string }>}
+ */
+const loadAt = (port, host, path) =>
+  new Promise((done) => {
+    const req = request({ host: "127.0.0.1", port, path, agent: false, headers: { host, "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" } }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (d) => (body += d));
+      res.on("end", () => done({ status: Number(res.statusCode), body }));
+    });
+    req.on("error", (e) => done({ status: 0, body: e.message }));
+    req.end();
+  });
 /** One DevTools command in a page, its result. @param {{ webSocketDebuggerUrl: string }} page @param {string} method @param {any} params */
 function sendIn(page, method, params) {
   return new Promise((resolve, reject) => {
@@ -571,20 +594,102 @@ async function driveOwner() {
   await until(() => O.exited(), 30000, "the app's end");
 }
 
-// `--desk`: the desk's checks alone; `--owner`, the windows' owner session's.
-if (OWNER_ONLY) {
-  try {
-    await driveOwner();
-  } catch (/** @type {any} */ e) {
-    check("the drive ran to its end", false, String(e?.message || e));
-  } finally {
-    await cleanUp();
-  }
-  finish();
+// ---- 37: an artifact under a pass of its own (the plan's x41) ----------------------------------------------------------
+/**
+ * Under the owner key, an artifact of this machine's opens under a pass of that artifact's alone. One an agent publishes
+ * shows in its chat's card, opened in the side pane, and on the Artifacts page, as its still preview and its full view:
+ * each frame at its address under a pass of its own — never the one /api/state hands the page for every artifact — its
+ * page drawn there. Copy link gives an address under one of its own too, which a browser's tab opens; its address with
+ * no pass is refused. The page's clipboard keeps the copied link, the person's clipboard untouched.
+ * @param {number} port @param {number} debug @param {{ webSocketDebuggerUrl: string }} page
+ */
+async function artifactPassCheck(port, debug, page) {
+  const WORDS = "spend 37";
+  brain = (c) => {
+    if (c.kind !== "anthropic") return undefined;
+    const last = c.body?.messages?.at(-1);
+    // A tool's result: the turn ends in the default words.
+    if (Array.isArray(last?.content) && last.content.some((/** @type {any} */ b) => b?.type === "tool_result")) return undefined;
+    if (!JSON.stringify(last ?? "").includes("ART-37")) return undefined;
+    return anthropicReply("", { model: "claude-sonnet-5-5", stop: "tool_use", blocks: [{ type: "tool_use", id: "a37", name: "artifact", input: { action: "publish", type: "page", title: "Drive spend", html: `<p id="w">${WORDS}</p>` } }] });
+  };
+  const sid = String((await (await call(port, "/api/sessions", { cwd: root, model: "claude-sonnet-5-5", preset: "plain" })).json()).id);
+  await (await call(port, `/api/sessions/${encodeURIComponent(sid)}/turns`, { content: "ART-37: publish the spend page", stream: false })).text();
+  brain = null;
+  const listed = /** @type {any} */ (await call(port, "/api/artifacts").then((r) => r.json()).catch(() => null));
+  const name = String((listed?.artifacts || []).find((/** @type {any} */ a) => a.title === "Drive spend")?.name || "");
+  if (!name) return check("37. an artifact opens under a pass of its own", false, `the agent's publish made none: ${JSON.stringify(listed).slice(0, 200)}`);
+  const st = await stateAt(port);
+  const holderOf = (/** @type {unknown} */ s) => /\/~([^/]+)\/$/.exec(String(s || ""))?.[1] || "";
+  const holder = holderOf(st?.artifacts?.page);
+  const stillHolder = holderOf(st?.artifacts?.still);
+  const host = `${name}.art.localhost:${port}`;
+  const stillHost = `${name}.still.art.localhost:${port}`;
+  /** The pass an address of its stands under, its path left out. @param {string} at @param {string} href */
+  const passOf = (at, href) => (href.startsWith(`http://${at}/~`) ? /^\/~([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\//.exec(new URL(href).pathname)?.[1] || "" : "");
+  /** A frame at `at` not among `seen`, once its page is drawn there: where it stands. @param {string} at @param {Set<string>} [seen] */
+  const frameAt = (at, seen = new Set()) =>
+    until(async () => {
+      for (const f of await framesOf(debug)) {
+        if (!f.url.startsWith(`http://${at}/`) || seen.has(f.id)) continue;
+        const v = /** @type {any} */ (await evalIn(f, `({ href: location.href, text: document.body ? document.body.innerText : "" })`).catch(() => null));
+        if (String(v?.text || "").includes(WORDS)) return { id: f.id, href: String(v.href), pass: passOf(at, String(v.href)) };
+      }
+      return null;
+    }, 20000, `a frame at ${at}`).catch(() => null);
+  const own = (/** @type {string} */ p) => !!p && p !== holder && p !== stillHolder;
+  /** A frame as the note says it, no pass written out. @param {{ pass: string } | null} f */
+  const said = (f) => (!f ? "no frame drawn" : own(f.pass) ? "its own pass" : f.pass ? "the page's pass" : "no pass");
+  const was = String((await evalIn(page, "location.hash").catch(() => "")) || "");
+
+  // Its chat's card: Open puts it in the side pane.
+  await evalIn(page, `location.hash = ${JSON.stringify(`#/task/${encodeURIComponent(sid)}`)}; true`);
+  const opened = await until(() => evalIn(page, `(() => { const b = [...document.querySelectorAll('.artifact-card[data-artifact="${name}"] button')].find((x) => x.textContent.trim() === "Open"); if (!b || b.disabled) return false; b.click(); return true; })()`), 20000, "the chat's artifact card").catch(() => false);
+  const pane = opened ? await frameAt(host) : null;
+  // The Artifacts page: its still preview, then Copy link from its ⋮, then its full view.
+  await evalIn(page, `location.hash = "#/artifacts"; true`);
+  const peek = await frameAt(stillHost);
+  await evalIn(page, `(() => { const keep = (t) => ((window.__copied37 = String(t)), Promise.resolve()); if (navigator.clipboard) navigator.clipboard.writeText = keep; else Object.defineProperty(navigator, "clipboard", { value: { writeText: keep }, configurable: true }); return true; })()`);
+  await until(() => evalIn(page, `(() => { const b = document.querySelector('[data-artifact-row="${name}"] .artifacts-more'); if (!b) return false; b.click(); return true; })()`), 10000, "its ⋮").catch(() => null);
+  await until(() => evalIn(page, `(() => { const b = [...document.querySelectorAll(".zc-menu-item")].find((x) => x.textContent.trim() === "Copy link"); if (!b) return false; b.click(); return true; })()`), 10000, "its Copy link").catch(() => null);
+  const copied = String((await until(() => evalIn(page, "window.__copied37 || null"), 10000, "the copied link").catch(() => "")) || "");
+  const copiedPass = copied === `http://${host}/~${passOf(host, copied)}/` ? passOf(host, copied) : "";
+  const tab = copiedPass ? await loadAt(port, host, `/~${copiedPass}/`) : { status: 0, body: "" };
+  const seen = new Set((await framesOf(debug)).map((f) => f.id));
+  await evalIn(page, `document.querySelector('.artifacts-card[data-artifact-row="${name}"]')?.click(); true`);
+  const full = await frameAt(host, seen);
+  const inView = await evalIn(page, `!!document.querySelector('.artifact-view iframe.artifact-frame[data-artifact="${name}"]')`).catch(() => false);
+  // Its address with no pass, as a program here asks it.
+  const bare = await loadAt(port, host, "/");
+  await evalIn(page, `location.hash = ${JSON.stringify(was || "#/")}; true`).catch(() => null);
+  check(
+    "37. an artifact opens under a pass of its own: its chat's card in the side pane, the Artifacts page's preview and full view, Copy link; with no pass, refused",
+    !!holder && own(pane?.pass || "") && own(peek?.pass || "") && own(full?.pass || "") && inView === true && own(copiedPass) && tab.status === 200 && tab.body.includes(WORDS) && bare.status === 403,
+    `side pane: ${opened ? said(pane) : "its card never opened"}; preview: ${said(peek)}; full view: ${inView ? said(full) : "not shown"}; Copy link: ${own(copiedPass) ? `its own pass, a tab's load ${tab.status}` : copied ? "the page's pass or none" : "nothing copied"}; no pass: ${bare.status}${holder ? "" : "; /api/state handed the page no pass"}`,
+  );
 }
-if (DESK_ONLY) {
+
+/** `--artifacts`: check 37 alone, over an app of its own. */
+async function driveArtifacts() {
+  const dataR = join(base, "r");
+  const portR = await freePort();
+  const debugR = await freePort();
+  writeConfig(dataR, portR, up.url, root);
+  const R = launch(dataR, { debug: debugR, label: "the app (artifacts)" });
+  await until(() => stateAt(portR), 60000, "answer from the app's Filament");
+  const page = await until(async () => (await pagesOf(debugR)).find((p) => p.url.startsWith(`http://127.0.0.1:${portR}/ui/harness.html`)), 30000, "harness window");
+  await until(() => evalIn(page, `!!document.querySelector(".app-shell")`), 30000, "harness drawn");
+  await artifactPassCheck(portR, debugR, page);
+  const QR = launch(dataR, { args: ["--quit"], label: "quit the app (artifacts)" });
+  await until(() => QR.exited(), 20000, "end of its quitting launch");
+  await until(() => R.exited(), 30000, "the app's end");
+}
+
+// `--desk`: the desk's checks alone; `--owner`, the windows' owner session's; `--artifacts`, an artifact's own pass.
+const ONLY = DESK_ONLY ? driveDesk : OWNER_ONLY ? driveOwner : ARTIFACTS_ONLY ? driveArtifacts : null;
+if (ONLY) {
   try {
-    await driveDesk();
+    await ONLY();
   } catch (/** @type {any} */ e) {
     check("the drive ran to its end", false, String(e?.message || e));
   } finally {
@@ -1578,6 +1683,7 @@ try {
     endTree(/** @type {number} */ (W2.pid));
 
     await driveDesk();
+    await driveArtifacts();
 
     // ---- 17: the folder deletions that meet read-only files, under Electron's own Node (the suite runs on plain Node,
     // whose sync form takes them: there those tests prove nothing) ---------------------------------------------------------
