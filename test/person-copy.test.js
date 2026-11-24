@@ -307,6 +307,9 @@ test("between two Filaments: the app's full device starts its chat in the copy p
     assert.equal(made.status, 200, JSON.stringify(chat));
     assert.equal(there.app.remoteCopies.get(taken.copy.id)?.chat, chat.id);
     assert.equal((await there.api(`/api/sessions/${encodeURIComponent(first.id)}`)).status, 404, "the start it took over, never run, is gone");
+    // (fails before: yes — the review of s2a: the copy's folder made a project here named "1", its number folder)
+    assert.equal(there.app.memory.archive?.getProject(chat.projectId)?.name, "widgets (from Laptop)", "its project is called for the project it is a copy of, and the machine it came from");
+    assert.equal((await (await there.api("/api/memory/projects")).json()).projects.find((/** @type {any} */ p) => p.id === chat.projectId)?.name, "widgets (from Laptop)", "so the list says");
     const turn = await app(`/api/sessions/${encodeURIComponent(chat.id)}/turns`, { content: "hello", stream: false });
     assert.equal(turn.status, 200, await turn.clone().text());
     assert.match(await turn.text(), /"ok"|\bok\b/);
@@ -321,6 +324,9 @@ test("between two Filaments: the app's full device starts its chat in the copy p
     assert.equal(cleared.status, 200);
     assert.equal(existsSync(cwd), false);
     assert.equal((await there.api(`/api/sessions/${encodeURIComponent(chat.id)}`)).status, 404, "the person's chat in it went with it");
+    // (fails before: yes — the review of s2a: the project stayed in the list after its copy went)
+    assert.ok(there.app.memory.archive && !there.app.memory.archive.getProject(chat.projectId), "and its project, which held no other chat");
+    assert.ok(!(await (await there.api("/api/memory/projects")).json()).projects?.some((/** @type {any} */ p) => p.id === chat.projectId), "none in the list");
   } finally {
     await two.stop();
     await up.close();

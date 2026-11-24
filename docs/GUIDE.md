@@ -484,7 +484,9 @@ access says *Copies from DESKTOP-1: 3, 1.2 GB, in …*, and **Clear copies** del
 worked in there, after asking. Whatever runs in a copy (a chat's turn, its sub-agents and commands, a command they sent)
 is stopped before its folder is deleted; a folder Windows still holds open stays until the hourly sweep removes it, and
 the toast says so. `FILAMENT_COPIES_DIR` naming a drive's root or a home folder is ignored, and a copies folder in or
-around Filament's data folder makes no copy.
+around Filament's data folder makes no copy. A chat in a copy, theirs or yours (Run on, below), lists here under a
+project called for the project it is a copy of and the machine it came from (*widgets (from Laptop)*), never the copy's
+number folder; that project goes with the copy once it holds no other chat.
 
 **Run on: a copy for your own chat.** A machine can also send a copy of a project here for a chat of yours to run in:
 its agents' device places the copy for you (`for: "person"`), and its app starts the chat in it as your device paired

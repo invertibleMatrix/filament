@@ -2123,7 +2123,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
   /**
    * A new session: the folder validated, its project row ensured (D3), the chain created with the harness as client
    * and the given session layer (plus `model.name`).
-   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean, ownCopy?: string }} args
+   * @param {{ cwd: string, model?: string | null, title?: string | null, autoTitle?: boolean, settings?: any, kind?: string, preset?: string | null, parentId?: string | null, beside?: string | null, from?: { space: string } | null, thread?: string | null, agents?: boolean, ownCopy?: string, projectName?: string }} args
    *   `preset`: none, as `draftOf` reads it. `autoTitle` (no `title`): named by the first line of its first message
    *   that reaches the model, never by a command Filament answers (backlog 18) — the archive writes it when that turn
    *   begins. `beside`: the chat a team's chat runs beside
@@ -2133,9 +2133,11 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    *   `thread`: the chat whose agent started this one (core/threads.js), an interactive chat tied to it by a `thread`
    *   link as it is made — Filament's own, never a route's.
    *   `agents`: another machine's agents' device starts it (http/admin/sessions.js) — `draftOf`'s `theirs`; one made
-   *   from a chat of theirs is theirs without it. `ownCopy`: as `draftOf` reads it.
+   *   from a chat of theirs is theirs without it. `ownCopy`: as `draftOf` reads it. `projectName`: what its project is
+   *   called where this makes it — a copy's, for the project it is a copy of (services/copies.js `projectName`), never
+   *   its number folder; a project there already keeps its name.
    */
-  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false, ownCopy = "" }) {
+  function create({ cwd, model = null, title = null, autoTitle = false, settings = null, kind = "interactive", preset, parentId = null, beside = null, from = null, thread = null, agents = false, ownCopy = "", projectName = "" }) {
     const a = archive();
     if (kind === "team" ? !beside || !a.hasChain(String(beside)) : kind !== "interactive" && kind !== "fork") throw refusal(400, `kind must be interactive or fork, not "${kind}"`);
     if (thread != null && (kind !== "interactive" || !a.hasChain(String(thread)))) throw refusal(400, "a thread is an interactive chat started from one that is there");
@@ -2149,7 +2151,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     const draft = draftOf({ cwd, model, settings, preset, theirs: agents || typeof device === "string", ownCopy });
     const real = draft.cwd;
     // The project is the folder's, or its main folder's for a worktree (GW-D46); the chat's own folder is `meta.cwd`.
-    const project = a.ensureProject(draft.home);
+    const project = a.ensureProject(draft.home, { name: String(projectName || "").trim().slice(0, 200) || null });
     const tmpKey = `n:new-${randomBytes(6).toString("base64url")}`;
     const chain = a.chainForKey(tmpKey, { project: project.id, cwd: draft.home, client: "harness", model: model ? String(model) : null, kind, parentId });
     a.rekeyChain(chain.id, `n:${chain.id}`);

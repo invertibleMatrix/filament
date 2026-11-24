@@ -64,6 +64,8 @@ test("their copy: a chat of theirs starts in it without Full control, roots list
     const made = await agents("/api/sessions", { method: "POST", body: { cwd: taken.copy.folder, model: "agent/brain-model", preset: "plain" } });
     const chat = await made.json();
     assert.equal(made.status, 200, JSON.stringify(chat));
+    // (fails before: yes — the review of s2a: their chat's project here was named "1", its copy's number folder)
+    assert.equal(there.app.memory.archive?.getProject(chat.projectId)?.name, "widgets (from Laptop)");
     // Beside their copy, nothing of the person's opened: a folder of the copies folder that is no copy of theirs.
     const beside = await agents("/api/sessions", { method: "POST", body: { cwd: join(base, "copies"), model: "agent/brain-model", preset: "plain" } });
     assert.equal(beside.status, 403);
@@ -101,6 +103,7 @@ test("their copy: a chat of theirs starts in it without Full control, roots list
     assert.equal(existsSync(join(base, "copies", "From Laptop")), false);
     assert.equal(existsSync(join(base, "copies")), true);
     assert.equal((await there.api(`/api/sessions/${encodeURIComponent(chat.id)}`)).status, 404, "the chat in the copy went with it");
+    assert.ok(there.app.memory.archive && !there.app.memory.archive.getProject(chat.projectId), "and its project");
     /** @type {any} */
     let x = null;
     await until(async () => (x = await (await there.api(`/api/exec/${execId}`)).json()).state === "ended", "the command's end to be read");

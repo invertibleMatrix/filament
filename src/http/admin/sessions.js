@@ -438,8 +438,33 @@ export function sessionRoutes(a) {
   // stopped, what was kept behind its graphs dropped. A chat's folder is compared as the filesystem named the copies'
   // folders before they went (`keys`). The person's chat in a copy placed for it (Run on) goes with that copy too
   // (`chats`), its folder compared alike.
+  /**
+   * The projects copies let go made here — a chat in a copy makes its folder one (`projectName`) —, each whose folder was
+   * one of theirs and that holds no chat now, deleted with its Space: none stays in the list for a folder that is gone.
+   * @param {string[]} keys  the copies' folders, as copies.js `folderKeyOf` named them
+   */
+  const dropCopyProjects = async (keys) => {
+    /** @type {{ id: string, cwd: string | null, name: string | null, chains: number }[]} */
+    let projects = [];
+    try {
+      projects = memory.archive?.projects?.() || [];
+    } catch (/** @type {any} */ e) {
+      log("warn", `[copies] the projects of copies let go could not be read (${e?.message || e}): they stay in the list`);
+      return;
+    }
+    for (const p of projects) {
+      if (Number(p.chains) > 0 || !p.cwd || !keys.some((f) => inFolder(folderKeyOf(String(p.cwd)), f))) continue;
+      try {
+        await memory.deleteProject(p.id);
+        if (a.spaces?.drop?.(p.id)) a.routines?.arm?.();
+      } catch (/** @type {any} */ e) {
+        log("warn", `[copies] the project ${p.name || p.cwd} of a copy let go was not deleted: ${e?.message || e}`);
+      }
+    }
+  };
   a.remoteCopies?.onCleared?.(async (/** @type {import("../../services/copies.js").Cleared} */ { devices: theirs, keys, chats: yours = [] }) => {
-    if (!memory.archive?.agentChats || (!theirs.length && !yours.length) || !keys.length) return;
+    if (!memory.archive?.agentChats || !keys.length) return;
+    if (!theirs.length && !yours.length) return void (await dropCopyProjects(keys));
     const inside = (/** @type {string | null} */ cwd) => {
       if (!cwd) return false;
       const k = folderKeyOf(cwd);
@@ -486,6 +511,7 @@ export function sessionRoutes(a) {
         }
       }),
     );
+    await dropCopyProjects(keys);
   });
   /**
    * Whether a chat is another machine's agents' whose device lets them in no more: revoked, replaced by a second mint, or
@@ -547,6 +573,10 @@ export function sessionRoutes(a) {
         };
         if (own?.chat && own.ran && ownChatThere()) return sendJson(r.res, 409, { error: `${b.cwd} is in a copy another chat of yours works in: Run on sends a copy for each chat` });
         if (own) Object.assign(args, { ownCopy: own.folder });
+        // A chat in a copy makes the copy's folder a project here, called for the project it is a copy of and the machine
+        // it came from, never "1" (copies.js `projectName`); it goes with the copy (onCleared, above).
+        const inCopy = own || taken;
+        if (inCopy && a.remoteCopies?.projectName) Object.assign(args, { projectName: a.remoteCopies.projectName(inCopy) });
         // `worktree: { name }`: the chat works in a new worktree of its folder's repository, made here (GW-D45).
         const made = b.worktree != null ? await createInWorktree(args, b.worktree) : native().create(args);
         if (own) {

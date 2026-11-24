@@ -741,6 +741,13 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       const c = copies.find((x) => x.id === id);
       return c ? { ...c } : null;
     },
+    /**
+     * What the project of a chat in a copy is called here: the project it is a copy of, and the machine it came from
+     * ("widgets (from Laptop)"), never its copy's number folder. @param {Copy} c
+     */
+    projectName(c) {
+      return `${c.project} (from ${machineOf(c.device)?.name || machines[c.machine]?.name || "another machine"})`;
+    },
     /** The copy a folder is or lies in, of that device's machine alone. @param {string} deviceId @param {string} folder @returns {Copy | null} */
     copyAt(deviceId, folder) {
       const m = machineOf(deviceId);
