@@ -600,12 +600,14 @@ its memory free and the chats at work there; your model not answering there coun
 project ran last — and says its pick on the chip, *Auto → Studio*, and why on its hover. **Switch Run on on for a
 machine…** opens Settings › Remote access. The choice is the new chat's, and the send never changes it: a machine you
 named that does not answer is said so, and your message is back in the box; machines that could not be read are said
-so too, and read again at the send. Auto's pick is read again at the send too: where it is another machine than the
-chip named, the send says which and why, the chip names it, and nothing goes until you send again. A Start with no
-folder chosen runs on this computer. Its **Works in** holds: another worktree is the folder that goes, and the chip
-reads the machines for it; a new worktree, made on this computer alone, and the Start's other changes to its settings
-are refused in words. The chat there starts in the mode you picked for it, on the switch or the Start; with none
-picked, in that machine's *New chats start in*. The first message starts the
+so too, and read again at the send. Auto holds the machine its chip named while that machine still takes your chat,
+though another grows idler meanwhile; one that no longer takes it is replaced at the send, which says which and why,
+the chip names it, and nothing goes until you send again. A Start with no folder chosen runs on this computer. Its
+**Works in** holds: another worktree is the folder that goes, and the chip reads the machines for it; a new worktree,
+made on this computer alone, is refused in words, as is a chat handed from a Space, whose Space here hears how it
+went. The chat there starts in the mode you picked for it, on the switch or the Start; with none picked, in that
+machine's *New chats start in*. Your effort and tuning (fast, its window, a thinking budget) go with it, the Start's
+own over the composer's; the Start's other changes to its settings are refused in words. The first message starts the
 chat there: in a clean clone at your commit where that machine has one and nothing here is uncommitted — in this
 folder's place in it —; else in a copy of this folder sent with your work, asked first (*Send widgets to Studio?* — how
 many files and how much, the first of those in no commit, what stays here and why, Git LFS's), and named here, so what
@@ -616,9 +618,10 @@ chat starts on your model; where that machine does not have it, the send says so
 on, and nothing goes until you send again. Then the message goes, and the chat opens in
 place. A message that did not go leaves the chat standing there and your words back in the box: send them again, and
 they go to that chat — or pick another machine. One whose answer never came may have gone: its chat opens for you to
-look, and your words wait here too. Gone to another chat meanwhile, your words wait in this one's box, above what you
-typed there since, and never over what you typed in another new chat: they come back when you open this one. A send
-that fails on the way puts your words back in the box too. A first message there goes as plain words: files, a brief, `/flow`, `/plan`, `/goal`,
+look, and your words wait here too; the next send goes to that chat alone, never a second one. Each new chat's Start
+keeps its own words: gone to another chat meanwhile, your words wait in this one's box, above what you typed there
+since, and never over what you typed in another new chat: they come back when you open this one. A send that fails on
+the way puts your words back in the box too. A first message there goes as plain words: files, a brief, `/flow`, `/plan`, `/goal`,
 `/steer-fork` and **@names** are refused, as is asking your agents before it — send them in the chat there once it
 opens. The project menu's rows say the other machines a project is on too (*also on Studio*), as their chats say it.
 
@@ -5251,7 +5254,9 @@ but its screenshots are files in the temp folder, outside the project, which the
   chat, and it goes when its own chat's turn ends, on that chat's model and folder. The queue pauses, and says why in a
   line of its own, when you stop a turn, when a turn fails or stops to ask you something, when the turn that ended was
   not this window's (another tab's, a wake's), and when the next message could not be sent (in the send's own words: no
-  model chosen, a window that only reads). **Continue** sends the next one. Reload the page
+  model chosen, a window that only reads) or the send broke on the way, when it may have gone: look in the chat before
+  **Continue** sends it again. **Continue** sends the next one. A message you sent yourself whose send broke on the
+  way comes back in the box where you still look at its chat, said as one that may have gone. Reload the page
   and what waited is back, paused: a page that loads afresh never sends by itself.
 - **What you see**: the work fold ("The work so far · running npm test", later "Worked for 2m · 7 tool calls", the
   steps they came in on hover; "The work so far · in filament-wt · running npm test" once the agent's calls work in

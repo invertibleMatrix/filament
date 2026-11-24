@@ -122,16 +122,18 @@ export const worksInFolder = (worksIn, folder) => (!worksIn?.make && worksIn?.pa
  * What a Run on send takes from its Start, read as the send begins, before anything is waited on: the folder Works in
  * names (`worksInFolder`), and the mode the person picked for this chat — the switch's touch, else the board's held
  * change. None picked, none goes, and that machine's "New chats start in" holds, as a send here does
- * (session-start.js `sessionStartBody`). What Run on cannot carry there is refused in words, never dropped: a new
- * worktree, which is made on this computer alone, and the board's other held changes.
- * @param {{ worksIn?: any, held?: Record<string, any> | null, permTouched?: boolean, pickedPerm?: string | null }} chat
+ * (session-start.js `sessionStartBody`). The board's effort and tuning go with the chat (`runOnTune`). What Run on
+ * cannot carry there is refused in words, never dropped: a new worktree, which is made on this computer alone, and the
+ * board's other held changes. A chat handed from a Space is refused too: its Space, here, hears how it went.
+ * @param {{ worksIn?: any, held?: Record<string, any> | null, permTouched?: boolean, pickedPerm?: string | null, from?: { space?: string } | null }} chat
  * @param {string} folder  the Start's
  * @returns {{ folder: string, mode: string } | { words: string }}
  */
 export function runOnStart(chat, folder) {
   if (chat.worksIn?.make)
     return { words: "Run on sends a folder that stands, and a new worktree is made on this computer alone: in Works in, pick This folder or a worktree that stands, or run the chat on This computer" };
-  const held = Object.keys(chat.held || {}).filter((k) => k !== "loop.permissions").length;
+  if (chat.from?.space) return { words: "A chat handed from a Space runs on this computer, where its Space hears how it went: run it on This computer" };
+  const held = Object.keys(chat.held || {}).filter((k) => k !== "loop.permissions" && !TUNED.has(k)).length;
   if (held)
     return { words: `Run on starts the chat there on your model and mode alone, and this Start holds ${held === 1 ? "another change" : `${held} other changes`} to its settings: reset ${held === 1 ? "it" : "them"}, or run the chat on This computer` };
   const boardMode = chat.held?.["loop.permissions"];
@@ -159,6 +161,29 @@ export function atSend(choice, place, places, { saw = null, model = "", told = n
   if (lacks && told !== mark)
     return { words: `Your model ${model} does not answer on ${place.name}, and nothing went: send again to start your chat there on ${modelFor(place, model)}, or pick another model or machine`, told: mark };
   return null;
+}
+
+/** The held knobs a Run on chat takes there (`runOnTune`); the Start's others are refused (`runOnStart`). */
+const TUNED = new Set(["model.effort", "model.fast", "model.flex", "model.window", "model.thinking.budget"]);
+
+/**
+ * A new chat's tuning as the desk bridge's `create` takes it there: its effort, and the held tuning as the create
+ * call's flat settings say it (lib/families.js `heldFlat`) — fast, flex, its window, a thinking budget. The board's held
+ * changes win over the composer's, as a send here (session-start.js `sessionStartBody`).
+ * @param {string} effort  the composer's @param {Record<string, any>} held  the composer's held tuning
+ * @param {Record<string, any> | null} [board]  the Start board's held changes
+ * @returns {{ effort?: string, fast?: true, flex?: true, window?: number, thinking?: number }}
+ */
+export function runOnTune(effort, held, board = null) {
+  const h = { ...(held || {}), ...Object.fromEntries(Object.entries(board || {}).filter(([k]) => TUNED.has(k))) };
+  const e = typeof h["model.effort"] === "string" && h["model.effort"] ? h["model.effort"] : effort;
+  return {
+    ...(e ? { effort: String(e) } : {}),
+    ...(h["model.fast"] === true ? { fast: /** @type {true} */ (true) } : {}),
+    ...(h["model.flex"] === true ? { flex: /** @type {true} */ (true) } : {}),
+    ...(Number.isInteger(h["model.window"]) && h["model.window"] > 0 ? { window: h["model.window"] } : {}),
+    ...(Number.isInteger(h["model.thinking.budget"]) && h["model.thinking.budget"] > 0 ? { thinking: h["model.thinking.budget"] } : {}),
+  };
 }
 
 /**
@@ -225,15 +250,27 @@ export function autoPick(places, { running = new Map(), model = "" } = {}) {
 }
 
 /**
- * What the chip says for a choice: This computer, the machine's name, or Auto's pick. @param {string} choice
- * @param {Places | null} places @param {{ running?: ReadonlyMap<string, number>, model?: string, name?: string }} [o]  `name`: the machine's name where `places` has not answered
+ * Auto's pick for a draft: the machine its chip named (`held`) while that one still takes a chat of the person's — a
+ * read that scores another a little higher moves nothing the person saw —; else `autoPick`'s, with why.
+ * @param {Places} places @param {{ held?: string | null, running?: ReadonlyMap<string, number>, model?: string }} [o]
+ * @returns {{ pick: Place | null, why: string }}
+ */
+export function autoHeld(places, { held = null, running = new Map(), model = "" } = {}) {
+  const kept = held ? places.machines.find((m) => m.id === held && usable(m, places.here)) : null;
+  return kept ? { pick: kept, why: whyWords(kept, { here: places.here, last: places.last, running: running.get(kept.id) || 0, model }) } : autoPick(places, { running, model });
+}
+
+/**
+ * What the chip says for a choice: This computer, the machine's name, or Auto's pick (`autoHeld`). @param {string} choice
+ * @param {Places | null} places @param {{ running?: ReadonlyMap<string, number>, model?: string, name?: string, held?: string | null }} [o]
+ *   `name`: the machine's name where `places` has not answered; `held`: the machine Auto's chip named
  * @returns {{ label: string, title: string }}
  */
-export function chipWords(choice, places, { running, model = "", name = "" } = {}) {
+export function chipWords(choice, places, { running, model = "", name = "", held = null } = {}) {
   if (choice === HERE) return { label: "This computer", title: "The chat runs on this computer" };
   if (choice === AUTO) {
     if (!places) return { label: "Auto", title: "Auto picks the idlest of your machines that has this project: reading them…" };
-    const a = autoPick(places, { running, model });
+    const a = autoHeld(places, { held, running, model });
     return a.pick ? { label: `Auto → ${a.pick.name}`, title: `Auto picked ${a.pick.name}: ${a.why}` } : { label: "Auto: no machine", title: a.why };
   }
   const p = places?.machines.find((m) => m.id === choice) ?? null;
@@ -288,14 +325,15 @@ export function copyRefusal(place, me) {
  * `recorded`: a copy's record names the chat there, for the desk to read now (desk-work.js `reload`). A chat in a clean
  * clone has no record: it works in that machine's own clone, and what it changes comes back by git, never Bring back.
  * → the chat there; else why not, in words, and the chat where one stands there (`started`), whose message did not go.
- * @param {{ place: Place, here: Here, folder: string, text: string, model?: string, mode?: string, started?: { chat: string, work: any | null } | null }} o
+ * `tune`: the composer's effort and tuning (`runOnTune`), which the chat starts with there.
+ * @param {{ place: Place, here: Here, folder: string, text: string, model?: string, mode?: string, tune?: ReturnType<typeof runOnTune>, started?: { chat: string, work: any | null } | null }} o
  * @param {SendIo} io
  * @returns {Promise<{ ok: true, chat: string, work: any | null, unsure?: string } | { ok: false, words: string, said?: boolean, started?: { chat: string, work: any | null } }>}
  */
-export async function runOnSend({ place, here, folder, text, model = "", mode = "", started = null }, io) {
+export async function runOnSend({ place, here, folder, text, model = "", mode = "", tune = {}, started = null }, io) {
   if (started) {
     // A record its first send's read may have missed: read again with this one.
-    if (started.work) io.recorded?.();
+    if (started.work) quietly(() => io.recorded?.());
     return turnThere(place, started, text, io);
   }
   const clone = cleanClone(place, here);
@@ -322,7 +360,8 @@ export async function runOnSend({ place, here, folder, text, model = "", mode = 
     cwd = String(work.cwd || "");
   }
   const on = modelFor(place, model);
-  const made = await io.call({ op: "create", machine: place.id, cwd, ...(on ? { model: on } : {}), ...(mode ? { mode } : {}) });
+  // A call that throws is an answer too: what it did there is not known, and nothing after it goes.
+  const made = await (async () => io.call({ op: "create", machine: place.id, cwd, ...(on ? { model: on } : {}), ...(mode ? { mode } : {}), ...(Object.keys(tune).length ? { tune } : {}) }))().catch((/** @type {any} */ e) => ({ ok: false, words: `${place.name} did not say whether it started your chat: ${line(e?.message || e, 300)}` }));
   const chat = made?.ok ? String(made.json?.chat || "") : "";
   if (!chat) return { ok: false, words: `${made?.words || `${place.name} started no chat`}${work ? `. The copy of your work waits there a quarter of an hour for a chat of yours` : ""}` };
   if (work) {
@@ -332,10 +371,17 @@ export async function runOnSend({ place, here, folder, text, model = "", mode = 
       return { ok: false, words: `The chat started on ${place.name}, and could not be named here, so what it changes cannot come back: ${line(e?.message || e, 300)}` };
     }
     // Its record names the chat now: read at once, so a turn that ends however soon is looked at for Bring back.
-    io.recorded?.();
+    quietly(() => io.recorded?.());
   }
   return turnThere(place, { chat, work }, text, io);
 }
+
+/** The page told something after the work there is done: what it throws changes nothing that went. @param {() => void} f */
+const quietly = (f) => {
+  try {
+    f();
+  } catch {}
+};
 
 /**
  * The message sent in the chat started there, and the chat opened in place. One that surely did not go is the
@@ -346,9 +392,10 @@ export async function runOnSend({ place, here, folder, text, model = "", mode = 
  * @returns {Promise<{ ok: true, chat: string, work: any | null, unsure?: string } | { ok: false, words: string, started: { chat: string, work: any | null } }>}
  */
 async function turnThere(place, started, text, io) {
-  const sent = await io.call({ op: "turn", machine: place.id, chat: started.chat, content: text });
+  // A call that throws may have sent it: unsure, as one whose answer never came.
+  const sent = await (async () => io.call({ op: "turn", machine: place.id, chat: started.chat, content: text }))().catch((/** @type {any} */ e) => ({ ok: false, unsure: true, words: line(e?.message || e, 300) }));
   if (!sent?.ok && !sent?.unsure) return { ok: false, words: `Your chat stands on ${place.name}, and your message did not go: ${line(sent?.words, 300) || "it did not answer"}. Send it again to send it there, or pick another in Run on`, started };
-  io.open({ id: place.id, name: place.name }, started.chat);
+  quietly(() => io.open({ id: place.id, name: place.name }, started.chat));
   return { ok: true, ...started, ...(sent?.ok ? {} : { unsure: line(sent?.words, 300) || `${place.name} did not answer` }) };
 }
 
@@ -356,18 +403,20 @@ async function turnThere(place, started, text, io) {
  * The page's Run on send of a new chat's first message (app.js `runOnFirst`), past its first checks: what the Start
  * shows, read before anything is waited on (`runOnStart`); the machine — a chat standing there for this machine and
  * folder takes the message alone; else the machines read anew, the choice's machine (`placeFor`), and what stops the
- * send before anything goes (`atSend`) —; then `runOnSend`. Words that did not go come back: in the box while this chat
- * is shown (`refuse`); else in its Start's draft, above what was typed there since (`keep`), or, where that draft holds
- * another folder's Start, on the chat (`runOnBack`), back in its box when it is shown. A chat started there whose
+ * send before anything goes (`atSend`) —; then `runOnSend`. Auto goes to the machine its chip named (`runOnSaw`,
+ * `autoHeld`) while that one takes the chat; one that no longer does gives way to a fresh pick, said, which the chip
+ * then names. Words that did not go come back: in the box while this chat is shown (`refuse`); else kept for the
+ * chat's own box, above what was typed there since (`keep`: state.js `keepStartWords`). A chat started there whose
  * message did not go takes the next send (`runOnStarted`); once the message went, the Start says This computer again,
  * and what was typed since, in its box or another Start's, stays.
  * @param {any} chat  the chat shown, with no session yet: its choice and what its Start holds
- * @param {{ text: string, folder: string, model: string }} o  the Start's folder and the composer's model as the send began
+ * @param {{ text: string, folder: string, model: string, tune?: ReturnType<typeof runOnTune> }} o  the Start's folder, the
+ *   composer's model and tuning (`runOnTune`), as the send began
  * @param {SendIo & { places: (folder: string) => Promise<Places | null>, running: () => ReadonlyMap<string, number>, shown: () => boolean,
- *   refuse: (words: string) => boolean, keep: (text: string) => boolean, toast: (words: string, kind?: string) => void, load: () => void }} io
+ *   refuse: (words: string) => boolean, keep: (text: string) => void, toast: (words: string, kind?: string) => void, load: () => void }} io
  * @returns {Promise<boolean | undefined>}  false, refused in the box; undefined, it went, or its words wait for the chat
  */
-export async function startThere(chat, { text, folder: start, model }, io) {
+export async function startThere(chat, { text, folder: start, model, tune = {} }, io) {
   const s = runOnStart(chat, start);
   if ("words" in s) return io.refuse(s.words);
   const { folder, mode } = s;
@@ -375,7 +424,7 @@ export async function startThere(chat, { text, folder: start, model }, io) {
   /** Refused after a wait: said in the box shown, else its words kept for the chat. @param {string} words */
   const no = (words) => {
     if (io.shown()) return io.refuse(words);
-    if (!io.keep(text)) chat.runOnBack = chat.runOnBack ? `${text}\n\n${chat.runOnBack}` : text;
+    io.keep(text);
     io.toast(`${words}. Your message waits in that chat's box`, "err");
     return undefined;
   };
@@ -391,23 +440,26 @@ export async function startThere(chat, { text, folder: start, model }, io) {
     else {
       places = await io.places(folder);
       const running = io.running();
-      const at = placeFor(chat.runOn, places, { running, model });
+      const held = chat.runOn === AUTO && places ? autoHeld(places, { held: saw, running, model }).pick : null;
+      const at = held ? { place: held } : placeFor(chat.runOn, places, { running, model });
       if ("words" in at) return no(at.words);
       const stop = atSend(chat.runOn, at.place, /** @type {Places} */ (places), { saw, model, told: chat.runOnTold ?? null, running });
       if (stop) {
         if (stop.told) chat.runOnTold = stop.told;
+        // Auto's new pick is the chip's from now on: the next send goes there.
+        if (chat.runOn === AUTO) chat.runOnSaw = at.place.id;
         return no(stop.words);
       }
       place = at.place;
     }
     io.toast(started ? `Sending your message to your chat on ${place.name}…` : `Starting your chat on ${place.name}…`);
-    const out = await runOnSend({ place, here: places?.here ?? null, folder, text, model, mode, started: started && { chat: started.chat, work: started.work } }, io);
+    const out = await runOnSend({ place, here: places?.here ?? null, folder, text, model, mode, tune, started: started && { chat: started.chat, work: started.work } }, io);
     /** The chat stands there: the chip names its machine, and the next send from this Start goes to it. @param {{ chat: string, work: any }} c */
     const standing = (c) => {
       chat.runOnStarted = { machine: place.id, name: place.name, chat: c.chat, work: c.work, folder };
       chat.runOn = place.id;
       chat.runOnName = place.name;
-      io.load();
+      quietly(io.load);
     };
     if (!out.ok) {
       if (out.started) standing(out.started);
@@ -418,11 +470,13 @@ export async function startThere(chat, { text, folder: start, model }, io) {
       standing(out);
       return no(`Your chat started on ${place.name}, and its answer to your message never came: ${out.unsure}. Look in the chat there: if it did not go, send your words again from here and they go to that chat`);
     }
-    for (const k of ["runOn", "runOnName", "runOnStarted", "runOnTold"]) delete chat[k];
-    io.load();
+    for (const k of ["runOn", "runOnName", "runOnStarted", "runOnTold", "runOnSaw"]) delete chat[k];
+    quietly(io.load);
     return undefined;
   } catch (/** @type {any} */ e) {
-    // A call that threw — the bridge's, the page's —: nothing is known to have gone, and the words come back.
+    // A call that threw before the chat was started there — the machines' read, the copy's send, the bridge's `me` —:
+    // nothing went, and the words come back. Past that, a throw is an answer (`runOnSend`), and the page's own calls
+    // after it are told quietly.
     return no(`Your chat did not start on another machine: ${line(e?.message || e, 300) || "a call failed"}`);
   } finally {
     chat.runOnBusy = false;

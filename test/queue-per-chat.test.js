@@ -467,7 +467,7 @@ describe("the page's wiring", () => {
     const drain = composer.slice(composer.indexOf("const drain = () => {"), composer.indexOf("const autosize = "));
     assert.match(drain, /Promise\.resolve\(cb\.onSend\(queuedText\(next\), queuedFiles\(next\), "normal", \{ queued: true, overrules: queuedOverrules\(next\), \.\.\.queuedAnswer\(next\), \.\.\.queuedVia\(next\) \}\)\)\.then\(\s*\(ok\) => \{\s+(\/\/[^\n]*\n\s*)*if \(ok === "queue"\) queue\.putBack\(next\);\s+else if \(ok === false\) \{\s+const why = cb\.whyRefused\?\.\(\);\s+queue\.refused\(next, why\?\.said \|\| "", why\?\.again \?\? true\);\s+\} else return;\s+paintQueue\(\);/);
     // (fails before: yes — the review of s2c, plausible: a send that threw lost the message it had taken off the queue)
-    assert.match(drain, /\(e\) => \{\s+queue\.refused\(next, `It did not go: [^`]*`, true\);\s+paintQueue\(\);/, "a send that threw: the message waits, paused");
+    assert.match(drain, /\(e\) => \{\s+queue\.refused\(next, `It may not have gone [^`]*`, true\);\s+paintQueue\(\);/, "a send that threw: the message waits, paused");
   });
 
   // (fails before: yes — a picture attached while a turn ran always waited in the queue for the turn's end: a steer

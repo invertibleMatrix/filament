@@ -157,15 +157,27 @@ const OPS = Object.freeze(
         if (p.after != null && !ID.test(String(p.after))) return bad("after is the id of a run of the chat");
         return { method: "GET", path: `/sessions/${enc(chat)}/live-state${p.after != null ? `?after=${enc(String(p.after))}` : ""}` };
       }),
-    /** A new chat there, in its folder; on its model and in its mode where named — a press there where it asks less. @param {any} p */
+    /**
+     * A new chat there, in its folder; on its model, in its mode and with its tuning where named (`tune`: its effort,
+     * fast, flex, its window, a thinking budget — Run on's, the composer's for that chat) — a press there where it asks
+     * less. @param {any} p
+     */
     create: (p) => {
       const cwd = typeof p.cwd === "string" ? p.cwd.trim() : "";
       if (!cwd || cwd.length > FOLDER_MAX || /^[\\/]{2}/.test(cwd)) return bad(`cwd is the folder the chat works in there: at most ${FOLDER_MAX} characters, on no share`);
       if (p.title != null && (typeof p.title !== "string" || p.title.length > TITLE_MAX)) return bad(`title is the chat's name: at most ${TITLE_MAX} characters`);
       if (p.model != null && (typeof p.model !== "string" || p.model.length > MODEL_MAX)) return bad("model is the name of a model there");
       if (p.mode != null && !DESK_MODES.includes(p.mode)) return bad(`mode is one of ${DESK_MODES.join(", ")}`);
+      const t = p.tune ?? {};
+      const whole = (/** @type {unknown} */ v, /** @type {number} */ max) => v == null || (Number.isInteger(v) && Number(v) > 0 && Number(v) <= max);
+      if (typeof t !== "object" || Array.isArray(t)) return bad("tune is the chat's effort and tuning: { effort, fast, flex, window, thinking }");
+      if (t.effort != null && (typeof t.effort !== "string" || !/^[a-z][a-z-]{0,19}$/.test(t.effort))) return bad("tune.effort is an effort's name");
+      if ((t.fast != null && t.fast !== true) || (t.flex != null && t.flex !== true)) return bad("tune.fast and tune.flex are true where on");
+      if (!whole(t.window, 100_000_000) || !whole(t.thinking, 10_000_000)) return bad("tune.window and tune.thinking are whole numbers of tokens");
+      const model = { ...(t.effort ? { effort: t.effort } : {}), ...(t.fast ? { fast: true } : {}), ...(t.flex ? { flex: true } : {}), ...(t.window ? { window: t.window } : {}), ...(t.thinking ? { thinking: { budget: t.thinking } } : {}) };
+      const settings = { ...(p.mode ? { loop: { permissions: p.mode } } : {}), ...(Object.keys(model).length ? { model } : {}) };
       const title = String(p.title ?? "").trim();
-      const body = { cwd, ...(p.model ? { model: p.model } : {}), ...(title ? { title } : { autoTitle: true }), ...(p.mode ? { settings: { loop: { permissions: p.mode } } } : {}) };
+      const body = { cwd, ...(p.model ? { model: p.model } : {}), ...(title ? { title } : { autoTitle: true }), ...(Object.keys(settings).length ? { settings } : {}) };
       return { method: "POST", path: "/sessions", body, write: true, shape: (/** @type {any} */ j) => ({ chat: typeof j?.id === "string" && ID.test(j.id) ? j.id : null }) };
     },
     /** A message sent in a chat, as the person's: past its cold-cache question, as the command line sends one. @param {any} p */

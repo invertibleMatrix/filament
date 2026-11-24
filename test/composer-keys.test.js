@@ -216,16 +216,30 @@ describe("A message while the agent works (HS-D72)", () => {
     assert.deepEqual(b.c.files().map((/** @type {any} */ f) => f.name), ["notes.txt"], "the file attached since stays");
   });
 
-  // (fails before: yes — the review of s2c, plausible: a send that threw left its words nowhere, the box emptied)
-  test("a send that throws puts its words back before what the box holds by then, and says so", async () => {
+  // (fails before: yes — the review of s2c, plausible: a send that threw left its words nowhere, the box emptied; then the
+  // review of x21: one that threw at its turn's end put them in whatever chat's box was shown, saying they did not go)
+  test("a send that throws puts its words back in its own chat's box, before what it holds by then, and says it may not have gone; another chat shown keeps its box", async () => {
     /** @type {string[]} */
     const said = [];
-    const b = box({ onToast: (/** @type {string} */ m) => said.push(m), onSend: () => Promise.reject(new Error("the bridge closed")) });
+    const chats = { a: { chainId: "a", turns: [] }, b: { chainId: "b", turns: [] } };
+    let shown = chats.a;
+    /** @type {((e: any) => void)[]} */
+    const fail = [];
+    const b = box({ getChat: () => shown, onToast: (/** @type {string} */ m) => said.push(m), onSend: () => new Promise((_, no) => fail.push(no)) });
     b.press("my words");
     b.ta.value = "typed since";
+    /** @type {any} */ (fail.shift())(new Error("the bridge closed"));
     await settle();
     assert.equal(b.ta.value, "my words\n\ntyped since");
-    assert.deepEqual(said, ["Your message did not go: the bridge closed. It is back in the box"]);
+    assert.deepEqual(said, ["Your message may not have gone (the bridge closed): it is back in the box. Look in the chat before you send it again"]);
+    b.ta.value = "";
+    b.press("second");
+    shown = chats.b;
+    b.ta.value = "b's own";
+    /** @type {any} */ (fail.shift())(new Error("late"));
+    await settle();
+    assert.equal(b.ta.value, "b's own", "another chat's box is left alone");
+    assert.match(String(said.at(-1)), /^A message of yours may not have gone \(late\): look in that chat before you send it again$/);
   });
 
   // (fails before: yes — the review of f4dc07c45: each set the box to its own words — "/btw what is this file?" and the

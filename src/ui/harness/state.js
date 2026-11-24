@@ -16,9 +16,9 @@ import { store } from "../lib/store.js";
  * @property {boolean} [runOnBusy]  its first send is under way there: another Enter is refused, in words
  * @property {{ machine: string, name: string, chat: string, work: any, folder: string }} [runOnStarted]  a chat started
  *   there for it whose first message did not go: the next send from the folder, to that machine, goes to it
- * @property {string} [runOnSaw]  the machine Auto's chip named last ("" none): a send whose pick read anew is another says so first
+ * @property {string} [runOnSaw]  Auto's pick as its chip named it ("" none): held while that machine takes the chat, the send's
  * @property {string} [runOnTold]  the machine and model a send said the model does not answer on: the next send there goes on its stand-in
- * @property {string} [runOnBack]  its words a Run on send gave back while another folder's Start held the draft: back in its box when shown
+ * @property {string} [startWords]  with no session yet, the words in its box as it last saved them (`draftFor`): its own, never another Start's
  * @property {string} cwd  the project folder this chat works in (per chat, not per message)
  * @property {string | null} [projectId]  the project the archive filed its session in at its create (app.js `makeSession`, GW-D54), before the list names it
  * @property {{ branch: string, counts: any } | null} [git]  the project's git status, for the status panel
@@ -327,11 +327,14 @@ export const startKept = () => {
 };
 /**
  * A chat's draft: the words typed and not sent, or a message a card stopped before it was sent. It survives a refresh;
- * a sent one is forgotten. The Start's shows only in the folder it was typed for.
- * @param {{ chainId?: string | null, cwd?: string } | null | undefined} chat
+ * a sent one is forgotten. A chat with no session yet keeps its own on it, in the page (`startWords`), since its box
+ * last saved: another new chat's never stand in for them. Before that — a Start made anew after a refresh, a new chat
+ * just opened — it reads the Start's kept words, which show only in the folder they were typed for.
+ * @param {{ chainId?: string | null, cwd?: string, startWords?: string } | null | undefined} chat
  */
 export const draftFor = (chat) => {
   if (!chat?.chainId) {
+    if (typeof chat?.startWords === "string") return chat.startWords;
     const kept = startKept();
     return kept && (!kept.cwd || placeOf(kept.cwd) === placeOf(chat?.cwd)) ? kept.text : "";
   }
@@ -342,11 +345,13 @@ export const draftFor = (chat) => {
   }
 };
 /**
- * Keeps a chat's draft, or forgets it with no text. Another folder's Start opens with its box empty, which the composer
- * saves as it draws: that never forgets the words kept for the Start of the folder they were typed in.
- * @param {{ chainId?: string | null, cwd?: string } | null | undefined} chat @param {string} text
+ * Keeps a chat's draft, or forgets it with no text. A chat with no session yet keeps its words on it too (`draftFor`);
+ * the tab keeps one Start's, the one typed in last, for a refresh. Another folder's Start opens with its box empty,
+ * which the composer saves as it draws: that never forgets the words kept for the Start of the folder they were typed in.
+ * @param {{ chainId?: string | null, cwd?: string, startWords?: string } | null | undefined} chat @param {string} text
  */
 export const saveDraft = (chat, text) => {
+  if (chat && !chat.chainId) chat.startWords = text;
   if (!text && !chat?.chainId) {
     const kept = startKept();
     if (kept?.cwd && placeOf(kept.cwd) !== placeOf(chat?.cwd)) return;
@@ -358,17 +363,15 @@ export const saveDraft = (chat, text) => {
 };
 /**
  * Words given back to a chat with no session yet after its send went elsewhere and did not go (Run on, run-on.js
- * `startThere`), while another chat is shown: kept in the Start's one draft, above what was typed there since, where it
- * holds this chat's folder's words or none. Where it holds another folder's Start, nothing is written over them: false,
- * and the caller keeps the words on the chat.
- * @param {{ chainId?: string | null, cwd?: string }} chat @param {string} text @returns {boolean}
+ * `startThere`), while another chat is shown: kept on the chat, above what was typed in its box since, for its box when
+ * it is shown; and for a refresh, in the tab's Start words where those hold none — never over another Start's.
+ * @param {{ chainId?: string | null, cwd?: string, startWords?: string }} chat @param {string} text
  */
 export const keepStartWords = (chat, text) => {
-  const kept = startKept();
-  if (kept?.text.trim() && kept.cwd && placeOf(kept.cwd) !== placeOf(chat.cwd)) return false;
-  const since = (kept?.text || "").trim();
-  saveDraft(chat, since && since !== text.trim() ? `${text}\n\n${since}` : text);
-  return true;
+  const since = draftFor(chat).trim();
+  const words = since && since !== text.trim() ? `${text}\n\n${since}` : text;
+  if (startKept()?.text.trim()) chat.startWords = words;
+  else saveDraft(chat, words);
 };
 /**
  * The files attached in each chat's box and not sent, under its draft's key: the page's alone — a picture is up to 20 MB,

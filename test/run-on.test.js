@@ -8,8 +8,8 @@ import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { stubDocument } from "./helpers/dom-stub.js";
 import { until } from "./helpers/wait.js";
-import { AUTO, HERE, atSend, autoPick, chipWords, cleanClone, cloneFolder, modelFor, placeFor, pointsOf, readPlaces, runOnSend, runOnStart, startThere, worksInFolder } from "../src/ui/harness/lib/run-on.js";
-import { keepStartWords, startKept, saveDraft } from "../src/ui/harness/state.js";
+import { AUTO, HERE, atSend, autoPick, chipWords, cleanClone, cloneFolder, modelFor, placeFor, pointsOf, readPlaces, runOnSend, runOnStart, runOnTune, startThere, worksInFolder } from "../src/ui/harness/lib/run-on.js";
+import { draftFor, keepStartWords, startKept, saveDraft } from "../src/ui/harness/state.js";
 
 const HEAD = "a".repeat(40);
 /** A machine as `places` says one. @param {Partial<import("../src/ui/harness/lib/run-on.js").Place> & { id: string }} o */
@@ -202,9 +202,9 @@ describe("the page's send (startThere)", () => {
   const laptop = place({ id: "laptop", name: "Laptop", maker: "dev-1", load1: 1 });
   /**
    * The page as `startThere` asks it: the machines read (`wait` holds the read), the box shown or not, what it says.
-   * @param {any} chat @param {{ places?: any, shown?: boolean, wait?: Promise<void>, call?: (p: any) => Promise<any> }} [o]
+   * @param {any} chat @param {{ places?: any, shown?: boolean, wait?: Promise<void>, call?: (p: any) => Promise<any>, open?: () => void }} [o]
    */
-  const page = (chat, { places = readPlaces(placesOf([studio, laptop])), shown = true, wait, call } = {}) => {
+  const page = (chat, { places = readPlaces(placesOf([studio, laptop])), shown = true, wait, call, open } = {}) => {
     const said = { refused: /** @type {string[]} */ ([]), toasts: /** @type {string[]} */ ([]) };
     const io = {
       places: async (/** @type {string} */ f) => {
@@ -225,11 +225,14 @@ describe("the page's send (startThere)", () => {
       call:
         call ||
         (async (/** @type {any} */ p) => {
-          asked.push(`${p.op} ${p.cwd || p.chat || p.machine}${p.model ? ` model=${p.model}` : ""}${p.mode ? ` mode=${p.mode}` : ""}`);
+          asked.push(`${p.op} ${p.cwd || p.chat || p.machine}${p.model ? ` model=${p.model}` : ""}${p.mode ? ` mode=${p.mode}` : ""}${p.tune ? ` tune=${JSON.stringify(p.tune)}` : ""}`);
           return p.op === "me" ? { ok: true, json: { who: "device", device: "dev-1" } } : p.op === "create" ? { ok: true, json: { chat: "c-there" } } : { ok: true };
         }),
       allow: async () => true,
-      open: (/** @type {any} */ m, /** @type {string} */ c) => void asked.push(`open ${m.id} ${c}`),
+      open: (/** @type {any} */ m, /** @type {string} */ c) => {
+        asked.push(`open ${m.id} ${c}`);
+        open?.();
+      },
     };
     return { io, said };
   };
@@ -258,18 +261,34 @@ describe("the page's send (startThere)", () => {
   });
 
   // (fails before: yes — the review of s2c: every Start shares one draft, and a refused send wrote its words over
-  // another folder's; a finished one emptied it)
-  test("words that did not go never overwrite another Start's, and a finished send empties no Start", async () => {
-    saveDraft({ cwd: "/w/g" }, "typed in G's Start");
+  // another folder's; a finished one emptied it. Then the review of x21: a Start of the same folder typed in, or the
+  // chat shown, wrote over them all the same)
+  test("each Start keeps its own words: those that did not go never overwrite another Start's, nor are overwritten, and a finished send empties no Start", async () => {
+    const g = { cwd: "/w/g" };
+    saveDraft(g, "typed in G's Start");
     const f = { cwd: "/w/r", runOn: "gone" };
+    saveDraft(f, ""); // its box, as the send left it
     const out = await startThere(f, { text: "fix it", folder: "/w/r", model: "" }, page(f, { shown: false }).io);
     assert.equal(out, undefined);
-    assert.deepEqual(startKept(), { text: "typed in G's Start", cwd: "/w/g" }, "G's words stand");
-    assert.equal(/** @type {any} */ (f).runOnBack, "fix it", "F's words wait on its chat, for its box");
-    // The same folder's Start: above what was typed there since.
-    saveDraft({ cwd: "/w/r" }, "typed since");
+    assert.deepEqual(startKept(), { text: "typed in G's Start", cwd: "/w/g" }, "G's words stand, for a refresh too");
+    assert.equal(draftFor(f), "fix it", "F's words wait on its chat, for its box");
+    // F shown: its box saves its words — and G keeps its own, in the page.
+    saveDraft(f, draftFor(f));
+    assert.equal(draftFor(g), "typed in G's Start");
+    // Another Start of the same folder, typed in meanwhile: each keeps its own.
+    const b = { cwd: "/w/r" };
+    saveDraft(f, "typed since in F");
+    saveDraft(b, "B's words");
     await startThere(f, { text: "again", folder: "/w/r", model: "" }, page(f, { shown: false }).io);
-    assert.deepEqual(startKept(), { text: "again\n\ntyped since", cwd: "/w/r" });
+    assert.equal(draftFor(f), "again\n\ntyped since in F", "above what was typed in F since");
+    assert.equal(draftFor(b), "B's words");
+    assert.deepEqual(startKept(), { text: "B's words", cwd: "/w/r" }, "the Start typed in last keeps the tab's words");
+    // With no Start's words in the tab, a refresh finds them there too.
+    kept.clear();
+    const h = { cwd: "/w/r", runOn: "gone" };
+    saveDraft(h, "");
+    await startThere(h, { text: "only mine", folder: "/w/r", model: "" }, page(h, { shown: false }).io);
+    assert.deepEqual(startKept(), { text: "only mine", cwd: "/w/r" });
     // A send that went: words typed meanwhile in a Start of the same folder stay.
     saveDraft({ cwd: "/w/r" }, "another Start's words");
     const went = { cwd: "/w/r", runOn: "studio" };
@@ -286,30 +305,53 @@ describe("the page's send (startThere)", () => {
     await startThere(lane, { text: "x", folder: "/w/r", model: "" }, page(lane).io);
     assert.deepEqual(asked.slice(0, 3), ["places /w/r-lane/web", "me studio", "POST /remote-work folder=/w/r-lane/web"]);
     assert.equal(worksInFolder(lane.worksIn, "/w/r"), "/w/r-lane/web", "the chip reads that folder's machines too");
-    for (const chat of [
-      { cwd: "/w/r", runOn: "studio", worksIn: { folder: "/w/r", make: true, name: "fix-it" } },
-      { cwd: "/w/r", runOn: "studio", held: { "model.effort": "high" } },
-    ]) {
+    for (const [chat, words] of /** @type {[any, RegExp][]} */ ([
+      [{ cwd: "/w/r", runOn: "studio", worksIn: { folder: "/w/r", make: true, name: "fix-it" } }, /a new worktree is made on this computer alone/],
+      [{ cwd: "/w/r", runOn: "studio", held: { "model.effort": "high", "loop.maxRounds": 5 } }, /holds another change to its settings: reset it, or run the chat on This computer/],
+      // (fails before: yes — the review of x21: a chat handed from a Space went, and its Space never heard)
+      [{ cwd: "/w/r", runOn: "studio", from: { space: "p-1" } }, /A chat handed from a Space runs on this computer/],
+    ])) {
       asked = [];
       const { io, said } = page(chat);
       assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
       assert.deepEqual(asked, [], "nothing read, nothing sent");
-      assert.match(said.refused[0], chat.held ? /holds another change to its settings: reset it, or run the chat on This computer/ : /a new worktree is made on this computer alone/);
+      assert.match(said.refused[0], words);
     }
   });
 
-  // (fails before: yes — the review of s2c: the chip named one machine and the send went to another, a toast alone said)
-  test("Auto's pick read anew that is not the chip's is said, and nothing goes until the next send", async () => {
+  // (fails before: yes — the review of x21: the composer's effort and tuning were dropped without a word)
+  test("the composer's effort and tuning go with the chat there", async () => {
+    const tune = runOnTune("high", { "model.fast": true, "model.window": 1_000_000, "model.thinking.budget": 16000, "model.other": 1 });
+    assert.deepEqual(tune, { effort: "high", fast: true, window: 1_000_000, thinking: 16000 });
+    assert.deepEqual(runOnTune("", {}), {});
+    // The Start board's held effort and tuning go too, over the composer's, as a send here; its others are refused.
+    assert.deepEqual(runOnTune("high", { "model.fast": true }, { "model.effort": "low", "model.window": 200_000, "loop.permissions": "auto" }), { effort: "low", fast: true, window: 200_000 });
+    assert.deepEqual(runOnStart({ held: { "model.effort": "low", "model.fast": true, "loop.permissions": "auto" } }, "/w/r"), { folder: "/w/r", mode: "auto" });
+    const chat = { cwd: "/w/r", runOn: "studio" };
+    await startThere(chat, { text: "x", folder: "/w/r", model: "", tune }, page(chat).io);
+    assert.deepEqual(creates(), [`create /copies/1/r tune=${JSON.stringify(tune)}`]);
+  });
+
+  // (fails before: yes — the review of s2c: the chip named one machine and the send went to another, a toast alone said;
+  // then the review of x21: a fresh read that scored another a little higher refused send after send)
+  test("Auto holds the machine its chip named while it takes the chat; one that no longer does is said, nothing goes, and the chip names the new pick", async () => {
     const chat = { cwd: "/w/r", runOn: AUTO, runOnSaw: "studio" };
-    const { io, said } = page(chat);
-    assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
-    assert.match(said.refused[0], /^Auto picks Laptop now \(.*% idle.*\), and nothing went: send again/);
-    assert.deepEqual(asked, ["places /w/r"]);
-    // The chip, repainted, names Laptop: the next send goes there.
-    chat.runOnSaw = "laptop";
-    asked = [];
+    const p = readPlaces(placesOf([studio, laptop]));
+    assert.equal(chipWords(AUTO, p, { held: "studio" }).label, "Auto → Studio", "though Laptop is idler now");
+    assert.equal(autoPick(p).pick?.id, "laptop");
     await startThere(chat, { text: "x", folder: "/w/r", model: "" }, page(chat).io);
-    assert.equal(asked.at(-1), "open laptop c-there");
+    assert.equal(asked.at(-1), "open studio c-there", "the send goes where the chip said");
+    // Studio answers no more: Auto's fresh pick is said, and held from then.
+    asked = [];
+    const gone = { cwd: "/w/r", runOn: AUTO, runOnSaw: "studio" };
+    const away = page(gone, { places: readPlaces(placesOf([{ ...studio, answers: false }, laptop])) });
+    assert.equal(await startThere(gone, { text: "x", folder: "/w/r", model: "" }, away.io), false);
+    assert.match(away.said.refused[0], /^Auto picks Laptop now \(.*% idle.*\), and nothing went: send again/);
+    assert.deepEqual(asked, ["places /w/r"]);
+    assert.equal(gone.runOnSaw, "laptop");
+    asked = [];
+    await startThere(gone, { text: "x", folder: "/w/r", model: "" }, page(gone).io);
+    assert.equal(asked.at(-1), "open laptop c-there", "held: Studio back, the send goes to Laptop as said");
   });
 
   // (fails before: yes — the review of s2c: a model that machine lacks became its first, the hover alone said)
@@ -327,13 +369,41 @@ describe("the page's send (startThere)", () => {
     assert.equal(atSend("studio", own, /** @type {any} */ (p), { model: "m1", told: "studio\nm2" })?.told, "studio\nm1", "told of another model: said again");
   });
 
-  // (fails before: yes — the review of s2c, plausible: a call that threw left the words nowhere)
-  test("a call that throws gives the words back and lets the next send go", async () => {
+  // (fails before: yes — the review of s2c, plausible: a call that threw left the words nowhere; then the review of x21:
+  // a throw after the chat or its message went said it did not, and the next send made a second chat there)
+  test("a call that throws before the chat starts gives the words back; one after is an answer, and nothing starts a second chat", async () => {
     const chat = { cwd: "/w/r", runOn: "studio" };
     const { io, said } = page(chat, { call: async () => Promise.reject(new Error("the bridge closed")) });
     assert.equal(await startThere(chat, { text: "x", folder: "/w/r", model: "" }, io), false);
     assert.equal(said.refused[0], "Your chat did not start on another machine: the bridge closed");
     assert.equal(/** @type {any} */ (chat).runOnBusy, false);
+    // The page's own call after the message went throws: it went, and the Start says so.
+    asked = [];
+    const opened = { cwd: "/w/r", runOn: "studio" };
+    const late = page(opened, {
+      open: () => {
+        throw new Error("the view broke");
+      },
+    });
+    assert.equal(await startThere(opened, { text: "x", folder: "/w/r", model: "" }, late.io), undefined);
+    assert.deepEqual(late.said.refused, []);
+    assert.equal(/** @type {any} */ (opened).runOn, undefined, "it went: the Start says This computer again");
+    // The turn's call throws: it may have gone — the chat stands there, and the next send goes to it alone.
+    asked = [];
+    const unsure = { cwd: "/w/r", runOn: "studio" };
+    const turnFails = page(unsure, {
+      call: async (p) => {
+        asked.push(p.op);
+        if (p.op === "turn") throw new Error("no answer");
+        return p.op === "me" ? { ok: true, json: { who: "device", device: "dev-1" } } : { ok: true, json: { chat: "c-there" } };
+      },
+    });
+    assert.equal(await startThere(unsure, { text: "x", folder: "/w/r", model: "" }, turnFails.io), false);
+    assert.match(turnFails.said.refused[0], /its answer to your message never came: no answer/);
+    assert.equal(/** @type {any} */ (unsure).runOnStarted?.chat, "c-there");
+    asked = [];
+    await startThere(unsure, { text: "x", folder: "/w/r", model: "" }, page(unsure).io);
+    assert.deepEqual(asked, ["turn c-there", "open studio c-there"], "the message alone goes to the chat that stands there");
   });
 });
 
@@ -348,7 +418,7 @@ test("the page's send: plain words alone go there; the model is read as the send
   assert.ok(ask.indexOf("chat.runOn || chat.runOnBusy") > 0 && ask.indexOf("chat.runOn || chat.runOnBusy") < ask.indexOf("await readySession("), "asking agents before the first message there is refused before any session is made");
   const first = app.slice(app.indexOf("async function runOnFirst("), app.indexOf("function allowRunOnSend("));
   assert.match(first, /^async function runOnFirst\(chat, text, attachments\) \{\s+if \(chat\.runOnBusy\) return refuse\(/, "a second send while one goes is refused in words");
-  assert.match(first, /return await startThere\(chat, \{ text, folder, model: composer\.modelName\(\) \|\| "" \}, \{/, "the model read before any wait");
+  assert.match(first, /return await startThere\(chat, \{ text, folder, model: composer\.modelName\(\) \|\| "", tune: runOnTune\(composer\.effortValue\(\), composer\.heldSettings\(\), chat\.held\) \}, \{/, "the model and its tuning read before any wait");
   assert.match(first, /keep: \(words\) => keepStartWords\(chat, words\)/);
   assert.match(first, /open: \(m, chain\) => \(shown\(\) \? sidebar\.openOnMachine\(/, "opened in place only while the chat is shown");
   assert.match(app, /set: \(choice, name\) => \{\s+const c = chatOf\(state\.currentId\);\s+(?:\/\/[^\n]*\n\s+)*if \(!c \|\| c\.chainId \|\| c\.runOnBusy\) return;/, "the choice holds while its send goes");

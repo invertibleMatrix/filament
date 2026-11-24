@@ -213,6 +213,10 @@ test("the table alone: an operation not in it, a path, a name off the prototype,
     [{ op: "create", cwd: "" }, /cwd is the folder/],
     [{ op: "create", cwd: "\\\\server\\share\\x" }, /on no share/],
     [{ op: "create", cwd: "/w/x", mode: "yolo" }, /mode is one of/],
+    [{ op: "create", cwd: "/w/x", tune: [] }, /tune is the chat's effort and tuning/],
+    [{ op: "create", cwd: "/w/x", tune: { effort: "High!" } }, /tune\.effort is an effort's name/],
+    [{ op: "create", cwd: "/w/x", tune: { fast: "yes" } }, /tune\.fast and tune\.flex are true where on/],
+    [{ op: "create", cwd: "/w/x", tune: { window: 1.5 } }, /whole numbers of tokens/],
   ];
   for (const [p, words] of unfit) assert.match(String((await desk.call({ machine: "m-mac", ...p })).words), words, JSON.stringify(p));
   assert.deepEqual(there.calls, [], "nothing reached the machine");
@@ -272,17 +276,20 @@ test("a write about a chat goes as the desk's tab there, taking the chat as the 
   assert.equal(String(busy.words).length, "Mac mini answered: ".length + 300, "its words clipped");
 });
 
-test("a new chat there: its folder, its name or none, its model, its mode; its answer its chat's id alone", async () => {
+// (fails before: yes for the tuning — the review of x21: Run on dropped the composer's effort and tuning without a word)
+test("a new chat there: its folder, its name or none, its model, its mode, its effort and tuning; its answer its chat's id alone", async () => {
   const there = scripted({ on: (method, path) => (method === "POST" && path === "/sessions" ? answer(200, { id: "c-new", cwd: "/w/shop", settings: { secret: 1 } }) : null) });
   const { desk } = deskOver(there);
   const made = await desk.call({ op: "create", machine: "m-mac", cwd: " /w/shop ", model: "sonnet", mode: "edit" });
   assert.deepEqual(made, { ok: true, status: 200, json: { chat: "c-new" } });
   await desk.call({ op: "create", machine: "m-mac", cwd: "/w/shop", title: "Fix it" });
+  await desk.call({ op: "create", machine: "m-mac", cwd: "/w/shop", tune: { effort: "high", fast: true, window: 1_000_000, thinking: 16000 } });
   assert.deepEqual(
     there.sent().map((c) => c.body),
     [
       { cwd: "/w/shop", model: "sonnet", autoTitle: true, settings: { loop: { permissions: "edit" } } },
       { cwd: "/w/shop", title: "Fix it" },
+      { cwd: "/w/shop", autoTitle: true, settings: { model: { effort: "high", fast: true, window: 1_000_000, thinking: { budget: 16000 } } } },
     ],
   );
 });

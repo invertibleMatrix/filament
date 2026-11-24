@@ -31,7 +31,7 @@ import { waitingOn } from "./conversation/waiting-on.js";
 import { createChargeBand } from "./conversation/in-charge.js";
 import { turnNow } from "./lib/overview.js";
 import { deskRoute, mergeKey } from "./lib/desk.js";
-import { HERE, folderKey, readPlaces, startThere, worksInFolder } from "./lib/run-on.js";
+import { HERE, folderKey, readPlaces, runOnTune, startThere, worksInFolder } from "./lib/run-on.js";
 import { cancelledWords } from "./lib/come-back.js";
 import { setTabTitle, setTitleLead, notifyRunEnded, ensureNotificationPermission } from "./notify.js";
 import { createPopped, followSwitch, followable, mainLine, popBridgeOf, popTabOf } from "./panes/pop-out.js";
@@ -2586,6 +2586,8 @@ const runOnHooks = {
     if (!c || c.chainId || c.runOnBusy) return;
     c.runOn = choice;
     c.runOnName = name;
+    // Auto picked again picks afresh; the chip names what it picks, and the send holds to it.
+    delete c.runOnSaw;
     // A chat started there whose message did not go is the person's, in the desk's list: another choice is no longer it.
     if (c.runOnStarted && c.runOnStarted.machine !== choice) delete c.runOnStarted;
   },
@@ -2627,7 +2629,7 @@ async function runOnFirst(chat, text, attachments) {
   if (typeof call !== "function") return refuse("Run on starts a chat on another machine from the desktop app alone");
   const shown = () => chatOf(state.currentId) === chat;
   try {
-    return await startThere(chat, { text, folder, model: composer.modelName() || "" }, {
+    return await startThere(chat, { text, folder, model: composer.modelName() || "", tune: runOnTune(composer.effortValue(), composer.heldSettings(), chat.held) }, {
       places: (f) => runOnPlaces(f, true),
       running: () => runOnRunning(),
       shown,
@@ -7096,10 +7098,7 @@ function selectChat(id, opts = {}) {
   // the box's too (`heldInRow`, the owner's of 11-09).
   const kept = draftFor(chat);
   const held = heldInRow(chat.turns, kept) === true;
-  // Words a Run on send gave back while another folder's Start held the draft (run-on.js `startThere`): above the rest.
-  const given = chat.runOnBack || "";
-  delete chat.runOnBack;
-  const back = [given, held ? "" : kept].filter(Boolean).join("\n\n");
+  const back = held ? "" : kept;
   // Its box as it was left, the files attached in it with its words: another chat's never go with its send.
   composer.setDraft(back, draftFilesFor(chat));
   // A new chat's Start says when its box holds words kept from before (the Designer's second walk of 10-29).

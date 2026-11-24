@@ -17,7 +17,7 @@ import { state, recentFolders, rememberFolder, forgetFolder } from "../state.js"
 import { createStartBoard } from "./start-board.js";
 import { createWorksIn } from "./works-in.js";
 import { whose } from "../lib/words.js";
-import { AUTO, HERE, autoPick, chipWords } from "../lib/run-on.js";
+import { AUTO, HERE, autoHeld, chipWords } from "../lib/run-on.js";
 
 const leafOf = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 /** A folder as the project id compares it: forward slashes, no trailing one, lower case. @param {unknown} p */
@@ -425,9 +425,11 @@ export function createEmptyState(cb) {
     if (choice && !known && !failed) void r.places(folder).then(() => cb.getFolder() === folder && paintRunOn());
     const running = r.running();
     const model = r.model();
-    const words = chipWords(choice, known, { running, model, name: cb.chatOf?.()?.runOnName || "" });
-    // The machine Auto's chip names: a send whose pick, read anew, is another says so before anything goes.
-    if (choice === AUTO) r.saw?.((known && autoPick(known, { running, model }).pick?.id) || "");
+    // Auto's pick, once the chip names it, holds while that machine takes the chat (run-on.js `autoHeld`): the send
+    // goes there, and a read that scores another a little higher moves nothing.
+    const held = cb.chatOf?.()?.runOnSaw || null;
+    const words = chipWords(choice, known, { running, model, held, name: cb.chatOf?.()?.runOnName || "" });
+    if (choice === AUTO) r.saw?.((known && autoHeld(known, { held, running, model }).pick?.id) || "");
     runOnLabel.textContent = words.label;
     runOnChip.title = choice && failed ? "Your machines could not be read: a send reads them again" : words.title;
     setHtml(runOnIcon, choice === HERE ? ICONS.monitor : ICONS.network);
@@ -637,6 +639,8 @@ export function createEmptyState(cb) {
       ask(150);
       if (!viewOnly()) worksIn.draftChanged();
       paintKept();
+      // The model moved, maybe: what the chip says of it there (its hover) follows.
+      paintRunOn();
     },
   };
 }

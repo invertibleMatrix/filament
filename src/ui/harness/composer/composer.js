@@ -466,9 +466,10 @@ export function createComposer(host, cb) {
         } else return;
         paintQueue();
       },
-      // A send that threw: the message waits in the queue, paused, with why.
+      // A send that threw: nothing says whether it went. The message waits in the queue, paused, with why: Continue
+      // sends it again, once the person has looked.
       (e) => {
-        queue.refused(next, `It did not go: ${String(e?.message || e).slice(0, 200)}`, true);
+        queue.refused(next, `It may not have gone (${String(e?.message || e).slice(0, 200)}): look in the chat before you send it again`, true);
         paintQueue();
       },
     );
@@ -671,6 +672,7 @@ export function createComposer(host, cb) {
       cb.onToast?.("Queued with its files — it goes when this turn ends");
       return;
     }
+    const sentFrom = cb.getChat();
     Promise.resolve(cb.onSend(text, files, modifier, { overrules, ...(via ? { via } : {}) })).then(
       (ok) => {
         // Refused: back in the box, before what it holds by then — another message refused, words typed since.
@@ -682,10 +684,14 @@ export function createComposer(host, cb) {
           paintQueue();
         }
       },
-      // A send that threw: nothing says it went, and the box had let its words go.
+      // A send that threw — early, or at its turn's end —: nothing says whether it went. Its words come back to its own
+      // chat's box, never another's, and the person looks before sending them again.
       (e) => {
-        backInBox(text, files, overrules);
-        cb.onToast?.(`Your message did not go: ${String(e?.message || e).slice(0, 200)}. It is back in the box`);
+        const why = String(e?.message || e).slice(0, 200);
+        if (cb.getChat() === sentFrom) {
+          backInBox(text, files, overrules);
+          cb.onToast?.(`Your message may not have gone (${why}): it is back in the box. Look in the chat before you send it again`);
+        } else cb.onToast?.(`A message of yours may not have gone (${why}): look in that chat before you send it again`);
       },
     );
   };
