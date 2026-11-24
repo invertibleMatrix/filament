@@ -202,6 +202,8 @@ test("the table alone: an operation not in it, a path, a name off the prototype,
     [{ op: "live-state", chat: "c1", after: "r 1" }, /after is the id of a run/],
     [{ op: "search", q: "   " }, /q is the search/],
     [{ op: "search", q: "x".repeat(201) }, /q is the search/],
+    // (the hunt on s1h) A lone half of an emoji has no form in an address: refused in words, never thrown.
+    [{ op: "search", q: "parser \uD83D" }, /q is the search: whole characters, none cut in two/],
     [{ op: "turn", chat: "c1", content: "  " }, /content is the message/],
     [{ op: "turn", chat: "c1", content: { type: "text" } }, /content is the message/],
     [{ op: "answer", chat: "c1", ask: "a 1", allow: true }, /ask is the id of an ask/],

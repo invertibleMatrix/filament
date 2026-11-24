@@ -2865,8 +2865,8 @@ folder the agent works in, the model and the permission mode, and change what it
 spinner while a turn runs in it — this tab's, another tab's, its coding agent's own (an outside client's chat shows
 none: its client's requests hold no chat) — a blue dot when it finished since you looked, a red dot when its last turn
 failed, or an orange dot when it waits for you (its hover says on what). **Ctrl+K** searches chats and actions —
-in the desktop app, the chats of every other machine the left bar lists too, each under **On** its name, Enter opening
-it on that machine —, and changes the open chat's settings in words: type `line 70`, `1m`, `ask`, `max`, a model's name (`sonnet`), `mem off`
+in the desktop app, the chats of every other machine the left bar lists too, each under **On** its name as that
+machine answers, below what is shown, a line naming those still searching; Enter opens it on that machine —, and changes the open chat's settings in words: type `line 70`, `1m`, `ask`, `max`, a model's name (`sonnet`), `mem off`
 or `may product`, and a row under **This chat** says where it stands now and what the change does — Enter
 makes it, for this chat only, the way its own control would (the line's chip, the tune popover, the model chip, Your
 agent may use); a value it has already, or one it cannot take, is a line saying why. Its **Settings** scope (Tab) shows

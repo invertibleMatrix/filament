@@ -89,6 +89,16 @@ export function rememberSearch(q) {
   store.set(HISTORY_KEY, JSON.stringify([t, ...searchHistory().filter((x) => x !== t)].slice(0, 8)));
 }
 
+/**
+ * The first `n` code units of `s` with no character cut in two — an emoji at the cut goes whole or not at all — and
+ * any lone half of one made U+FFFD: a request's address holds none (the hunt on s1h: one cut in two failed the search).
+ * @param {string} s @param {number} n
+ */
+export const wholeCut = (s, n) => {
+  const c = s.slice(0, n);
+  return (/[\uD800-\uDBFF]$/.test(c) && /[\uDC00-\uDFFF]/.test(s.charAt(n)) ? c.slice(0, -1) : c).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "�");
+};
+
 /** The next scope id from the current one, Tab / Shift+Tab. @param {string} current @param {number} dir */
 export function nextScope(current, dir) {
   const at = Math.max(0, SCOPES.findIndex((s) => s.id === current));
@@ -114,11 +124,11 @@ export function settingsPart(raw, scope, facts, found) {
 /**
  * @param {{ actions: () => CcAction[], onOpenTask: (id: string) => void, getFolder?: () => string, onInsert?: (text: string) => void, getChat?: () => any, onOpenChanges?: (path: string) => void,
  *   settings?: () => import("./lib/setting-intents.js").SettingFacts | null, onSetting?: (row: import("./lib/setting-intents.js").SettingRow) => void,
- *   machines?: () => readonly import("./lib/desk.js").DeskMachine[], deskCall?: (p: any) => Promise<any>, onOpenThere?: (machine: string, chain: string) => void }} cb
+ *   machines?: () => readonly import("./lib/desk.js").DeskMachine[], deskCall?: (p: any) => Promise<any>, onOpenThere?: (machine: string, chain: string, name: string) => void }} cb
  *   `actions`: the list, or what lists them as they are each time it asks (the panes' doors follow what is open);
  *   `settings`: the open chat as Ctrl+K reads it to change its settings; `onSetting`: a setting row run;
  *   `machines`: the other machines whose chats the left bar lists (the remote desk), searched through `deskCall` (the
- *   app's `filamentMachines.call`); `onOpenThere`: one of their chats opened on its machine
+ *   app's `filamentMachines.call`); `onOpenThere`: one of their chats opened on its machine, named as its row named it
  * @returns {{ open: () => void }}
  */
 export function createCommandCenter(cb) {
@@ -131,7 +141,7 @@ export function createCommandCenter(cb) {
    * @returns {Promise<{ rows: CcRow[], why: string }>}
    */
   async function there(m, query) {
-    const a = await cb.deskCall?.({ op: "search", machine: m.id, q: query.trim().slice(0, THERE_QUERY_MOST) }).catch(() => null);
+    const a = await cb.deskCall?.({ op: "search", machine: m.id, q: wholeCut(query.trim(), THERE_QUERY_MOST) }).catch(() => null);
     // Why none came, in the app's words — a call refused here, an error there, no answer in time —, else as it stands.
     const said = typeof a?.words === "string" ? a.words.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 300) : "";
     if (!a?.ok) return { rows: [], why: said || `${m.name} did not answer the search` };
@@ -141,7 +151,7 @@ export function createCommandCenter(cb) {
       detail: [c.project, c.when ? sessionAge(new Date(c.when).toISOString()) : ""].filter(Boolean).join(" · "),
       icon: "messageSquare",
       tone: `var(--color-sys-${m.color})`,
-      run: () => cb.onOpenThere?.(m.id, c.there.chain),
+      run: () => cb.onOpenThere?.(m.id, c.there.chain, m.name),
     })) };
   }
   /**
@@ -286,34 +296,51 @@ export function createCommandCenter(cb) {
         const came = parts.map(() => null);
         parts.forEach((p, k) => p.then((got) => void (came[k] = got)));
         await Promise.race([Promise.all(parts), new Promise((r) => setTimeout(r, SLOW_PARTS_MS))]);
-        // Drawn up to the first part still out, so a row only ever comes below the ones drawn; the last draw is whole.
+        /**
+         * The other machines' parts in the order they are drawn: each as it came, those that came together in the bar's
+         * order, so a machine that answered is drawn at once whichever is still out (the hunt on s1h).
+         * @type {number[]}
+         */
+        const order = [];
+        // This computer's parts drawn up to the first still out, then each machine's as it comes, so a row only ever
+        // comes below the ones drawn; the last draw is whole.
         for (;;) {
           if (mine !== seq) return; // a newer keystroke paints
-          const out = came.indexOf(null);
-          draw(raw, actions, came, out < 0 ? came.length : out, machines, thereWhy);
-          if (out < 0) return;
-          came[out] = await parts[out];
+          const localOut = came.slice(0, LOCAL_PARTS).indexOf(null);
+          if (localOut < 0) machines.forEach((_, j) => void (came[LOCAL_PARTS + j] !== null && !order.includes(j) && order.push(j)));
+          draw(raw, actions, came, localOut < 0 ? LOCAL_PARTS : localOut, machines, thereWhy, order);
+          if (localOut >= 0) {
+            await parts[localOut];
+            continue;
+          }
+          const left = parts.filter((_, k) => k >= LOCAL_PARTS && came[k] === null);
+          if (!left.length) return;
+          await Promise.race(left);
         }
       };
 
       /**
-       * The list as the parts that came draw it, the first `upto` of them: the empty line, the examples that follow
-       * what was found and the history wait for the last.
-       * `machines`: the other machines searched, whose parts follow this computer's three, each in its order; `thereWhy`
-       * why one found nothing. The empty line, the examples and the history wait for this computer's parts alone: a
-       * machine still out is a line saying so.
+       * The list as the parts that came draw it, this computer's first `upto` of them: the empty line, the examples that
+       * follow what was found and the history wait for the last.
+       * `machines`: the other machines searched, whose parts follow this computer's three, drawn in `order` once this
+       * computer's are; `thereWhy` why one found nothing. The history waits for this computer's parts alone; the empty
+       * line and the examples wait for every machine too, and a machine still out is a line naming it.
        * @param {string} raw @param {CcRow[]} actions @param {(CcRow[] | null)[]} came @param {number} upto
        * @param {readonly import("./lib/desk.js").DeskMachine[]} [machines] @param {ReadonlyMap<string, string>} [thereWhy]
+       * @param {readonly number[]} [order]
        */
-      const draw = (raw, actions, came, upto, machines = [], thereWhy = new Map()) => {
+      const draw = (raw, actions, came, upto, machines = [], thereWhy = new Map(), order = []) => {
         const q = raw.toLowerCase();
-        const [taskRows, changeRows, fileRows, ...theirs] = came.map((got, k) => (k < upto && got) || []);
+        const [taskRows, changeRows, fileRows] = came.slice(0, LOCAL_PARTS).map((got, k) => (k < upto && got) || []);
         const whole = upto >= LOCAL_PARTS;
-        const theirRows = theirs.flat();
+        /** The machines drawn, each with its rows, in their order. */
+        const drawn = whole ? order.map((j) => ({ m: machines[j], rows: came[LOCAL_PARTS + j] || [] })) : [];
+        const theirRows = drawn.flatMap((x) => x.rows);
         /** The machines whose search is still out. */
-        const out = machines.filter((_, j) => LOCAL_PARTS + j >= upto);
+        const out = machines.filter((_, j) => came[LOCAL_PARTS + j] === null);
         const set = settingsPart(raw, scope, cb.settings?.() || null, actions.length + taskRows.length + changeRows.length + fileRows.length + theirRows.length);
-        if (!whole) set.examples = [];
+        // What else to type waits for every search: shown while one is out, it went as that machine's rows came.
+        if (!whole || out.length) set.examples = [];
         /** @type {CcRow[]} */
         const setRows = set.rows.map((r) => ({ label: r.label, detail: r.now, snippet: r.effect || undefined, icon: r.icon, tone: r.tone, run: () => cb.onSetting?.(r) }));
         rows = [...actions, ...setRows, ...taskRows, ...changeRows, ...fileRows, ...theirRows];
@@ -331,9 +358,9 @@ export function createCommandCenter(cb) {
           ...section("Recent chats", taskRows),
           ...section("Recent changes", changeRows),
           ...section("Files", fileRows),
-          // Each other machine's chats under its name, in the order the bar lists the machines; one that did not answer
-          // says so there, and those still out are a line.
-          ...machines.flatMap((m, j) => (theirs[j]?.length || LOCAL_PARTS + j >= upto || !thereWhy.has(m.id) ? section(`On ${m.name}`, theirs[j] || []) : [h("div", { class: "cc-label" }, `On ${m.name}`), h("div", { class: "cc-why" }, thereWhy.get(m.id))])),
+          // Each other machine's chats under its name, as they came; one that did not answer says so there, and those
+          // still out are a line.
+          ...drawn.flatMap(({ m, rows: theirs }) => (theirs.length || !thereWhy.has(m.id) ? section(`On ${m.name}`, theirs) : [h("div", { class: "cc-label" }, `On ${m.name}`), h("div", { class: "cc-why" }, thereWhy.get(m.id))])),
           out.length ? h("div", { class: "cc-why cc-there-wait", role: "status" }, `Searching ${out.map((m) => m.name).join(", ")}…`) : null,
           // Nothing typed in Settings is no search that failed: its examples alone.
           !whole || out.length || rows.length || set.why.length || (set.examples.length && !raw) ? null : h("div", { class: "cc-empty" }, "No related results"),

@@ -13,10 +13,11 @@ const g = /** @type {any} */ (globalThis);
 const realFetch = g.fetch;
 /** @param {string} url */
 g.fetch = async (url) => {
-  const body = String(url).startsWith("/api/memory/sessions?") ? { sessions: [{ id: "here-1", title: "Parser refactor here", when: "" }] } : {};
+  // This computer finds a chat for any words but "zzqq", for which it finds none.
+  const body = String(url).startsWith("/api/memory/sessions?") ? { sessions: String(url).includes("zzqq") ? [] : [{ id: "here-1", title: "Parser refactor here", when: "" }] } : {};
   return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
 };
-const { createCommandCenter, SLOW_PARTS_MS, THERE_WAIT_MS } = await import("../src/ui/harness/command-center.js");
+const { createCommandCenter, SLOW_PARTS_MS, THERE_WAIT_MS, wholeCut } = await import("../src/ui/harness/command-center.js");
 after(() => {
   g.fetch = realFetch;
 });
@@ -33,10 +34,10 @@ const AWAY = { id: "m-away", name: "Away", color: "pink", icon: "cloud", status:
  * The command center opened on a stub page with the desk's machines and its bridge scripted: `answer` says what a
  * machine's search answers (a promise held lets a test hold it).
  * @param {import("node:test").TestContext} t
- * `bridge` false: the page outside the desktop app, no bridge to call.
- * @param {{ machines?: any[], answer?: (p: any) => any, bridge?: boolean }} o
+ * `bridge` false: the page outside the desktop app, no bridge to call. `settings`: the open chat's setting facts.
+ * @param {{ machines?: any[], answer?: (p: any) => any, bridge?: boolean, settings?: () => any }} o
  */
-function openOn(t, { machines = [STUDIO, LAB, AWAY], answer = () => ({ ok: true, status: 200, json: { chats: [] } }), bridge = true } = {}) {
+function openOn(t, { machines = [STUDIO, LAB, AWAY], answer = () => ({ ok: true, status: 200, json: { chats: [] } }), bridge = true, settings } = {}) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const doc = stubDocument();
   const was = { frame: g.requestAnimationFrame, element: g.HTMLElement, local: g.localStorage };
@@ -51,7 +52,7 @@ function openOn(t, { machines = [STUDIO, LAB, AWAY], answer = () => ({ ok: true,
   });
   /** @type {any[]} */
   const calls = [];
-  /** @type {[string, string][]} */
+  /** @type {[string, string, string][]} */
   const opened = [];
   const d = /** @type {any} */ (globalThis.document);
   createCommandCenter({
@@ -66,7 +67,8 @@ function openOn(t, { machines = [STUDIO, LAB, AWAY], answer = () => ({ ok: true,
         },
       }
       : {}),
-    onOpenThere: (m, chain) => void opened.push([m, chain]),
+    onOpenThere: (m, chain, name) => void opened.push([m, chain, name]),
+    ...(settings ? { settings } : {}),
   }).open();
   const input = d.querySelector(".cc-input");
   return {
@@ -112,28 +114,45 @@ test("typing searches each machine the bar lists that answers now, once typing r
   assert.deepEqual(cc.labels(), ["Recent chats", "On Studio", "On Lab"]);
   assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser refactor on Studio", "Parser docs", "Parser bench"]);
   assert.deepEqual(cc.details(), ["shop · 3h", "shop · 3h", "shop · 3h"], "theirs say their project and age; this computer's here says none");
-  // Enter on one of theirs opens it there.
+  // Enter on one of theirs opens it there, named as its row named it (the hunt on s1h: the bar's name at the press, or
+  // its id where it had left the bar).
   cc.key("ArrowDown");
   cc.key("Enter");
-  assert.deepEqual(cc.opened, [["m-studio", "c1"]]);
+  assert.deepEqual(cc.opened, [["m-studio", "c1", "Studio"]]);
 });
 
-test("a machine slow to answer holds none of this computer's rows, nor another machine's before it, and says it searches; one that fails says so", async (t) => {
+// (and the hunt on s1h: a machine that had answered was held behind one before it still out, and said as searching)
+test("a machine slow to answer holds none of this computer's rows, nor another machine's: each is drawn as it comes, below what is drawn, and the line names only those still out; one that fails says so", async (t) => {
   /** @type {(v: any) => void} */
   let studio = () => {};
   const cc = openOn(t, { machines: [STUDIO, LAB], answer: (p) => (p.machine === "m-studio" ? new Promise((r) => (studio = r)) : { ok: false, status: 0, words: "Lab is not reachable now" }) });
   cc.type("parser");
   await cc.wait(THERE_WAIT_MS);
   await cc.wait(SLOW_PARTS_MS);
-  assert.deepEqual(cc.labels(), ["Recent chats"], "this computer's drawn while Studio has not answered");
-  assert.equal(cc.text(".cc-there-wait"), "Searching Studio, Lab…");
-  studio(found(["Parser on Studio"]));
-  await settle();
-  assert.deepEqual(cc.labels(), ["Recent chats", "On Studio", "On Lab"]);
-  assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser on Studio"]);
+  assert.deepEqual(cc.labels(), ["Recent chats", "On Lab"], "this computer's and Lab's drawn while Studio has not answered");
   // (fails before: yes — the hunt on s1h: every failure said the machine did not answer, whatever the app said)
   assert.deepEqual(cc.whys(), ["Lab is not reachable now"], "why, in the app's words");
+  assert.equal(cc.text(".cc-there-wait"), "Searching Studio…");
+  studio(found(["Parser on Studio"]));
+  await settle();
+  assert.deepEqual(cc.labels(), ["Recent chats", "On Lab", "On Studio"], "Studio's below what was drawn");
+  assert.deepEqual(cc.rows(), ["Parser refactor here", "Parser on Studio"]);
   assert.equal(cc.text(".cc-there-wait"), null, "none out: no line");
+});
+
+// (fails before: yes — the hunt on s1h: the examples showed while a machine's search was out, and went as its rows came)
+test("what else to type waits while a machine's search is out", async (t) => {
+  /** @type {(v: any) => void} */
+  let studio = () => {};
+  const facts = { chat: true, client: false, line: { percent: 85, window: 200_000 }, permission: "edit", effort: { levels: ["low", "high"], now: "high", auto: true }, window: { options: [200_000], now: 200_000, standard: 200_000 }, model: "M", modelId: "a/m", families: [], memory: { on: true, source: "default" }, may: { tags: [], cards: [] }, mayOff: "" };
+  const cc = openOn(t, { machines: [STUDIO], answer: () => new Promise((r) => (studio = r)), settings: () => facts });
+  cc.type("zzqq");
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.equal(cc.text(".cc-there-wait"), "Searching Studio…");
+  assert.equal(cc.text(".cc-also"), null, "no examples while Studio is out");
+  studio(found([]));
+  await settle();
+  assert.ok(cc.text(".cc-also"), "nothing found anywhere: what else to type");
 });
 
 test("a failure the app gives no words for, or a call that threw, says the machine did not answer; its words are kept to a line", async (t) => {
@@ -153,6 +172,15 @@ test("words longer than the desk takes search for their first 200, trimmed", asy
   cc.type(`  ${"p".repeat(260)}`);
   await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
   assert.deepEqual(cc.calls.map((c) => c.q), ["p".repeat(200)]);
+});
+
+// (fails before: yes — the hunt on s1h: an emoji at the cut went in two, and the search said the machine did not answer)
+test("a cut at 200 keeps an emoji whole or leaves it out; a lone half of one never reaches the address", async (t) => {
+  const cc = openOn(t, { machines: [STUDIO], answer: () => found(["Parser bench"]) });
+  cc.type(`${"p".repeat(199)}🙂tail`);
+  await cc.wait(THERE_WAIT_MS + SLOW_PARTS_MS);
+  assert.deepEqual(cc.calls.map((c) => c.q), ["p".repeat(199)]);
+  assert.deepEqual([wholeCut("ab🙂", 3), wholeCut("ab🙂", 4), wholeCut("a\uD83Db", 9)], ["ab", "ab🙂", "a�b"]);
 });
 
 // (fails before: yes — the hunt on s1h: a thread, or a team on a chat's side, came up though the left bar lists none of them)

@@ -137,6 +137,8 @@ const OPS = Object.freeze(
     search: (p) => {
       const q = typeof p.q === "string" ? p.q.trim() : "";
       if (!q || q.length > QUERY_MAX) return bad(`q is the search: 1 to ${QUERY_MAX} characters`);
+      // A lone half of a character (an emoji cut in two) has no form in an address: said, never thrown.
+      if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(q)) return bad("q is the search: whole characters, none cut in two");
       return { method: "GET", path: `/memory/sessions?q=${enc(q)}&limit=20&kind=${KINDS}`, shape: listed };
     },
     /** Its chats at work now, and what else runs. */

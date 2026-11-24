@@ -4719,7 +4719,8 @@ const commandCenter = createCommandCenter({
   // The other machines the left bar lists, searched through the app, a chat of theirs opened there (the remote desk).
   machines: () => sidebar.deskMachines(),
   ...(typeof (/** @type {any} */ (globalThis).filamentMachines?.call) === "function" ? { deskCall: (/** @type {any} */ p) => /** @type {any} */ (globalThis).filamentMachines.call(p) } : {}),
-  onOpenThere: (machine, chain) => sidebar.openOnMachine({ id: machine, name: sidebar.deskMachines().find((m) => m.id === machine)?.name || machine }, deskRoute({ chain, thread: null })),
+  // Named as its row named it: a machine gone from the bar since is still said by its name.
+  onOpenThere: (machine, chain, name) => sidebar.openOnMachine({ id: machine, name: name || sidebar.deskMachines().find((m) => m.id === machine)?.name || machine }, deskRoute({ chain, thread: null })),
   actions: () => [
     { id: "new", label: WORDS.newChat, icon: "messageCirclePlus", tone: "var(--color-sys-blue)", shortcut: "new-task", when: () => !viewOnlyPage(), run: () => newChat() },
     { id: "next-needs", label: "Open what needs you next", icon: "inbox", tone: "var(--color-sys-orange)", shortcut: "next-needs", run: () => openNextNeeds() },
