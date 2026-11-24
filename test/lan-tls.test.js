@@ -283,6 +283,62 @@ test("a renewal keeps the key: a fetch and a socket pinned to the first certific
   }
 });
 
+// (fails before: yes — the review of s5a: a certificate was renewed only as a listener started, so a Filament that ran
+// past its certificate's end served one that had run out)
+test("a listener that runs renews its certificate once it is due, served from the next handshake on: its port, its key and a connection it holds stay; the artifacts' listener on the same files takes it; closed, it looks no more", async () => {
+  const dir = scratch();
+  let t = Date.now();
+  /** @type {string[]} */
+  const said = [];
+  const make = () => createLanListener({ dataDir: dir, handler: (_req, res) => void res.end("ok"), upgrade: () => {}, host: "127.0.0.1", nets: () => ({}), name: () => "Workstation", log: (_l, m) => void said.push(m), clock: () => t, lookEvery: 20 });
+  const main = make();
+  const art = make();
+  /** @param {() => boolean} f */
+  const until = async (f) => {
+    for (const end = Date.now() + 5000; !f(); await new Promise((r) => setTimeout(r, 20))) if (Date.now() > end) throw new Error("timed out");
+  };
+  /** @type {tls.TLSSocket | null} */
+  let held = null;
+  try {
+    await main.apply({ enabled: true, port: 0 });
+    await art.apply({ enabled: true, port: 0 });
+    const port = Number(main.state().listening?.port);
+    const first = String(main.state().fingerprint);
+    const key = lanIdentity(dir).keyPrint;
+    held = tls.connect({ host: "127.0.0.1", port, rejectUnauthorized: false });
+    await new Promise((r) => /** @type {tls.TLSSocket} */ (held).once("secureConnect", r));
+    // Not due: looked at, and nothing made.
+    const kept = readFileSync(join(dir, LAN_DIR, "cert.pem"), "utf8");
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(main.state().fingerprint, first);
+    assert.equal(readFileSync(join(dir, LAN_DIR, "cert.pem"), "utf8"), kept);
+    // A month before its end: renewed with its key, on the port it has.
+    t = Number(main.state().notAfter) - 29 * 86_400_000;
+    await until(() => main.state().fingerprint !== first && art.state().fingerprint === main.state().fingerprint);
+    const now = String(main.state().fingerprint);
+    assert.equal(main.state().listening?.port, port);
+    assert.ok(Number(main.state().notAfter) > t + 300 * 86_400_000, "a certificate that runs on for its days");
+    assert.equal((await askTls(port, "/")).fp, now, "served from the next handshake on");
+    assert.equal((await askTls(Number(art.state().listening?.port), "/")).fp, now, "the artifacts' listener too");
+    assert.equal(lanIdentity(dir, { now: t }).keyPrint, key, "its key kept: every pin holds");
+    assert.equal(held.destroyed, false, "the connection it held stays");
+    assert.equal(held.getPeerCertificate().fingerprint256, first);
+    assert.equal(said.filter((m) => /renewed with its key/.test(m)).length, 1, `renewed once, by one listener: ${said.join(" | ")}`);
+    // Closed: no look makes another.
+    await main.close();
+    await art.close();
+    const last = readFileSync(join(dir, LAN_DIR, "cert.pem"), "utf8");
+    t = Number(lanIdentity(dir, { now: t }).notAfter) - 29 * 86_400_000;
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(readFileSync(join(dir, LAN_DIR, "cert.pem"), "utf8"), last);
+  } finally {
+    held?.destroy();
+    await main.close();
+    await art.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // (fails before: yes — s4g: there was no book of keys) Kept in the data folder named, read by another process's book.
 test("the key book: kept in the data folder it is told, learned only from a connection the pin itself made, read by another process", async () => {
   const dir = scratch();

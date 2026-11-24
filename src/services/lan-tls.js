@@ -37,6 +37,10 @@ export const lanPortOf = (lan) => {
 };
 /** A certificate is made anew this long before it runs out. */
 const RENEW_MS = 30 * 86_400_000;
+/** How often a listener that runs looks whether its certificate is due (`createLanListener`): far inside RENEW_MS. */
+const RENEW_LOOK_MS = 86_400_000;
+/** The oldest TLS a listener speaks. */
+const MIN_TLS = "TLSv1.2";
 
 /** 100.64.0.0/10: a tailnet's addresses (and a carrier's NAT), never the network the person's machines share. @param {string} ip */
 const tailnet = (ip) => {
@@ -203,8 +207,10 @@ const listenWords = (e, port) =>
  * @param {(lan: { enabled?: boolean, port?: number } | undefined) => number} [o.portOf]  the port server.lan gives it:
  *   the network listener's (`lanPortOf`); the artifacts', the one after it (http/artifacts.js `artifactsPort`)
  * @param {() => boolean} [o.hostOnly]  whether its addresses open from this computer alone (`behindWslNat`)
+ * @param {() => number} [o.clock]  the time a certificate is judged and made at (tests)
+ * @param {number} [o.lookEvery]  how often, while it listens, it looks whether its certificate is due (RENEW_LOOK_MS)
  */
-export function createLanListener({ dataDir, handler, upgrade, name = () => hostname(), log = () => {}, nets = () => networkInterfaces(), host = "0.0.0.0", portOf = lanPortOf, hostOnly = behindWslNat }) {
+export function createLanListener({ dataDir, handler, upgrade, name = () => hostname(), log = () => {}, nets = () => networkInterfaces(), host = "0.0.0.0", portOf = lanPortOf, hostOnly = behindWslNat, clock = () => Date.now(), lookEvery = RENEW_LOOK_MS }) {
   /** @type {https.Server | null} */
   let server = null;
   /** @type {{ port: number } | null} */
@@ -244,14 +250,14 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
   const start = (port) =>
     new Promise((resolve) => {
       try {
-        identity = lanIdentity(dataDir, { name: name(), nets: nets() });
+        identity = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock() });
         if (identity.made) log("info", `remote: a certificate for this machine on the network was ${identity.renewed ? "renewed with its key" : "made"} — its fingerprint ${identity.fingerprint}`);
       } catch (/** @type {any} */ e) {
         error = `its certificate could not be read or made: ${e?.message || e}`;
         return resolve(undefined);
       }
       // A handshake no one finishes holds a connection no longer than this (Node's own wait is two minutes).
-      const s = https.createServer({ key: identity.key, cert: identity.cert, minVersion: "TLSv1.2", handshakeTimeout: 15_000 }, handler);
+      const s = https.createServer({ key: identity.key, cert: identity.cert, minVersion: MIN_TLS, handshakeTimeout: 15_000 }, handler);
       s.on("connection", (c) => {
         held.add(c);
         c.once("close", () => held.delete(c));
@@ -281,6 +287,32 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     await stop();
     await start(port);
   };
+
+  /**
+   * Listening, its certificate renewed with its key once it is due (`lanIdentity`), or read again where the other
+   * listener on the same files renewed it (the artifacts', http/artifacts.js), and served from the next handshake on: no
+   * connection it holds is cut, and every device's pin, which follows the key (services/machines/key-pins.js), holds. A
+   * Filament that runs for months renews as one started again does (the review of s5a).
+   */
+  const renew = async () => {
+    const s = server;
+    if (closed || !s) return;
+    /** @type {ReturnType<typeof lanIdentity>} */
+    let got;
+    try {
+      got = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock() });
+    } catch (/** @type {any} */ e) {
+      return log("warn", `remote: the certificate for this machine on the network could not be renewed: ${e?.message || e}`);
+    }
+    if (got.cert === identity?.cert) return;
+    // Its context whole: what it leaves out goes back to Node's own (`minVersion` with it).
+    s.setSecureContext({ key: got.key, cert: got.cert, minVersion: MIN_TLS });
+    identity = got;
+    if (got.made) log("info", `remote: the certificate for this machine on the network was renewed with its key — its fingerprint ${got.fingerprint}`);
+  };
+  // Looked at while it listens, through the same line of changes, and holding no Filament open.
+  const look = setInterval(() => void then(renew), lookEvery);
+  look.unref?.();
 
   return {
     /**
@@ -322,7 +354,7 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
         /** @type {ReturnType<typeof lanIdentity>} */
         let made;
         try {
-          made = identity = lanIdentity(dataDir, { name: name(), nets: nets(), newKey: true });
+          made = identity = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock(), newKey: true });
         } catch (/** @type {any} */ e) {
           out = { ok: false, why: `its certificate could not be made: ${e?.message || e}` };
           return;
@@ -341,6 +373,7 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     /** Off for good, as Filament stops. */
     close() {
       closed = true;
+      clearInterval(look);
       want = { ...want, enabled: false };
       return then(stop);
     },
