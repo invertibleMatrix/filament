@@ -1,13 +1,14 @@
-src/http/admin/browser.js 1
+src/http/admin/browser.js 2
 src/http/admin/config.js 3
 src/http/admin/files.js 1
+src/http/admin/index.js 1
 src/http/admin/keys-copy.js 1
 src/http/admin/mcp-servers.js 1
 src/http/admin/owner.js 1
 src/http/admin/remote.js 5
 src/http/admin/system.js 2
 src/http/artifacts.js 2
-src/http/guards.js 6
+src/http/guards.js 8
 src/http/hooks.js 1
 src/http/memory-mcp.js 1
 src/http/watch-hooks.js 1
