@@ -666,6 +666,10 @@ export function remoteRoutes(a) {
         // opened here for a device that would press nothing. Devices paired so before the door asked for the key are
         // kept as they are (devices.js `pressless`).
         const here = b?.here === true;
+        // (x40) Filament's port at the other loopback address held by another program: a browser here may reach this
+        // Filament's own name there, which would read the page's code and take its cookie — no code is made for one.
+        const taken = here ? String(a.loopbackTaken?.() || "") : "";
+        if (taken) return sendJson(r.res, 409, { error: `No browser on this computer is paired now: ${taken}`, loopbackTaken: true });
         const open = devices.startPairing({ scope: b.scope, here });
         // A browser here is paired at this Filament's own name under localhost (services/machine.js `pageHost`), so its
         // cookie is that name's alone, never 127.0.0.1's, which a browser sends to every port of it.

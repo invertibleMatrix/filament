@@ -173,6 +173,9 @@ export function systemRoutes(a) {
           // (services/owner.js): this computer's to read, which Settings › Remote access and `filament doctor` say —
           // refused under `server.loopbackTrust` "token", answered under "legacy".
           ...(r.who?.kind === "local" && a.owner ? { ownerless: { ...a.owner.said(), refused: !loopbackTrusted(config.get().server) } } : {}),
+          // Filament's port at the other loopback address held by another program, in words (server.js `holdTwin`): no
+          // browser here pairs meanwhile, which `filament doctor` says.
+          ...(r.who?.kind === "local" && a.loopbackTaken?.() ? { loopbackTaken: a.loopbackTaken() } : {}),
           // Where it listens since it started; a host or port saved since waits for a restart (HC-67).
           listening: listening(),
           configFile: config.loaded.file,

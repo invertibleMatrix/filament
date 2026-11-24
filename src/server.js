@@ -3415,6 +3415,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     artifactsNet: () => artLan,
     // The passes of this machine's artifacts' addresses (http/artifacts.js `localArtifactsDoor`), which /state gives.
     artifactPasses: () => artifactPasses,
+    // Why Filament's port at the other loopback address is another program's (`holdTwin`), which keeps a browser here
+    // from pairing: "" where it is Filament's.
+    loopbackTaken: () => twinTaken,
     // Filament on the tailnet (services/tailscale.js `createTailnetShare`), made below with the servers.
     tailnet: () => tailnet,
     // Anonymous telemetry (services/telemetry.js), made below with the alerts' timer.
@@ -3535,7 +3538,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     });
   // A model call sending a device's token — another machine's agents through an SSH tunnel — passes the network's door
   // here too (front-door.js `mainDoor`).
-  const server = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, mainDoor(frontDoor, { devices }));
+  const door = mainDoor(frontDoor, { devices });
+  const server = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, door);
+  // Filament's port at the other loopback address, [::1] where it listens on 127.0.0.1 (x40, the hunt on x38): a browser
+  // may reach this Filament's own name (`filament-….localhost`) over IPv6 first, where another program holding it would
+  // answer the name, read a pairing page's code and get this computer's browser's cookie. The same doors.
+  const twin = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, door);
+  /** Why the other loopback address at Filament's port is not Filament's, in words: "" where it is, or the system has none. */
+  let twinTaken = "";
   // Three WebSockets: a desktop app's browser host (HarnessV4_Browser_Plan BR-D2; a viewer's app, b-remote), a page's
   // run follows (one socket a page, so its followed runs hold none of the browser's six connections to this host — and
   // the chats' browsers cast live to a page with no app of its own to show them, another machine's), and the terminal's
@@ -3546,16 +3556,46 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const termUpgrade = terminalUpgrade({ config, terminal, devices });
   // An upgrade whose target no address reads is refused on the raw socket before any of them parses it: a throw there
   // would leave the socket open and unanswered.
-  server.on("upgrade", (req, socket, head) => {
+  /** @param {import("node:http").IncomingMessage} req @param {import("node:stream").Duplex} socket @param {Buffer} head */
+  const upgrade = (req, socket, head) => {
     if (!URL.canParse(String(req.url || ""), "http://localhost")) {
       socket.write("HTTP/1.1 400 Bad Request\r\nconnection: close\r\n\r\nthe request's target is no address");
       return void socket.destroy();
     }
     void (hostUpgrade(req, socket, head) || runsUpgrade(req, socket, head) || termUpgrade(req, socket, head));
-  });
-  server.requestTimeout = requestMs;
-  server.headersTimeout = Math.min(120000, requestMs);
-  server.keepAliveTimeout = 65000;
+  };
+  for (const s of [server, twin]) {
+    s.on("upgrade", upgrade);
+    s.requestTimeout = requestMs;
+    s.headersTimeout = Math.min(120000, requestMs);
+    s.keepAliveTimeout = 65000;
+  }
+  /**
+   * Filament's port held at the other loopback address too (`twin`): [::1] beside 127.0.0.1 (or a wildcard of IPv4's),
+   * 127.0.0.1 beside [::1]. Another program's there is said (`twinTaken`) and kept from no start; a system with no such
+   * address has no browser reach it either. @param {string} bound  the address the main listener holds @param {number} port
+   * @returns {Promise<void>}
+   */
+  const holdTwin = (bound, port) =>
+    new Promise((resolve) => {
+      const other = bound === "127.0.0.1" || bound === "0.0.0.0" ? "::1" : bound === "::1" ? "127.0.0.1" : "";
+      if (!other) return resolve();
+      const held = () => {
+        twin.off("error", failed);
+        resolve();
+      };
+      const failed = (/** @type {any} */ e) => {
+        twin.off("listening", held);
+        if (e?.code === "EADDRINUSE" || e?.code === "EACCES") {
+          twinTaken = `${hostAndPort(other, port)} is another program's, where a browser on this computer may reach Filament's own name: no browser here is paired until that program lets go of it, or Filament listens at another port (server.port).`;
+          log("warn", twinTaken);
+        }
+        resolve();
+      };
+      twin.once("listening", held);
+      twin.once("error", failed);
+      twin.listen(port, other);
+    });
   // Reach this machine on my network (the owner's remote Filament of 11-06, Part 2): an https listener of its own,
   // behind the network's door (front-door.js `lanDoor`), with the run socket, the terminal's stream and the browser host
   // — there a viewer's app's alone, by its full device's sign-in (b-remote). On and off as server.lan says, once
@@ -3790,6 +3830,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           const port = boundAt.port;
           config.get().server.port = port;
           listening = { host: config.get().server.host, port };
+          // Its port at the other loopback address too, before the start is done: a browser here is paired after it.
+          const twinUp = holdTwin(boundAt.address, port);
           // This start's owner key, in its file before the command line finds Filament by the next.
           owner.listen(port);
           // Where the command line finds it (cli/listening.js): its address, its process, its version.
@@ -3826,7 +3868,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           void tailnet.apply(config.get().server?.tailscale);
           afterListening(answering).then(
             async (now) => {
-              await lanUp;
+              await Promise.all([lanUp, twinUp]);
               resolve({
                 host: config.get().server.host,
                 port,
@@ -3984,9 +4026,14 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           } catch {}
           // The network's listener closes with what it holds open: a device's terminal, its stream.
           await Promise.race([Promise.all([lan.close(), artLan.close(), tailnet.close()]), new Promise((r) => setTimeout(r, 2000).unref())]);
+          if (twin.listening) {
+            twin.close();
+            twin.closeIdleConnections?.();
+          }
           server.close(() => resolve());
           server.closeIdleConnections?.();
           setTimeout(() => {
+            twin.closeAllConnections?.();
             server.closeAllConnections?.();
             resolve();
           }, 2000).unref();
