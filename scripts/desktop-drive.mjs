@@ -12,7 +12,9 @@
 //                                            dist\windows\<version>\win-unpacked\Filament.exe unless named) instead of
 //                                            Electron over the checkout: checks 1, 2, 9, 10, 11 and 26–30
 //   npm run test:desktop -- --pictures <dir>  what the browser's checks looked like, kept there as PNGs
+//   npm run test:desktop -- --desk           the desk's checks (35) alone, over two Filaments of their own
 import { spawn, execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -40,6 +42,7 @@ if (BUILT && !existsSync(BUILT)) {
   process.exit(1);
 }
 if (BUILT) console.log(`the packaged app: ${BUILT}`);
+const DESK_ONLY = process.argv.includes("--desk");
 if (process.platform !== "win32") {
   console.log("the desktop drive reads Windows' process list; on this platform it does not run yet");
   process.exit(0);
@@ -181,6 +184,8 @@ function writeConfig(dir, port, upstream, root, { memory = false, failing = "" }
   if (failing) {
     cfg.upstreams.unshift({ id: "down", name: "Down", type: "anthropic", baseUrl: failing, apiKey: "s", enabled: true, models: ["claude-sonnet-5-5"] });
     cfg.routes = [{ match: "claude-*", upstream: "down", upstreamModel: "{model}", fallbacks: [{ upstream: "anthropic" }], enabled: true }];
+    // Failover on, which is off by default: a route's backups are tried only while it is.
+    cfg.rules = { ...cfg.rules, resilience: { ...cfg.rules?.resilience, failover: true } };
   }
   cfg.agentLoop = { ...cfg.agentLoop, enabled: true, permissions: "auto", roots: [root], readerModel: "" };
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));
@@ -221,6 +226,294 @@ const electronThere = () => new Map((existsSync(appData) ? readdirSync(appData) 
 const appDataBefore = electronThere();
 /** @type {import("node:http").Server | null} */
 let squatter = null;
+
+/** Every process the drive started ended, the fake models closed, its folders removed. */
+async function cleanUp() {
+  if (squatter) await new Promise((r) => /** @type {any} */ (squatter).close(() => r(undefined)));
+  for (const p of mine) if (processes().some((x) => x.pid === p.pid)) endTree(p.pid);
+  await up.close();
+  await down.close();
+  await sleep(1000);
+  await rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }).catch((e) => console.log(`left ${base}: ${e.message}`));
+}
+/** The tally said, and the drive's end: 1 where a check failed. @returns {never} */
+function finish() {
+  const failed = results.filter((r) => !r.ok);
+  console.log(`\n${results.length - failed.length} of ${results.length} checks pass`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+// ---- 35: the desk (the remote desk of 11-22) ----------------------------------------------------------------------------
+/**
+ * Another Filament, Studio, on the network, paired as a Full device from the Add sheet as check 33 pairs one. Its chats
+ * in this computer's Now, each with its machine's name; one pressed shows in place — Studio's own page of the chat beside
+ * this computer's left bar, its row marked —, and this computer's Ctrl+K opens over it, the view out of sight meanwhile
+ * and in sight after (a key pressed in the view itself goes through Electron's own input, which no DevTools key reaches:
+ * test/desktop-rail.test.js tries those); its ask answered from Needs you, the window staying where it was; and Run on:
+ * a new chat of a project here started on Studio in a copy of it, what it wrote there brought back as an uncommitted
+ * edit, HEAD and the index as they were.
+ */
+async function driveDesk() {
+  const dataS = join(base, "s");
+  const portS = await freePort();
+  const lanS = await freePort();
+  writeConfig(dataS, portS, up.url, root);
+  const cfgS = JSON.parse(readFileSync(join(dataS, "config.json"), "utf8"));
+  cfgS.server.lan = { enabled: true, port: lanS };
+  writeFileSync(join(dataS, "config.json"), JSON.stringify(cfgS));
+  // Named before its first start, as its Settings would name it: else it takes this computer's name.
+  const idS = randomUUID();
+  writeFileSync(join(dataS, "machine.json"), JSON.stringify({ version: 1, id: idS, name: "Studio", named: true }));
+  // Its copies under the drive's folder, never the person's own Filament copies.
+  const S = spawn(process.execPath, [join(ROOT, "bin", "filament.js"), "--data-dir", dataS, "--port", String(portS)], { env: { ...plainEnv(), FILAMENT_COPIES_DIR: join(base, "copies") }, stdio: "ignore", windowsHide: true });
+  if (S.pid) mine.push({ pid: S.pid, label: "Studio's Filament" });
+  await until(() => stateAt(portS), 60000, "answer from Studio's Filament");
+  const pairS = /** @type {any} */ (await until(async () => {
+    const r = await fetch(`http://127.0.0.1:${portS}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scope: "full" }) }).catch(() => null);
+    const j = r?.ok ? await r.json() : null;
+    return j?.links?.length ? j : null;
+  }, 20000, "Studio's pairing link").catch(() => null));
+  const linkS = String(pairS?.links?.[0] || "");
+  if (!linkS) {
+    check("35. the desk: Studio paired", false, "no pairing link: this machine is on no network");
+    endTree(/** @type {number} */ (S.pid));
+    return;
+  }
+  const atS = new URL(linkS).origin;
+  const kept = idS.toLowerCase();
+
+  // The app, paired with Studio from its Add sheet.
+  const dataD = join(base, "d");
+  const portD = await freePort();
+  const debugD = await freePort();
+  writeConfig(dataD, portD, up.url, root);
+  mkdirSync(join(dataD, "desktop"), { recursive: true });
+  writeFileSync(join(dataD, "desktop", "settings.json"), JSON.stringify({ notify: false }));
+  const D = launch(dataD, { debug: debugD, label: "app at the desk" });
+  const harnessD = await until(async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`http://127.0.0.1:${portD}/ui/harness.html`)), 60000, "the desk's harness");
+  await until(() => evalIn(harnessD, `!!document.querySelector(".app-shell")`), 30000, "the desk's harness drawn");
+  /** An expression in the desk's page, null where it threw. @param {string} js */
+  const inD = (js) => evalIn(harnessD, js).catch(() => null);
+  // A first start's welcome tour and tips, skipped as a person would: over the chat's column, each hides what shows in
+  // place.
+  /** @param {string} words @param {number} ms */
+  const skipped = async (words, ms) => {
+    const b = `[...document.querySelectorAll("button, [role=button], a")].find((b) => b.textContent.trim() === ${JSON.stringify(words)})`;
+    await until(() => inD(`!!${b} || null`), ms, words).catch(() => null);
+    await inD(`(${b}?.click(), true)`);
+    await until(() => inD(`!${b} || null`), 5000, `${words} pressed`).catch(() => null);
+  };
+  await skipped("Skip for now", 10000);
+  await skipped("Skip tips", 5000);
+  await inD(`(window.filamentApp.addMachine(), true)`);
+  const railD = await until(async () => (await pagesOf(debugD)).find((p) => p.url.endsWith("/desktop/rail.html")), 20000, "the app's page for the sheet");
+  /** @param {string} js */
+  const inRail = (js) => evalIn(railD, js).catch(() => null);
+  await until(() => inRail(`document.body.classList.contains("adding") || null`), 10000, "the Add sheet open");
+  await inRail(`(() => { const l = document.getElementById("add-link"); l.value = ${JSON.stringify(linkS)}; l.dispatchEvent(new Event("input")); document.getElementById("add-go").click(); return true })()`);
+  await until(() => inRail(`!document.getElementById("add-who").hidden || null`), 20000, "who answers, in the sheet");
+  await inRail(`(document.getElementById("add-go").click(), true)`);
+  const rowsOf = () => inRail(`({ adding: document.body.classList.contains("adding"), pop: document.body.classList.contains("pop"), rows: [...document.querySelectorAll(".row")].map((r) => r.querySelector("[data-machine]").dataset.machine + ":" + [...r.classList].filter((c) => c.startsWith("s-") || c === "on").join("+")) })`);
+  const paired = /** @type {any} */ (await until(async () => {
+    const r = /** @type {any} */ (await rowsOf());
+    return r && !r.adding && r.rows.includes(`${kept}:s-online+on`) ? r : null;
+  }, 30000, "Studio kept, shown").catch(() => rowsOf()));
+  // Studio shown whole once paired: This computer picked from its chip, as check 32 does.
+  const whole = await until(async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`${atS}/ui/harness.html`) && !p.url.includes("only=chat")), 30000, "Studio's page").catch(() => null);
+  if (whole) await until(() => evalIn(whole, `!!document.querySelector(".hdr-machine:not(.hidden)") || null`), 30000, "Studio's chip").catch(() => null);
+  if (whole) await evalIn(whole, `(document.querySelector(".hdr-machine").click(), true)`).catch(() => null);
+  await until(() => inRail(`document.body.classList.contains("pop") || null`), 10000, "the popover").catch(() => null);
+  await inRail(`(document.querySelector('[data-machine="local"]').click(), true)`);
+  const home = await until(() => inRail(`!document.body.classList.contains("pop") || null`), 10000, "this computer again").catch(() => false);
+  check("35. the desk: Studio paired as a Full device from the Add sheet, this computer shown again", !!paired?.rows?.includes(`${kept}:s-online+on`) && home === true, `${(paired?.rows || []).join(", ") || "no machines"}`);
+
+  // Studio's chats: one that answered, one whose command waits for a yes (Ask mode, as check 25's), and Run on's, whose
+  // turn writes a file.
+  const own = join(root, "studio-own");
+  mkdirSync(own, { recursive: true });
+  brain = (c) => {
+    if (c.kind !== "anthropic") return undefined;
+    const last = c.body?.messages?.at(-1);
+    // A tool's result: the turn ends in the default words.
+    if (Array.isArray(last?.content) && last.content.some((/** @type {any} */ b) => b?.type === "tool_result")) return undefined;
+    const said = JSON.stringify(last ?? "");
+    if (said.includes("DESK-ASK")) return anthropicReply("", { model: "claude-sonnet-5-5", stop: "tool_use", blocks: [{ type: "tool_use", id: "da1", name: "bash", input: { command: "echo desk > desk-ask.txt" } }] });
+    if (said.includes("write from-studio.txt")) return anthropicReply("", { model: "claude-sonnet-5-5", stop: "tool_use", blocks: [{ type: "tool_use", id: "ws1", name: "write", input: { path: "from-studio.txt", content: "made on Studio\n" } }] });
+    return undefined;
+  };
+  /** A chat on Studio with one turn, its id. @param {string} content @param {any} [settings] */
+  const chatOn = async (content, settings) => {
+    const made = await call(portS, "/api/sessions", { cwd: own, model: "claude-sonnet-5-5", preset: "plain", ...(settings ? { settings } : {}) });
+    const id = String((await made.json()).id);
+    await (await call(portS, `/api/sessions/${encodeURIComponent(id)}/turns`, { content, stream: false })).text();
+    return id;
+  };
+  const doneS = await chatOn("DESK-HELLO");
+  const askS = await chatOn("DESK-ASK", { loop: { permissions: "ask" } });
+
+  // Every machine in one list: the one that asks in Now's Needs you, the one that answered (seen: no row of Now's) under
+  // Projects, Studio's name on each.
+  const nowOpen = `(() => { const h = document.querySelector("button.lb-sec.now-head"); if (h && h.getAttribute("aria-expanded") !== "true") h.click(); return true })()`;
+  const key = (/** @type {string} */ id) => `[data-machine="${kept}"][data-key="m:${kept}/chat:${id}"]`;
+  const nowSel = (/** @type {string} */ id) => `.now-row.is-there${key(id)}`;
+  const listSel = (/** @type {string} */ id) => `.sess-row.desk-row${key(id)}`;
+  const rowsNow = () =>
+    inD(`(() => { ${nowOpen}; const of = (s, name) => { const e = document.querySelector(s); return e ? { cls: [...e.classList].filter((c) => c.startsWith("is-")).join(" "), machine: e.querySelector(name)?.textContent || "" } : null }; return { done: of(${JSON.stringify(listSel(doneS))}, ".row-where-text"), ask: of(${JSON.stringify(nowSel(askS))}, ".now-machine-name") } })()`);
+  const now34 = /** @type {any} */ (await until(async () => {
+    const r = /** @type {any} */ (await rowsNow());
+    return r?.done && r?.ask ? r : null;
+  }, 90000, "Studio's chats in the left bar").catch(() => rowsNow()));
+  await picture(harnessD, "35-now");
+  check(
+    "35. every machine in one list: Studio's chat that asks in Now's Needs you, the one that answered under Projects, its name on each",
+    !!now34?.done && !!now34?.ask && now34.done.machine === "Studio" && now34.ask.machine === "Studio" && /\bis-needs\b/.test(now34.ask.cls),
+    `answered: ${now34?.done ? `under Projects, "${now34.done.machine}"` : "no row"}; asking: ${now34?.ask ? `${now34.ask.cls}, "${now34.ask.machine}"` : "no row"}`,
+  );
+
+  // One pressed: Studio's own page of the chat in place, this computer's left bar beside it, the row marked.
+  const rowSel = listSel;
+  await inD(`(document.querySelector(${JSON.stringify(rowSel(doneS))}).click(), true)`);
+  const hashS = `#/task/${encodeURIComponent(doneS)}`;
+  const inPlaceOf = async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`${atS}/ui/harness.html?only=chat`) && p.url.endsWith(hashS)) ?? null;
+  const place34 = await until(inPlaceOf, 20000, "Studio's chat in place").catch(() => null);
+  const drawn34 = place34 ? await until(() => evalIn(place34, `!!document.querySelector(".app-shell.chat-only") || null`), 20000, "its page drawn").catch(() => false) : false;
+  const sight = () => inD(`({ up: !!document.querySelector(".app-shell.guest-up"), inert: !!document.querySelector(".content-col")?.inert, marked: !!document.querySelector(${JSON.stringify(`${rowSel(doneS)}.current`)}), cc: !!document.querySelector(".zc-dialog.is-cc") })`);
+  const shown34 = /** @type {any} */ (await until(async () => {
+    const s = /** @type {any} */ (await sight());
+    return s?.up && s.inert ? s : null;
+  }, 10000, "the view in sight").catch(() => sight()));
+  await picture(harnessD, "35-in-place");
+  await picture(place34, "35-in-place-view");
+  check(
+    "35. a press on Studio's chat: its own page of the chat in place, beside this computer's left bar, its row marked",
+    !!place34 && drawn34 === true && shown34?.up === true && shown34.inert === true && shown34.marked === true,
+    `${place34 ? `in place at ${place34.url.replace(atS, "")}${drawn34 ? "" : ", not drawn"}` : "no view"}; ${shown34 ? `in sight ${shown34.up && shown34.inert}, row ${shown34.marked ? "marked" : "not marked"}` : "?"}`,
+  );
+  // This computer's Ctrl+K over it: the view out of sight while it is open, in sight again once it closes.
+  await inD(`(window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true })), true)`);
+  const over34 = /** @type {any} */ (await until(async () => {
+    const s = /** @type {any} */ (await sight());
+    return s?.cc && s.up && !s.inert ? s : null;
+  }, 10000, "Ctrl+K over it").catch(() => sight()));
+  await picture(harnessD, "35-ctrl-k-over");
+  await inD(`(document.querySelector(".zc-dialog-overlay .zc-dialog-x")?.click(), true)`);
+  const back34 = /** @type {any} */ (await until(async () => {
+    const s = /** @type {any} */ (await sight());
+    return s && !s.cc && s.up && s.inert ? s : null;
+  }, 10000, "the view in sight again").catch(() => sight()));
+  check(
+    "35. this computer's Ctrl+K over the chat in place: the view out of sight while it is open, in sight again once it closes",
+    over34?.cc === true && over34.inert === false && back34?.cc === false && back34.inert === true && !!(await inPlaceOf()),
+    `open: ${over34 ? `Ctrl+K ${over34.cc ? "up" : "not up"}, view ${over34.inert ? "still in sight" : "out of sight"}` : "?"}; closed: ${back34 ? `view ${back34.inert ? "in sight" : "out of sight"}` : "?"}`,
+  );
+
+  // Its ask answered from Needs you: the question and the command on the card, Allow runs it there, the window stays.
+  const askSel = `.desk-ask[data-key^="ask:${kept}/${askS}/"]`;
+  const card34 = /** @type {any} */ (await until(
+    () => inD(`(() => { ${nowOpen}; const c = document.querySelector(${JSON.stringify(askSel)}); return c ? { q: c.querySelector(".desk-ask-q")?.textContent || "", cmd: c.querySelector(".desk-ask-cmd")?.textContent || "", go: c.querySelector(".desk-ask-btn.is-go")?.textContent || "" } : null })()`),
+    30000,
+    "Studio's ask in Needs you",
+  ).catch(() => null));
+  await picture(harnessD, "35-ask");
+  await inD(`(document.querySelector(${JSON.stringify(`${askSel} .desk-ask-btn.is-go`)})?.click(), true)`);
+  const asksOf = async () => /** @type {any} */ (await (await call(portS, `/api/sessions/${encodeURIComponent(askS)}/asks`)).json().catch(() => null));
+  const ran34 = await until(async () => ((await asksOf())?.asks?.length === 0 && existsSync(join(own, "desk-ask.txt")) ? true : null), 30000, "the command run on Studio").catch(() => false);
+  const refused34 = String((await inD(`document.querySelector(${JSON.stringify(`${askSel} .desk-ask-said`)})?.textContent || ""`)) ?? "");
+  const stayed34 = !!(await inPlaceOf());
+  check(
+    "35. Studio's ask answered from Needs you: its question and command on the card, Allow runs it there, the chat in place stays",
+    /^May I run this command\?/.test(String(card34?.q)) && /echo desk > desk-ask\.txt/.test(card34.cmd) && ran34 === true && !refused34 && stayed34,
+    `${card34 ? `"${card34.q.slice(0, 40)}…" ${card34.cmd.trim()} [${card34.go}]` : "no card"}; ${ran34 === true ? "run there" : refused34 || "not run there"}; ${stayed34 ? "the view where it was" : "the view moved"}`,
+  );
+
+  // Run on: a project here (a repository with no remote, so Studio has no clone and a copy goes), this Filament's
+  // agents' device on Studio (Settings' Agents, which holds Run on), a new chat started there from the Start's chip.
+  const repo = join(root, "widgets");
+  mkdirSync(repo, { recursive: true });
+  writeFileSync(join(repo, "README.md"), "# widgets\n");
+  const git = (/** @type {string[]} */ ...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8", windowsHide: true }).trim();
+  git("init", "-q");
+  git("add", "-A");
+  git("-c", "user.name=Drive", "-c", "user.email=drive@example.invalid", "commit", "-q", "-m", "widgets");
+  const head34 = git("rev-parse", "HEAD");
+  const agents34 = /** @type {any} */ (await inD(`window.filamentApp.agentsOn(${JSON.stringify(kept)}, true)`));
+  await inD(`(document.querySelector(".sess-new").click(), true)`);
+  const start34 = await until(() => inD(`(!!document.querySelector(".empty-chat") && !document.querySelector(".app-shell.guest-up")) || null`), 10000, "a new chat's Start, the view gone").catch(() => false);
+  /** A dialog's foot button pressed by its words. @param {string} dialog @param {string} label */
+  const pressIn = (dialog, label) =>
+    inD(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(`${dialog} .zc-dialog-foot button`)})].find((x) => (x.querySelector(".zc-btn-label")?.textContent || x.textContent).trim() === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true })()`);
+  await inD(`(document.querySelector(".empty-chat .chooser-chip:not(.run-on-chip)").click(), true)`);
+  await until(() => inD(`!!document.querySelector('.zc-menu .zc-menu-item[data-key="open"]') || null`), 5000, "the project menu").catch(() => null);
+  await inD(`(document.querySelector('.zc-menu .zc-menu-item[data-key="open"]').click(), true)`);
+  const openSel = `.zc-dialog[aria-label="Open folder"]`;
+  await until(() => inD(`!!document.querySelector(${JSON.stringify(`${openSel} input.zc-input`)}) || null`), 5000, "Open folder").catch(() => null);
+  await inD(`(() => { const i = document.querySelector(${JSON.stringify(`${openSel} input.zc-input`)}); i.value = ${JSON.stringify(repo)}; i.dispatchEvent(new Event("input", { bubbles: true })); return true })()`);
+  await pressIn(openSel, "Open");
+  await until(() => inD(`!!document.querySelector(".run-on-chip") || null`), 10000, "the Run on chip").catch(() => null);
+  await inD(`(document.querySelector(".run-on-chip").click(), true)`);
+  const studioItem = `.zc-menu .zc-menu-item[data-key="m:${idS}"]:not([disabled])`;
+  await until(() => inD(`!!document.querySelector(${JSON.stringify(studioItem)}) || null`), 20000, "Studio in the chip's menu").catch(() => null);
+  await inD(`(document.querySelector(${JSON.stringify(studioItem)})?.click(), true)`);
+  const chip34 = String((await inD(`document.querySelector(".run-on-chip .chooser-label")?.textContent || ""`)) ?? "");
+  await picture(harnessD, "35-run-on-start");
+  await inD(`(() => { const b = document.querySelector(".composer-input"); b.value = "write from-studio.txt"; b.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector('button.send[aria-label="Send"]').click(); return true })()`);
+  const sendSel = `.zc-dialog[aria-label="Send widgets to Studio?"]`;
+  const asked34 = await until(() => inD(`!!document.querySelector(${JSON.stringify(sendSel)}) || null`), 30000, "Send widgets to Studio?").catch(() => false);
+  await picture(harnessD, "35-run-on-send");
+  await pressIn(sendSel, "Send");
+  const worksOf = async () => /** @type {any[]} */ ((await (await call(portD, "/api/remote-work")).json().catch(() => null))?.works || []);
+  const work34 = /** @type {any} */ (await until(async () => (await worksOf()).find((w) => w.chat && w.cwd) ?? null, 60000, "Run on's chat started on Studio").catch(() => null));
+  const runOnPlace = work34 ? await until(async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`${atS}/ui/harness.html?only=chat`) && p.url.endsWith(`#/task/${encodeURIComponent(String(work34.chat))}`)), 20000, "Run on's chat in place").catch(() => null) : null;
+  const wrote34 = work34 ? await until(() => existsSync(join(String(work34.cwd), "from-studio.txt")) || null, 30000, "the file written in Studio's copy").catch(() => false) : false;
+  check(
+    "35. Run on: Agents on for Studio, Studio picked on the Start's chip, the copy asked first, the chat started there in place, its turn writing in the copy",
+    agents34?.on === true && start34 === true && chip34 === "Studio" && asked34 === true && !!work34 && !!runOnPlace && wrote34 === true,
+    `agents ${agents34?.on === true ? "on" : JSON.stringify(agents34)}; Start ${start34 === true ? "up" : "not up"}; chip "${chip34}"; ${asked34 === true ? "asked" : "not asked"}; ${work34 ? `chat ${work34.state}` : "no chat there"}; ${runOnPlace ? "in place" : "not in place"}; ${wrote34 === true ? "written there" : "nothing written there"}`,
+  );
+
+  // Bring back: the card (or the project's pill) says what changed there; its dialog lists the file; it comes in as an
+  // uncommitted edit, HEAD and the index as they were.
+  const backSel = `.desk-back .desk-ask-btn.is-go, .desk-back-pill`;
+  const offer34 = await until(() => inD(`(() => { ${nowOpen}; const b = document.querySelector(${JSON.stringify(backSel)}); return b ? (b.closest(".desk-back")?.querySelector(".desk-ask-q")?.textContent || b.getAttribute("aria-label") || b.textContent) : null })()`), 150000, "Bring back offered").catch(() => null);
+  await picture(harnessD, "35-bring-back-offered");
+  await inD(`(document.querySelector(${JSON.stringify(backSel)})?.click(), true)`);
+  const backDialog = `.zc-dialog[aria-label="Bring back 1 file from Studio?"]`;
+  const files34 = /** @type {any} */ (await until(() => inD(`(() => { const d = document.querySelector(${JSON.stringify(backDialog)}); return d ? [...d.querySelectorAll("ul.desk-work-files li .desk-work-path")].map((x) => x.textContent) : null })()`), 30000, "the Bring back dialog").catch(() => null));
+  await picture(harnessD, "35-bring-back-dialog");
+  await pressIn(backDialog, "Bring back");
+  const came34 = await until(() => existsSync(join(repo, "from-studio.txt")) || null, 30000, "the file here").catch(() => false);
+  const toast34 = String((await until(() => inD(`[...document.querySelectorAll(".zc-toast-stack .zc-toast")].map((t) => t.textContent).find((t) => /came back from Studio/.test(t)) || null`), 10000, "its toast").catch(() => "")) ?? "");
+  const status34 = git("status", "--porcelain");
+  const staged34 = git("diff", "--cached", "--name-only");
+  // Its words as written there; its line ends as git here writes a file (core.autocrlf).
+  const content34 = came34 === true ? readFileSync(join(repo, "from-studio.txt"), "utf8").replace(/\r\n/g, "\n") : "";
+  const headKept34 = git("rev-parse", "HEAD") === head34;
+  check(
+    "35. Bring back: offered once its turn ended, the file listed, brought in as an uncommitted edit — HEAD and the index as they were",
+    !!offer34 && Array.isArray(files34) && files34.includes("from-studio.txt") && came34 === true && content34 === "made on Studio\n" && headKept34 && staged34 === "" && /^\?\? from-studio\.txt$/m.test(status34) && !!toast34,
+    `${offer34 ? `"${String(offer34).trim()}"` : "never offered"}; dialog: ${Array.isArray(files34) ? files34.join(", ") || "no files" : "none"}; ${came34 === true ? `here: ${JSON.stringify(content34)}` : "not here"}; HEAD ${headKept34 ? "kept" : "moved"}; status: ${status34.replace(/\n/g, ", ") || "clean"}${staged34 ? `; staged: ${staged34}` : ""}${toast34 ? `; "${toast34.trim()}"` : ""}`,
+  );
+  if (!offer34) console.log(`     Run on's records here: ${JSON.stringify(await worksOf())}`);
+
+  brain = null;
+  const QD = launch(dataD, { args: ["--quit"], label: "quit the app at the desk" });
+  await until(() => QD.exited(), 20000, "end of its quitting launch");
+  await until(() => D.exited(), 30000, "the app at the desk's end");
+  endTree(/** @type {number} */ (S.pid));
+}
+
+// `--desk`: the desk's checks alone.
+if (DESK_ONLY) {
+  try {
+    await driveDesk();
+  } catch (/** @type {any} */ e) {
+    check("the drive ran to its end", false, String(e?.message || e));
+  } finally {
+    await cleanUp();
+  }
+  finish();
+}
+
 try {
   // ---- A: the app starts its own Filament, memory's engine under it ------------------------------------------------------
   const dataA = join(base, "a");
@@ -937,6 +1230,8 @@ try {
     const dataR = join(base, "r");
     const portR = await freePort();
     writeConfig(dataR, portR, up.url, root);
+    // Named Studio there too: the window takes the name a machine answers by (lib/rail.js), else this computer's.
+    writeFileSync(join(dataR, "machine.json"), JSON.stringify({ version: 1, id: randomUUID(), name: "Studio", named: true }));
     const R = spawn(process.execPath, [join(ROOT, "bin", "filament.js"), "--data-dir", dataR, "--port", String(portR)], { env: plainEnv(), stdio: "ignore", windowsHide: true });
     if (R.pid) mine.push({ pid: R.pid, label: "the other machine's Filament" });
     await until(() => stateAt(portR), 60000, "answer from the other machine's Filament");
@@ -1016,8 +1311,8 @@ try {
     await sleep(800);
     await picture(studio32, "32-studio-view");
     check(
-      "32. a machine picked: its harness over the whole window, its top row the title bar short of the window's controls, its one bridge alone, its chip saying it",
-      drawn32 === true && framed32 === true && closed32 === true && !!sizeH && studioAt?.w === sizeH.w && studioAt?.h === sizeH.h && studioAt?.headerTop === 0 && studioAt?.right > 90 && studioAt?.right < 200 && studioAt?.free >= studioAt?.right && studioAt?.bridges?.join() === "filamentMachines" && chipR?.name === "Studio" && /s-online/.test(chipR?.dot || ""),
+      "32. a machine picked: its harness over the whole window, its top row the title bar short of the window's controls, its two bridges alone (the machines' and its Browser pane's), its chip saying it",
+      drawn32 === true && framed32 === true && closed32 === true && !!sizeH && studioAt?.w === sizeH.w && studioAt?.h === sizeH.h && studioAt?.headerTop === 0 && studioAt?.right > 90 && studioAt?.right < 200 && studioAt?.free >= studioAt?.right && studioAt?.bridges?.join() === "filamentBrowser,filamentMachines" && chipR?.name === "Studio" && /s-online/.test(chipR?.dot || ""),
       `${studio32 ? `Studio's page ${studioAt?.w}×${studioAt?.h} in a window of ${sizeH?.w}×${sizeH?.h}, its header at ${studioAt?.headerTop}, the controls' room ${studioAt?.right ? `${Math.round(studioAt.right)}px (${studioAt.how}), ${studioAt.free}px left free` : "none"}${framed32 ? "" : ", no title bar"}, bridges: ${studioAt?.bridges?.join(", ") || "none"}` : "no view"}; its chip ${chipR ? `"${chipR.name}" ${chipR.dot}` : "none"}; the popover ${closed32 ? "closed" : "open"}`,
     );
     // Its own chip pressed, This computer picked: this computer's page again, Studio's kept live behind it. (Ctrl+1..9 are
@@ -1200,6 +1495,8 @@ try {
     await until(() => H2.exited(), 30000, "the app that added a machine's end");
     endTree(/** @type {number} */ (W2.pid));
 
+    await driveDesk();
+
     // ---- 17: the folder deletions that meet read-only files, under Electron's own Node (the suite runs on plain Node,
     // whose sync form takes them: there those tests prove nothing) ---------------------------------------------------------
     const suite = spawn(ELECTRON, ["--test", "test/git-places.test.js", "test/subagent-worktree.test.js", "test/memory-install.test.js"], { cwd: ROOT, env: { ...plainEnv(), ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -1219,13 +1516,6 @@ try {
 } catch (/** @type {any} */ e) {
   check("the drive ran to its end", false, String(e?.message || e));
 } finally {
-  if (squatter) await new Promise((r) => /** @type {any} */ (squatter).close(() => r(undefined)));
-  for (const p of mine) if (processes().some((x) => x.pid === p.pid)) endTree(p.pid);
-  await up.close();
-  await down.close();
-  await sleep(1000);
-  await rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }).catch((e) => console.log(`left ${base}: ${e.message}`));
+  await cleanUp();
 }
-const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length} of ${results.length} checks pass`);
-process.exit(failed.length ? 1 : 0);
+finish();

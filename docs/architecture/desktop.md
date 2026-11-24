@@ -7,7 +7,7 @@ windows of its own, a tray with its card (Filament's page `ui/tray-card.html` in
 notifications, start at logon, and the machines one harness window drives (a chip in its top bar, the app's popover). Only `main.js` and the preloads touch
 Electron; what the app decides lives in `lib/`, plain Node, tested in `test/desktop.test.js`, `test/desktop-tray.test.js`,
 `test/desktop-machines.test.js`, `test/desktop-rail.test.js` and `test/desktop-add.test.js`, the card's page in `test/tray-card.test.js`, the machine chip in `test/machine-chip.test.js`;
-`scripts/desktop-drive.mjs` (`npm run test:desktop`) drives the whole app on throwaway folders and ports. Nothing under
+`scripts/desktop-drive.mjs` (`npm run test:desktop`; `-- --desk` its desk alone) drives the whole app on throwaway folders and ports. Nothing under
 `src/` imports it; it imports from `src/` the config's folder and port readers (`config.js`), the secrets
 (`services/config/secrets.js`), `ELECTRON_VAR`, `ART_DOMAIN`, the browser's page size (`core/browser.js`) and the
 harness's Now fold (`ui/harness/lib/now.js`, `agents-since.js`). The server it runs is `bin/filament.js`.
