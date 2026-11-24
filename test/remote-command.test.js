@@ -344,6 +344,30 @@ describe("a background command on another machine", () => {
     }
   });
 
+  // (fails before: yes — the review of x4: a Force stop drops whatever the loop says after it, the card's end with it, so
+  // the events feed and the run said the card open for good)
+  test("a card a Force stop cuts is settled on the events feed, and its run's events hold its end", async () => {
+    /** @type {any[]} */
+    const frames = [];
+    const off = /** @type {any} */ (two.here.app).events.subscribe("turns", (/** @type {any} */ p) => p?.type === "ask" && frames.push(p));
+    try {
+      const id = await chat("edit");
+      const { res, runId } = await start(id, "CASE:there TAG:f1 make the file there");
+      const card = await askOf(runId);
+      const askId = `${runId}.${card.id}`;
+      assert.ok(frames.some((f) => f.chainId === id && f.id === askId && f.open === true), "said open on the feed");
+      assert.equal(/** @type {any} */ (two.here.app).runs.force(runId).ok, true);
+      await res.text();
+      await until(() => frames.some((f) => f.chainId === id && f.id === askId && f.open === false) || null, "said settled on the feed");
+      const ends = (await runEvents(runId)).filter((e) => e.type === "ask-end");
+      assert.deepEqual(ends.map((e) => [e.id, e.outcome]), [[card.id, "cancelled"]], "its end in the run's events, once");
+      assert.equal(existsSync(join(thereRepo, "ran-f1.txt")), false, "nothing ran there");
+      assert.deepEqual((await (await two.here.api(`/api/sessions/${encodeURIComponent(id)}/asks`)).json()).asks, [], "listed no more");
+    } finally {
+      off();
+    }
+  });
+
   // (fails before: yes — there was no ask there to answer; this guards that only the person's press answers it)
   test("the words in this chat's run answer nothing, nor is its model asked while it waits; words with no press deny it", async () => {
     await mode("ask");

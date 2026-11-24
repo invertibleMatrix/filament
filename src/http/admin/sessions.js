@@ -119,10 +119,9 @@ const FORM_OPTIONS = Object.freeze({
   ],
 });
 /**
- * How far back a coding agent's run is read for the questions it waits on: they are its newest events. Enough, as the
- * agent's call that asked holds its turn until the answer comes — what the run logs meanwhile is the few events of its
- * other calls, far short of this. One past it all the same is listed nowhere and answered here 409, as one that waits
- * no more; its run's own route (POST /runs/:id/answer) reads no window.
+ * How far back a run is read for the asks it waits on where its run log lists none of its own (services/runs.js
+ * `waitingAsks`, which every running turn here has): a stand-in's. One past it is listed nowhere and answered here 409,
+ * as one that waits no more; its run's own route (POST /runs/:id/answer) reads no window.
  */
 const ASK_EVENTS = 5000;
 
@@ -273,7 +272,9 @@ export function sessionRoutes(a) {
   const agentAsks = (run) => {
     const from = run.kind === "coding-agent" ? "coding-agent" : "chat";
     const id = String(run.id);
-    const evts = runs?.events(id, { since: Math.max(0, (Number(run.events) || 0) - ASK_EVENTS), limit: ASK_EVENTS, types: ["ask", "ask-end"] })?.events || [];
+    // The run's own list where it keeps one (services/runs.js `waitingAsks`): a card waits inside a turn whose other
+    // calls may stream thousands of events meanwhile. Else its newest events.
+    const evts = runs?.waitingAsks ? runs.waitingAsks(id) : runs?.events(id, { since: Math.max(0, (Number(run.events) || 0) - ASK_EVENTS), limit: ASK_EVENTS, types: ["ask", "ask-end"] })?.events || [];
     const ended = new Set(evts.filter((e) => e.type === "ask-end").map((e) => String(e.id)));
     return evts
       .filter((e) => e.type === "ask" && e.waits === true && e.kind !== "lead" && typeof e.id === "string" && e.id && !ended.has(e.id))

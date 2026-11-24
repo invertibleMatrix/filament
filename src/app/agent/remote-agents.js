@@ -153,8 +153,9 @@ export const SEND_COPY = "send a copy";
  */
 /**
  * What the chat there waits on the person for, as its GET /sessions/:id/asks lists it (http/admin/sessions.js `Ask`): its
- * own turn's permission or question (`from` "chat", its id the paused run's), its coding agent's, or a call of one of its
- * sub-agents (`from` its id).
+ * own turn's permission or question (`from` "chat", its id the paused run's), a card its own agent waits on in place for
+ * a command on another machine (`from` "chat" too, its id `<runId>.there-N`: agent/loop.js `askThere`), its coding
+ * agent's, or a call of one of its sub-agents (`from` its id).
  * @typedef {{ id: string, kind: string, from: string, runId: string | null, tool: string, question: string, command?: string,
  *   options: { id: string, label: string }[], words: boolean }} RemoteAsk
  */
@@ -1025,8 +1026,9 @@ export function createRemoteAgents({ machines, wait = pause }) {
      * there (the remote-agents plan's s-asks); unanswered, it waits there — until it is answered there, or the stop. A
      * call of what runs in its turn — a sub-agent's, its coding agent's — waits in place while its run goes on
      * (`watch`); the chat's own ask pauses its turn, whose run ends `paused`, and the answer's reply is the turn it
-     * resumes, read as the next run (`settleOwn`). A pause that still waits there from a turn stopped here as it waited is
-     * the person's to answer before this message goes, which would answer it else.
+     * resumes, read as the next run (`settleOwn`, by the paused run's id alone: a card its agent waits on in place, also
+     * `from` "chat", is neither's, and is answered where the chat's asks are listed). A pause that still waits there from
+     * a turn stopped here as it waited is the person's to answer before this message goes, which would answer it else.
      * @param {RemoteChat} remote @param {{ content: any[], signal: AbortSignal, title?: string, mode?: string | null,
      *   onEvent?: (e: any) => void, onAsk?: ((ask: RemoteAsk, signal: AbortSignal) => Promise<RemoteAnswer | null>) | null,
      *   onChat?: () => void, onAway?: (away: { ms: number, why: string } | null) => void,

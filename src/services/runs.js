@@ -172,6 +172,7 @@ import { join } from "node:path";
  * @property {(runId: string, end: { status: string, summary?: any }) => boolean} closeOnDisk  such a run's end, written
  * @property {(runId: string) => RunMeta | null} getRun
  * @property {(chainId: string) => RunMeta[]} runningIn  the turns running in a session now, as their runs name it
+ * @property {(runId: string) => RunEvent[]} waitingAsks  the asks a running turn's chat lists that wait still, each its `ask` event
  * @property {(runId: string) => boolean} hasRun  whether `getRun` would answer: in memory or on disk, read by name alone
  * @property {(opts?: { limit?: number, kind?: string | null }) => RunMeta[]} listRuns
  * @property {(runId: string, opts?: { since?: number, limit?: number, types?: string[] | null, bodies?: boolean, graphs?: "all" | "last", calls?: "all" | "apart" | "only", of?: { round: number, parent: string } | null }) => { run: RunMeta, events: RunEvent[], firstAvailable: number, gap: { requested: number, firstAvailable: number } | null } | null} events
@@ -244,7 +245,7 @@ export const RUN_EVENT_FIELDS = Object.freeze({
   "round-writing": "round, chars — agent: the input of the calls one model call is writing (a file's whole text, an edit's), in characters so far, said as it grows at most every 500 ms; the speed gauge counts it with the words and thinking the reply streams (the owner's word of 10-27). Its round-written ends it",
   "round-written": "round, output, ms — agent: what one model call wrote, as its provider counted it (its thinking and its calls' input included, which the stream may show little or nothing of), and the time it was writing (services/daily-usage.js writingMs; null where too short to rate). The loop's every round that wrote; the speed gauge's figure round by round",
   ask: "round, kind (question|permission|lead), tool?, question, options?, waits?, offer?, ask?, plan? — agent. waits: a team's worker's call that waits in place for the developer's answer, which its session's route gives (HarnessV3-AtHome P2) — no pause, and no answer in a next request; the route's modeSwitch answer has the call judged again under the mode now in force (AH-F1). lead: a team's worker's question to its lead, with ask_lead (HarnessV3-TaskGraph-v2 TG2-D49), on its own run — a coding agent's too, in the round its call was made in: its lead answers it, in its own call — whether it reads along or not (TG2-D58) — and it waits until that answer, its stop, or its lead's turn's end; options: its choices, its pick first; ask: its number among the worker's questions (TG2-D42); plan: it is the worker's plan, sent while its lead reviews it (TG2-D50) — a go lets its changes and commands run. offer { itemId, tool, shape }: a permission's always-allow waiting for the call's shape — the inferred permission item the page's Always allow confirms (HarnessV3-Views V3). A coding agent's question (HarnessV3-ACP AC2-4) waits in its run: `waits`, its `id`, `call` (the agent's tool call it belongs to, when it names one) and `form` (adapters/agents/asks.js: its questions with their choices, or the plan a `proposal` carries, or the address a `link` (a kind of its own) asks to open, or a permission's choices — one the session's switch asks about, `form.judged` (HarnessV3-ACP AC3-2), is the loop's card, answered allow or deny, and the page's `switched` once the switch moved has it judged again under the mode now in force); POST /api/runs/:id/answer settles it. One that belongs to no call draws on a card of its own, the round's call `ask:<id>` (its tool-start and tool-end, the answer's words as its preview)",
-  "ask-end": "round, id, call?, outcome (answered|skipped|accepted|rejected|declined|cancelled), words — a coding agent's question settled (HarnessV3-ACP AC2-4): words, the answers a line each as the person gave them, a secret never said; cancelled: a stop, a hang-up or the run's end; `nobody`: nobody could be asked, and the agent heard at once what `outcome` says",
+  "ask-end": "round, id, call?, outcome (answered|skipped|accepted|rejected|declined|cancelled), words — a coding agent's question settled (HarnessV3-ACP AC2-4): words, the answers a line each as the person gave them, a secret never said; cancelled: a stop, a hang-up or the run's end — the run's end says one for an ask the chat lists that it left waiting (its turn Force-stopped, which says nothing more); `nobody`: nobody could be asked, and the agent heard at once what `outcome` says",
   "tool-start": "round, name, args (the target, clipped; never content), card { kind, title, subject } (Step 3 D8: the same card the transcript's archived tools carry, computed from the call's input in whatever vocabulary it speaks), id, movable?, command?, edits? — agent (command: true where the call is a command that could have made a commit, from here to its tool-end — a shell's command its engine's gate does not read as only reading, an MCP tool nobody vouches for as reading, a Space's button pressed; app/watchers/commits.js takes a commit made meanwhile for its chat's own; edits: on a call that writes a file, a command aside, the files it says it writes from here to its tool-end — absolute paths as its tool resolves them, never content, 50 at most and none past 400 characters — or true where they are not known as it starts or pass either bound; app/watchers/own-times.js keeps them as its chat's writes; movable: a foreground command the developer may send to the background while it runs, POST /api/runs/:id/calls/:call/background — HarnessV4_Four_Plan E21)",
   "tool-output": "round, id, text — agent: a bash command's output as it runs, flushed at most every 250 ms (a rolling 4k tail); tool-end's preview is the whole result's head",
   "tool-end":
@@ -582,7 +583,7 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
       imagesMaxMB: Number.isFinite(Number(k.imagesMaxMB)) ? Math.max(0, Number(k.imagesMaxMB)) : 500,
     };
   };
-  /** @type {Map<string, { meta: RunMeta, ring: RunEvent[], sizes: number[], ringChars: number, ringGone: boolean, fileGap: boolean, asSent: Map<number, { evt: RunEvent, size: number }>, asSentChars: number, subscribers: Set<(evt: RunEvent) => void>, fileBroken: number, fd: number, ended: boolean, queue: SteerMessage[], waiters: Set<() => void>, stopper: AbortController, forcer: AbortController, asks: Map<string, OpenAsk>, movers: Map<string, () => { id: string } | null>, handed: Set<string>, asides: SteerAsides | null }>} */
+  /** @type {Map<string, { meta: RunMeta, ring: RunEvent[], sizes: number[], ringChars: number, ringGone: boolean, fileGap: boolean, asSent: Map<number, { evt: RunEvent, size: number }>, asSentChars: number, subscribers: Set<(evt: RunEvent) => void>, fileBroken: number, fd: number, ended: boolean, queue: SteerMessage[], waiters: Set<() => void>, stopper: AbortController, forcer: AbortController, asks: Map<string, OpenAsk>, waitingAsks: Map<string, RunEvent>, movers: Map<string, () => { id: string } | null>, handed: Set<string>, asides: SteerAsides | null }>} */
   const runs = new Map();
   /** @param {string} id */
   const fileOf = (id) => join(dir, `${id}.jsonl`);
@@ -704,6 +705,12 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
       forcer: new AbortController(),
       /** The questions the run waits on the person to answer, by id (HarnessV3-ACP AC2-4). @type {Map<string, OpenAsk>} */
       asks: new Map(),
+      /**
+       * Its asks the chat lists that wait still, by id (`askOf` in `record`): each its `ask` event, until its `ask-end`
+       * — read whole however long the turn ran since (`waitingAsks`), and ended with the run (`endRun`).
+       * @type {Map<string, RunEvent>}
+       */
+      waitingAsks: new Map(),
       /**
        * The commands running in the foreground the developer may send to the background, by call id: each the way to
        * do it (HarnessV4_Four_Plan E21). @type {Map<string, () => { id: string } | null>}
@@ -906,12 +913,15 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
     const askOf = (entry.meta.kind === "coding-agent" || entry.meta.kind === "agent-turn") && (evt.type === "ask" || evt.type === "ask-end") ? String(entry.meta.meta?.chain || "") : "";
     const ask = /** @type {any} */ (evt);
     // Its listeners' failure is theirs: the run's own followers below hear the event all the same.
-    if (askOf && typeof ask.id === "string" && ask.id && (ask.type === "ask-end" || (ask.waits === true && ask.kind !== "lead")))
+    if (askOf && typeof ask.id === "string" && ask.id && (ask.type === "ask-end" || (ask.waits === true && ask.kind !== "lead"))) {
+      if (ask.type === "ask") entry.waitingAsks.set(ask.id, evt);
+      else entry.waitingAsks.delete(ask.id);
       try {
         events.publish("turns", { type: "ask", chainId: askOf, id: `${entry.meta.id}.${ask.id}`, open: ask.type === "ask" });
       } catch (/** @type {any} */ e) {
         log("warn", `run log: an ask's word on the feed failed (${e.message})`);
       }
+    }
     if (!entry.subscribers.size) return;
     const was = delivering;
     const wasJson = deliveringJson;
@@ -1455,6 +1465,9 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
         events.publish(`run:${runId}`, { type: "steer-unread", ids: unread.map((m) => m.id), kinds: unread.map((m) => m.kind) });
         summary = { ...(summary && typeof summary === "object" ? summary : {}), unreadSteer: unread.length };
       }
+      // An ask the chat lists that the run leaves waiting ends with it, unanswered: a turn Force-stopped says nothing
+      // more (agent/loop.js `emit`), so the card it waited on would be listed open on the feed and in the run for good.
+      for (const [id, a] of [...entry.waitingAsks]) events.publish(`run:${runId}`, { type: "ask-end", round: /** @type {any} */ (a).round ?? 0, id, ...(/** @type {any} */ (a).call != null ? { call: /** @type {any} */ (a).call } : {}), outcome: "cancelled", words: [] });
       for (const open of [...entry.asks.values()]) open.settle(null);
       entry.meta.endedAt = now();
       entry.meta.status = String(status || "done");
@@ -1563,6 +1576,16 @@ export function createRunLog({ events, dataDir, config, log = () => {}, ops = nu
       const id = String(chainId || "");
       if (!id) return [];
       return [...runs.values()].map((r) => r.meta).filter((m) => m.endedAt == null && (m.kind === "agent-turn" || m.kind === "coding-agent") && String(m.meta?.chain || "") === id);
+    },
+    /**
+     * The asks a running turn's chat lists that wait still — a coding agent's questions, the cards its own agent waits on
+     * for a command on another machine —, each its `ask` event, however many events the turn logged since; none for a
+     * run that ended or is not here.
+     * @param {string} runId @returns {RunEvent[]}
+     */
+    waitingAsks(runId) {
+      const entry = runs.get(String(runId || ""));
+      return entry && entry.meta.endedAt == null ? [...entry.waitingAsks.values()] : [];
     },
     // The transcript asks this for every turn it lists (HarnessV3-Launch LD-D13), so the page looks a run up only
     // where one exists: the file's presence answers, not its events — as the index of the run files has it.
