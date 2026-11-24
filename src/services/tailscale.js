@@ -1,10 +1,12 @@
 // @ts-check
 // Share this Filament on my tailnet (the owner's remote Filament of 11-06, Part 2): `tailscale serve` gives this machine
 // an https address on the person's tailnet — https://<machine>.<tailnet>.ts.net, its certificate one an authority signs
-// — and hands each request on to a door of Filament's on loopback, at a port of its own (`server.tailscale.port`) where
-// nothing else is served: what comes in there came through tailscale serve, which says who sent it (its Tailscale-User-*
-// headers, which it alone sets, clearing any a caller sent), and by the name it was reached at, its Host, which a door
-// checks — a page another site rebound to loopback is refused there. Behind that door is the network's door (front-door.js
+// — and hands each request on to a door of Filament's on loopback, at a port of its own (`server.tailscale.port`), below
+// a path no one else knows (`mark`, new at each start, which tailscale serve's own config alone holds): what comes in
+// there with it came through tailscale serve, which says who sent it (its Tailscale-User-* headers, which it alone sets,
+// clearing any a caller sent), and by the name it was reached at, its Host, which a door checks — a page another site
+// rebound to loopback is refused there, and so is a program here that names the tailnet without the mark, so its
+// Tailscale-User-Login is no one's (`servedThrough`). Behind that door is the network's door (front-door.js
 // `lanDoor`): Filament's pages, the pairing, the run socket and the terminal — never the model endpoints. The artifacts'
 // network address is served too, at https port 8443, from a door of their own at the port after. Turned on, Filament
 // asks Tailscale's command line to serve both, and never takes an https port the person serves something else on;
@@ -15,6 +17,7 @@
 // Tailscale not yet running, as at logon — is asked again every `RETRY_MS`.
 import http from "node:http";
 import { execFile } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { artifactsOnNetwork } from "../core/artifacts.js";
@@ -201,8 +204,31 @@ const memoryMemo = () => {
   let v = null;
   return { read: () => v, write: (x) => void (v = x) };
 };
-/** A loopback target as Filament serves one, or "". @param {unknown} t */
-const targetIn = (t) => (typeof t === "string" && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(t) ? t : "");
+/** A loopback target as Filament serves one — below its mark, or with none as a build that set none served it —, or "". @param {unknown} t */
+const targetIn = (t) => (typeof t === "string" && /^http:\/\/127\.0\.0\.1:\d{1,5}(?:\/[0-9a-f]{32})?$/.test(t) ? t : "");
+/** The mark a target Filament served is below, or "". @param {unknown} t */
+const markIn = (t) => /\/([0-9a-f]{32})$/.exec(targetIn(t))?.[1] ?? "";
+/** A target without its mark: the door it hands on to. @param {string} t */
+const doorOf = (t) => t.replace(/\/[0-9a-f]{32}$/, "");
+/**
+ * Where tailscale serve hands an https port of this machine's name on to, where it serves one handler at / there and
+ * nothing more; "" else. @param {any} cfg @param {string} name @param {number} port
+ */
+const proxiedTo = (cfg, name, port) => {
+  const handlers = cfg?.Web?.[`${name}:${port}`]?.Handlers;
+  const one = cfg?.TCP?.[String(port)]?.HTTPS === true && handlers && typeof handlers === "object" && Object.keys(handlers).length === 1;
+  return one && typeof handlers["/"]?.Proxy === "string" ? handlers["/"].Proxy : "";
+};
+
+/** The requests tailscale serve handed on to a door: their path carried the start's mark, which the door took off. */
+const handedOn = new WeakSet();
+/**
+ * Whether tailscale serve handed this request on to a tailnet door: its path began with the mark Filament served the
+ * door below this start, which only tailscale serve's own config holds. The guards believe its Tailscale-User-Login on
+ * such a request alone: a program here that reaches the door's port and says the header is no one's.
+ * @param {import("node:http").IncomingMessage} req
+ */
+export const servedThrough = (req) => handedOn.has(req);
 
 /** The name a request's Host says, without its port, in lower case. @param {unknown} h */
 const hostnameOf = (h) => {
@@ -245,6 +271,12 @@ const refusedWords = (r) =>
  */
 export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}, cli = () => findCli(), exec = runCli, now = Date.now, host = "127.0.0.1", memo = memoryMemo(), retryMs = RETRY_MS }) {
   let want = { serve: false, trustOwnLogin: false, port: TAILNET_PORT };
+  /**
+   * The path tailscale serve hands both doors' requests on below: tailscale serve's config holds it, and the memo in
+   * Filament's data folder, so a start serves what the last one did and Tailscale is asked nothing; new where none is
+   * kept. A request that carries it came through tailscale serve (`servedThrough`).
+   */
+  const mark = markIn(memo.read()?.pages) || randomBytes(16).toString("hex");
   /** @type {{ api: http.Server, art: http.Server, port: number, artPort: number } | null} */
   let doors = null;
   /** What Tailscale said when last read: null before any read; `installed` false where its command line is not here. */
@@ -320,17 +352,36 @@ export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}
     }
   };
 
-  /** Whether a request reached a door by this machine's name on the tailnet, or by its own loopback. @param {import("node:http").IncomingMessage} req */
-  const reached = (req) => {
+  /**
+   * The mark taken off a request's path where it begins with it, as tailscale serve hands each on (`targetOf`): the
+   * request is then known for one it handed on (`servedThrough`). Compared in constant time.
+   * @param {import("node:http").IncomingMessage} req
+   */
+  const unmark = (req) => {
+    const u = String(req.url || "");
+    const said = u.slice(1, 1 + mark.length);
+    const next = u.charAt(1 + mark.length);
+    if (u.charAt(0) !== "/" || said.length !== mark.length || !(next === "" || next === "/" || next === "?")) return false;
+    if (!timingSafeEqual(Buffer.from(said), Buffer.from(mark))) return false;
+    const rest = u.slice(1 + mark.length);
+    req.url = rest.startsWith("/") ? rest : `/${rest}`;
+    handedOn.add(req);
+    return true;
+  };
+  /**
+   * Whether a request reached a door by this machine's name on the tailnet, handed on by tailscale serve (`served`), or
+   * by its own loopback. @param {import("node:http").IncomingMessage} req @param {boolean} served
+   */
+  const reached = (req, served) => {
     const hn = hostnameOf(req.headers.host);
     const name = door?.name || (status && status.installed ? status.name : "");
-    return LOOPBACK_NAMES.has(hn) || (!!name && hn === name);
+    return LOOPBACK_NAMES.has(hn) || (served && !!name && hn === name);
   };
   /** @param {http.RequestListener} fn @returns {http.RequestListener} */
   const guarded = (fn) => (req, res) => {
-    if (reached(req)) return fn(req, res);
+    if (reached(req, unmark(req))) return fn(req, res);
     res.writeHead(421, { "content-type": "text/plain; charset=utf-8" });
-    res.end("This door answers this machine's name on the tailnet alone.");
+    res.end("This door answers this machine's name on the tailnet alone, as tailscale serve hands it on.");
   };
   /** @param {http.Server} s @param {number} port @returns {Promise<http.Server>} */
   const bind = (s, port) =>
@@ -375,7 +426,7 @@ export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}
     let art = null;
     try {
       const pages = http.createServer(guarded(handler));
-      pages.on("upgrade", (req, socket, head) => (reached(req) ? upgrade(req, socket, head) : void socket.destroy()));
+      pages.on("upgrade", (req, socket, head) => (reached(req, unmark(req)) ? upgrade(req, socket, head) : void socket.destroy()));
       api = await bind(pages, port);
       const p = /** @type {import("node:net").AddressInfo} */ (api.address()).port;
       const arts = http.createServer(guarded(artifacts));
@@ -394,8 +445,8 @@ export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}
     }
     doors = { api: a, art: b, port: /** @type {import("node:net").AddressInfo} */ (a.address()).port, artPort: /** @type {import("node:net").AddressInfo} */ (b.address()).port };
   };
-  /** @param {number} port */
-  const targetOf = (port) => `http://${host}:${port}`;
+  /** Where tailscale serve hands a door's requests on: its port, below this start's mark. @param {number} port */
+  const targetOf = (port) => `http://${host}:${port}/${mark}`;
   /** What Filament served before at each https port, as the memo keeps it. */
   const before = () => {
     const m = memo.read();
@@ -412,7 +463,10 @@ export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}
     const at = servedAt(cfg, name, https, targetOf(local));
     if (at.is === "mine") return { funnel: at.funnel };
     const was = before()[https];
-    const own = at.is === "other" && !!was && was !== targetOf(local) && servedAt(cfg, name, https, was).is === "mine";
+    // Filament's own from before: as the memo says it served, or to this door's port below another mark, or none (a
+    // memo lost, a build that set none): nothing but this door listens at its port.
+    const there = targetIn(proxiedTo(cfg, name, https));
+    const own = at.is === "other" && ((!!was && was !== targetOf(local) && servedAt(cfg, name, https, was).is === "mine") || (!!there && doorOf(there) === `http://${host}:${local}`));
     if (at.is === "other" && !own) throw new Error(`https port ${https} of ${name} serves ${at.what} here, and Filament leaves it as it is: turn that off (tailscale serve --https=${https} off) to share Filament there`);
     if (own) await run(["serve", `--https=${https}`, "off"]);
     const r = await run(["serve", "--bg", "--yes", `--https=${https}`, targetOf(local)]);
@@ -461,7 +515,8 @@ export function createTailnetShare({ handler, upgrade, artifacts, log = () => {}
     /** @type {[number, number | undefined][]} */
     const ports = [[SERVE_HTTPS, doors?.port], [SERVE_ART_HTTPS, doors?.artPort]];
     for (const [https, local] of ports) {
-      const targets = [local ? targetOf(local) : "", was[https]].filter(Boolean);
+      const there = targetIn(proxiedTo(cfg, st.name, https));
+      const targets = [local ? targetOf(local) : "", was[https], local && there && doorOf(there) === `http://${host}:${local}` ? there : ""].filter(Boolean);
       if (!targets.some((t) => servedAt(cfg, st.name, https, t).is === "mine")) continue;
       if (closed) return;
       const r = await run(["serve", `--https=${https}`, "off"]);

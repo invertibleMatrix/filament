@@ -139,10 +139,15 @@ const heard = () => {
     },
   };
 };
-/** @param {number} port @param {Record<string, string>} [headers] @returns {Promise<{ status: number, body: string }>} */
-const get = (port, headers = {}) =>
+/**
+ * The path a fake's serve hands a door's requests on below, as the real one does: its target's path, the share's mark.
+ * @param {{ cfg: any }} ts @param {number} [https]
+ */
+const markOf = (ts, https = SERVE_HTTPS) => new URL(ts.cfg.Web[`${NAME}:${https}`].Handlers["/"].Proxy).pathname;
+/** @param {number} port @param {Record<string, string>} [headers] @param {string} [path] @returns {Promise<{ status: number, body: string }>} */
+const get = (port, headers = {}, path = "/") =>
   new Promise((resolve, reject) => {
-    const r = http.get({ host: "127.0.0.1", port, path: "/", headers, agent: false }, (res) => {
+    const r = http.get({ host: "127.0.0.1", port, path, headers, agent: false }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => resolve({ status: Number(res.statusCode), body }));
@@ -253,33 +258,43 @@ describe("Filament on the tailnet: one switch", () => {
     const s = share.state();
     assert.equal(s.error, null);
     const { port, artPort } = /** @type {{ port: number, artPort: number }} */ (s.listening);
-    assert.deepEqual(ts.said(), ["status --json", "serve status --json", `serve --bg --yes --https=443 http://127.0.0.1:${port}`, `serve --bg --yes --https=8443 http://127.0.0.1:${artPort}`]);
+    // Both doors served below one mark, a path no one but tailscale serve's config knows.
+    const m = markOf(ts);
+    assert.match(m, /^\/[0-9a-f]{32}$/);
+    assert.equal(markOf(ts, SERVE_ART_HTTPS), m);
+    assert.deepEqual(ts.said(), ["status --json", "serve status --json", `serve --bg --yes --https=443 http://127.0.0.1:${port}${m}`, `serve --bg --yes --https=8443 http://127.0.0.1:${artPort}${m}`]);
     assert.ok(ts.calls.every((c) => c.timeoutMs === CLI_MS), "each call bounded");
     assert.deepEqual([s.address, s.artifacts, s.name, s.login, s.https, s.funnel], [`https://${NAME}`, `https://${NAME}:${SERVE_ART_HTTPS}`, NAME, OWNER, true, false]);
     assert.deepEqual(tailnetDoor(), { port, artDoor: artPort, name: NAME, login: OWNER, artPort: SERVE_ART_HTTPS });
     assert.ok(isArtifactOrigin(`https://${NAME}:${SERVE_ART_HTTPS}`), "an artifact's page on the tailnet is no page of Filament's");
-    // What tailscale serve hands on: the name it was reached at, as the Host and as X-Forwarded-Host (checked on the
-    // real tailnet: a caller's own X-Forwarded-Host replaced). This machine's loopback is let in too.
-    assert.deepEqual(await get(port, { host: NAME, "x-forwarded-host": NAME, "x-forwarded-for": "100.101.102.103" }), { status: 200, body: "pages" });
-    assert.deepEqual(await get(artPort, { host: `${NAME}:8443`, "x-forwarded-host": `${NAME}:8443` }), { status: 200, body: "artifacts" });
+    // What tailscale serve hands on: below its mark, the name it was reached at, as the Host and as X-Forwarded-Host
+    // (checked on the real tailnet: a caller's own X-Forwarded-Host replaced). This machine's loopback is let in too.
+    assert.deepEqual(await get(port, { host: NAME, "x-forwarded-host": NAME, "x-forwarded-for": "100.101.102.103" }, `${m}/`), { status: 200, body: "pages" });
+    assert.deepEqual(await get(artPort, { host: `${NAME}:8443`, "x-forwarded-host": `${NAME}:8443` }, m), { status: 200, body: "artifacts" });
     assert.deepEqual(await get(port, { host: `127.0.0.1:${port}` }), { status: 200, body: "pages" });
+    // A program here at a door's port that names the tailnet without the mark: refused, as serve never hands one on so.
+    for (const [at, said] of [[port, NAME], [artPort, `${NAME}:8443`]]) {
+      assert.equal((await get(/** @type {number} */ (at), { host: String(said), "tailscale-user-login": OWNER })).status, 421, `no mark at ${at}`);
+      assert.equal((await get(/** @type {number} */ (at), { host: String(said), "tailscale-user-login": OWNER }, `/${"0".repeat(32)}/`)).status, 421, `another mark at ${at}`);
+    }
     // A page another site rebound to loopback: its own name is its Host, whatever X-Forwarded-Host its script set.
     for (const [at, said] of [[port, NAME], [artPort, `${NAME}:8443`]]) {
       const rebound = await get(/** @type {number} */ (at), { host: `evil.example:${at}`, "x-forwarded-host": String(said), "tailscale-user-login": OWNER });
       assert.equal(rebound.status, 421, "refused at the door");
     }
     // Its socket's upgrade too: the run socket and the terminal answer the name alone.
-    /** @param {string} hostHeader @returns {Promise<void>} */
-    const upgradeAs = (hostHeader) =>
+    /** @param {string} hostHeader @param {string} [below] @returns {Promise<void>} */
+    const upgradeAs = (hostHeader, below = m) =>
       new Promise((resolve) => {
-        const c = connect(port, "127.0.0.1", () => c.write([`GET /api/runs/socket HTTP/1.1`, `Host: ${hostHeader}`, `X-Forwarded-Host: ${NAME}`, "Connection: Upgrade", "Upgrade: websocket", "", ""].join("\r\n")));
+        const c = connect(port, "127.0.0.1", () => c.write([`GET ${below}/api/runs/socket HTTP/1.1`, `Host: ${hostHeader}`, `X-Forwarded-Host: ${NAME}`, "Connection: Upgrade", "Upgrade: websocket", "", ""].join("\r\n")));
         c.on("close", () => resolve());
         c.on("error", () => resolve());
         c.resume();
       });
     await upgradeAs(`evil.example:${port}`);
+    await upgradeAs(NAME, "");
     await upgradeAs(NAME);
-    assert.deepEqual(h.got.map((g) => `${g.door} ${g.host}`), ["pages " + NAME, `artifacts ${NAME}:8443`, `pages 127.0.0.1:${port}`, `upgrade ${NAME}`], "a rebound page reaches neither door's handler, nor the socket's");
+    assert.deepEqual(h.got.map((g) => `${g.door} ${g.host}`), ["pages " + NAME, `artifacts ${NAME}:8443`, `pages 127.0.0.1:${port}`, `upgrade ${NAME}`], "a rebound page, or the tailnet's name without the mark, reaches neither door's handler, nor the socket's");
     // Another setting saved: nothing asked.
     ts.calls.length = 0;
     await share.apply({ serve: true, port: 0 });
@@ -383,7 +398,8 @@ describe("Filament on the tailnet: one switch", () => {
     if (b === a || b === a + 1 || b + 1 === a) b = await freePair();
     ts.calls.length = 0;
     await share.apply({ serve: true, port: b });
-    assert.deepEqual(ts.said(), ["status --json", "serve status --json", "serve --https=443 off", "serve --https=8443 off", "serve status --json", `serve --bg --yes --https=443 http://127.0.0.1:${b}`, `serve --bg --yes --https=8443 http://127.0.0.1:${b + 1}`]);
+    const m = markOf(ts);
+    assert.deepEqual(ts.said(), ["status --json", "serve status --json", "serve --https=443 off", "serve --https=8443 off", "serve status --json", `serve --bg --yes --https=443 http://127.0.0.1:${b}${m}`, `serve --bg --yes --https=8443 http://127.0.0.1:${b + 1}${m}`]);
     assert.equal(share.state().error, null);
     await share.apply({ serve: false, port: b });
     await share.close();
@@ -439,12 +455,27 @@ describe("what it served before, and a start before Tailscale", () => {
     const ts = fakeTailscale({ cfg: structuredClone(was) });
     const memo = memoOf({ pages: "http://127.0.0.1:41000", art: "http://127.0.0.1:41001" });
     const share = shareOf({ ...heard(), cli: () => "ts", exec: ts.exec, memo });
-    await share.apply({ serve: true, port: 0 });
+    await share.apply({ serve: true, port: await freePair() });
     const { port, artPort } = /** @type {{ port: number, artPort: number }} */ (share.state().listening);
     assert.equal(share.state().error, null);
-    assert.deepEqual(ts.said().slice(2), ["serve --https=443 off", `serve --bg --yes --https=443 http://127.0.0.1:${port}`, "serve --https=8443 off", `serve --bg --yes --https=8443 http://127.0.0.1:${artPort}`]);
-    assert.deepEqual(memo.v, { pages: `http://127.0.0.1:${port}`, art: `http://127.0.0.1:${artPort}` }, "what it serves now, kept");
+    const m = markOf(ts);
+    assert.deepEqual(ts.said().slice(2), ["serve --https=443 off", `serve --bg --yes --https=443 http://127.0.0.1:${port}${m}`, "serve --https=8443 off", `serve --bg --yes --https=8443 http://127.0.0.1:${artPort}${m}`]);
+    assert.deepEqual(memo.v, { pages: `http://127.0.0.1:${port}${m}`, art: `http://127.0.0.1:${artPort}${m}` }, "what it serves now, kept, its mark with it");
     await share.close();
+    // The next start serves below the same mark: Tailscale is asked to serve nothing anew, so a Funnel you turned on stays.
+    ts.calls.length = 0;
+    const next = shareOf({ ...heard(), cli: () => "ts", exec: ts.exec, memo });
+    await next.apply({ serve: true, port });
+    assert.deepEqual([next.state().error, ts.said()], [null, ["status --json", "serve status --json"]]);
+    await next.close();
+    // A build that served no mark, at the door's own port, its memo lost: Filament's own still, served over below one.
+    const plain = fakeTailscale({ cfg: { TCP: { 443: { HTTPS: true }, 8443: { HTTPS: true } }, Web: { [`${NAME}:443`]: proxy(`http://127.0.0.1:${port}`), [`${NAME}:8443`]: proxy(`http://127.0.0.1:${artPort}`) } } });
+    const upgraded = shareOf({ ...heard(), cli: () => "ts", exec: plain.exec, memo: memoOf() });
+    await upgraded.apply({ serve: true, port });
+    assert.equal(upgraded.state().error, null);
+    assert.match(markOf(plain), /^\/[0-9a-f]{32}$/);
+    assert.deepEqual(plain.said().slice(2), ["serve --https=443 off", `serve --bg --yes --https=443 http://127.0.0.1:${port}${markOf(plain)}`, "serve --https=8443 off", `serve --bg --yes --https=8443 http://127.0.0.1:${artPort}${markOf(plain)}`]);
+    await upgraded.close();
     // The same at 443 with no memo of it: the person's.
     const other = fakeTailscale({ cfg: structuredClone(was) });
     const theirs = shareOf({ ...heard(), cli: () => "ts", exec: other.exec, memo: memoOf({ pages: "http://127.0.0.1:41999" }) });
@@ -516,7 +547,7 @@ describe("what it served before, and a start before Tailscale", () => {
     const again = share.retry();
     await new Promise((r) => setImmediate(r));
     assert.deepEqual([tailnetDoor()?.port, share.state().address], [port, `https://${NAME}`], "open while it is asked");
-    assert.deepEqual(await get(port, { host: NAME }), { status: 200, body: "pages" });
+    assert.deepEqual(await get(port, { host: NAME }, `${markOf(ts)}/`), { status: 200, body: "pages" });
     ts.gate = null;
     go();
     await again;
@@ -657,36 +688,64 @@ describe("trust taken back", () => {
 
 describe("the guards, at the tailnet's door", () => {
   // (fails before: yes — the tailnet's name was refused everywhere, and no caller was let in by their tailnet login)
-  test("its name passes at its door alone; your own login, where it is trusted and tailscale serve says it, drives this Filament — another's, a Funnel's, or the same header elsewhere, nothing", async () => {
+  test("its name passes at its door alone; your own login, where it is trusted and tailscale serve says it, drives this Filament — another's, a Funnel's, the same header elsewhere, or a program here at the door's port, nothing", async () => {
     const ts = fakeTailscale();
-    const share = shareOf({ ...heard(), cli: () => "ts", exec: ts.exec });
-    await share.apply({ serve: true, port: 0 });
-    const door = /** @type {number} */ (share.state().listening?.port);
     const served = { "x-forwarded-for": "100.101.102.103", "x-forwarded-proto": "https", "x-forwarded-host": NAME };
     const trusting = { host: "127.0.0.1", tailscale: { serve: true, trustOwnLogin: true } };
+    /** What the handler behind a door reads of a request, while it is open, as a route reads it. @type {(req: any) => any} */
+    let look = () => null;
+    /** What each request the doors handed on was read as. @type {any[]} */
+    const caught = [];
+    const keep = (/** @type {string} */ door) => (/** @type {any} */ req, /** @type {any} */ res) => {
+      caught.push(look(req));
+      res.end(door);
+    };
+    const share = shareOf({ handler: keep("pages"), artifacts: keep("artifacts"), upgrade: (/** @type {any} */ _r, /** @type {any} */ s) => s.destroy(), cli: () => "ts", exec: ts.exec });
+    await share.apply({ serve: true, port: 0 });
+    const door = /** @type {number} */ (share.state().listening?.port);
+    const artDoor = /** @type {number} */ (share.state().listening?.artPort);
+    const m = markOf(ts);
+    /**
+     * Who a request through a door is (`whoIs`, trusted), or what `read` reads of it; "refused" where no handler got it.
+     * @param {number} port @param {Record<string, string>} headers @param {string} [path] @param {(req: any) => any} [read]
+     */
+    const through = async (port, headers, path = `${m}/`, read = (req) => whoIs(req, trusting)) => {
+      const n = caught.length;
+      look = read;
+      await get(port, headers, path);
+      return caught.length > n ? caught.at(-1) : "refused";
+    };
     // The Host.
     assert.equal(hostAllowed(at({ host: NAME }, door), trusting), true);
     assert.equal(hostAllowed(at({ host: NAME }, door + 7), trusting), false, "at another port of this machine");
     assert.equal(hostAllowed(at({ host: NAME }, door, "192.168.1.9"), trusting), false, "from another machine");
     assert.equal(hostAllowed(at({ host: "studio.tail5e6f7a.ts.net" }, door), trusting), false, "another machine's name");
     assert.equal(onTailnetDoor(at({}, door)), true);
-    // Who calls.
-    const mine = at({ host: NAME, ...served, "tailscale-user-login": OWNER }, door);
-    assert.deepEqual(whoIs(mine, trusting), { kind: "tailnet", login: OWNER });
-    assert.equal(drives(whoIs(mine, trusting)), true);
-    assert.equal(readsEverySession(mine, trusting), true);
-    const artDoor = /** @type {number} */ (share.state().listening?.artPort);
-    assert.deepEqual(whoIs(at({ ...served, "tailscale-user-login": OWNER }, artDoor), trusting), { kind: "tailnet", login: OWNER }, "at the artifacts' door too");
-    assert.equal(whoIs(mine, { ...trusting, tailscale: { serve: true, trustOwnLogin: false } }), null, "not trusted: it pairs");
-    assert.equal(whoIs(at({ ...served, "tailscale-user-login": "friend@example.com" }, door), trusting), null, "another person's login");
-    assert.equal(whoIs(at({ ...served }, door), trusting), null, "a tagged machine: no login");
-    assert.equal(whoIs(at({ ...served, "tailscale-user-login": OWNER, "tailscale-funnel-request": "?1" }, door), trusting), null, "from the internet");
+    // Who calls: what tailscale serve handed on, below its mark.
+    const mine = { host: NAME, ...served, "tailscale-user-login": OWNER };
+    const read = await through(door, mine, `${m}/`, (req) => ({
+      url: req.url,
+      who: whoIs(req, trusting),
+      drives: drives(whoIs(req, trusting)),
+      reads: readsEverySession(req, trusting),
+      untrusted: whoIs(req, { ...trusting, tailscale: { serve: true, trustOwnLogin: false } }),
+    }));
+    assert.deepEqual(read, { url: "/", who: { kind: "tailnet", login: OWNER }, drives: true, reads: true, untrusted: null }, "the door took its mark off; not trusted, it pairs");
+    assert.deepEqual(await through(artDoor, { ...mine, host: `${NAME}:8443` }), { kind: "tailnet", login: OWNER }, "at the artifacts' door too");
+    assert.equal(await through(door, { ...mine, "tailscale-user-login": "friend@example.com" }), null, "another person's login");
+    assert.equal(await through(door, { host: NAME, ...served }), null, "a tagged machine: no login");
+    assert.equal(await through(door, { ...mine, "tailscale-funnel-request": "?1" }), null, "from the internet");
     assert.equal(whoIs(at({ ...served, "tailscale-user-login": OWNER }, door + 7), trusting), null, "the header at another port: another proxy's");
     assert.equal(whoIs(at({ ...served, "tailscale-user-login": OWNER }, door, "192.168.1.9"), trusting), null);
+    // (fails before: yes — x42: a program here that reached the door's port with the header was your login)
+    assert.equal(await through(door, mine, "/"), "refused", "the tailnet's name without the mark: refused at the door");
+    assert.equal(await through(door, mine, `/${"0".repeat(32)}/`), "refused", "another mark");
+    assert.equal(await through(artDoor, { ...mine, host: `${NAME}:8443` }, "/"), "refused", "at the artifacts' door too");
+    assert.equal(await through(door, { ...mine, host: `127.0.0.1:${door}` }, "/"), null, "by loopback's name: the header is no one's");
+    assert.equal(whoIs(at(mine, door), trusting), null, "a request no door handed on");
     // Off: none of it.
     await share.apply({ serve: false, port: 0 });
     assert.equal(hostAllowed(at({ host: NAME }, door), trusting), false);
-    assert.equal(whoIs(mine, trusting), null);
     await share.close();
   });
 });
@@ -700,14 +759,15 @@ describe("Filament served on the tailnet, end to end", () => {
       const look = await (await fetch(`${shim.url}/api/remote/tailscale`)).json();
       assert.deepEqual([look.on, look.address, look.artifacts, look.error], [true, `https://${NAME}`, `https://${NAME}:8443`, null]);
       const door = look.listening.port;
+      const m = markOf(ts);
       const served = { host: NAME, "x-forwarded-for": "100.101.102.103", "x-forwarded-proto": "https", "x-forwarded-host": NAME, "tailscale-user-login": OWNER };
-      /** @param {string} path @param {Record<string, string>} [more] @param {string} [method] */
-      const viaTailnet = (path, more = {}, method = "GET") =>
+      /** What tailscale serve hands on, below its mark; `below` "" for a program here that never read it. @param {string} path @param {Record<string, string>} [more] @param {string} [method] @param {string} [below] */
+      const viaTailnet = (path, more = {}, method = "GET", below = m) =>
         new Promise((resolve, reject) => {
-          const r = http.request({ host: "127.0.0.1", port: door, path, method, headers: { ...served, ...more }, agent: false }, (res) => {
+          const r = http.request({ host: "127.0.0.1", port: door, path: `${below}${path}`, method, headers: { ...served, ...more }, agent: false }, (res) => {
             let body = "";
             res.on("data", (c) => (body += c));
-            res.on("end", () => resolve({ status: res.statusCode, body: body ? JSON.parse(body) : null }));
+            res.on("end", () => resolve({ status: res.statusCode, body: body.startsWith("{") ? JSON.parse(body) : null }));
           });
           r.on("error", reject);
           r.end();
@@ -726,6 +786,10 @@ describe("Filament served on the tailnet, end to end", () => {
       assert.equal(state.body.viewer, "remote");
       assert.deepEqual(state.body.artifacts, { page: `https://${NAME}:8443/{name}/`, still: `https://${NAME}:8443/_still/{name}/` });
       assert.deepEqual(/** @type {any} */ (await viaTailnet("/api/remote/me")).body?.who, "tailnet");
+      // (fails before: yes — x42) A program here at the door's port, with the header and no mark: no one's.
+      assert.equal(/** @type {any} */ (await viaTailnet("/api/state", {}, "GET", "")).status, 421, "the tailnet's name without the mark");
+      const forged = /** @type {any} */ (await viaTailnet("/api/state", { host: `127.0.0.1:${door}` }, "GET", ""));
+      assert.ok(forged.status === 401 || forged.status === 403, `by loopback's name: ${forged.status}`);
       // A write from the page on the tailnet: its Origin is the name it reached.
       const wrote = /** @type {any} */ (await viaTailnet("/api/remote/tailscale/retry", { origin: `https://${NAME}`, "content-type": "application/json" }, "POST"));
       assert.equal(wrote.status, 200);
@@ -738,7 +802,7 @@ describe("Filament served on the tailnet, end to end", () => {
       /** @param {string} path @returns {Promise<{ status: number, location: string }>} */
       const viaArt = (path) =>
         new Promise((resolve, reject) => {
-          const r = http.get({ host: "127.0.0.1", port: art, path, headers: { ...served, host: `${NAME}:8443`, "x-forwarded-host": `${NAME}:8443` }, agent: false }, (res) => {
+          const r = http.get({ host: "127.0.0.1", port: art, path: `${m}${path}`, headers: { ...served, host: `${NAME}:8443`, "x-forwarded-host": `${NAME}:8443` }, agent: false }, (res) => {
             res.resume();
             res.on("end", () => resolve({ status: Number(res.statusCode), location: String(res.headers.location || "") }));
           });
@@ -777,7 +841,7 @@ describe("Filament served on the tailnet, end to end", () => {
       /** @param {string} path @returns {Promise<{ status: number, cookie: string[] | undefined, body: any }>} */
       const viaTailnet = (path) =>
         new Promise((resolve, reject) => {
-          const r = http.get({ host: "127.0.0.1", port: door, path, headers: served, agent: false }, (res) => {
+          const r = http.get({ host: "127.0.0.1", port: door, path: `${markOf(ts)}${path}`, headers: served, agent: false }, (res) => {
             let body = "";
             res.on("data", (c) => (body += c));
             res.on("end", () => resolve({ status: Number(res.statusCode), cookie: res.headers["set-cookie"], body: body.startsWith("{") ? JSON.parse(body) : null }));

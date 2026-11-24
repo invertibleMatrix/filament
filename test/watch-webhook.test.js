@@ -852,8 +852,13 @@ function cut(port, path, taken) {
 
 const TAILNET = "desktop-1.tail5e6f7a.ts.net";
 /** Tailscale's command line, as a stand-in: its status, and a serve config it keeps as the real one does. */
+/** The serve config the last stand-in keeps. @type {any} */
+let served = {};
+/** A path at the tailnet's door as tailscale serve hands it on: below the mark it serves the door at. @param {string} path */
+const belowMark = (path) => `${new URL(served.Web[`${TAILNET}:443`].Handlers["/"].Proxy).pathname}${path}`;
 const tailscale = () => {
   const cfg = /** @type {any} */ ({});
+  served = cfg;
   const status = {
     BackendState: "Running",
     Self: { DNSName: "DESKTOP-1.tail5e6f7a.ts.net.", HostName: "desktop-1", UserID: 111, TailscaleIPs: ["100.127.5.0"] },
@@ -1024,15 +1029,15 @@ describe("through a real Filament, served on the network and on a tailnet", () =
     const w = await watcher({ title: "Reach" });
     const viaLan = await send(lan, w.path, { secure: true, body: "from the network" });
     assert.deepEqual([viaLan.status, viaLan.json], [404, { error: "a watcher's address answers on the machine Filament runs on and at its tailnet's door, never on the network's listener" }]);
-    const funnel = await send(door, w.path, { headers: { ...SERVED, "tailscale-funnel-request": "?1" }, body: "from the internet" });
+    const funnel = await send(door, belowMark(w.path), { headers: { ...SERVED, "tailscale-funnel-request": "?1" }, body: "from the internet" });
     assert.deepEqual([funnel.status, funnel.json], [404, { error: "not found" }]);
     assert.equal((await send(shim.port, w.path, { headers: { "tailscale-funnel-request": "?1" }, body: "x" })).status, 404, "at any door");
     assert.equal(told(w.id), 0);
-    const viaTailnet = await send(door, w.path, { headers: { ...SERVED, "content-type": "text/plain" }, body: "from the tailnet" });
+    const viaTailnet = await send(door, belowMark(w.path), { headers: { ...SERVED, "content-type": "text/plain" }, body: "from the tailnet" });
     assert.deepEqual([viaTailnet.status, viaTailnet.text], [202, '{"ok":true}']);
     const row = await until(() => spaces.get(project).needs.find((/** @type {any} */ n) => n.routine?.id === w.id && n.routine.told), "the tailnet's post told");
     assert.equal(row.text, "“Reach” heard: POST text/plain: from the tailnet");
-    assert.equal((await send(door, w.path, { headers: { ...SERVED, origin: `https://${TAILNET}` }, body: "x" })).status, 403, "a page on the tailnet too");
+    assert.equal((await send(door, belowMark(w.path), { headers: { ...SERVED, origin: `https://${TAILNET}` }, body: "x" })).status, 403, "a page on the tailnet too");
     assert.equal(told(w.id), 1);
   });
 

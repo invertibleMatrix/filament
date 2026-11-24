@@ -8,7 +8,7 @@ import { credentialOf, isHouseCall } from "../services/house.js";
 import { modelsLentTo } from "../services/devices.js";
 import { lanNames } from "../services/lan-tls.js";
 import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerAt } from "../services/owner.js";
-import { tailnetDoor } from "../services/tailscale.js";
+import { servedThrough, tailnetDoor } from "../services/tailscale.js";
 
 /** Constant-time string compare; both sides coerced to strings, a length mismatch answers false. */
 export const safeEq = (a, b) => {
@@ -306,12 +306,13 @@ const adminTokenIn = (req, server) => {
  * The login a request's caller is signed in to the tailnet as, where it is this machine's own and
  * server.tailscale.trustOwnLogin trusts that; "" else. Read at the tailnet's door alone, from Tailscale-User-Login —
  * which tailscale serve sets itself, clearing any a caller sent, and sets none for a tagged machine or a request from the
- * internet (Funnel, which it marks so).
+ * internet (Funnel, which it marks so) —, on a request tailscale serve handed on (`servedThrough`: its path carried the
+ * door's mark): a program here that reaches the door's port and says the header is no one's.
  * @param {import("node:http").IncomingMessage} req @param {any} server  the `server` config section
  */
 const ownTailnetLogin = (req, server) => {
   const d = tailnetDoor();
-  if (server?.tailscale?.trustOwnLogin !== true || !d?.login || !onTailnetDoor(req)) return "";
+  if (server?.tailscale?.trustOwnLogin !== true || !d?.login || !onTailnetDoor(req) || !servedThrough(req)) return "";
   const h = lowerHeaders(req.headers);
   return !h["tailscale-funnel-request"] && String(h["tailscale-user-login"] || "") === d.login ? d.login : "";
 };

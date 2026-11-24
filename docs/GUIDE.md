@@ -2203,8 +2203,10 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   **Settings › Remote access**: a device paired from a code made without the key (an older Filament made one for
   `filament pair` while the app ran), and the agents' device it mints, answer nothing while the app runs — pair it
   again from the app. Nor does the admin token while the app runs: a program here can read it from the config, or set
-  it there. Nor does a tailnet login **Trust my own tailnet login** lets in: a program here can reach the tailnet's door
-  over this computer's own address and say the login itself. A browser on your other machine reads and chats over the
+  it there. Nor does a tailnet login **Trust my own tailnet login** lets in: any program on your other machines signed
+  in to your tailnet carries it. Filament believes that login only as `tailscale serve` hands it on, below a path its
+  serve config alone holds (kept in Filament's data folder too): a program here that reaches the tailnet's door at this
+  computer's own address and says the login itself is no one's there. A browser on your other machine reads and chats over the
   tailnet without pairing; to answer from it, pair it once: make a code in the app's Settings › Remote access and open its
   tailnet link there.
   Where no app started this Filament — a server, Filament started on its own (`filament start`), one the app attached

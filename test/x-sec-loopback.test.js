@@ -4,7 +4,7 @@
 // commands here as the person. So while the desktop app holds its press key (guards.js `pressRefusal`), a pairing's code
 // (POST /remote/pair) and another machine's agents' grants (PATCH /remote/devices/:id with `grants`) come from the app's
 // window alone, with the key: this computer's caller without it is refused in words, and so is a tailnet login Filament
-// trusts — any program on the person's machines carries it, and one here reaches the tailnet's door over loopback —, and
+// trusts — any program on the person's other machines carries it through tailscale serve —, and
 // the admin token, which a program here reads from the config or sets there. A paired full device — another machine's
 // app — opens the door as it did, and a Filament with no app is unchanged.
 // Through a real Filament served on a tailnet whose Tailscale is a stand-in.
@@ -30,13 +30,15 @@ const NAME = "desktop-1.tail5e6f7a.ts.net";
 const OWNER = "owner@example.com";
 const REFUSED = /while the Filament app runs, a pairing's code, and what another machine's agents may do here, come from its window/;
 
+/** The serve config the stand-in keeps, as the real one does. @type {any} */
+const cfg = {};
+/** The path its serve hands Filament's pages on below: the target's path, Filament's mark. */
+const markServed = () => new URL(cfg.Web[`${NAME}:443`].Handlers["/"].Proxy).pathname;
 /**
  * Tailscale's command line, a stand-in signed in as OWNER: its serve serves what it is asked to, and keeps it as the
  * real one does. @type {import("../src/services/tailscale.js").Exec}
  */
 const tailscale = (() => {
-  /** @type {any} */
-  const cfg = {};
   const ok = (/** @type {string} */ out) => ({ code: 0, out, err: "", timedOut: false });
   const status = {
     BackendState: "Running",
@@ -103,12 +105,12 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
   /** @param {string} path @param {{ method?: string, headers?: Record<string, string>, body?: any }} [o] */
   const call = (path, o) => ask(shim.port, path, o);
   /**
-   * A request at the tailnet's door as tailscale serve hands one on from a machine signed in as OWNER — and as any
-   * program here that connects to that port and says so itself.
+   * A request at the tailnet's door as tailscale serve hands one on from a machine signed in as OWNER, below the mark
+   * it serves the door at (a program here that never read tailscale serve's config is no one there: x42).
    * @param {string} path @param {{ method?: string, headers?: Record<string, string>, body?: any }} [o]
    */
   const viaTailnet = (path, { method = "GET", headers = {}, body } = {}) =>
-    ask(door, path, { method, body, headers: { host: NAME, "x-forwarded-for": "100.101.102.103", "x-forwarded-proto": "https", "x-forwarded-host": NAME, "tailscale-user-login": OWNER, ...(method === "GET" ? {} : { origin: `https://${NAME}` }), ...headers } });
+    ask(door, `${markServed()}${path}`, { method, body, headers: { host: NAME, "x-forwarded-for": "100.101.102.103", "x-forwarded-proto": "https", "x-forwarded-host": NAME, "tailscale-user-login": OWNER, ...(method === "GET" ? {} : { origin: `https://${NAME}` }), ...headers } });
   /** The agents' device's grants, as this machine lists them. */
   const grants = async () => {
     const r = await call("/api/remote/devices", { headers: PRESS });
