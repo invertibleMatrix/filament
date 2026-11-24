@@ -216,9 +216,11 @@ test("onlyGone: every error a gone folder the basis counted; none at all; never 
 
 test("the routes' wiring: the gone places the basis took are the ones the keep reads", () => {
   const memory = readFileSync(new URL("../src/http/admin/memory.js", import.meta.url), "utf8");
-  assert.match(memory, /const \{ basis, gone \} = kept \? turnBasis\(t\.rounds, alone\) : \{ basis: "", gone: \[\] \};/);
+  assert.match(memory, /const \{ basis, gone \} = kept \? await turnBasis\(t\.rounds, alone\) : \{ basis: "", gone: \[\] \};/);
   assert.match(memory, /const keep = \(\/\*\* @type \{any\} \*\/ o\) => onlyGone\(o\.errors, gone\);/);
+  // Each place looked at off the server's thread (x31): gone where it said so; one that did not answer in the basis apart.
+  assert.match(memory, /const gone = places\.filter\(\(_, i\) => there\[i\] === false\);/);
   const runs = readFileSync(new URL("../src/http/admin/runs.js", import.meta.url), "utf8");
-  assert.match(runs, /const goneList = places\.filter\(\(p\) => !existsSync\(p\)\);\n\s+const gone = goneList\.join\("\|"\);/);
+  assert.match(runs, /const there = await Promise\.all\(places\.map\(\(p\) => folderThere\(p\)\)\);\n\s+const goneList = places\.filter\(\(_, i\) => there\[i\] === false\);\n\s+const gone = \[goneList\.join\("\|"\), \.\.\.places\.filter\(\(_, i\) => there\[i\] === null\)\.map\(\(p\) => `\?\$\{p\}`\)\]\.join\("\|"\);/);
   assert.match(runs, /const keep = \(\/\*\* @type \{any\} \*\/ said\) => onlyGone\(\(said\.rounds \|\| \[\]\)\.filter\(\(\/\*\* @type \{any\} \*\/ x\) => x\.error\), goneList\) && onlyGone\(said\.whole\?\.errors \|\| \[\], goneList\);/);
 });

@@ -5,16 +5,19 @@
 // round that named it to after the last — never what someone else changed in the place meanwhile, which only shows
 // as a mark on a file of its own, or under what changed while one of its commands ran. Everything here is read-only
 // git on each place: names, counts and, only when asked, the patch — clipped, with the cut said.
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fewAtOnce } from "../../core/at-once.js";
 import { firstLine, git, repoOf, snapshotTree } from "./snapshot.js";
+import { folderThere } from "./folder-there.js";
 
 /** git's well-known empty tree: the base for a snapshot that has no parent (a repository that had no HEAD yet). */
 export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const MAX_PATCH_LINES = 2000;
 /** What a place's read says when its folder is not there. */
 export const FOLDER_GONE = "the folder is gone";
+/** What a place whose folder does not answer says: looked at off the server's thread, a moment at most (`folderThere`). */
+export const FOLDER_UNANSWERED = "the folder does not answer: its drive or share may be offline";
 /** The files one git call names at most: a long list goes in parts, under Windows' command-line limit. */
 const PATHS_PER_CALL = 100;
 /** git's status letters in words. */
@@ -414,8 +417,9 @@ export async function ownChangesOf(rounds, { patch = false, path = null, place: 
   for (const [place, rows] of byPlace) {
     out.places.push({ place, start: rows[0].base });
     if (only && place !== only) continue;
-    if (!existsSync(place)) {
-      out.errors.push({ place, error: FOLDER_GONE });
+    const there = await folderThere(place);
+    if (there !== true) {
+      out.errors.push({ place, error: there === false ? FOLDER_GONE : FOLDER_UNANSWERED });
       continue;
     }
     const read = await placeChanges(place, rows, { patch, path, maxPatchLines, alone: !!alone?.has(place), whole });
@@ -777,7 +781,8 @@ export function inPlaces(places, root, path) {
  */
 export async function roundFilesOf(r, { patch = false, path = null, maxPatchLines = MAX_PATCH_LINES } = {}) {
   if (!r.place || !r.after) return { files: [], error: null };
-  if (!existsSync(r.place)) return { files: [], error: FOLDER_GONE };
+  const there = await folderThere(r.place);
+  if (there !== true) return { files: [], error: there === false ? FOLDER_GONE : FOLDER_UNANSWERED };
   const paths = path ? r.own.filter((p) => p === path) : r.own;
   if (!paths.length) return { files: [], error: null };
   const d = await diffFiles(r.place, r.before, r.after, { paths });

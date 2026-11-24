@@ -12,6 +12,9 @@ import { EMPTY_TREE, PATHSPEC_MAGIC, STATUS_WORDS, diffFiles, diffPatch, folders
 import { fewAtOnce } from "../../core/at-once.js";
 import { commitTimes, filesOf } from "../../core/changes-view.js";
 import { resolveInside } from "../tools/fs-fence.js";
+import { FOLDER_STAT_MS, folderThere } from "./folder-there.js";
+
+export { FOLDER_STAT_MS, FOLDER_STATS_HUNG, SHARE_ANSWERED_MS, folderHung, folderThere, shareOf } from "./folder-there.js";
 
 export const MAX_DIFF_LINES = 2000;
 const MAX_LOG = 200;
@@ -34,70 +37,6 @@ export const NO_LOCKS = Object.freeze(["--no-optional-locks"]);
 export const BASE_NAMES = Object.freeze(["main", "master", "trunk", "develop"]);
 /** A whole place read's fields before git has answered them (`placeInfo`). */
 const WHOLE_UNREAD = Object.freeze({ base: null, onBase: false, ahead: null, behind: null, uncommitted: null });
-
-/**
- * How long a folder's stat is waited for (`folderThere`). A folder on a network mount gone offline — a mapped drive, an
- * SMB or NFS share — answers none for as long as its system waits on the share, a minute and more: asked on the
- * server's thread, as a check of whether it is there was, it held every request and stream that long, and a desk asks
- * its chats' folders' remotes every minute.
- */
-export const FOLDER_STAT_MS = 2000;
-/**
- * How many stats that have not answered may be under way at once. Each holds one of the few threads Node's file calls
- * share until its system gives up on the share: past this many, a folder is not asked, and is unread, so that every
- * other file read of the server's goes on.
- */
-export const FOLDER_STATS_HUNG = 2;
-/**
- * The stats under way, by folder, so a folder that does not answer is asked once however often it is read; `late`: it
- * is past `FOLDER_STAT_MS`. @type {Map<string, { answer: Promise<boolean>, late: boolean }>}
- */
-const statting = new Map();
-/** How many stats under way are late. */
-let hung = 0;
-
-/**
- * Whether a folder is there, asked off the server's thread and waited for `ms` at most: true, false (gone, or not
- * readable), or null where its stat has not answered by then — it goes on, and the folder read again meanwhile is null
- * at once. `statOf`: the stat (the tests').
- * @param {string} folder @param {{ ms?: number, statOf?: (path: string) => Promise<unknown> }} [o]
- * @returns {Promise<boolean | null>}
- */
-export async function folderThere(folder, { ms = FOLDER_STAT_MS, statOf = stat } = {}) {
-  let asking = statting.get(folder);
-  if (asking?.late) return null;
-  if (!asking) {
-    if (hung >= FOLDER_STATS_HUNG) return null;
-    const answer = Promise.resolve()
-      .then(() => statOf(folder))
-      .then(
-        () => true,
-        () => false,
-      );
-    const it = { answer, late: false };
-    asking = it;
-    statting.set(folder, it);
-    const timer = setTimeout(() => {
-      it.late = true;
-      hung++;
-    }, ms);
-    timer.unref?.();
-    void answer.finally(() => {
-      clearTimeout(timer);
-      if (it.late) hung--;
-      statting.delete(folder);
-    });
-  }
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
-  /** @type {Promise<null>} */
-  const waited = new Promise((r) => (timer = setTimeout(() => r(null), ms)));
-  try {
-    return await Promise.race([asking.answer, waited]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * @typedef {object} StatusFile

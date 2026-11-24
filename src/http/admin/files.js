@@ -12,10 +12,11 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { agentsDevice, isLocalCaller } from "../guards.js";
 import { guard as guardWith } from "./guard.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolder, allowedFolderSoon } from "./folder.js";
 import { folderDocument } from "./exec.js";
 import { listTree, readPreview, searchNames, findMentions, listDirs } from "../../adapters/tools/workspace.js";
 import { folderVerdict, networkShare } from "../../app/agent/turn.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
 import { redactorOf } from "../../core/redact.js";
 
 // ASCII only, no em dashes: PowerShell 5.1 reads a BOM-less command string through the console codepage, and a
@@ -108,9 +109,9 @@ const elsewhere = (r, words) => {
  */
 export function fileRoutes(a) {
   const { config } = a;
-  /** The folder a row works in, or the refusal already sent. @param {any} r */
-  const rootOf = (r) => {
-    const f = allowedFolder(config.get(), r.url.searchParams.get("cwd"));
+  /** The folder a row works in, looked at off the server's thread first, or the refusal already sent. @param {any} r */
+  const rootOf = async (r) => {
+    const f = await allowedFolderSoon(config.get(), r.url.searchParams.get("cwd"));
     if (!f.ok) {
       sendJson(r.res, f.status, { error: f.error });
       return null;
@@ -122,7 +123,7 @@ export function fileRoutes(a) {
       "GET",
       "/files/tree",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const q = r.url.searchParams;
         return sendJson(r.res, 200, { cwd: root, ...(await listTree(root, { path: q.get("path") || "", depth: Number(q.get("depth")) || 1 })) });
@@ -136,7 +137,7 @@ export function fileRoutes(a) {
       "GET",
       "/files/read",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const path = r.url.searchParams.get("path") || "";
         if (!path) return sendJson(r.res, 400, { error: "path is required" });
@@ -156,7 +157,7 @@ export function fileRoutes(a) {
       "GET",
       "/files/search",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const q = r.url.searchParams;
         return sendJson(r.res, 200, { cwd: root, q: q.get("q") || "", ...(await searchNames(root, q.get("q") || "", { limit: Number(q.get("limit")) || 50 })) });
@@ -167,7 +168,7 @@ export function fileRoutes(a) {
       "GET",
       "/files/mentions",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const q = r.url.searchParams;
         return sendJson(r.res, 200, { cwd: root, q: q.get("q") || "", ...(await findMentions(root, q.get("q") || "", { limit: Number(q.get("limit")) || 12 })) });
@@ -204,9 +205,13 @@ export function fileRoutes(a) {
         const b = await r.json();
         const paths = (Array.isArray(b?.paths) ? b.paths : []).slice(0, 64).map((p) => String(p || ""));
         const cfg = config.get();
+        // Each looked at off the server's thread first, a moment at most: a mapped drive gone offline is unknown, never
+        // asked again on the thread (folder-there.js `folderThere`).
+        const looked = await Promise.all(paths.map((p) => (networkShare(p) || !p.trim() ? null : folderThere(p.trim()))));
         return sendJson(r.res, 200, {
-          ok: paths.map((p) => {
+          ok: paths.map((p, i) => {
             if (networkShare(p)) return null;
+            if (p.trim() && looked[i] === null) return null;
             const v = folderVerdict(cfg, p);
             return v.ok ? true : v.why === "missing" || v.why === "empty" ? false : null;
           }),

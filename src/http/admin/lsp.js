@@ -9,7 +9,7 @@
 import { homedir } from "node:os";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolderSoon } from "./folder.js";
 import { projectIdOf } from "../../core/project-id.js";
 import { projectFolderOf } from "../../services/project-folder.js";
 import { installed, languageServers } from "../../adapters/lsp/servers.js";
@@ -48,7 +48,7 @@ export function lspRoutes(a) {
       guard(async (r) => {
         if (!sessions || !projectSymbols) return sendJson(r.res, 503, { error: "no archive: the chats' settings are not wired" });
         const q = r.url.searchParams;
-        const f = allowedFolder(config.get(), q.get("cwd"));
+        const f = await allowedFolderSoon(config.get(), q.get("cwd"));
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const chain = q.get("chain") || "";
         const head = chain ? memory?.archive?.chainHead(chain) : null;

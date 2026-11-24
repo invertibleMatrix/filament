@@ -2,12 +2,13 @@
 // The admin API's runs area: the run log read back — the list, one run's meta, and its events as JSON or as a live
 // SSE stream that replays from `since` and then follows. The viewer's whole backend is these rows.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { drainedOrGone, writeSse } from "../events.js";
 import { guard } from "./guard.js";
 import { WALK_VERSION, inPlaces, onlyGone, ownChangesOf, roundFilesOf, totalsOf, walkOf } from "../../adapters/git/changes.js";
 import { placeOf } from "../../adapters/git/snapshot.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
 import { eventJson, followRunEvents, typedByDeveloper } from "../../services/runs.js";
 import { wordsFrames } from "../../services/live-words.js";
 import { tabOf, takeOf } from "../../services/session-writers.js";
@@ -189,8 +190,11 @@ export function runRoutes(a) {
         // The places only the run's chat works in, where what its commands changed is its own (GW-D57).
         const chain = page.run?.meta?.chain;
         const alone = !one && chain && memory?.placesAlone ? memory.placesAlone(String(chain), rows.map((x) => x.place)) : null;
-        const goneList = places.filter((p) => !existsSync(p));
-        const gone = goneList.join("|");
+        // Each place looked at off the server's thread, a moment at most: one on a share that does not answer is in the
+        // basis apart, so an answer read while it did not is not served once it does.
+        const there = await Promise.all(places.map((p) => folderThere(p)));
+        const goneList = places.filter((_, i) => there[i] === false);
+        const gone = [goneList.join("|"), ...places.filter((_, i) => there[i] === null).map((p) => `?${p}`)].join("|");
         // One round's answer — an edit card's — rests on that round's own rows: a snapshot is a commit, so the rounds
         // that land after it leave it as it was, and it is kept apart from the run's whole change, which follows them
         // (the slowness of 11-02: each round that landed threw every card's answer away, each asked of git again).

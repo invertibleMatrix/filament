@@ -8,7 +8,9 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { FOLDER_STATS_HUNG, remoteKeys, remoteRead } from "../src/adapters/git/inspect.js";
+import { FOLDER_STATS_HUNG, SHARE_ANSWERED_MS, folderHung, folderThere, remoteKeys, remoteRead, shareOf } from "../src/adapters/git/inspect.js";
+import { FOLDER_UNANSWERED, ownChangesOf } from "../src/adapters/git/changes.js";
+import { allowedFolder, allowedFolderSoon } from "../src/http/admin/folder.js";
 import { DESK, PAGES } from "../src/http/admin/remote.js";
 import { REMOTES_WAIT_MS } from "../src/http/admin/memory.js";
 import { CHATS_MS, createWatch, deskFlagsOf } from "../desktop/lib/watch.js";
@@ -179,37 +181,122 @@ describe("remoteKeys: each folder's remote's key, kept a while", () => {
 
   // (fails before: yes — the review of s1c: a folder on a mount gone offline was looked for on the server's thread, which
   // waited as long as the share did, every request with it, at each desk's ask)
-  test("a folder whose stat does not answer: unread within its wait and asked once however often it is read; past a few such, none is asked; the list goes without it", async () => {
+  // (and the review of x2: past two such stats anywhere, every folder was unknown; one share's hang is that share's now)
+  // (and the review of x31: only stats already late were counted, so folders on one dead share asked at once each held
+  // a thread; a share's root is looked at first now, once for all of them)
+  test("a folder on a share that does not answer: unread within its wait, its share's root asked once however often it is read and no folder there asked; one on another share is read; past a few such shares, none is; the list goes without it", async () => {
     const share = gate();
     /** @type {string[]} */
     const asked = [];
-    /** A stat on the share: it answers once the share does, that the folder is not there. @param {string} f */
-    const offline = (f) => (asked.push(f), share.p.then(() => Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))));
+    /** A stat on a share offline: once the share answers, its root is there and the folder is not. @param {string} f */
+    const offline = (f) => (asked.push(f), share.p.then(() => (f.startsWith("//") ? Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" })) : {})));
     const there = { ms: 50, statOf: offline };
     try {
       const t0 = Date.now();
-      assert.deepEqual(await remoteRead("/offline/a", { there }), { remote: null, unread: true });
+      assert.deepEqual(await remoteRead("//nas/share/a", { there }), { remote: null, unread: true });
       assert.ok(Date.now() - t0 < 1000, `answered in ${Date.now() - t0} ms`);
       const t1 = Date.now();
-      assert.deepEqual(await remoteRead("/offline/a", { there }), { remote: null, unread: true }, "read again while its stat is under way");
+      assert.deepEqual(await remoteRead("//nas/share/a", { there }), { remote: null, unread: true }, "read again while its share's look is under way");
       assert.ok(Date.now() - t1 < 40, `at once, not after another wait: ${Date.now() - t1} ms`);
-      assert.deepEqual(asked, ["/offline/a"], "asked once");
-      // The desk's list: answered within its wait, the folder not known, kept for no while.
+      assert.deepEqual(asked, ["\\\\nas\\share"], "its share's root asked once, the folder not at all");
+      // The desk's list: answered within its wait, a folder on that share not known, nor asked — its share does not answer.
       const keys = remoteKeys({ read: (f) => remoteRead(f, { there }) });
       const t2 = Date.now();
-      assert.equal((await keys.of(["/offline/b"], { waitMs: REMOTES_WAIT_MS })).get("/offline/b"), undefined);
-      assert.ok(Date.now() - t2 < REMOTES_WAIT_MS, `the list answered in ${Date.now() - t2} ms`);
-      // As many stats as hold threads now: another folder is not asked.
-      assert.equal(FOLDER_STATS_HUNG, 2);
-      assert.deepEqual(await remoteRead("/offline/c", { there }), { remote: null, unread: true });
-      assert.deepEqual(asked, ["/offline/a", "/offline/b"], "a third is not asked while two hold threads");
+      assert.equal((await keys.of(["//nas/share/b"], { waitMs: REMOTES_WAIT_MS })).get("//nas/share/b"), undefined);
+      assert.ok(Date.now() - t2 < 40, `the list answered at once: ${Date.now() - t2} ms`);
+      assert.deepEqual(asked, ["\\\\nas\\share"], "no folder on that share is asked");
+      assert.deepEqual([folderHung("//NAS/share/b"), folderHung("//nas/other/x"), shareOf("//nas/share/a/deep"), shareOf("Z:\\work\\shop"), shareOf("/Volumes/Backup/x")], [true, false, "\\\\nas\\share", "Z:", "/Volumes/Backup"]);
+      // A path's long forms are on the share they name.
+      assert.deepEqual([shareOf("\\\\?\\UNC\\NAS\\share\\a"), shareOf("//./unc/nas/share/a"), shareOf("\\\\?\\Z:\\work")], ["\\\\nas\\share", "\\\\nas\\share", "Z:"]);
+      // (the hunt on s1c) The system's own disk is no share: one folder there that hangs — a dead junction — is its own.
+      const system = String(process.env.SystemDrive || "C:").toUpperCase();
+      assert.deepEqual([shareOf(`${system}\\work\\shop`), shareOf("/home/me/shop")], [`${system}\\work\\shop`, "/home/me/shop"]);
+      // A folder on another disk is read while it hangs.
+      assert.equal(await folderThere("//ok/share/x", { ms: 50, statOf: async () => ({}) }), true, "another share's folder read");
+      // Each share that hangs holds a thread: past FOLDER_STATS_HUNG of them, no folder is asked.
+      assert.deepEqual([FOLDER_STATS_HUNG, SHARE_ANSWERED_MS], [3, 2000]);
+      assert.deepEqual(await remoteRead("//usb/drive/c", { there }), { remote: null, unread: true });
+      assert.deepEqual(await remoteRead("//box/x/d", { there }), { remote: null, unread: true });
+      assert.deepEqual(await remoteRead("//more/y/e", { there }), { remote: null, unread: true });
+      assert.deepEqual(asked, ["\\\\nas\\share", "\\\\usb\\drive", "\\\\box\\x"], "a fourth share is not asked while three hold threads");
+      // The folder fence answers at once for a folder on a share that does not answer, and never looks at it here.
+      const fenceAt = Date.now();
+      const own = { server: { host: "127.0.0.1" } };
+      assert.deepEqual(allowedFolder(own, "//nas/share/q"), { ok: false, status: 503, error: "//nas/share/q does not answer: its drive or share is offline, or too slow to say. Read it again once it answers" });
+      assert.equal(/** @type {any} */ (await allowedFolderSoon(own, "//usb/drive/z")).status, 503);
+      // A share the folder rules keep out (a listener open beyond this machine, no roots listed) is refused unasked.
+      if (process.platform === "win32") {
+        assert.equal(/** @type {any} */ (await allowedFolderSoon({}, "//kept/out/x", there)).status, 403);
+        assert.ok(!asked.some((p) => /kept/.test(p)), "never asked");
+      }
+      // A turn's changes in a place there answer at once, its place said not to answer, nothing read of it.
+      const turn = await ownChangesOf([{ place: "//nas/share/p", round: 1, agent: "a1", before: "b", after: "c", base: "head", own: ["x.txt"], command: false, turn: 1 }]);
+      assert.deepEqual(turn.errors, [{ place: "//nas/share/p", error: FOLDER_UNANSWERED }]);
+      assert.ok(Date.now() - fenceAt < 200, `the fence and the changes answered at once: ${Date.now() - fenceAt} ms`);
     } finally {
       share.open();
     }
-    // The share answers: its stats end, and a folder is asked again.
+    // The shares answer: their stats end, and a folder there is asked again.
     await new Promise((r) => setTimeout(r, 10));
-    assert.deepEqual(await remoteRead("/offline/c", { there }), { remote: null, unread: false }, "not there, once the share says so");
-    assert.deepEqual(asked, ["/offline/a", "/offline/b", "/offline/c"]);
+    assert.equal(folderHung("//nas/share/b"), false);
+    assert.deepEqual(await remoteRead("//nas/share/b", { there }), { remote: null, unread: false }, "not there, once the share says so");
+    assert.deepEqual(asked, ["\\\\nas\\share", "\\\\usb\\drive", "\\\\box\\x", "//nas/share/b"], "its root answered: the folder is asked");
+  });
+
+  test("many folders on one share that does not answer, asked at once: its root alone is asked, once, and each answers within the wait", async () => {
+    const share = gate();
+    /** @type {string[]} */
+    const asked = [];
+    const statOf = (/** @type {string} */ f) => (asked.push(f), share.p);
+    try {
+      const at = Date.now();
+      const got = await Promise.all(["//dead/s/a", "//dead/s/b", "//dead/s/c", "//dead/s/d", "//dead/s/e"].map((f) => folderThere(f, { ms: 50, statOf })));
+      assert.deepEqual(got, [null, null, null, null, null]);
+      assert.ok(Date.now() - at < 1000, `answered in ${Date.now() - at} ms`);
+      assert.deepEqual(asked, ["\\\\dead\\s"], "one thread held, not one for each folder");
+    } finally {
+      share.open();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  });
+
+  test("a folder that hangs on a drive that answers (a dead link to a share): that folder alone does not answer, every other there is read", async () => {
+    const link = gate();
+    const statOf = (/** @type {string} */ f) => (f.endsWith("dead") ? link.p : Promise.resolve({}));
+    try {
+      assert.equal(await folderThere("Q:\\proj\\dead", { ms: 50, statOf }), null);
+      assert.equal(await folderThere("Q:\\proj\\live", { ms: 50, statOf }), true, "another folder on that drive is read");
+      assert.deepEqual([folderHung("Q:\\proj\\dead"), folderHung("Q:\\proj\\live")], [true, false]);
+    } finally {
+      link.open();
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  });
+
+  test("more folders asked at once than stats may be under way: each waits its turn within its wait, and all are read", async () => {
+    const statOf = () => new Promise((r) => setTimeout(r, 5));
+    const got = await Promise.all(["//a1/s/x", "//a2/s/x", "//a3/s/x", "//a4/s/x", "//a5/s/x"].map((f) => folderThere(f, { ms: 1000, statOf })));
+    assert.deepEqual(got, [true, true, true, true, true]);
+  });
+
+  test("a stat's error: not there where it says so, there where it may not be looked in, unknown where it says nothing of the folder", async () => {
+    const failing = (/** @type {string} */ code) => () => Promise.reject(Object.assign(new Error(code), { code }));
+    const got = await Promise.all(["ENOENT", "ENOTDIR", "EACCES", "EHOSTUNREACH"].map((code, i) => folderThere(`/plain-${i}`, { ms: 500, statOf: failing(code) })));
+    assert.deepEqual(got, [false, false, true, null]);
+  });
+
+  test("a listed root on a share that does not answer holds no folder, and a folder under another root is allowed without looking at it", async () => {
+    const dead = gate();
+    const there = { ms: 50, statOf: (/** @type {string} */ p) => (/^[\\/]{2}/.test(p) ? dead.p : Promise.resolve({})) };
+    const home = realpathSync(tmpdir());
+    try {
+      const f = await allowedFolderSoon({ agentLoop: { roots: ["//dead2/s/work", home] } }, home, there);
+      assert.equal(f.ok, true, JSON.stringify(f));
+      assert.equal(folderHung("//dead2/s/work"), true);
+    } finally {
+      dead.open();
+    }
+    await new Promise((r) => setTimeout(r, 10));
   });
 });
 

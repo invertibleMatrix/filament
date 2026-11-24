@@ -25,7 +25,7 @@ import { readImages } from "../../services/runs.js";
 import { exchangeOfRun } from "../../core/run-work.js";
 import { eventsOf } from "../../app/sessions/cut-turns.js";
 import { helpersMade, madeIn } from "./artifacts.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolderSoon } from "./folder.js";
 import { PAUSE_KINDS, newFolderRefusal } from "../../app/agent/turn.js";
 import { askOf, shownCommand } from "../../app/agent/tools.js";
 import { choicesOf } from "../../app/agent/subagents.js";
@@ -203,7 +203,7 @@ export function sessionRoutes(a) {
    * @param {any} worktree  the body's `{ name, made?, copy? }`: `made`, a name the page made from the message (GW-D44)
    */
   const createInWorktree = async (args, worktree) => {
-    const f = allowedFolder(config.get(), args.cwd);
+    const f = await allowedFolderSoon(config.get(), args.cwd);
     if (!f.ok) throw Object.assign(new Error(f.error), { status: f.status });
     native().check(args);
     const refuse = (/** @type {string} */ x) => newFolderRefusal(config.get(), x, { from: f.root });

@@ -5,7 +5,6 @@
 // engine, config) is a 500 — 502 means an upstream failed. Every answer shows an MCP server's credentials as the
 // placeholder (HarnessV4_Settings_Plan HS-D8): a session's row carries its settings layer.
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { sendJson as send } from "../../app/pipeline/respond.js";
 import { maskAnswer } from "../../services/mcp-servers.js";
@@ -21,6 +20,7 @@ import { OUTCOME_DAYS, OUTCOME_KINDS } from "../../services/memory/outcomes.js";
 import { METRIC_DAYS, METRIC_DAYS_MAX } from "../../services/memory/metrics.js";
 import { WALK_VERSION, onlyGone, ownChangesOf, turnsChanged, walkOf } from "../../adapters/git/changes.js";
 import { remoteKeys } from "../../adapters/git/inspect.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
 import { placeOf } from "../../adapters/git/snapshot.js";
 import { outputsOf } from "../../app/sessions/outputs.js";
 import { FEED_PAGE } from "../../services/memory/index.js";
@@ -64,15 +64,19 @@ export function changesMatching(files, folder, q, take) {
 /**
  * What a turn's changes answer rests on: its writing rounds as recorded, every field of each, the places gone, and the
  * places only its chat works in — a snapshot is a commit, so the same rounds read the same. `gone`: the places it found
- * gone, which an answer that says only those are gone may be kept on (`onlyGone`).
+ * gone, which an answer that says only those are gone may be kept on (`onlyGone`). Each place is looked at off the
+ * server's thread, a moment at most (`folderThere`): one that does not answer is in the basis apart.
  * @param {import("../../core/types.js").RoundChange[]} rounds @param {Set<string> | null} alone
- * @returns {{ basis: string, gone: string[] }}
+ * @returns {Promise<{ basis: string, gone: string[] }>}
  */
-function turnBasis(rounds, alone) {
+async function turnBasis(rounds, alone) {
   const digest = createHash("sha1");
   for (const x of rounds) digest.update(`${JSON.stringify([x.place, x.round, x.agent, x.before, x.after, x.base, x.command, x.own, x.turn])}\n`);
-  const gone = [...new Set(rounds.map((x) => x.place).filter(Boolean))].filter((p) => !existsSync(p));
-  return { basis: [digest.digest("hex"), gone.join("|"), [...(alone || [])].sort().join("|")].join("\n"), gone };
+  const places = [...new Set(rounds.map((x) => x.place).filter(Boolean))];
+  const there = await Promise.all(places.map((p) => folderThere(p)));
+  const gone = places.filter((_, i) => there[i] === false);
+  const unanswered = places.filter((_, i) => there[i] === null).map((p) => `?${p}`);
+  return { basis: [digest.digest("hex"), [...gone, ...unanswered].join("|"), [...(alone || [])].sort().join("|")].join("\n"), gone };
 }
 
 /** How `locale` compares names, the server's own where it names none or none known. @param {string} locale */
@@ -597,7 +601,7 @@ export function memoryRoutes(a) {
         const read = () => ownChangesOf(t.rounds, { patch, path, place, alone });
         const kept = !chat && !patch;
         const key = `${t.chainId}\n${turn}`;
-        const { basis, gone } = kept ? turnBasis(t.rounds, alone) : { basis: "", gone: [] };
+        const { basis, gone } = kept ? await turnBasis(t.rounds, alone) : { basis: "", gone: [] };
         const query = `${path ?? ""}\n${place ?? ""}`;
         // An answer that says git could not read a place is not kept: a timeout under load is gone at the next ask. One
         // that says a place's folder is gone is, where the basis found it gone too.

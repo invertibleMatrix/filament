@@ -73,6 +73,7 @@ import { loopbackHost } from "../../services/config/store.js";
 import { createTurnTree } from "../turn-tree.js";
 import { git } from "../../adapters/git/snapshot.js";
 import { parseWorktrees } from "../../adapters/git/places.js";
+import { folderHung } from "../../adapters/git/folder-there.js";
 import { linkedIn } from "../agent-permits.js";
 import { PATCH_HANDS, instructionsOver, patchHand } from "../../adapters/tools/patch-hands.js";
 import { serverFor } from "../../adapters/lsp/servers.js";
@@ -420,7 +421,7 @@ export function shareKeptOut(cfg, p) {
  * Whether `cwd` lies under one of `roots`: both sides resolved through the filesystem (see `realFolder`), then a
  * path-prefix test, case-insensitive on Windows. A filesystem root (`/`, `C:\`) is a legal root. Empty roots allow
  * any folder; with roots listed, a folder on a network share no root names lies under none, judged without asking the
- * share.
+ * share, and a root whose share does not answer holds none while it does not.
  * @param {string} cwd @param {string[]} roots
  */
 export function underRoots(cwd, roots) {
@@ -434,6 +435,9 @@ export function underRoots(cwd, roots) {
   };
   const c = norm(cwd);
   return roots.some((r) => {
+    // A root on a share that does not answer (folder-there.js `folderHung`) holds no folder meanwhile, and is not
+    // resolved here: the look would hold the server's thread as long as the share, for every folder judged.
+    if (folderHung(String(r || ""))) return false;
     const base = norm(String(r || ""));
     return c === base || c.startsWith(base.endsWith(sep) ? base : base + sep);
   });

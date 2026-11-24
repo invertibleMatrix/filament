@@ -30,7 +30,7 @@ import { pullAsksLess, pullFault } from "../../core/space-pulls.js";
 import { LANES_MAX, placeFiles } from "../../app/space-lanes.js";
 import { guard as guardWith } from "./guard.js";
 import { poolName } from "../../core/pool.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolderSoon } from "./folder.js";
 import { join } from "node:path";
 import { SPACES_FOLDER, computerFolders, documentsFolder, inRepo, reachLimits } from "../../app/own-spaces.js";
 import { APPS_FOLDER, appStarters, copyStarter, newAppWords, startersFor } from "../../services/app-starters.js";
@@ -927,7 +927,7 @@ export function spaceRoutes(a) {
         const asked = [...new Set(r.url.searchParams.getAll("place").map(String).filter(Boolean))];
         if (asked.length > FILES_PLACES_MAX) throw refused(400, `one read takes ${FILES_PLACES_MAX} folders at most`);
         const places = await fewAtOnce(asked, async (path) => {
-          const f = allowedFolder(config.get(), path);
+          const f = await allowedFolderSoon(config.get(), path);
           if (!f.ok) return { path, ok: false, error: f.status === 404 ? "the folder is gone" : f.error, branch: null, base: null, ahead: null, commits: 0, files: [], more: 0 };
           return placeFiles(await branchOf(f.root), path);
         });

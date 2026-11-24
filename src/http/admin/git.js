@@ -16,7 +16,7 @@ import { keptReads } from "../../core/kept-reads.js";
 import { normalizeCwd } from "../../core/project-id.js";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard } from "./guard.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolderSoon } from "./folder.js";
 import { newFolderRefusal } from "../../app/agent/turn.js";
 import { statusOf, logOf, branchesOf, placeInfo, apartInfo, noPlace, branchOf, branchFileOf, placeChanges, lastCommits } from "../../adapters/git/inspect.js";
 import { patchPlace } from "../../adapters/git/patch.js";
@@ -85,8 +85,8 @@ export function gitRoutes(a) {
    * branch, which its branch is compared with where Filament did not record the one it was made from.
    * @param {import("../../adapters/git/places.js").Worktree} w @param {string | null} [into]
    */
-  const readFenced = (w, into = null) => {
-    const f = allowedFolder(config.get(), w.path);
+  const readFenced = async (w, into = null) => {
+    const f = await allowedFolderSoon(config.get(), w.path);
     return readWorktree(w, { refused: f.ok || f.status === 404 ? null : f.error, into });
   };
   /** The main folder's branch among a repository's worktrees, or null. @param {import("../../adapters/git/places.js").Worktree[]} list */
@@ -117,7 +117,7 @@ export function gitRoutes(a) {
    * @returns {Promise<import("../../adapters/git/inspect.js").PlaceInfo & { refused?: boolean }>}
    */
   const placeAt = async (asked, o) => {
-    const f = allowedFolder(config.get(), asked);
+    const f = await allowedFolderSoon(config.get(), asked);
     if (f.ok) return { ...(await markAt(o.whole ? "place" : o.apart ? "apart" : "light", f.root, asked)), cwd: asked };
     const unread = { whole: !!(o.whole || o.apart) };
     if (f.status === 404) return noPlace(asked, "the folder is gone", unread);
@@ -128,7 +128,7 @@ export function gitRoutes(a) {
    * @param {string} asked @returns {Promise<import("../../adapters/git/inspect.js").BranchPlace & { refused?: boolean }>}
    */
   const branchAt = async (asked) => {
-    const f = allowedFolder(config.get(), asked);
+    const f = await allowedFolderSoon(config.get(), asked);
     if (f.ok) return { ...(await branchOf(f.root)), cwd: asked };
     const unread = { commits: [], moreCommits: 0, from: null, files: { committed: null, uncommitted: null } };
     if (f.status === 404) return { ...noPlace(asked, "the folder is gone", { whole: true }), ...unread };
@@ -138,12 +138,17 @@ export function gitRoutes(a) {
    * Whether a place the chat's agents worked in is there still. One whose folder is gone — removed on purpose, or moved —
    * is left out of the chat's other places: there is nothing in it to read or to do (the owner's words of 10-18: "if
    * it is gone then why do i need to know about it. i had Removed that deliberately"). A folder the fence refuses is
-   * there, and says why it is not read.
+   * there, and says why it is not read; so is one that does not answer (a share offline), looked at off the thread.
    * @param {string} p
    */
-  const stillThere = (p) => {
-    const f = allowedFolder(config.get(), p);
+  const stillThere = async (p) => {
+    const f = await allowedFolderSoon(config.get(), p);
     return f.ok || f.status !== 404;
+  };
+  /** Those of `list` still there (`stillThere`), in order. @param {string[]} list */
+  const thereOnes = async (list) => {
+    const there = await Promise.all(list.map(stillThere));
+    return list.filter((_, i) => there[i]);
   };
   /**
    * A read of a place shared (the Designer's of 10-29): one under way at a time, and each answer serving every ask for
@@ -233,7 +238,7 @@ export function gitRoutes(a) {
    */
   const changesAt = (path, { fresh = false, copyOf = null, stands = "" } = {}) =>
     shared(changeReads, `${path}\n${copyOf ? copyOf.agent : ""}\n${stands}`, fresh, async () => {
-      const f = allowedFolder(config.get(), path);
+      const f = await allowedFolderSoon(config.get(), path);
       if (!f.ok) return { ...noPlace(path, f.status === 404 ? "the folder is gone" : f.error, { whole: true }), headAt: null, files: [], writers: [], refused: f.status !== 404 };
       const patched = copyOf ? await patchPlace(f.root) : null;
       const p = patched || (await placeChanges(f.root));
@@ -250,9 +255,9 @@ export function gitRoutes(a) {
       if (copyOf) files = files.map((x) => (x.by.length ? x : { ...x, by: [copyOf] }));
       return { ...p, files, writers: writersOf(files) };
     });
-  /** The folder a row works in, or the refusal already sent. @param {any} r */
-  const rootOf = (r) => {
-    const f = allowedFolder(config.get(), r.url.searchParams.get("cwd"));
+  /** The folder a row works in, looked at off the server's thread first, or the refusal already sent. @param {any} r */
+  const rootOf = async (r) => {
+    const f = await allowedFolderSoon(config.get(), r.url.searchParams.get("cwd"));
     if (!f.ok) {
       sendJson(r.res, f.status, { error: f.error });
       return null;
@@ -264,7 +269,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/status",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         return sendJson(r.res, 200, { cwd: root, ...(await statusOf(root)) });
       }),
@@ -273,7 +278,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/log",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         return sendJson(r.res, 200, { cwd: root, ...(await logOf(root, { limit: Number(r.url.searchParams.get("limit")) || 30 })) });
       }),
@@ -285,13 +290,13 @@ export function gitRoutes(a) {
       "GET",
       "/git/place",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const place = await markAt("place", root, String(r.url.searchParams.get("cwd")));
         const chain = r.url.searchParams.get("chain");
         const others = chain ? /** @type {string[]} */ (memory?.placesOf?.(chain) || []) : [];
         const also = await Promise.all(
-          others.filter((p) => p !== place.place && stillThere(p)).map((p) => placeAt(p, { whole: true })),
+          (await thereOnes(others.filter((p) => p !== place.place))).map((p) => placeAt(p, { whole: true })),
         );
         return sendJson(r.res, 200, { ...place, cwd: root, also: also.filter((p) => !p.ok || p.place !== place.place) });
       }),
@@ -321,7 +326,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/changes",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const q = r.url.searchParams;
         const chain = q.get("chain") || "";
@@ -331,12 +336,12 @@ export function gitRoutes(a) {
         /** Each place once, by how git spells it (a copy by its sub-agent). @type {Map<string, { path: string, kind: "folder" | "wrote" | "copy" | "other", sub?: any, saved?: true }>} */
         const want = new Map([[String(first.place), { path: root, kind: /** @type {const} */ ("folder") }]]);
         const taken = (/** @type {string} */ p) => [...want.keys(), ...[...want.values()].map((w) => w.path)].some((x) => normalizeCwd(x) === normalizeCwd(p));
-        for (const p of chain ? /** @type {string[]} */ (memory?.placesOf?.(chain) || []) : [])
-          if (stillThere(p) && !taken(p)) want.set(p, { path: p, kind: "wrote" });
+        for (const p of await thereOnes(chain ? /** @type {string[]} */ (memory?.placesOf?.(chain) || []) : []))
+          if (!taken(p)) want.set(p, { path: p, kind: "wrote" });
         // Its sub-agents that edit in a copy of their own: there from its launch, before its first write.
         for (const sa of chain ? /** @type {any[]} */ (subagents?.list?.(chain) || []) : []) {
           const folder = sa?.may === "edit" ? sa.work?.folder : null;
-          if (folder && stillThere(folder) && !taken(folder)) want.set(`copy:${sa.id}`, { path: String(folder), kind: "copy", sub: sa });
+          if (folder && (await stillThere(folder)) && !taken(folder)) want.set(`copy:${sa.id}`, { path: String(folder), kind: "copy", sub: sa });
           // Its work that waits after its copy's folder went, kept on the repository's refs, which its Apply reads: its
           // copy's block all the same, with nothing of the folder to read (the owner's of 11-10: the tab's dot said it
           // waited, and the tab showed none of it).
@@ -390,12 +395,12 @@ export function gitRoutes(a) {
       "GET",
       "/git/branch",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const q = r.url.searchParams;
         const path = q.get("path");
         if (path) {
-          const f = allowedFolder(config.get(), q.get("place") || root);
+          const f = await allowedFolderSoon(config.get(), q.get("place") || root);
           if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
           const part = q.get("part") === "committed" ? "committed" : "uncommitted";
           const out = await branchFileOf(f.root, path, { part, oldPath: q.get("old") || null });
@@ -403,7 +408,7 @@ export function gitRoutes(a) {
         }
         const first = await branchOf(root);
         const chain = q.get("chain");
-        const others = (chain ? /** @type {string[]} */ (memory?.placesOf?.(chain) || []) : []).filter((p) => p !== first.place && stillThere(p));
+        const others = await thereOnes((chain ? /** @type {string[]} */ (memory?.placesOf?.(chain) || []) : []).filter((p) => p !== first.place));
         const rest = await fewAtOnce(others, branchAt);
         return sendJson(r.res, 200, { places: [{ ...first, cwd: root }, ...rest.filter((p) => !p.ok || p.place !== first.place)] });
       }),
@@ -416,7 +421,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/places",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const { wt, read, goes } = await placesAt(root, String(r.url.searchParams.get("cwd")));
         // A folder in no repository has no places, and still its chats (HarnessV4_SpacesPlugins_Plan A3): a Space of the
@@ -454,7 +459,7 @@ export function gitRoutes(a) {
         const b = await r.json();
         const withBranch = b?.branch === true;
         const moveChats = b?.moveChats === true;
-        const f = allowedFolder(config.get(), b?.cwd);
+        const f = await allowedFolderSoon(config.get(), b?.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const wt = await worktreesOf(f.root);
         if (!wt.ok) return sendJson(r.res, 409, { error: wt.error });
@@ -536,7 +541,7 @@ export function gitRoutes(a) {
       "/git/places/put-back",
       guard(async (r) => {
         const b = await r.json();
-        const f = allowedFolder(config.get(), b?.cwd);
+        const f = await allowedFolderSoon(config.get(), b?.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const rec = removed.get(String(b?.id || ""));
         const wt = await worktreesOf(f.root);
@@ -569,7 +574,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/footprint",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         return sendJson(r.res, 200, { cwd: root, ...(await footprint.read(root, { refs: r.url.searchParams.get("plan") === "1" })) });
       }),
@@ -582,7 +587,7 @@ export function gitRoutes(a) {
       "/git/footprint/clean",
       guard(async (r) => {
         const b = await r.json();
-        const f = allowedFolder(config.get(), b?.cwd);
+        const f = await allowedFolderSoon(config.get(), b?.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const pressed = pressedPlanOf(b?.plan);
         if (!pressed.ok) return sendJson(r.res, 400, { error: pressed.error });
@@ -600,7 +605,7 @@ export function gitRoutes(a) {
       guard(async (r) => {
         // A new worktree as a chat's first send would make it, read only (GW-D44, GW-D45): the page asks on each pause
         // in the name, and the send makes it (POST /sessions with `worktree`).
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const name = String(r.url.searchParams.get("name") || "").trim();
         return sendJson(r.res, 200, await planWorktree(root, name, { refuse: (f) => newFolderRefusal(config.get(), f, { from: root }) }));
@@ -613,7 +618,7 @@ export function gitRoutes(a) {
         // The worktree template of the folder's project (HarnessV4_Four_Plan FO-D40): its list and where it comes from,
         // each entry measured in the place the folder is in, or said not here; `all=1` adds what else the list can
         // hold, for the picker (FO-D32). Read only.
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         const t = projects().worktreeTemplate(root);
         const at = await placeInfo(root);
@@ -631,7 +636,7 @@ export function gitRoutes(a) {
         // The list saved on the folder's project, the project made where it is new (FO-D35); a path the list cannot
         // hold is refused in words (FOC-68).
         const b = await r.json();
-        const f = allowedFolder(config.get(), b?.cwd);
+        const f = await allowedFolderSoon(config.get(), b?.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const t = projects().saveWorktreeTemplate(f.root, b?.copy);
         log("info", `git: the worktree template of ${t.project} saved: ${t.copy.join(", ") || "nothing"}`);
@@ -642,7 +647,7 @@ export function gitRoutes(a) {
       "GET",
       "/git/branches",
       guard(async (r) => {
-        const root = rootOf(r);
+        const root = await rootOf(r);
         if (!root) return;
         return sendJson(r.res, 200, { cwd: root, ...(await branchesOf(root)) });
       }),

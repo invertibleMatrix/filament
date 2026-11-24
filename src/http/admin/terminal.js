@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { basename } from "node:path";
 import { sendJson } from "../../app/pipeline/respond.js";
 import { guard as guardWith } from "./guard.js";
-import { allowedFolder } from "./folder.js";
+import { allowedFolderSoon } from "./folder.js";
 import { countOwnerless, drives, endsWithDevice, hostAllowed, hostNameOf, ownOrigin, pressRefusal, safeEq, whoIs } from "../guards.js";
 import { lowerHeaders } from "../../core/headers.js";
 import { artifactNameOfHost, isArtifactOrigin } from "../../core/artifacts.js";
@@ -51,7 +51,7 @@ export function terminalRoutes(a) {
         // folder where no cwd is named, with the environment a shell gets.
         const program = programOf(body.program);
         if (typeof program === "string") return sendJson(r.res, 400, { error: program });
-        const f = program && !body.cwd ? { ok: /** @type {const} */ (true), root: homedir() } : allowedFolder(config.get(), body.cwd);
+        const f = program && !body.cwd ? { ok: /** @type {const} */ (true), root: homedir() } : await allowedFolderSoon(config.get(), body.cwd);
         if (!f.ok) return sendJson(r.res, f.status, { error: f.error });
         const title = program ? String(body.title || basename(program.file)).slice(0, 80) : "";
         const t = terminal.create({ cwd: f.root, cols: body.cols, rows: body.rows, ...(program ? { title, program: { ...program, env: { ...process.env } } } : {}) });

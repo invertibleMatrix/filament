@@ -169,14 +169,15 @@ const ownRecord = (record, file) => {
 /**
  * A worktree read whole (GW-D20's read), with whether submodules are checked out in it: their git folders live in its
  * record, which a removal drops (GWC-91). A folder that is gone is not read, nor one `refused` names a reason for: the
- * fence's, for a folder Filament may not read (GWC-89), answered as git listed it. `into`: the main folder's branch,
+ * fence's, for a folder Filament may not read (GWC-89) or one on a share that does not answer, answered as git listed
+ * it, its folder not looked at here. `into`: the main folder's branch,
  * which its own is compared with where Filament did not record the one it was made from (the owner's of 11-09).
  * @param {Worktree} w @param {{ refused?: string | null, into?: string | null }} [o]
  * @returns {Promise<PlaceRead & { refused: boolean }>}
  */
 export async function readWorktree(w, { refused = null, into = null } = {}) {
   const own = { path: w.path, name: basename(w.path), main: !!w.main, locked: w.locked, prunable: w.prunable, commit: w.head };
-  const missing = w.prunable !== null || !existsSync(w.path);
+  const missing = w.prunable !== null || (!refused && !existsSync(w.path));
   if (missing || refused) {
     const unread = noPlace(w.path, missing ? "its folder is gone" : String(refused), { whole: true });
     const listed = { place: w.path, worktree: !w.main, branch: w.branch, detached: w.detached, head: w.head ? w.head.slice(0, 8) : null };

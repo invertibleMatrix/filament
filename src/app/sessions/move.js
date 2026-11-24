@@ -13,11 +13,22 @@ import { normalizeCwd } from "../../core/project-id.js";
 import { blobsAt, blobsAtEach, blobsNow, dirtyOf, toLastCommit, writeAs } from "../../adapters/git/carry.js";
 import { ownChangesOf } from "../../adapters/git/changes.js";
 import { NO_LOCKS, parsePorcelainV2, placeInfo } from "../../adapters/git/inspect.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
 import { makeWorktree, planWorktree, takeBack, worktreesOf } from "../../adapters/git/places.js";
 import { git, placeOf, refNameOf, snapshotTree } from "../../adapters/git/snapshot.js";
 import { runningShellsOf } from "../../adapters/tools/hands.js";
-import { folderVerdict, newFolderRefusal } from "../agent/turn.js";
+import { folderVerdict, newFolderRefusal, shareKeptOut } from "../agent/turn.js";
 import { refusal } from "./service.js";
+
+/**
+ * A folder looked at off the server's thread first, a moment at most (inspect.js `folderThere`): one on a drive or share
+ * that does not answer is refused in words, never looked at again on the thread, which would wait as long as the share.
+ * A share the folder rules keep out is not asked: the fence refuses it unasked.
+ * @param {any} cfg @param {string} folder
+ */
+const answering = async (cfg, folder) => {
+  if (folder && !shareKeptOut(cfg, folder) && (await folderThere(folder)) === null) throw refusal(503, `${folder} does not answer: its drive or share is offline, or too slow to say`);
+};
 
 /** The turn lock's window while a chat moves: a send then waits for the move, as it waits for a coding agent's own turn. */
 export const MOVE_WINDOW = "move";
@@ -204,6 +215,7 @@ export function createChatMove({ memory, config, sessionTurns = null, cwdOf, bus
    */
   async function planOf(chain, to, { locked = false } = {}) {
     const cwd = cwdOf(chain);
+    await answering(config.get(), cwd);
     const v = folderVerdict(config.get(), cwd);
     if (!v.ok) throw refusal(409, `the chat's folder cannot be worked in (${cwd || "none"}): a chat moves from a folder of a repository`);
     const here = await placeInfo(v.root);
@@ -229,6 +241,7 @@ export function createChatMove({ memory, config, sessionTurns = null, cwdOf, bus
       if (!w) throw refusal(404, `not a folder or worktree of this repository: ${to.place}`);
       if (normalizeCwd(w.path) === normalizeCwd(place)) throw refusal(409, "the chat works there already");
       if (w.prunable != null) throw refusal(409, `${w.path} is gone: git would prune it`);
+      await answering(config.get(), w.path);
       const fence = folderVerdict(config.get(), w.path);
       if (!fence.ok) throw refusal(403, `Filament's agent may not work in ${w.path}`);
       const there = await placeInfo(w.path);
@@ -507,6 +520,7 @@ export function createChatMove({ memory, config, sessionTurns = null, cwdOf, bus
     const toName = nameOf(rec.to.cwd);
     // A place gone since — the worktree a Remove moved the chat out of (the owner's of 11-09) — takes no chat back,
     // files or none: its folder would name nothing.
+    await Promise.all([answering(config.get(), rec.from.place), answering(config.get(), rec.to.place)]);
     if (!existsSync(rec.from.place)) throw refusal(409, `not moved back: ${rec.from.place} is gone`);
     if (paths.length && rec.snaps.from) {
       if (!existsSync(rec.to.place) || !existsSync(rec.from.place)) throw refusal(409, `not moved back: ${existsSync(rec.to.place) ? rec.from.place : rec.to.place} is gone`);
