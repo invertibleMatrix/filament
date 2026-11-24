@@ -291,6 +291,38 @@ describe("the desk's rows and Bring back, in a stand-in page", () => {
     await until(() => refusedLooks === 2, "the chat moved there: looked at again");
   });
 
+  // (fails before: yes — s5b's drive: a Run on chat whose turn ended within a minute of the records' last read was never
+  // looked at, its record unknown here, and Bring back never offered)
+  test("a record a Run on send made is read at once, though the desk moved since the last read: its ended turn is looked at", async () => {
+    const { createDeskWork, READ_AGAIN_MS } = await import("../src/ui/harness/desk-work.js");
+    let clock = 1_000_000;
+    let made = false;
+    /** @type {string[]} */
+    const calls = [];
+    const api = async (/** @type {string} */ path, /** @type {any} */ init = {}) => {
+      calls.push(`${init.method || "GET"} ${path}`);
+      if (path === "/remote-work") return { works: made ? [work()] : [] };
+      return { work: work({ seen: init.body?.seen, waiting: { at: "c1", files: 1, conflicts: 0 } }) };
+    };
+    const desk = createDeskWork({ api, toast: () => {}, dialog: dialogs().dialog, onChange: () => {}, now: () => clock });
+    desk.sync(deskOf({ when: 500 }));
+    await until(() => calls.length === 1, "the records read");
+    // The send makes its record; its turn ends there, and the desk moves within READ_AGAIN_MS: not read again.
+    made = true;
+    clock += READ_AGAIN_MS / 2;
+    desk.sync(deskOf({ when: 5000 }));
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual([calls.length, desk.waiting("m-studio", "c-there")], [1, null]);
+    await desk.reload();
+    await until(() => desk.waiting("m-studio", "c-there"), "looked at, once read");
+    assert.deepEqual(calls, ["GET /remote-work", "GET /remote-work", "POST /remote-work/w1/check"]);
+    // The page's Run on send reads them so, as the chat stands there.
+    const { readFileSync } = await import("node:fs");
+    const app = readFileSync("src/ui/harness/app.js", "utf8");
+    const send = app.slice(app.indexOf("async function runOnFirst("), app.indexOf("function allowRunOnSend("));
+    assert.equal(send.match(/sidebar\.workStarted\(\);/g)?.length, 2, "where it stands there, and where it went");
+  });
+
   test("while its turn runs there, Bring back says so and asks nothing", async () => {
     const { createDeskWork } = await import("../src/ui/harness/desk-work.js");
     /** @type {string[]} */

@@ -2425,6 +2425,8 @@ export function createSidebar(host, cb, rail = null) {
     },
     /** Another machine's chat opened from outside the bar (Ctrl+K, a notification): as its row would. @param {{ id: string, name: string }} m @param {string} route */
     openOnMachine: (m, route) => openOnMachine(m, route),
+    /** A Run on send started a chat there (app.js `runOnFirst`): its record read now, for Bring back (desk-work.js). */
+    workStarted: () => void work?.reload(),
     /** Now's row of a chat, its own before its threads': what a Space's lane says of it. @param {string} chain */
     nowOf: (chain) => now.rowOf(chain),
     /** The Spaces of your own as the bar lists them (E50): where work handed from one may go (A4). */

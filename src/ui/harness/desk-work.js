@@ -341,6 +341,11 @@ export function createDeskWork(io) {
       if (now() - readAt >= READ_AGAIN_MS) void load();
       else look();
     },
+    /**
+     * The records read now: a Run on send made one (app.js `runOnFirst`), which the desk's next move would not read
+     * within `READ_AGAIN_MS` — a turn that ends that soon would never be looked at (the review of s5b's drive).
+     */
+    reload: () => load(),
     /** The record of a machine's chat whose changes wait, else null. @param {string} machine @param {string} chain */
     waiting: (machine, chain) => {
       const w = of(machine, chain);

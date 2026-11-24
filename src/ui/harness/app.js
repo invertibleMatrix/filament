@@ -2655,6 +2655,7 @@ async function runOnFirst(chat, text, attachments) {
       chat.runOn = at.place.id;
       chat.runOnName = at.place.name;
       sidebar.load();
+      sidebar.workStarted();
     };
     if (!out.ok) {
       if (out.started) standing(out.started);
@@ -2671,6 +2672,8 @@ async function runOnFirst(chat, text, attachments) {
     delete chat.runOnName;
     delete chat.runOnStarted;
     sidebar.load();
+    // Its record read now: Bring back looks at the chat once its turn ends, however soon.
+    sidebar.workStarted();
     return undefined;
   } finally {
     chat.runOnBusy = false;
