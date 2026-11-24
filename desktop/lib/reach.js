@@ -4,7 +4,7 @@
 // the machine's own id answers, its certificate pinned on the network (`pickRoute`, watch.js `routeFetch`); each call
 // sends the cookie its partition holds (lib/rail.js's pairing put it there), and /remote/me says who the machine takes
 // this window for. The page hears what came of it alone, never a token. Plain Node (NA-D13).
-import { pickRoute } from "./machines.js";
+import { isLearned, pickRoute } from "./machines.js";
 import { deskFlagsOf, keepSentSignIn, routeFetch } from "./watch.js";
 import { bodyText } from "../../src/services/machines/client.js";
 
@@ -61,10 +61,39 @@ export const unusedFor = (j) => (Number.isInteger(j?.days) && j.days > 0 ? `for 
 export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pickRoute, fetchOf = routeFetch }) {
   /**
    * The machine reached as this window's full device there — or, where `f` takes them, by the person's tailnet login or
-   * through a tunnel —; else what stands in the way.
+   * through a tunnel —; else what stands in the way. A way the machine said it has (machines.js `isLearned`) where this
+   * window is no device of its — its sign-in there one a pairing anew ended —: the ways the person added are asked
+   * instead, and taken where they reach it; else what the learned way said is said. Once the desk joins it by one of
+   * those, the learned ways are given the sign-in that stands (lib/learn-routes.js).
    * @param {Machine} m @param {For} [f]  who reaches it: Settings' switch, the new-chat menu, or the desk
+   * @returns {Promise<Reached | Unreached>}
    */
   return async function reach(m, f = FOR.switch) {
+    const first = await reachBy(m, f);
+    const own = m.routes.filter((r) => !isLearned(r));
+    if (!first.via || !isLearned(first.via) || first.who === "device" || !own.length) return first.out;
+    // The person's ways reaching it are taken; else what the learned way said stands — a sign-out, a lapse, a login —,
+    // never "does not answer" for ways that only did not.
+    const second = await reachBy({ ...m, routes: own }, f);
+    return "words" in second.out ? first.out : second.out;
+  };
+
+  /**
+   * `reach` by the ways `m` holds: what came of it, and the way and who its /remote/me said, where it was read.
+   * @param {Machine} m @param {For} f @returns {Promise<{ out: Reached | Unreached, via: Route | null, who: string | null }>}
+   */
+  async function reachBy(m, f) {
+    let via = /** @type {Route | null} */ (null);
+    let who = /** @type {string | null} */ (null);
+    const out = await reachOnce(m, f, (r, w) => void ((via = r), (who = w)));
+    return { out, via, who };
+  }
+
+  /**
+   * @param {Machine} m @param {For} f @param {(route: Route, who: string | null) => void} saw  the way picked, and who its /remote/me said
+   * @returns {Promise<Reached | Unreached>}
+   */
+  async function reachOnce(m, f, saw) {
     /** @param {string} words @param {"off" | "quiet"} [away] @returns {Unreached} */
     const stop = (words, away) => ({ words, ...(away ? { away } : {}) });
     if (m.off) return stop(`${m.name} is disconnected in this window: connect it again from the machines list, and ${f.then}.`, "off");
@@ -87,6 +116,7 @@ export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pick
       return stop(`${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
     }
     const route = picked.route;
+    saw(route, null);
     const origin = new URL(String(route.url)).origin;
     /** @type {Open} */
     const open = async (path, init = {}) => {
@@ -128,6 +158,7 @@ export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pick
     if (me.status === 401 || me.status === 403) return stop(gone);
     if (me.status !== 200) return stop(`${m.name} answered ${String(me.json?.error || `HTTP ${me.status}`)}.`);
     const who = String(me.json?.who ?? "");
+    saw(route, me.status === 200 ? who : null);
     const flags = deskFlagsOf(me.json);
     // Through a tunnel — the app's SSH route, or an address the person forwarded — where no device is paired, the machine
     // takes this computer for itself: the menu and the desk read there as its page in the rail does.
@@ -142,5 +173,5 @@ export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pick
     if (who !== "device") return stop(gone);
     if (me.json?.device?.scope !== "full") return stop(`This app is paired with ${m.name} view-only: ${f.full}. Pair it again as Full with Add a machine.`);
     return { send, open, route, origin, me: me.json, flags, who };
-  };
+  }
 }

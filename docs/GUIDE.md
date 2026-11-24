@@ -365,6 +365,23 @@ when the way it was on stops answering. The app's own watch of the machine takes
 and keeps the way it has where none better answers; an SSH tunnel brought up while its ways were asked that no page or
 watch took, and none asked for since, ends after two minutes.
 
+A machine paired once gains the ways it says it has. Paired as a Full device, the app reads its network addresses (Reach
+this machine on my network) and its tailnet address (Share on my tailnet), and keeps them as ways to it beside yours:
+paired over the tailnet, it is reached on the home network once you are home. A network address is kept pinned to the
+certificate the machine names, and only where it was read over the tailnet, an SSH tunnel this app holds, or the network
+over its pinned certificate: never over an address on the internet. They are read again every ten minutes while the app
+hears the machine's chats move, and at once when it joins them by another way. A new address on the network takes the
+old one's place, and one the machine no longer says goes, but never the way it was just read by. Only a private IP
+address of your own network and the tailnet's address are learned — never a name, an address on the internet, or one in
+WSL behind its NAT —, and the ways you added are never changed. Pair it again at a learned address and that way is
+yours. Where a learned way no longer holds this app's sign-in — a pairing anew ended it —, the desk and Settings reach
+the machine by the ways you added, and the learned ways are given the sign-in that stands at the next read; the
+machine's page opened at one meanwhile shows it signed out until it loads again. This Filament's agents on that machine
+never take a learned address on the home network, which would leave them none away from home: the best of its other ways
+instead, an SSH tunnel last. Where the way the app hears a machine's chats move by gives out after it stood a minute — a
+better way taken, its SSH tunnel let go —, the app joins again at once by the best way that answers now, and says the
+machine gone from your list only where that fails.
+
 **Every machine in one list.** Once another machine is kept, This computer's left bar lists every machine's chats,
 not its own alone. Now's **Needs you**, **Working** and **Done** hold the other machines' rows among this computer's,
 the newest first, each with its machine's icon in its colour and its name; Now's count says what needs you anywhere, in
@@ -2010,7 +2027,7 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 | `GET /api/keys`, `POST /api/keys/rotate` | The inbound keys in clear, and rotation: this computer alone (a device and the admin token are refused), with the app's key while the desktop app runs. |
 | `POST /api/remote/pair`, `GET`/`DELETE /api/remote/pair` | A pairing code (`{ "scope": "full" \| "view" }`), with the machine, the network listener's addresses, the certificate's fingerprint and a link for each; the codes open; close one (`?id=`, as Settings does), or every one with none. This computer alone. |
 | `POST /api/remote/claim` | Claim a code (`{ code, name }`), the one call answered before the caller is known: a page gets its device's cookie, a command line (no `Origin`) its token, once. Over https, or from this machine (a proxy here, an SSH tunnel), alone: plain http from another machine is refused. |
-| `GET /api/remote/lan[?fresh=1]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
+| `GET /api/remote/lan[?fresh=1][&firewall=0]`, `POST /api/remote/lan/firewall` | Reach this machine on my network: whether it is on, where it listens or why not, the certificate's fingerprint, the addresses, and on Windows what the firewall lets through (`fresh` reads it again; `firewall=0` reads it not, as another machine's app learning its ways asks); and Filament's firewall rule for the port, made once Windows asks the person at this machine to confirm (this computer alone). |
 | `POST /api/remote/lan/new-key` | New key: the network listener's key and certificate made anew and served at once, its artifacts' address too (this computer alone); every machine and command line paired over the network pairs again. Answers the listener's state, its new fingerprint in it. |
 | `POST /api/owner/session` | A browser session for the desktop app's windows, for a call from this computer with the owner key alone (`x-filament-owner`, [Security](#15-security)): `{ cookie, token }`, which the app keeps as an HttpOnly cookie of its windows; any other call is refused (403). |
 | `GET /api/remote/me`, `POST /api/remote/sign-out` | Who calls (`local`, `admin` or `device`, with the device), this machine, the addresses its page opens for another machine's app (`pages`) and what it does for another machine's desk (`desk`: `remote-key`, its chats' and projects' lists saying their repository's remote with `?remotes=1`; `person-copy`, a chat of yours started in a copy placed for it, Run on; `tunnel-device`, a device's token through an SSH tunnel taken as that device's); a device signs itself out. A device's call through a tunnel says `device`. |

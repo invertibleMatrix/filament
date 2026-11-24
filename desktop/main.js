@@ -39,9 +39,9 @@ import { POP_SIZE, popPlaceName, popTab, popUrl } from "./lib/pop-out.js";
 import { frameOf, overlayColors } from "./lib/frame.js";
 import { appVersion, buildWords, readBuild } from "./lib/build-info.js";
 import { underWay, waitPage, waitWords } from "./lib/waiting.js";
-import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickRoute, readHere, readKept, readMachines, removeMachine, renameMachine, setMachineBrowser, setMachineLook, setMachineOff } from "./lib/machines.js";
+import { LOCAL_ID, LOCAL_NAME, MACHINES_FILE, addMachine, colorOf, iconOf, pickRoute, readHere, readKept, readMachines, removeMachine, renameMachine, setLearnedRoutes, setMachineBrowser, setMachineLook, setMachineOff } from "./lib/machines.js";
 import { createMachineBrowsers, machineGuards, partitionFor, placeOnMachine } from "./lib/machine-browser.js";
-import { createRail, showAsk, zoomRows } from "./lib/rail.js";
+import { createRail, giveSignIn, showAsk, zoomRows } from "./lib/rail.js";
 import { createUpdateThere } from "./lib/update-there.js";
 import { createSetupOverSsh } from "./lib/setup-over-ssh.js";
 import { DESK_KEYS } from "../src/ui/harness/lib/chat-only.js";
@@ -49,6 +49,7 @@ import { checkMachine } from "./lib/add-machine.js";
 import { createTunnels } from "./lib/ssh-route.js";
 import { createMachineAgents } from "./lib/machine-agents.js";
 import { createDesk } from "./lib/desk.js";
+import { createRouteLearner } from "./lib/learn-routes.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { usePinBook } from "../src/services/machines/key-pins.js";
 import { OWNER_COOKIE, OWNER_HEADER, ownerHeaders } from "../src/services/owner.js";
@@ -1609,11 +1610,25 @@ async function run() {
   // The desk's bridge (lib/desk.js): This computer's page acts on the other machines by the desk's operations alone, made
   // here as this window's sign-in there — never a path, never a token. Each machine's events stream says what moved
   // there, to that page alone, and a turn, an ask or a stream (re)joined has that machine looked at again soon.
+  // The ways each machine says it has — its network's, its tailnet's — learned as the desk reaches it (lib/learn-routes.js):
+  // kept after the person's, the sign-in given them first, and the window reading them at once.
+  const learner = createRouteLearner({
+    machines: () => readKept(machinesFile),
+    keep: (id, routes) => setLearnedRoutes(machinesFile, id, routes, { log: (line) => log.line(line) }),
+    giveSignIn: (partition, url, routes) => giveSignIn(session.fromPartition(partition), url, routes),
+    changed: () => {
+      if (quitting) return;
+      rail?.refresh();
+      machineBrowsers.sync();
+    },
+    log: (line) => log.line(line),
+  });
   const desk = createDesk({
     machines: () => readKept(machinesFile),
     pick: pickHeld,
     cookieOf,
     keepSignIn,
+    learn: learner.learn,
     tell: (f) => {
       const w = windows.get("harness");
       if (w && !w.isDestroyed() && paneHears(true, w.webContents.getURL(), origin)) w.webContents.send("filament:desk-event", f);

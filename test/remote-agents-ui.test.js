@@ -868,6 +868,37 @@ test("the kept agents' device follows the way this window reaches its machine by
   assert.deepEqual(wayOf(), [["https://192.0.2.9:20343", PRINT, "d-agents-1"]]);
 });
 
+// (fails before: yes — the review of s4b: reached at home by a way it said it has, the row moved there, and away from
+// home this Filament's sub-agents, commands and models had no way to it)
+test("the kept agents' device never takes a way the machine said it has on its home network: the best of its others instead, one held on this computer last; a learned tailnet way is one to take", async (t) => {
+  const there = scripted();
+  const tail = { kind: "url", url: "https://mac.tail1234.ts.net" };
+  const home = { kind: "lan", url: "https://192.168.1.20:20343", fingerprint: PRINT, learned: true };
+  const ssh = { kind: "ssh", url: "http://127.0.0.1:41000", alias: "mac", port: 20300 };
+  const machine = /** @type {Record<string, any>} */ ({ routes: [home, ssh, tail] });
+  const store = createMachines({ dataDir: folder(t) });
+  const flow = createMachineAgents({
+    machines: () => [kept(machine)],
+    cookieOf: async () => "__Host-filament_device=c",
+    store,
+    pick: async (m) => ({ route: m.routes[0], name: m.name, version: "9", tried: [] }),
+    fetchOf: () => there.fetchImpl,
+  });
+  assert.equal((await flow.set("m-mac", true)).on, true);
+  const wayOf = () => store.list().map((r) => [r.url, r.fingerprint ?? null]);
+  assert.deepEqual(wayOf(), [["https://mac.tail1234.ts.net", null]], "minted at home: the tailnet's way, before an SSH tunnel");
+  machine.routes = [{ ...home, url: "https://192.168.1.31:20343" }, ssh];
+  await flow.list();
+  assert.deepEqual(wayOf(), [["http://127.0.0.1:41000", null]], "added over SSH alone: its tunnel, never the home network's");
+  machine.routes = [{ ...tail, learned: true }, { kind: "lan", url: "https://192.168.1.9:20343", fingerprint: PRINT }];
+  assert.equal((await flow.models("m-mac", true)).models, true);
+  assert.deepEqual(wayOf(), [["https://mac.tail1234.ts.net", null]], "away from home, a learned tailnet way: taken");
+  const OTHER = PRINT.replace(/^../, "CD");
+  machine.routes = [home, { kind: "lan", url: "https://192.168.1.9:20343", fingerprint: OTHER }, tail];
+  await flow.list();
+  assert.deepEqual(wayOf(), [["https://192.168.1.9:20343", OTHER]], "paired again at home: the way paired, its new pin");
+});
+
 test("main's switch says what stands in the way, and moves nothing: no answer, the sign-in gone, view-only, a tailnet login, a tunnel with no device there, disconnected; a mint refused; a command line's device kept beside it", async (t) => {
   const quiet = scripted();
   const none = await flowOver(t, quiet, { answers: false }).flow.set("m-mac", true);

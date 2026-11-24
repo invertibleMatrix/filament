@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import { pickRoute } from "./machines.js";
 import { deskChats, routeFetch } from "./watch.js";
 import { ANSWER_MAX, CALL_MS, FOR, createReach } from "./reach.js";
+import { LEARN_MS } from "./learn-routes.js";
 import { bodyText } from "../../src/services/machines/client.js";
 
 /** How long a write waits on its answer: a chat made in its folder, a stop, a mode written. */
@@ -54,7 +55,11 @@ export const DESK_MODES = Object.freeze(["read-only", "edit", "ask", "auto"]);
 const KINDS = "interactive,fork,team";
 /** How long a machine's events stream may say nothing — its pings come every 25 s — before it is taken for gone. */
 const QUIET_MS = 70_000;
-/** Its reconnect waits: from `AGAIN_MS`, doubling to `AGAIN_MAX_MS`; one that stood `STOOD_MS` starts from the first. */
+/**
+ * Its reconnect waits: from `AGAIN_MS`, doubling to `AGAIN_MAX_MS`. One that stood `STOOD_MS` from its hello is joined again at once,
+ * by the best way that answers now, and said down only where that fails: its way gave out under it — a better one
+ * taken, its tunnel let go —, not its machine.
+ */
 const AGAIN_MS = 2000;
 const AGAIN_MAX_MS = 60_000;
 const STOOD_MS = 60_000;
@@ -213,14 +218,15 @@ export const frameOf = (d, tab) => {
 /**
  * @param {{ machines: () => Machine[], cookieOf: (partition: string, origin: string) => Promise<string>, keepSignIn?: import("./watch.js").KeepSignIn, tell: (frame: DeskFrame) => void,
  *   pick?: typeof pickRoute, fetchOf?: (route: import("./machines.js").Route) => typeof fetch, tab?: string, now?: () => number,
- *   sleep?: (ms: number, signal: AbortSignal) => Promise<void>, quietMs?: number, beginMs?: number }} o
+ *   sleep?: (ms: number, signal: AbortSignal) => Promise<void>, quietMs?: number, beginMs?: number, learn?: (m: Machine, r: Reached) => Promise<unknown>, learnMs?: number }} o
  *   `machines`: the machines the window keeps, read now; `cookieOf`: the Cookie header the machine's partition sends that
  *   origin; `keepSignIn`: the sign-in an answer sent again, kept there (watch.js `storeSignIn`); `tell`: each frame of
  *   every machine's events stream the desk reads; `tab`: the desk's tab on every machine
  *   (made here, for this run of the app); `quietMs`: how long a stream may say nothing (`QUIET_MS`); `beginMs`: how long
- *   a turn's head is waited on (`BEGIN_MS`)
+ *   a turn's head is waited on (`BEGIN_MS`); `learn`: the ways a machine says it has, read where its stream is joined
+ *   and each `learnMs` while it stands (lib/learn-routes.js)
  */
-export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRoute, fetchOf = routeFetch, tab = `desk-${randomBytes(8).toString("hex")}`, now = Date.now, sleep = rest, quietMs = QUIET_MS, beginMs = BEGIN_MS }) {
+export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRoute, fetchOf = routeFetch, tab = `desk-${randomBytes(8).toString("hex")}`, now = Date.now, sleep = rest, quietMs = QUIET_MS, beginMs = BEGIN_MS, learn = async () => {}, learnMs = LEARN_MS }) {
   const reach = createReach({ cookieOf, keepSignIn, pick, fetchOf });
   /** A machine by its id, kept beside this computer now. @param {string} id */
   const machineOf = (id) => machines().find((m) => !m.local && m.id === String(id).toLowerCase()) ?? null;
@@ -337,19 +343,30 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
     }
   }
 
-  /** Each machine's events stream held, by its id. @type {Map<string, { closed: boolean, ctl: AbortController, up: boolean }>} */
+  /**
+   * A machine's events stream held: `up` once a stream of its said hello, until it is said down; `since`, when the
+   * stream joined now said its hello — null until it does.
+   * @typedef {{ closed: boolean, ctl: AbortController, up: boolean, since: number | null }} Stream
+   */
+  /** Each machine's events stream held, by its id. @type {Map<string, Stream>} */
   const streams = new Map();
 
   /**
    * A machine's events stream read as it comes, frame by frame: those the desk reads told (`frameOf`). Ends where it
    * ends, where it says nothing for `QUIET_MS`, or where a frame grows past `FRAME_MAX`.
-   * @param {string} id @param {{ closed: boolean, ctl: AbortController, up: boolean }} s @param {Reached} r
+   * @param {string} id @param {Stream} s @param {Reached} r
    */
   async function listen(id, s, r) {
     const ctl = new AbortController();
     const off = () => ctl.abort();
     s.ctl.signal.addEventListener("abort", off, { once: true });
     let quiet = setTimeout(off, quietMs);
+    // Its ways read again while it stands: an address it moved to is learned with no drop first.
+    const again = setInterval(() => {
+      const m = machineOf(id);
+      if (m && !m.off) void Promise.resolve(learn(m, r)).catch(() => {});
+    }, learnMs);
+    again.unref?.();
     try {
       // Its holders' and writers' topics alone, where its Filament takes `?only=` (its desk flag `events-only`): no record
       // streams past unread.
@@ -377,6 +394,7 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
       void reader.cancel().catch(() => {});
     } finally {
       clearTimeout(quiet);
+      clearInterval(again);
       s.ctl.signal.removeEventListener("abort", off);
       ctl.abort();
     }
@@ -385,7 +403,7 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
   /**
    * One frame of the stream: its data read where its type is one the desk reads — its head says it (each is published
    * with its type first), so the records and the rest that stream past are never parsed —, and told.
-   * @param {string} id @param {{ up: boolean, closed: boolean, ctl: AbortController }} s @param {string} frame
+   * @param {string} id @param {Stream} s @param {string} frame
    */
   function heard(id, s, frame) {
     const data = frame
@@ -411,7 +429,10 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
     }
     const f = frameOf(d, tab);
     if (!f) return;
-    if (f.type === "hello") s.up = true;
+    if (f.type === "hello") {
+      s.up = true;
+      s.since = now();
+    }
     say(/** @type {DeskFrame} */ ({ machine: id, ...f }));
   }
 
@@ -423,9 +444,10 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
   };
 
   /**
-   * A machine's events stream held while it is kept and connected, joined again after a drop, further apart each time;
-   * one that ends of itself — its machine gone from the list — lets go of its place, for `sync` to start it again.
-   * @param {string} id @param {{ closed: boolean, ctl: AbortController, up: boolean }} s
+   * A machine's events stream held while it is kept and connected, joined again after a drop — at once where it stood
+   * `STOOD_MS` since its own hello, said down only where that fails; else further apart each time —, its ways learned as it is joined
+   * (`learn`). One that ends of itself — its machine gone from the list — lets go of its place, for `sync` to start it
+   * again. @param {string} id @param {Stream} s
    */
   async function follow(id, s) {
     let wait = AGAIN_MS;
@@ -433,14 +455,20 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
       const m = machineOf(id);
       if (!m || m.off) break;
       const began = now();
+      s.since = null;
       const r = await reach(m, FOR.desk).catch((/** @type {any} */ e) => ({ words: why(e) }));
-      if (!s.closed && !("words" in r)) await listen(id, s, r).catch(() => {});
+      if (!s.closed && !("words" in r)) {
+        void Promise.resolve(learn(m, r)).catch(() => {});
+        await listen(id, s, r).catch(() => {});
+      }
       if (s.closed) break;
+      if (now() - began >= STOOD_MS) wait = AGAIN_MS;
+      // Stood since its own hello: joined again at once, not said down.
+      if (s.up && s.since !== null && now() - s.since >= STOOD_MS) continue;
       if (s.up) {
         s.up = false;
         say({ machine: id, type: "down" });
       }
-      if (now() - began >= STOOD_MS) wait = AGAIN_MS;
       await sleep(wait, s.ctl.signal);
       wait = Math.min(wait * 2, AGAIN_MAX_MS);
     }
@@ -487,7 +515,7 @@ export function createDesk({ machines, cookieOf, keepSignIn, tell, pick = pickRo
         }
       for (const id of want)
         if (!streams.has(id)) {
-          const s = { closed: false, ctl: new AbortController(), up: false };
+          const s = { closed: false, ctl: new AbortController(), up: false, since: null };
           streams.set(id, s);
           void follow(id, s);
         }

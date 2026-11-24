@@ -399,6 +399,36 @@ export const READ_PAGE = "dispatchEvent(new Event('filament:keep')); JSON.string
 const SIGN_IN = /^(__Host-)?filament_device$/;
 const SIGN_IN_HTTPS = "__Host-filament_device";
 const SIGN_IN_PLAIN = "filament_device";
+/** A partition's sign-in at an address, as its cookie: null where it holds none. @param {any} ses @param {string} url */
+const signInAt = async (ses, url) => /** @type {any[]} */ ((await ses.cookies?.get({ url })) || []).find((k) => SIGN_IN.test(String(k?.name))) ?? null;
+/**
+ * A machine's sign-in made at one of its addresses, given its other https addresses in its partition (`ses`, its
+ * session): the way it is reached is the best that answers, not the one paired at (machines.js `rankOf`), and each
+ * holds the sign-in standing now — never one a claim ended, or one this partition never had. An address on the
+ * internet, whose answer as the machine proves less than a pinned certificate or the tailnet's, gets it only where a
+ * sign-in stood already. Nothing is sent: a cookie goes out only where a page or the watch opens that address, once the
+ * machine answered there as itself. Plain http gets none — an SSH tunnel's end on this computer, whose every port a
+ * cookie there would go to. Pairing gives it (`add`), and so do the ways a machine says it has (lib/learn-routes.js).
+ * → the addresses given it.
+ * @param {any} ses @param {string} url  where the sign-in stands @param {readonly import("./machines.js").Route[]} routes
+ */
+export async function giveSignIn(ses, url, routes) {
+  const from = new URL(url).origin;
+  const got = await signInAt(ses, url);
+  /** @type {string[]} */
+  const gave = [];
+  if (!got) return gave;
+  for (const r of routes) {
+    const at = originOfRoute(r);
+    if (!at || at === from || !at.startsWith("https:") || gave.includes(at)) continue;
+    const had = await signInAt(ses, at);
+    if (rankOf(r) > RANKS.tailnet && !had) continue;
+    if (had?.value === got.value) continue;
+    await ses.cookies.set({ url: at, name: SIGN_IN_HTTPS, value: got.value, path: "/", secure: true, httpOnly: true, sameSite: "strict", ...(got.expirationDate ? { expirationDate: got.expirationDate } : {}) });
+    gave.push(at);
+  }
+  return gave;
+}
 /** The person's hand on a page — not a pointer passing over it. */
 const HAND = /^(mouseDown|mouseWheel|contextMenu|rawKeyDown|keyDown|char|touchStart|gestureScrollBegin|pointerDown)$/;
 
@@ -641,8 +671,6 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       log(`rail: this window's sign-in not carried to ${to} (${String(e?.message || e)})`);
     }
   };
-  /** A partition's sign-in at an address, as its cookie: null where it holds none. @param {any} ses @param {string} url */
-  const signInAt = async (ses, url) => /** @type {any[]} */ ((await ses.cookies?.get({ url })) || []).find((k) => SIGN_IN.test(String(k?.name))) ?? null;
   /**
    * A kept machine paired again at an address its partition holds no sign-in at — a way this pairing adds —: the sign-in
    * its other ways hold, brought there first, so the claim signs it out (claimScript `again`) and none is left standing
@@ -668,26 +696,12 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
   };
   /**
    * This window's sign-in made at the address a machine was paired at, given its other https addresses in its
-   * partition: the way it is reached is the best that answers, not the one paired at (machines.js `rankOf`), and each
-   * holds the sign-in made now — never one the claim ended, or one this partition never had. An address on the internet,
-   * whose answer as the machine proves less than a pinned certificate or the tailnet's, gets it only where a sign-in
-   * stood already. Nothing is sent: a cookie goes out only where a page or the watch opens that address, once the
-   * machine answered there as itself. Plain http gets none — an SSH tunnel's end on this computer, whose every port a
-   * cookie there would go to.
-   * @param {string} partition @param {string} url  where it was paired @param {readonly import("./machines.js").Route[]} routes
+   * partition (`giveSignIn`). @param {string} partition @param {string} url  where it was paired
+   * @param {readonly import("./machines.js").Route[]} routes
    */
   const shareSignIn = async (partition, url, routes) => {
     try {
-      const ses = sessionOf(partition);
-      const from = new URL(url).origin;
-      const got = await signInAt(ses, url);
-      if (!got) return;
-      for (const r of routes) {
-        const at = originOfRoute(r);
-        if (!at || at === from || !at.startsWith("https:")) continue;
-        if (rankOf(r) > RANKS.tailnet && !(await signInAt(ses, at))) continue;
-        await ses.cookies.set({ url: at, name: SIGN_IN_HTTPS, value: got.value, path: "/", secure: true, httpOnly: true, sameSite: "strict", ...(got.expirationDate ? { expirationDate: got.expirationDate } : {}) });
-      }
+      await giveSignIn(sessionOf(partition), url, routes);
     } catch (/** @type {any} */ e) {
       log(`rail: this window's sign-in not given its machine's other ways (${String(e?.message || e)})`);
     }
@@ -1424,14 +1438,17 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
       log(`rail: pairing with ${id} refused (${out.words})`);
       return out;
     }
+    /** @type {Machine | null} */
+    let kept = null;
     try {
-      keep.add({ id, name: c.machine.name, routes: [c.route], partition });
+      kept = keep.add({ id, name: c.machine.name, routes: [c.route], partition }) ?? null;
     } catch (/** @type {any} */ e) {
       undo();
       return { ok: false, words: `Paired, but not kept: ${String(e?.message || e)}` };
     }
     log(`rail: machine ${id} paired at ${c.url}${anew ? `, in ${partition}` : ""}`);
-    void shareSignIn(partition, c.url, m.routes);
+    // Its ways, and those kept now: one learned while it paired (lib/learn-routes.js) holds the sign-in made now too.
+    void shareSignIn(partition, c.url, [...m.routes, ...(kept?.routes ?? [])]);
     sync();
     // The partition it left, and the old certificate's yes in it, cleared.
     if (anew && had) {

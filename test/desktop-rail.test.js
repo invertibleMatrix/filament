@@ -1830,6 +1830,7 @@ describe("adding a machine", () => {
     const HOME = "https://192.168.0.9:20343";
     const WEB = "https://box.example.com";
     const KEPT = "https://studio.example.org";
+    const LEARNED = "https://192.168.0.31:20343";
     const kept = machine("m-box", "Workstation", [{ kind: "lan", url: HOME, fingerprint: "AA:BB" }, { kind: "url", url: TAIL }, { kind: "url", url: "http://127.0.0.1:5555" }, { kind: "url", url: WEB }, { kind: "url", url: KEPT }]);
     /** @type {any} */
     let ses = null;
@@ -1845,7 +1846,8 @@ describe("adding a machine", () => {
         await ses.cookies.set(sign(TAIL, "fdt_new", { expirationDate: 2e9 }));
         return { status: 200, body: { machine: { id: "m-box" } } };
       },
-      keep: { add: (/** @type {any} */ m) => m, remove: () => false },
+      // A way learned while it paired (lib/learn-routes.js), in the machine as kept.
+      keep: { add: (/** @type {any} */ m) => ({ ...m, routes: [...m.routes, { kind: "lan", url: LEARNED, fingerprint: "AA:BB", learned: true }] }), remove: () => false },
     });
     await t.settle();
     t.r.select("m-box");
@@ -1862,6 +1864,7 @@ describe("adding a machine", () => {
     assert.deepEqual(at(HOME), [sign(HOME, "fdt_new", { expirationDate: 2e9 })], "the home network's: the one made");
     assert.deepEqual(at(TAIL), [sign(TAIL, "fdt_new", { expirationDate: 2e9 })], "where it was made: as made");
     assert.deepEqual(at(KEPT).map((/** @type {any} */ k) => k.value), ["fdt_new"], "an internet way where one stood: the one made");
+    assert.deepEqual(at(LEARNED).map((/** @type {any} */ k) => k.value), ["fdt_new"], "a way learned while it paired: the one made");
     assert.deepEqual([at(WEB), at("http://127.0.0.1:5555")], [[], []], "an internet way where none stood, and plain http: none");
   });
 

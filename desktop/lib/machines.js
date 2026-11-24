@@ -8,7 +8,8 @@
 // listener's https with its certificate's pinned fingerprint (services/lan-tls.js), which `pinsFor` gives the view's
 // own certificate check, or an SSH tunnel this computer holds (ssh-route.js): its end here, http://127.0.0.1:<port>,
 // with the SSH alias and Filament's port on that machine. A kind this app does not know is kept as written and passed
-// over. Before a view loads a route — before any cookie goes there — `pickRoute` asks who answers at it, cookie-less, an
+// over. The ways a machine says it has — its network's and its tailnet's — are kept after the person's, marked learned,
+// and follow what it says (`setLearnedRoutes`, lib/learn-routes.js). Before a view loads a route — before any cookie goes there — `pickRoute` asks who answers at it, cookie-less, an
 // SSH route's tunnel brought up first (`hold`), and takes it only where the machine's own id answers (and, on the
 // network, over the pinned certificate alone): its ways all asked at once, the best that answers taken (`rankOf`: this
 // computer, the home network, the tailnet, an SSH tunnel, the internet), those that cost more given a head start
@@ -46,8 +47,9 @@ export const HEAD_START_MS = 1500;
 export const BETTER_MS = 1000;
 
 /**
- * @typedef {{ kind: "url", url: string }} UrlRoute  an address reached as it is: an SSH tunnel's localhost, tailscale serve's https
- * @typedef {{ kind: "lan", url: string, fingerprint: string }} LanRoute  the network listener's https, its certificate pinned
+ * @typedef {{ kind: "url", url: string, learned?: true }} UrlRoute  an address reached as it is: an SSH tunnel's localhost, tailscale serve's https
+ * @typedef {{ kind: "lan", url: string, fingerprint: string, learned?: true }} LanRoute  the network listener's https, its certificate pinned
+ *   `learned`: a way the machine said it has (lib/learn-routes.js), not one the person added (`setLearnedRoutes`)
  * @typedef {import("./ssh-route.js").SshRoute} SshRoute  a tunnel this computer holds: its end here, the alias, Filament's port there
  * @typedef {UrlRoute | LanRoute | SshRoute | { kind: string, [k: string]: unknown }} Route  any other kind: a newer app's, kept and passed over
  * @typedef {{ id: string, name: string, routes: Route[], partition: string, addedAt: number | null, local?: true, off?: true, browser?: true, color?: string, icon?: string }} Machine
@@ -130,14 +132,15 @@ function urlOf(u) {
  */
 export function routeOf(r) {
   if (!r || typeof r !== "object" || typeof r.kind !== "string" || !r.kind) return null;
+  const learned = r.learned === true ? { learned: /** @type {const} */ (true) } : {};
   if (r.kind === "url") {
     const url = urlOf(r.url);
-    return url ? { kind: "url", url } : null;
+    return url ? { kind: "url", url, ...learned } : null;
   }
   if (r.kind === "lan") {
     const url = urlOf(r.url);
     const fingerprint = printOf(r.fingerprint);
-    return url?.startsWith("https:") && fingerprint.length === 95 ? { kind: "lan", url, fingerprint } : null;
+    return url?.startsWith("https:") && fingerprint.length === 95 ? { kind: "lan", url, fingerprint, ...learned } : null;
   }
   if (r.kind === "ssh") {
     const local = localOf(r);
@@ -287,6 +290,37 @@ export function addMachine(file, m, o = {}) {
   if (!had && all.length >= MAX_MACHINES - 1) throw new Error(`this window holds ${MAX_MACHINES} machines at most: remove one first`);
   keep(file, had ? all.map((x) => (x.id === id ? got : x)) : [...all, got], o);
   return got;
+}
+
+/** Whether a way is one its machine said it has (`setLearnedRoutes`), not one the person added. @param {Route} r */
+export const isLearned = (r) => /** @type {any} */ (r).learned === true;
+
+/**
+ * The ways a machine said it has (lib/learn-routes.js), kept after the ways the person added, in the place of those it
+ * said before: one it no longer says goes, and the person's are never touched — an address one of theirs holds is
+ * theirs. Only a direct way or the network's is learned. → the machine as kept now, and whether its ways changed; null
+ * where none of that id is kept.
+ * @param {string} file @param {string} id @param {readonly Route[]} learned @param {KeepOpts} [o]
+ * @returns {{ machine: Machine, changed: boolean } | null}
+ */
+export function setLearnedRoutes(file, id, learned, o = {}) {
+  const all = readKept(file);
+  const had = all.find((x) => x.id === idOf(id));
+  if (!had) return null;
+  const own = had.routes.filter((r) => !isLearned(r));
+  /** @type {Route[]} */
+  const got = [];
+  for (const r of learned) {
+    const k = routeOf({ ...r, learned: true });
+    if (!k || (k.kind !== "url" && k.kind !== "lan")) continue;
+    if ([...own, ...got].some((x) => x.url === k.url)) continue;
+    got.push(k);
+  }
+  const routes = [...own, ...got];
+  if (JSON.stringify(routes) === JSON.stringify(had.routes)) return { machine: had, changed: false };
+  const m = { ...had, routes };
+  keep(file, all.map((x) => (x.id === had.id ? m : x)), o);
+  return { machine: m, changed: true };
 }
 
 /** Remove a machine; whether one went. Its partition's cookie is the shell's to clear. @param {string} file @param {string} id @param {KeepOpts} [o] */

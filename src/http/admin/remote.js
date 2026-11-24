@@ -719,7 +719,8 @@ export function remoteRoutes(a) {
     [
       // The network's listener (Settings › Remote access › Reach this machine on my network): asked for or not, where it
       // listens, why it does not, its certificate's fingerprint and addresses, and — on Windows, while it listens —
-      // what the firewall lets through (`?fresh=1` reads it again).
+      // what the firewall lets through (`?fresh=1` reads it again; `?firewall=0` reads it not: another machine's app
+      // learning its ways, desktop/lib/learn-routes.js, asks no PowerShell run of it).
       "GET",
       "/remote/lan",
       guard(async (r) => {
@@ -729,7 +730,7 @@ export function remoteRoutes(a) {
         await a.lan?.()?.settled?.();
         const n = net();
         if (!n) return sendJson(r.res, 503, { error: "the network's listener is not wired in this Filament" });
-        const fw = n.listening ? await firewallNow(n.listening.port, r.url.searchParams.get("fresh") === "1") : null;
+        const fw = n.listening && r.url.searchParams.get("firewall") !== "0" ? await firewallNow(n.listening.port, r.url.searchParams.get("fresh") === "1") : null;
         return sendJson(r.res, 200, { ...n, platform: firewall.platform, firewall: fw });
       }),
     ],

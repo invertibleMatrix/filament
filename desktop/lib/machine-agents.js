@@ -16,7 +16,7 @@
 // kept here then reaches the machine at the tunnel's address, while this app holds it. The new-chat menu's
 // part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login. The
 // machine is reached as lib/reach.js reaches it. Plain Node (NA-D13).
-import { pickRoute } from "./machines.js";
+import { RANKS, isLearned, pickRoute, rankOf } from "./machines.js";
 import { routeFetch } from "./watch.js";
 import { FOR, createReach } from "./reach.js";
 
@@ -107,16 +107,32 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     return { id: m.id, name: m.name, projects, words: null };
   }
 
-  /** The way this window reached a machine by: its address, and its certificate's pin on the network. @param {{ route: Route, origin: string }} r */
-  const wayOf = (r) => ({ url: r.origin, ...(r.route.kind === "lan" ? { fingerprint: String(/** @type {any} */ (r.route).fingerprint) } : {}) });
+  /** Whether a way is one the machine said it has on its home network (machines.js `isLearned`): gone once you are away. @param {Route} x */
+  const homeLearned = (x) => isLearned(x) && rankOf(x) === RANKS.lan;
+  /** Whether a way stands while something on this computer holds it: an SSH tunnel, plain http on its loopback. @param {Route} x */
+  const held = (x) => x.kind === "ssh" || String(x.url).startsWith("http:");
   /**
-   * The agents' device kept for a machine still standing there takes the way this window reached it by, its token kept:
-   * their sub-agents, commands and models go where the machine answers now — another address, a certificate made anew
-   * and paired again —, not where it was minted. Written where it moved alone. → why it could not be kept, or null.
+   * The way the agents' device kept here reaches a machine by: its address, and its certificate's pin on the network —
+   * the way this window reached it by; where that is one the machine said it has on its home network, the best of its
+   * others by where it is (`rankOf`, then their order), a way held on this computer last. A row holds one way, and the
+   * home network's would leave this Filament's agents none away from home. @param {Machine} m @param {{ route: Route, origin: string }} r
+   */
+  const wayOf = (m, r) => {
+    const others = m.routes.filter((x) => !homeLearned(x) && (x.kind === "url" || x.kind === "lan" || x.kind === "ssh"));
+    const best = others.slice().sort((a, b) => Number(held(a)) - Number(held(b)) || rankOf(a) - rankOf(b))[0];
+    const route = homeLearned(r.route) && best ? best : r.route;
+    const url = route === r.route ? r.origin : new URL(String(route.url)).origin;
+    return { url, ...(route.kind === "lan" ? { fingerprint: String(/** @type {any} */ (route).fingerprint) } : {}) };
+  };
+  /**
+   * The agents' device kept for a machine still standing there takes the way this window reached it by (`wayOf`), its
+   * token kept: their sub-agents, commands and models go where the machine answers now — another address, a
+   * certificate made anew and paired again —, not where it was minted. Written where it moved alone. → why it could
+   * not be kept, or null.
    * @param {Machine} m @param {{ route: Route, origin: string }} r @param {ReturnType<typeof keptOf>} kept
    */
   const follow = (m, r, kept) => {
-    const way = wayOf(r);
+    const way = wayOf(m, r);
     if (!kept || (kept.url === way.url && (kept.fingerprint ?? "") === (way.fingerprint ?? ""))) return null;
     return keepHere(() => store.keep({ ...way, machine: { ...kept.machine, name: m.name }, device: kept.device }));
   };
@@ -175,7 +191,7 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     const kept = keptOf(m);
     /** A grant asked of a device there. @param {string} id @param {boolean} on */
     const grant = (id, on) => r.send(`/remote/devices/${encodeURIComponent(id)}`, { method: "PATCH", body: { grants: { agents: on } } }).catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
-    const way = wayOf(r);
+    const way = wayOf(m, r);
     if (kept) {
       const g = await grant(kept.device.id, true);
       // Still standing there: its grant is on, nothing minted, and its row takes the way this window's pairing reached

@@ -82,7 +82,7 @@ const scripted = (o = {}) => {
 /**
  * The desk over a scripted machine.
  * @param {ReturnType<typeof scripted>} there
- * @param {{ machines?: () => any[], sleep?: (ms: number, signal: AbortSignal) => Promise<void>, now?: () => number, quietMs?: number, beginMs?: number }} [o]
+ * @param {{ machines?: () => any[], sleep?: (ms: number, signal: AbortSignal) => Promise<void>, now?: () => number, quietMs?: number, beginMs?: number, learn?: (m: any, r: any) => Promise<unknown>, learnMs?: number }} [o]
  */
 const deskOver = (there, o = {}) => {
   /** @type {any[]} */
@@ -98,6 +98,8 @@ const deskOver = (there, o = {}) => {
     ...(o.now ? { now: o.now } : {}),
     ...(o.quietMs ? { quietMs: o.quietMs } : {}),
     ...(o.beginMs ? { beginMs: o.beginMs } : {}),
+    ...(o.learn ? { learn: o.learn } : {}),
+    ...(o.learnMs ? { learnMs: o.learnMs } : {}),
   });
   return { desk, told };
 };
@@ -588,6 +590,84 @@ test("a machine's events stream: one that says nothing for its quiet time is let
   await until(() => there.streams[0].signal.aborted, "let go at its next frame");
   assert.deepEqual(told, [{ machine: "m-mac", type: "hello" }]);
   desk.close();
+});
+
+// (fails before: yes — s4b: a stream that stood was said down and joined again 2 s later as its way gave out under it, a
+// tunnel let go once the page moved to a better way, the desk blinking every machine reached by it)
+test("a stream that stood is joined again at once, by the way that answers now: no down said, no wait; said down only where that join fails", async () => {
+  /** @type {number[]} */
+  const waits = [];
+  let t = 0;
+  let refuse = false;
+  const tick = () => new Promise((done) => setTimeout(done, 1));
+  const there = scripted({ events: () => (refuse ? answer(503, { error: "gone" }) : null) });
+  const { desk, told } = deskOver(there, { now: () => t, sleep: (ms) => (waits.push(ms), tick()) });
+  desk.sync();
+  await until(() => there.streams.length === 1, "its stream");
+  there.streams[0].push({ type: "hello" });
+  await until(() => told.length === 1, "its hello");
+  t += 61_000;
+  there.streams[0].end();
+  await until(() => there.streams.length === 2, "joined again");
+  assert.deepEqual([told.map((f) => f.type), waits], [["hello"], []], "no down, no wait");
+  there.streams[1].push({ type: "hello" });
+  await until(() => told.length === 2, "its hello again");
+  assert.equal(desk.live("m-mac"), true);
+  t += 61_000;
+  refuse = true;
+  there.streams[1].end();
+  await until(() => told.length === 3, "said down");
+  desk.close();
+  assert.deepEqual(told.map((f) => f.type), ["hello", "hello", "down"]);
+  assert.equal(waits[0], 2000, "then joined again after its wait");
+});
+
+// (fails before: yes — the review of s4b: the at-once join skipped the wait's reset, so one that failed then waited as
+// long as the failures before the stream; and a stream joined again that never said hello, ended at its quiet time,
+// was taken for one that stood, joined again and again, never said down)
+test("once a stream stood, its wait starts from the first again; one joined again that never says hello is said down at its end", async () => {
+  /** @type {number[]} */
+  const waits = [];
+  let t = 0;
+  let n = 0;
+  const tick = () => new Promise((done) => setTimeout(done, 1));
+  const there = scripted({ events: () => (++n <= 4 || n === 6 ? answer(503, { error: "not now" }) : null) });
+  const { desk, told } = deskOver(there, { now: () => t, sleep: (ms) => (waits.push(ms), tick()) });
+  desk.sync();
+  await until(() => there.streams.length === 1, "its stream, after four failed joins");
+  assert.deepEqual(waits, [2000, 4000, 8000, 16000]);
+  there.streams[0].push({ type: "hello" });
+  await until(() => told.length === 1, "its hello");
+  t += 61_000;
+  there.streams[0].end();
+  await until(() => told.length === 2, "its at-once join refused: said down");
+  await until(() => there.streams.length === 2, "joined again");
+  assert.deepEqual(waits, [2000, 4000, 8000, 16000, 2000], "from the first wait again");
+  there.streams[1].push({ type: "hello" });
+  await until(() => told.length === 3, "its hello");
+  t += 61_000;
+  there.streams[1].end();
+  await until(() => there.streams.length === 3, "joined again at once");
+  t += 70_000;
+  there.streams[2].end();
+  await until(() => told.length === 4, "no hello of its own: said down");
+  desk.close();
+  assert.deepEqual(told.map((f) => f.type), ["hello", "down", "hello", "down"]);
+});
+
+test("the ways a machine says it has are learned as its stream is joined, and again each learnMs while it stands; none once it is let go (lib/learn-routes.js)", async () => {
+  /** @type {any[]} */
+  const learned = [];
+  const there = scripted();
+  const { desk } = deskOver(there, { learn: async (m, r) => void learned.push([m.id, r.who, r.origin]), learnMs: 20 });
+  desk.sync();
+  await until(() => there.streams.length === 1, "its stream");
+  await until(() => learned.length >= 3, "read again while it stands");
+  assert.deepEqual(learned[0], ["m-mac", "device", "https://192.0.2.9:20343"], "as the desk reached it");
+  desk.close();
+  const n = learned.length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(learned.length, n);
 });
 
 test("close during a stream's wait to join again ends it there: no stream asked after", async () => {

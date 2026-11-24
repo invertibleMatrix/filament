@@ -516,7 +516,8 @@ test("WSL 2 behind its NAT: its addresses are said to open from this computer al
 test("on the network, a device pairs over https: a stranger is sent to the pairing page, the link carries the fingerprint, the cookie is __Host- and Secure, the device drives; the firewall is read and allowed from here alone; turned off, it closes", async () => {
   /** @type {number[]} */
   const allowed = [];
-  const firewall = { platform: "win32", read: async () => ({ networks: ["Private"], ownPorts: allowed.map(String), app: [] }), allow: async (/** @type {{ port: number, also?: number[] }} */ o) => void allowed.push(o.port, ...(o.also || [])) };
+  let firewallReads = 0;
+  const firewall = { platform: "win32", read: async () => (firewallReads++, { networks: ["Private"], ownPorts: allowed.map(String), app: [] }), allow: async (/** @type {{ port: number, also?: number[] }} */ o) => void allowed.push(o.port, ...(o.also || [])) };
   const shim = await startApp({ configure: (c) => void (c.server.lan = { enabled: true, port: 0 }), overrides: { lanHost: "127.0.0.1", firewall } });
   try {
     const net0 = shim.started.lan;
@@ -550,6 +551,10 @@ test("on the network, a device pairs over https: a stranger is sent to the pairi
     assert.deepEqual([here.firewall.open, here.firewall.fix], [false, true]);
     const theirs = await askTls(port, "/api/remote/lan", { headers: as });
     assert.equal(theirs.status, 200, "a full device reads it");
+    // Another machine's app learning its ways reads it with no firewall run (desktop/lib/learn-routes.js).
+    const reads = firewallReads;
+    const lean = await askTls(port, "/api/remote/lan?firewall=0&fresh=1", { headers: as });
+    assert.deepEqual([lean.status, lean.json.firewall, lean.json.listening.port, firewallReads], [200, null, port, reads]);
     assert.equal((await askTls(port, "/api/remote/lan/firewall", { method: "POST", headers: { ...as, ...own }, body: {} })).status, 403, "Windows asks the person at this machine: never from another");
     const fw = await (await shim.api("/api/remote/lan/firewall", { method: "POST", body: {} })).json();
     // The artifacts' network address listens beside it, at a port of its own: the rule opens both (Part 4).
