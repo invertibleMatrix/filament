@@ -113,7 +113,7 @@
 <div id="sheet">
   <form class="card" id="add-form" role="dialog" aria-modal="true" aria-labelledby="add-title" novalidate autocomplete="off">
     <h1 id="add-title">Add a machine</h1>
-    <p class="quiet">Drive another machine's Filament from this window. On that machine, open Settings › Remote access, turn on Reach this machine on my network or Share on my tailnet, and make a code: paste its link here, or its address and the code. A machine you reach by SSH needs no code: type ssh:// and its Host.</p>
+    <p class="quiet">Drive another machine's Filament from this window. On that machine, open Settings › Remote access, turn on Reach this machine on my network or Share on my tailnet, and make a code: paste its link here, or its address and the code. A machine you reach by SSH needs no code: type ssh:// and its Host. While this window holds its tunnel, the tunnel's port on this computer reaches that Filament for every program here, not this window alone.</p>
     <div class="box" id="add-peers" hidden><p class="quiet" id="add-peers-said"></p><div class="peers" id="add-peers-list"></div></div>
     <label>Address or link<input id="add-link" type="text" spellcheck="false" placeholder="https://192.168.1.20:20343, the pairing link, or ssh://user@host"></label>
     <label>Code<input id="add-code" type="text" spellcheck="false" placeholder="ABCD-EFGH — the link carries it"></label>

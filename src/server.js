@@ -284,8 +284,9 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const loopHealth = watchLoopHealth({ log });
   // This machine's id and name, as another Filament that adds it knows it (/.well-known/filament, /api/state).
   const machine = createMachine({ dataDir, log });
-  // The devices paired with it and the codes that pair them: the admin API, its stream and its sockets know them.
-  const devices = createDevices({ dataDir, log });
+  // The devices paired with it and the codes that pair them: the admin API, its stream and its sockets know them. A
+  // browser here is paired at this Filament's own name under localhost, and taken there alone.
+  const devices = createDevices({ dataDir, log, pageHost: () => machine.pageHost() });
   // This computer's key to the admin API (services/owner.js), minted as Filament listens: its own programs send it.
   const owner = createOwner({ dataDir, log });
   // Where another machine's agents work in a copy of their project (services/copies.js, the remote plan's cp-root).

@@ -11,7 +11,7 @@ import { guard } from "./guard.js";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, parse, relative, resolve, sep } from "node:path";
-import { DEVICE_COOKIE_DAYS, PAIR_PAGE, callerAddress, deviceCookie, drives, forwardedHttps, hereDevice, isLocalCaller, isLoopback, lapsedDevice, sealedWay } from "../guards.js";
+import { DEVICE_COOKIE_DAYS, PAIR_PAGE, callerAddress, deviceCookie, drives, forwardedHttps, hereDevice, hostNameOf, isLocalCaller, isLoopback, lapsedDevice, sealedWay } from "../guards.js";
 import { printOf } from "../../core/x509.js";
 import { allowThroughFirewall, firewallVerdict, readFirewall } from "../../services/lan-tls.js";
 import { lowerHeaders } from "../../core/headers.js";
@@ -708,7 +708,7 @@ export function remoteRoutes(a) {
         const was = lapsedDevice(r.req, devices);
         // A browser here paired again — `filament open` once more — takes its old pairing's place: that one goes for good.
         const hereBefore = hereDevice(r.req, devices);
-        const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine, local: isLocalCaller(r.req) });
+        const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine, local: isLocalCaller(r.req), at: hostNameOf(r.req) });
         if (!got.ok) return sendJson(r.res, got.unsaved ? 500 : got.retryAt ? 429 : 403, { error: got.why, ...(got.retryAt ? { retryAt: got.retryAt } : {}) }, got.retryAt ? { "retry-after": String(Math.max(1, Math.ceil((got.retryAt - Date.now()) / 1000))) } : {});
         a.log?.("info", `remote: ${got.device.name} paired (${got.device.scope}, ${got.device.kind}) from ${callerAddress(r.req) || "an unknown address"}${was ? `, replacing ${was.name}, which went unused` : ""}`);
         if (was) devices.revoke(was.id);
@@ -716,6 +716,13 @@ export function remoteRoutes(a) {
           devices.revoke(hereBefore.id);
           devices.forget(hereBefore.id);
         }
+        // And every browser here paired at no name this Filament has now — 127.0.0.1, whose cookie the browser no longer
+        // sends here and so cannot say it was this one —: no one's, gone for good (the hunt on s0f).
+        if (got.device.here)
+          for (const id of devices.strays()) {
+            devices.revoke(id);
+            devices.forget(id);
+          }
         if (page) return sendJson(r.res, 200, { device: got.device, machine: machine() }, { "set-cookie": deviceCookie(got.token, DEVICE_COOKIE_DAYS * 86_400, overHttps(r.req)), "cache-control": "no-store" });
         return sendJson(r.res, 200, { device: got.device, machine: machine(), token: got.token }, { "cache-control": "no-store" });
       }),

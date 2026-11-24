@@ -367,14 +367,15 @@ export function countOwnerless(req, who) {
 
 /**
  * Who calls (the owner's remote Filament of 11-06): this computer through no proxy (`local`) — `owner` where it sent
- * this computer's owner key (`ownerOf`), which for now changes nothing —, a holder of
+ * this computer's owner key or the app's window's session (`ownerOf`), or is a browser here, which for now changes
+ * nothing —, a holder of
  * `server.adminToken` (`admin`), a machine signed in to the tailnet as this one is, where that is trusted (`tailnet`,
  * `ownTailnetLogin`), a paired device by its token — its scope, full or view, or another machine's agents' (`agent`,
  * `agentsDevice`), its grants on `device.grants` — over a sealed way (`sealedWay`), or nobody Filament knows (null).
  * A device's token over loopback with no owner key — the desk's calls through an SSH tunnel, another machine's agents
  * through one — is that device, as from afar: its scope, its grants and an agents' fence hold through a tunnel too. A
- * browser here (devices.js `here`: `filament open`'s, the tray's) is this computer itself: its token names it, and gives
- * it nothing loopback does not. A device's Bearer that does not verify — revoked, replaced, lapsed — is no one's, so an
+ * browser here (devices.js `here`: `filament open`'s, the tray's) is this computer's owner, at this Filament's own name
+ * alone (`atItsName`), as the app's window is by its session: its token names it. A device's Bearer that does not verify — revoked, replaced, lapsed — is no one's, so an
  * agents' device stops at its revoke; a cookie that does not — another port's: a browser sends a host's cookies to each
  * of its ports — leaves the caller this computer. A tailnet login that carries a device's token is the login, and its
  * device is counted in use all the same (its verify).
@@ -389,7 +390,11 @@ export function whoIs(req, server, devices = null) {
   if (isLocalCaller(req)) {
     if (owner) return { kind: "local", owner: true };
     const device = deviceOfToken(req, devices);
-    if (device && !device.here) return { kind: "device", device, scope: device.scope };
+    // A browser here, at this Filament's own name: the person at this computer, as its pairing — made with the owner
+    // key or the app's press — says. It does what this computer's owner does, but what needs the key itself (a window's
+    // session, keys copied) or, while the app holds its key, a press.
+    if (device?.here) return { kind: "local", owner: true };
+    if (device) return { kind: "device", device, scope: device.scope };
     return !device && devices && deviceBearer(req) ? null : { kind: "local" };
   }
   if (adminTokenIn(req, server)) return { kind: "admin" };
@@ -422,8 +427,17 @@ export function deviceCaller(req, devices = null) {
  */
 const deviceOfToken = (req, devices) => {
   const token = devices && sealedWay(req) ? deviceTokenOf(req) : "";
-  return (token && devices?.verify(token, callerAddress(req))) || null;
+  return atItsName((token && devices?.verify(token, callerAddress(req))) || null, req, devices);
 };
+/**
+ * A device as a request may sign in as it: a browser here at this Filament's own name alone (devices.js `takenAt`), the
+ * one it was paired at — directly, or at an SSH tunnel's other end —; one a browser holds anywhere else (127.0.0.1's,
+ * which a browser sends to every port of it) is no one's, whatever Host its sender says (the reviews of s0b and s0f).
+ * Any other device as it is.
+ * @param {import("../services/devices.js").Device | null} device @param {import("node:http").IncomingMessage} req
+ * @param {import("../services/devices.js").DeviceStore | null} devices
+ */
+const atItsName = (device, req, devices) => (!device?.here || devices?.takenAt?.(device.id, hostNameOf(req)) ? device : null);
 /**
  * The device a request's cookie signs in as — a browser here's too —, over a sealed way, whoever `whoIs` says the
  * caller is (a tailnet login it trusts first, this computer itself): the device its cookie is sent again for
@@ -433,7 +447,7 @@ const deviceOfToken = (req, devices) => {
 export const cookieDevice = (req, devices = null) => {
   const jar = cookiesOf(req);
   const cookie = jar[SECURE_DEVICE_COOKIE] || jar[DEVICE_COOKIE];
-  return (cookie && devices && sealedWay(req) && devices.verify(cookie, callerAddress(req))) || null;
+  return atItsName((cookie && devices && sealedWay(req) && devices.verify(cookie, callerAddress(req))) || null, req, devices);
 };
 /**
  * The browser here a request on this computer's loopback signs in as (devices.js `here`), or null.

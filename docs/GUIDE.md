@@ -242,7 +242,11 @@ machine sends it again, so a machine it only watches and works from the desk, it
 A browser on this computer — `filament open`, the tray's **Open in browser** — is paired at this Filament's own name
 under localhost (`filament-` and twelve letters, `.localhost`, made once and kept in the data folder's `machine.json`),
 so its cookie is that name's alone: a browser sends 127.0.0.1's cookies to every port of it, a server an agent runs
-there among them. Filament's pages and artifacts answer at that name as at 127.0.0.1.
+there among them. Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
+browser is this computer's owner: it does what this computer does, but press while the Filament app runs (answer an
+ask, Always allow — those come from the app's window). Its code is refused at 127.0.0.1, its cookie or token anywhere
+but that name is no one's, and a browser paired at 127.0.0.1 before this computer's Filament had a name of its own goes
+for good as one is paired at it.
 
 **Unused devices expire.** A browser or command line that goes 90 days without reaching this Filament is let in no
 more: its page goes to the pairing page, which says its pairing ran out, and `filament --machine` and the desktop app
@@ -303,7 +307,9 @@ nothing. **Pair** then claims the code, and the machine shows in the window — 
 window's title bar, as this computer's is. A machine reached by SSH alone: type `ssh://` and a Host of your SSH config,
 or `ssh://you@server` (Filament's port there after a colon, where it is not 20300). The app holds the tunnel itself,
 with your SSH keys and agent, and never asks a password; there is no code to type: **Pair** runs `filament pair` there
-over SSH and claims its code through the tunnel ([Filament on a server](server.md#5-reach-it-from-your-laptop)).
+over SSH and claims its code through the tunnel ([Filament on a server](server.md#5-reach-it-from-your-laptop)). While
+the window holds it, the tunnel's port on this computer reaches that Filament for every program here, not the window
+alone, as the sheet says.
 
 **Setting a machine up over SSH.** A Linux machine you reach with SSH that has no Filament yet — a server, a cloud
 VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the

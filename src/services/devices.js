@@ -69,9 +69,10 @@ export const FULL_HOLDS = Object.freeze(/** @type {(keyof Grants)[]} */ (["unask
  * presses nothing while the app holds a key (http/guards.js `pressRefusal`; the xd-key hunt's). `machine`: the id of the
  * Filament whose desktop app claimed it, as its claim said it (`machineIdOf`). `here`: a browser on this computer —
  * `filament open`'s, the tray's Open in browser —, or at an SSH tunnel's other end: its token is taken on loopback alone,
- * where its caller is this computer itself (http/guards.js `whoIs`), and is no one's from the network.
+ * where its caller is this computer itself (http/guards.js `whoIs`), and is no one's from the network; `at`, the name it
+ * was paired at (`pageHost`), the one it is taken at (`takenAt`) — never listed.
  * @typedef {{ id: string, name: string, scope: Scope, kind: string, hash: string, grants: Grants, createdAt: number, lastSeenAt: number | null,
- *   lastSeenFrom: string | null, revokedAt: number | null, pairing?: string, of?: string, from?: string, machine?: string, pressless?: true, here?: true }} KeptDevice
+ *   lastSeenFrom: string | null, revokedAt: number | null, pairing?: string, of?: string, from?: string, machine?: string, pressless?: true, here?: true, at?: string }} KeptDevice
  */
 /**
  * A code open now, as said to this computer: its id, never the code; how long it has left by the store's own clock, so
@@ -104,7 +105,7 @@ const hashOf = (token) => createHash("sha256").update(token).digest("hex");
  */
 const expiryOf = (d, from) => (d.scope === "agent" || d.revokedAt != null ? null : Math.max(d.lastSeenAt || 0, d.createdAt || 0, from) + UNUSED_MS);
 /** Its grants a copy: what a caller does with them changes nothing kept. @param {KeptDevice} d @param {number} from  the store's `unusedFrom` @returns {Device} */
-const shown = ({ hash: _hash, ...d }, from) => ({ ...d, grants: { ...d.grants }, expiresAt: expiryOf(d, from) });
+const shown = ({ hash: _hash, at: _at, ...d }, from) => ({ ...d, grants: { ...d.grants }, expiresAt: expiryOf(d, from) });
 
 /**
  * The model calls another machine's chats send this machine's models (the remote-agents plan's m-door), each with the
@@ -163,10 +164,11 @@ export const grantEnds = (grants, before) =>
   grants?.agents !== true ? "grant agents was switched off" : before?.full === true && grants?.full !== true ? "Full control was switched off" : "";
 
 /**
- * @param {{ dataDir?: string | null, now?: () => number, log?: (level: string, msg: string) => void }} [o]
- *   `dataDir` null keeps it in memory alone (tests).
+ * @param {{ dataDir?: string | null, now?: () => number, log?: (level: string, msg: string) => void, pageHost?: () => string }} [o]
+ *   `dataDir` null keeps it in memory alone (tests). `pageHost`: this Filament's own name under localhost
+ *   (services/machine.js), the one name a browser here is paired at and taken at ("" for none: no browser here is).
  */
-export function createDevices({ dataDir = null, now = () => Date.now(), log = () => {} } = {}) {
+export function createDevices({ dataDir = null, now = () => Date.now(), log = () => {}, pageHost = () => "" } = {}) {
   const file = dataDir ? join(dataDir, "devices.json") : null;
   /** @type {KeptDevice[]} */
   let devices = [];
@@ -183,7 +185,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
       else floorUnkept = true;
       devices = (Array.isArray(j?.devices) ? j.devices : [])
         .filter((/** @type {any} */ d) => d && typeof d.id === "string" && /^[0-9a-f]{64}$/.test(String(d.hash)))
-        .map((/** @type {any} */ d) => ({ id: d.id, name: cleanName(d.name) || "A device", scope: scopeOf(d.scope), kind: String(d.kind || "browser"), hash: d.hash, grants: grantsOf(d.grants), createdAt: Number(d.createdAt) || 0, lastSeenAt: d.lastSeenAt ?? null, lastSeenFrom: d.lastSeenFrom ?? null, revokedAt: d.revokedAt ?? null, ...(typeof d.pairing === "string" ? { pairing: d.pairing } : {}), ...(typeof d.of === "string" ? { of: d.of } : {}), ...(typeof d.from === "string" && cleanName(d.from) ? { from: cleanName(d.from) } : {}), ...(machineIdOf(d.machine) ? { machine: machineIdOf(d.machine) } : {}), ...(d.pressless === true ? { pressless: /** @type {true} */ (true) } : {}), ...(d.here === true ? { here: /** @type {true} */ (true) } : {}) }));
+        .map((/** @type {any} */ d) => ({ id: d.id, name: cleanName(d.name) || "A device", scope: scopeOf(d.scope), kind: String(d.kind || "browser"), hash: d.hash, grants: grantsOf(d.grants), createdAt: Number(d.createdAt) || 0, lastSeenAt: d.lastSeenAt ?? null, lastSeenFrom: d.lastSeenFrom ?? null, revokedAt: d.revokedAt ?? null, ...(typeof d.pairing === "string" ? { pairing: d.pairing } : {}), ...(typeof d.of === "string" ? { of: d.of } : {}), ...(typeof d.from === "string" && cleanName(d.from) ? { from: cleanName(d.from) } : {}), ...(machineIdOf(d.machine) ? { machine: machineIdOf(d.machine) } : {}), ...(d.pressless === true ? { pressless: /** @type {true} */ (true) } : {}), ...(d.here === true ? { here: /** @type {true} */ (true) } : {}), ...(d.here === true && typeof d.at === "string" && d.at ? { at: d.at.toLowerCase().slice(0, 253) } : {}) }));
     } catch (/** @type {any} */ e) {
       // Unread, nothing is let in: a device that cannot be checked is no device. The file is set aside, never written
       // over by the next pairing, for a person to look at.
@@ -308,14 +310,15 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     /**
      * A code claimed: the new device and its token, handed out this once — or why not, and when to try again.
      * @param {unknown} typed  the code as typed
-     * @param {{ name?: unknown, kind?: unknown, from?: string, machine?: unknown, local?: boolean }} [o]  `from`: the claimer's
+     * @param {{ name?: unknown, kind?: unknown, from?: string, machine?: unknown, local?: boolean, at?: string | null }} [o]  `from`: the claimer's
      *   address, which its wrong codes count against; `machine`: the id of the Filament whose app claims it, kept where it
      *   is one; `local`: the claim came on loopback, through no proxy — a code made for a browser here takes none else, and
-     *   stays open
+     *   stays open; `at`: the name the claim reached Filament by (its Host) — a code made for a browser here takes this
+     *   Filament's own (`pageHost`) alone
      * @returns {{ ok: true, token: string, device: Device } | { ok: false, why: string, retryAt?: number, unsaved?: true }}
      *   `unsaved`: the device could not be kept, so none was paired; the code stays open for another try
      */
-    claim(typed, { name = "", kind = "browser", from = "", machine, local = false } = {}) {
+    claim(typed, { name = "", kind = "browser", from = "", machine, local = false, at = null } = {}) {
       const held = heldUntil(from);
       if (held) return { ok: false, why: "Too many wrong codes: pairing waits a few minutes.", retryAt: held };
       const want = normalCode(typed);
@@ -327,10 +330,13 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
         return { ok: false, why: "That code is not one this Filament has open: it may have run out (five minutes) or been used. Start a new pairing on that machine." };
       }
       if (hit.here && !local) return { ok: false, why: "That code pairs a browser on the machine that made it, or at an SSH tunnel's other end: open its link there." };
+      // At this Filament's own name alone, never 127.0.0.1, whose cookies a browser sends to every port of it (the
+      // review of s0b): the code stays open for the link's own address.
+      if (hit.here && (!pageHost() || at !== pageHost())) return { ok: false, why: "That code pairs a browser at the address its link names: open the link as `filament open` or the tray's Open in browser gave it." };
       codes = codes.filter((c) => c !== hit);
       const token = `${TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
       /** @type {KeptDevice} */
-      const d = { id: randomUUID(), name: cleanName(name) || "A device", scope: hit.scope, kind: String(kind || "browser").slice(0, 16), hash: hashOf(token), grants: grantsOf(null), createdAt: now(), lastSeenAt: null, lastSeenFrom: null, revokedAt: null, pairing: hit.id, ...(machineIdOf(machine) ? { machine: machineIdOf(machine) } : {}), ...(hit.pressless ? { pressless: hit.pressless } : {}), ...(hit.here ? { here: hit.here } : {}) };
+      const d = { id: randomUUID(), name: cleanName(name) || "A device", scope: hit.scope, kind: String(kind || "browser").slice(0, 16), hash: hashOf(token), grants: grantsOf(null), createdAt: now(), lastSeenAt: null, lastSeenFrom: null, revokedAt: null, pairing: hit.id, ...(machineIdOf(machine) ? { machine: machineIdOf(machine) } : {}), ...(hit.pressless ? { pressless: hit.pressless } : {}), ...(hit.here ? { here: hit.here, at: String(at) } : {}) };
       devices = [...devices, d];
       const why = save();
       if (why) {
@@ -417,6 +423,20 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     },
     /** Every device, the revoked ones too, newest first. @returns {Device[]} */
     list: () => devices.map(told).sort((a, b) => b.createdAt - a.createdAt),
+    /** The one name a browser here is paired at and taken at (http/guards.js `whoIs`): "" for none. */
+    pageHost: () => String(pageHost() || ""),
+    /**
+     * Whether the device `id` is a browser here taken at `host`: paired at this Filament's own name, and `host` is it. A
+     * token a browser holds anywhere else — 127.0.0.1's, sent to every port there; a name this Filament no longer has —
+     * names no one, whatever Host its sender says (the hunt on s0f). @param {string} id @param {string | null} host
+     */
+    takenAt(id, host) {
+      const d = devices.find((x) => x.id === id);
+      const own = String(pageHost() || "");
+      return !!d?.here && !!own && d.at === own && host === own;
+    },
+    /** The browsers here, unrevoked, paired at no name this Filament has now: no one's, gone as one is paired here (http/admin/remote.js). */
+    strays: () => devices.filter((d) => d.here && !d.revokedAt && (!d.at || d.at !== String(pageHost() || ""))).map((d) => d.id),
     /** @param {string} id @returns {Device | null} */
     get: (id) => {
       const d = devices.find((x) => x.id === id);

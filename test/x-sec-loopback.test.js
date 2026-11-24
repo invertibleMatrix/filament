@@ -12,6 +12,8 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PRESS_HEADER, setPressKey } from "../src/http/guards.js";
 import { runCli } from "../src/cli/main.js";
 import { EXIT } from "../src/cli/client.js";
@@ -253,26 +255,35 @@ describe("the loopback door, on a Filament served on the tailnet", () => {
   // (fails before: yes — the review of s0b: a browser here paired by `filament open` or the tray was a full device that
   // pressed with no key, and its cookie, which a browser sends to every port of 127.0.0.1, was a dev server's there to
   // press with, and to take to the network)
-  test("a browser here — the tray's code, claimed on loopback alone — is this computer itself: no press, nothing from the network; paired again, its old pairing goes", async () => {
-    const own = { origin: `http://127.0.0.1:${shim.port}` };
+  test("a browser here — the tray's code, claimed on loopback alone at this Filament's own name — is this computer itself: no press, nothing from the network nor at 127.0.0.1; paired again, its old pairing goes", async () => {
+    const name = `${JSON.parse(readFileSync(join(shim.dataDir, "machine.json"), "utf8")).page}.localhost`;
+    const own = { host: `${name}:${shim.port}`, origin: `http://${name}:${shim.port}` };
     const made = await call("/api/remote/pair", { method: "POST", headers: PRESS, body: { scope: "full", here: true } });
     assert.equal(made.status, 200, made.text);
-    assert.deepEqual([made.json.links, made.json.fingerprint], [[], null], "no link for the network");
+    assert.deepEqual([made.json.links, made.json.fingerprint, made.json.pageHost], [[], null, name], "no link for the network: its own name");
     const afar = await call("/api/remote/claim", { method: "POST", headers: { ...FAR, ...own }, body: { code: made.json.code, name: "Far browser" } });
     assert.equal(afar.status, 403, afar.text);
     assert.equal((await pending()).length, 1, "refused from afar, the code still open");
+    // (fails before: yes — the review of s0b: claimed at 127.0.0.1, the browser's cookie went to every port there)
+    const loop = await call("/api/remote/claim", { method: "POST", headers: { origin: `http://127.0.0.1:${shim.port}` }, body: { code: made.json.code, name: "Chrome here" } });
+    assert.equal(loop.status, 403, loop.text);
+    assert.match(String(loop.json?.error), /at the address its link names/);
+    assert.equal((await pending()).length, 1, "refused at 127.0.0.1, the code still open for its own address");
     const claimed = await call("/api/remote/claim", { method: "POST", headers: own, body: { code: made.json.code, name: "Chrome here" } });
     assert.equal(claimed.status, 200, claimed.text);
     const cookie = String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0];
-    assert.equal((await call("/api/remote/me", { headers: { cookie } })).json?.who, "local", "this computer itself");
+    assert.equal((await call("/api/remote/me", { headers: { ...own, cookie } })).json?.who, "local", "this computer itself");
     /** This browser's pairings, as this machine lists them. */
     const mine = async () => (await call("/api/remote/devices", { headers: PRESS })).json.devices.filter((/** @type {any} */ d) => d.name === "Chrome here" && d.revokedAt == null);
     const first = await mine();
     assert.deepEqual(first.map((/** @type {any} */ d) => d.here), [true]);
-    // No press with it while the app holds its key, as this computer's own browser never had; nor with its token as a
-    // Bearer, as a program at another port that read the cookie would send it.
+    // No press with it while the app holds its key, as this computer's own browser never had, its cookie or its token as
+    // a Bearer; and at 127.0.0.1 — a program at another port that read it — its token is no one's.
+    const bearer = { authorization: `Bearer ${cookie.slice(cookie.indexOf("=") + 1)}` };
     shut(await call("/api/remote/pair", { method: "POST", headers: { ...own, cookie }, body: { scope: "view" } }), "a browser here's pairing");
-    shut(await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: { authorization: `Bearer ${cookie.slice(cookie.indexOf("=") + 1)}` }, body: { grants: { agents: true } } }), "its token as a Bearer");
+    shut(await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: { ...own, ...bearer }, body: { grants: { agents: true } } }), "its token as a Bearer");
+    const loopBearer = await call(`/api/remote/devices/${agents}`, { method: "PATCH", headers: bearer, body: { grants: { agents: true } } });
+    assert.deepEqual([loopBearer.status, loopBearer.json?.pair, loopBearer.json?.press], [403, "/ui/pair.html", undefined], loopBearer.text);
     assert.equal((await grants())?.agents, false);
     assert.equal((await call("/api/state", { headers: { ...FAR, cookie } })).status, 403, "from the network, its token is no one's");
     // Paired again — `filament open` once more —: one pairing for one browser.

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp } from "./helpers/app.js";
@@ -196,7 +196,11 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
   const agents = kept("Filament agents on Box", now - 300 * day, "agent");
   const called = kept("Tablet", now - 50 * day);
   const here = kept("This PC's browser", now - 50 * day);
-  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, tunneled.row, sealed.row, { ...agents.row, of: old.row.id }, called.row, { ...here.row, here: true }] }));
+  const stray = kept("Old browser here", now - day);
+  // This Filament's own name, which a browser here was paired at.
+  const PAGE = "filament-0123456789ab";
+  writeFileSync(join(dataDir, "machine.json"), JSON.stringify({ version: 1, id: randomUUID(), name: "Box", page: PAGE }));
+  writeFileSync(join(dataDir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: now - 400 * day, devices: [old.row, older.row, fresh.row, tunneled.row, sealed.row, { ...agents.row, of: old.row.id }, called.row, { ...here.row, here: true, at: `${PAGE}.localhost` }, { ...stray.row, here: true }] }));
   const shim = await startApp({ dataDir });
   try {
     const { port } = shim;
@@ -242,12 +246,25 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
     assert.deepEqual(api.headers["set-cookie"], [`filament_device=${called.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
     assert.equal((await ask(port, "/api/state", { headers: tablet })).headers["set-cookie"], undefined, "a day apart at the most");
     assert.equal((await ask(port, "/ui/harness.html", { headers: tablet })).headers["set-cookie"], undefined, "its pages too");
-    const mine = await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${here.token}` } });
+    // At this Filament's own name, where it was paired (the review of s0b): at 127.0.0.1, whose cookies a browser sends to
+    // every port of it, its cookie is no one's, and not sent again.
+    const at = { host: `${PAGE}.localhost:${port}` };
+    assert.equal((await ask(port, "/ui/harness.html", { headers: { cookie: `filament_device=${here.token}` } })).headers["set-cookie"], undefined, "at 127.0.0.1");
+    const mine = await ask(port, "/ui/harness.html", { headers: { ...at, cookie: `filament_device=${here.token}` } });
     assert.deepEqual(mine.headers["set-cookie"], [`filament_device=${here.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000`]);
-    assert.equal((await ask(port, "/api/remote/me", { headers: { cookie: `filament_device=${here.token}` } })).json.who, "local", "this computer still");
+    assert.equal((await ask(port, "/api/remote/me", { headers: { ...at, cookie: `filament_device=${here.token}` } })).json.who, "local", "this computer still");
     const seenOf = async (/** @type {string} */ name) => (await ask(port, "/api/remote/devices")).json.devices.find((/** @type {any} */ d) => d.name === name)?.lastSeenAt;
     assert.ok((await seenOf("This PC's browser")) > now - day, "a browser here: its day moved on");
     assert.ok((await seenOf("Tablet")) > now - day);
+    // (fails before: yes — the hunt on s0f) A browser here paired at 127.0.0.1, before this Filament had a name of its
+    // own: no one's at that name, and gone for good as a browser here is paired again — its cookie never comes there.
+    assert.deepEqual((await ask(port, "/api/remote/me", { headers: { ...at, cookie: `filament_device=${stray.token}` } })).json.who, "local");
+    const hereCode = (await ask(port, "/api/remote/pair", { method: "POST", body: { scope: "full", here: true } })).json.code;
+    const paired = await ask(port, "/api/remote/claim", { method: "POST", headers: { ...at, origin: `http://${at.host}` }, body: { code: hereCode, name: "Firefox here" } });
+    assert.equal(paired.status, 200, JSON.stringify(paired.json));
+    const listed = (await ask(port, "/api/remote/devices")).json.devices.map((/** @type {any} */ d) => d.name);
+    assert.ok(!listed.includes("Old browser here"), "the stray gone");
+    assert.ok(listed.includes("This PC's browser") && listed.includes("Firefox here"), "the browsers paired at its name kept");
     // (fails before: yes — the review of s4f: a lapsed device could not sign itself out, so pairing again — which signs
     // the old one out first — left it standing, and its machine's agents' device tied to it) Lapsed, it still signs
     // itself out, its agents' device with it; a token no device has signs nothing out.
@@ -274,6 +291,53 @@ test("a device unused 90 days is refused in words that say to pair again, its pa
   } finally {
     await shim.stop();
   }
+});
+
+// (fails before: yes — the review of s0b: a browser here was this computer wherever its cookie came, 127.0.0.1's sent to
+// every port there among them, and gave nothing loopback did not)
+test("a browser here is this computer's owner at this Filament's own name alone: its claim there, its token nowhere else", () => {
+  const H = "filament-0123456789ab.localhost";
+  const devices = createDevices({ pageHost: () => H });
+  /** @param {Record<string, string>} headers @param {string} [remoteAddress] */
+  const req = (headers, remoteAddress = "127.0.0.1") => /** @type {any} */ ({ headers, socket: { remoteAddress } });
+  const { code } = devices.startPairing({ scope: "full", here: true });
+  const loop = devices.claim(code, { name: "Chrome here", local: true, at: "127.0.0.1" });
+  assert.equal(loop.ok, false, "claimed at 127.0.0.1: refused");
+  assert.equal(devices.pending().length, 1, "its code still open");
+  assert.equal(devices.claim(code, { name: "Chrome here", local: true, at: "filament-ffffffffffff.localhost" }).ok, false, "another Filament's name");
+  const got = /** @type {any} */ (devices.claim(code, { name: "Chrome here", local: true, at: H }));
+  assert.equal(got.ok, true, got.why);
+  assert.equal(got.device.here, true);
+  const cookie = `filament_device=${got.token}`;
+  assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie }), {}, devices), { kind: "local", owner: true }, "at its own name: the owner's");
+  assert.deepEqual(whoIs(req({ host: `${H.toUpperCase()}:8080`, cookie }), {}, devices), { kind: "local", owner: true }, "at an SSH tunnel's port, its name kept");
+  assert.deepEqual(whoIs(req({ host: "127.0.0.1:20300", cookie }), {}, devices), { kind: "local" }, "at 127.0.0.1: no one's cookie, this computer's call as any program's");
+  assert.equal(whoIs(req({ host: "127.0.0.1:20300", authorization: `Bearer ${got.token}` }), {}, devices), null, "its token as a Bearer there: no one");
+  assert.equal(whoIs(req({ host: `${H}:20300`, cookie }, "192.168.1.9"), {}, devices), null, "from the network: no one");
+  assert.ok(!JSON.stringify(devices.list()).includes(H), "the name it was paired at is never listed");
+  assert.equal(devices.takenAt(got.device.id, H), true);
+  assert.equal(devices.takenAt(got.device.id, "127.0.0.1"), false);
+  assert.deepEqual(devices.strays(), [], "paired at its own name: no stray");
+  // (fails before: yes — the hunt on s0f: a browser paired at 127.0.0.1, its token sent to every port there, was taken
+  // by any program that said this Filament's name as its Host) A browser here paired at no name this Filament has now
+  // — kept with none, or another's — is no one's, whatever Host its token comes with: a stray, gone as one is paired.
+  const dir = mkdtempSync(join(tmpdir(), "filament-strays-"));
+  const token = `fdt_${randomBytes(32).toString("base64url")}`;
+  const row = (/** @type {string} */ id, /** @type {any} */ more) => ({ id, name: "Chrome here", scope: "full", kind: "browser", hash: createHash("sha256").update(token).digest("hex"), grants: {}, createdAt: Date.now(), lastSeenAt: null, lastSeenFrom: null, revokedAt: null, here: true, ...more });
+  writeFileSync(join(dir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: Date.now(), devices: [row("d-loop", {})] }));
+  const kept = createDevices({ dataDir: dir, pageHost: () => H });
+  assert.deepEqual(kept.strays(), ["d-loop"]);
+  assert.deepEqual(whoIs(req({ host: `${H}:20300`, cookie: `filament_device=${token}` }), {}, kept), { kind: "local" }, "its cookie no one's at the name");
+  assert.equal(whoIs(req({ host: `${H}:20300`, authorization: `Bearer ${token}` }), {}, kept), null, "its token as a Bearer: no one");
+  writeFileSync(join(dir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: Date.now(), devices: [row("d-gone", { at: "filament-ffffffffffff.localhost" })] }));
+  assert.deepEqual(createDevices({ dataDir: dir, pageHost: () => H }).strays(), ["d-gone"], "a name this Filament no longer has");
+  writeFileSync(join(dir, "devices.json"), JSON.stringify({ version: 1, unusedFrom: Date.now(), devices: [row("d-own", { at: H })] }));
+  assert.deepEqual(createDevices({ dataDir: dir, pageHost: () => H }).strays(), [], "its own name, kept");
+  rmSync(dir, { recursive: true, force: true });
+  const none = createDevices();
+  assert.equal(none.pageHost(), "", "a store with no page name");
+  const c = none.startPairing({ scope: "full", here: true }).code;
+  assert.equal(none.claim(c, { local: true, at: H }).ok, false, "where no page name is kept, no browser here is paired");
 });
 
 test("the guards' pieces: cookies, a device's token, the caller's address a proxy here says, and who calls", () => {
