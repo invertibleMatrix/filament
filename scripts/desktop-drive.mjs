@@ -394,7 +394,9 @@ async function driveDesk() {
   const inPlaceOf = async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`${atS}/ui/harness.html?only=chat`) && p.url.endsWith(hashS)) ?? null;
   const place34 = await until(inPlaceOf, 20000, "Studio's chat in place").catch(() => null);
   const drawn34 = place34 ? await until(() => evalIn(place34, `!!document.querySelector(".app-shell.chat-only") || null`), 20000, "its page drawn").catch(() => false) : false;
-  const sight = () => inD(`({ up: !!document.querySelector(".app-shell.guest-up"), inert: !!document.querySelector(".content-col")?.inert, marked: !!document.querySelector(${JSON.stringify(`${rowSel(doneS)}.current`)}), cc: !!document.querySelector(".zc-dialog.is-cc") })`);
+  // What takes the view from sight, named where it is out (lib/desk-guest.js `GUEST_COVERS`, a screen, a tip's shade).
+  const covers = `[...document.querySelectorAll(".zc-menu, .zc-popover, .zc-dialog-overlay, .zc-sheet, [role='menu'], [role='dialog'], [role='listbox'], .main-frame.screen-on, .coach-dim")].filter((e) => !document.querySelector(".content-col").contains(e) || e.matches(".main-frame")).map((e) => e.tagName.toLowerCase() + "." + [...e.classList].join(".") + (e.getAttribute("aria-label") ? "[" + e.getAttribute("aria-label") + "]" : "")).join(" ")`;
+  const sight = () => inD(`({ up: !!document.querySelector(".app-shell.guest-up"), inert: !!document.querySelector(".content-col")?.inert, marked: !!document.querySelector(${JSON.stringify(`${rowSel(doneS)}.current`)}), cc: !!document.querySelector(".zc-dialog.is-cc"), covers: ${covers} })`);
   const shown34 = /** @type {any} */ (await until(async () => {
     const s = /** @type {any} */ (await sight());
     return s?.up && s.inert ? s : null;
@@ -404,7 +406,7 @@ async function driveDesk() {
   check(
     "35. a press on Studio's chat: its own page of the chat in place, beside this computer's left bar, its row marked",
     !!place34 && drawn34 === true && shown34?.up === true && shown34.inert === true && shown34.marked === true,
-    `${place34 ? `in place at ${place34.url.replace(atS, "")}${drawn34 ? "" : ", not drawn"}` : "no view"}; ${shown34 ? `in sight ${shown34.up && shown34.inert}, row ${shown34.marked ? "marked" : "not marked"}` : "?"}`,
+    `${place34 ? `in place at ${place34.url.replace(atS, "")}${drawn34 ? "" : ", not drawn"}` : "no view"}; ${shown34 ? `in sight ${shown34.up && shown34.inert}${shown34.covers ? ` (over it: ${shown34.covers})` : ""}, row ${shown34.marked ? "marked" : "not marked"}` : "?"}`,
   );
   // This computer's Ctrl+K over it: the view out of sight while it is open, in sight again once it closes.
   await inD(`(window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true })), true)`);
@@ -421,7 +423,7 @@ async function driveDesk() {
   check(
     "35. this computer's Ctrl+K over the chat in place: the view out of sight while it is open, in sight again once it closes",
     over34?.cc === true && over34.inert === false && back34?.cc === false && back34.inert === true && !!(await inPlaceOf()),
-    `open: ${over34 ? `Ctrl+K ${over34.cc ? "up" : "not up"}, view ${over34.inert ? "still in sight" : "out of sight"}` : "?"}; closed: ${back34 ? `view ${back34.inert ? "in sight" : "out of sight"}` : "?"}`,
+    `open: ${over34 ? `Ctrl+K ${over34.cc ? "up" : "not up"}, view ${over34.inert ? "still in sight" : "out of sight"}` : "?"}; closed: ${back34 ? `view ${back34.inert ? "in sight" : `out of sight${back34.covers ? ` (over it: ${back34.covers})` : ""}`}` : "?"}`,
   );
 
   // Its ask answered from Needs you: the question and the command on the card, Allow runs it there, the window stays.
