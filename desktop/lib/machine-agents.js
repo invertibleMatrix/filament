@@ -233,8 +233,8 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
    * `keysOut` — the app's main process alone may ask it (http/admin/keys-copy.js) — and each handed to the machine as
    * this window's full device there over the way it reaches it, pinned on the network, once its providers are read:
    * added there as it is set here, its prefix its id, or its key set anew where the machine has it already at the same
-   * address — by its name, else its one provider there —; one of that name elsewhere, or several there, is left; where it
-   * came from said there (`keyFrom`: this machine's name and the day), never the key. Nothing of a key reaches the page
+   * address — by its name, else its one provider there that holds no key set there —; one of that name elsewhere,
+   * several there, or one under another name with a key set there, is left; where it came from said there (`keyFrom`: this machine's name and the day), never the key. Nothing of a key reaches the page
    * or a log line. @param {Machine} m @param {string[]} ids @returns {Promise<AgentsRow & { copied?: Copied[] }>}
    */
   async function copyKeys(m, ids) {
@@ -278,6 +278,12 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
       const at = same ? [same] : had.filter((u) => aProvider(u) && addressOf(u) === addressOf(k));
       if (at.length > 1) {
         no(`${m.name} has ${at.length} providers at that address (${at.map((u) => `"${u.id}"`).join(", ")}): set the key of the one you mean in its Settings › Providers.`);
+        continue;
+      }
+      // One under another name takes the key only where it holds none, or one copied there from a machine (`key.from`):
+      // a key set there is that machine's own (the review of s1c).
+      if (!same && at.length && at[0].key?.stored && !at[0].key?.from) {
+        no(`${m.name}'s provider "${at[0].id}" at that address has a key of its own: it is left as it is.`);
         continue;
       }
       const sent = await (at.length

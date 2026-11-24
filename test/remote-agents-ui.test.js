@@ -1207,6 +1207,21 @@ test("main's card: a machine's coding agents' sign-ins as it lists them; Copy ke
   const b = await flowOver(t, blind, { keysOut: async (ids) => (unread.push(ids), keysOf(ids)) }).flow.copyKeys("m-mac", ["anthropic"]);
   assert.match(String(b.said), /^No key copied: Mac mini's providers could not be read — .+/);
   assert.deepEqual([b.failed, unread, blind.sent], [true, [], []]);
+  // (the hunt on s1c) One under another name at that address takes the key only where it holds none, or one copied there:
+  // a key set there is that machine's own, left and said.
+  const keyed = scripted({
+    upstreams: [
+      { id: "claude", name: "Claude", baseUrl: "https://api.anthropic.com", key: { stored: true, masked: "sk-ant-…zzzz" } },
+      { id: "or-copied", baseUrl: "https://openrouter.ai/api/v1", key: { stored: true, masked: "sk-or-…bbbb", from: "Desk on 2026-11-20" } },
+      { id: "groq-empty", baseUrl: "https://api.groq.com/openai/v1", key: { stored: false, masked: "" } },
+    ],
+  });
+  const k = await flowOver(t, keyed, { ownName: () => "Desk", keysOut: async (ids) => keysOf(ids), now: () => Date.UTC(2026, 10, 24, 9) }).flow.copyKeys("m-mac", ["anthropic", "openrouter", "groq"]);
+  assert.deepEqual(keyed.sent, [
+    ["PATCH", "/upstreams/or-copied", { apiKey: KEYS.openrouter.apiKey, keyFrom: "Desk on 2026-11-24" }],
+    ["PATCH", "/upstreams/groq-empty", { apiKey: KEYS.groq.apiKey, keyFrom: "Desk on 2026-11-24" }],
+  ]);
+  assert.equal(k.said, 'Copied to Mac mini: OpenRouter, Groq. Not copied: Anthropic (Mac mini\'s provider "claude" at that address has a key of its own: it is left as it is.)');
 });
 
 // (fails before: yes — s3c)

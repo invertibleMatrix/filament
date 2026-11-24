@@ -623,8 +623,9 @@ page here: a sign-in runs there as it would at that machine, its terminal in the
 code to type (Codex's ChatGPT code), its page opens in this computer's browser. **Copy keys…** lists this machine's
 providers that have a key, none ticked; the ones you tick go to that machine as your device there, over the way the app
 reaches it, each added there as it is set here — or its key set anew where that machine has it already at the same
-address, by its name or as its one provider there. One of that name at another address, or several at that address, is
-left as it is, and said. There the key is sealed as its own, and Settings › Providers says it was copied from this
+address, by its name or as its one provider there that holds no key, or only one copied from a machine. One of that
+name at another address, several at that address, or one there under another name whose key was set at that machine,
+is left as it is, and said. There the key is sealed as its own, and Settings › Providers says it was copied from this
 machine, and the day, until a key is set there. Copy keys needs the app's own Filament: one it attached to, started
 before the app, hands it no key. Your keys travel only when you copy them: this
 machine's secret.key, its sign-ins and its memory never go, and only the app may ask this machine for a key that way
