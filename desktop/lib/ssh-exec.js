@@ -8,7 +8,8 @@
 // one (`ssh -t`, ssh asking the host key with its fingerprint shown), and `runSsh` hands it to its caller's
 // `interactive` where ssh did not know the host key, then runs the command again. A command reaches the shell there as
 // one line every login shell reads alike (sh, bash, zsh, fish, csh): its script encoded, decoded and run by sh there
-// (`commandOf`), saying on its stderr that it began (`BEGAN`) and, ended, its code (`ENDED`) — so ssh's own 255, before
+// (`commandOf`), saying on its stderr that it began (`BEGAN`) and, ended, its code (`ENDED`), each mark the run's own
+// (a nonce no login banner or profile there knows) — so ssh's own 255, before
 // the command began or as the connection dropped under it, is never read as the command's, and something run in its
 // place (a forced command, a login that starts another shell) never as its success. A secret goes to the command on its
 // standard input alone, never in its words, which a process list shows; each stream's output is kept to `OUTPUT_MAX`,
@@ -17,6 +18,7 @@
 // scripts/install.sh checks it, by sh, else (a Windows host, whose OpenSSH starts cmd or PowerShell) by PowerShell.
 // Plain Node; `spawn` and `cli` are seams for its test.
 import { spawn as spawnChild } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { aliasOf, sshCli, sshWords } from "./ssh-route.js";
 
 /** How long a run is given by default, ssh's sign-in included. */
@@ -27,9 +29,9 @@ export const KILL_GRACE_MS = 2_000;
 export const OUTPUT_MAX = 1 << 20;
 /** The oldest glibc Filament's server build runs on (Node's own Linux builds). */
 export const GLIBC_MIN = "2.28";
-/** What a command says on its stderr as it begins there: before it, a failure is ssh's. */
+/** What a command says on its stderr as it begins there, its run's mark after it: before it, a failure is ssh's. */
 export const BEGAN = "filament-ssh-exec-began";
-/** What a command for sh says on its stderr as it ends there, with its code: a run with none was cut under it. */
+/** What a command for sh says on its stderr as it ends there, its run's mark and its code after it: a run with none was cut under it. */
 export const ENDED = "filament-ssh-exec-ended";
 /** The most a command for sh there is, encoded: a Windows desk starts ssh with 32,767 characters at most. */
 export const SCRIPT_MAX = 30 * 1024;
@@ -74,19 +76,20 @@ export const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
  * each quoted for sh, or the script given — in base64, decoded and run by sh there, its standard input left to the
  * command; for PowerShell, encoded as Windows' own PowerShell takes one (`-EncodedCommand`), which no shell there reads
  * into. `marked`: it says first on its stderr that it began (`BEGAN`) and, for sh, last that it ended, with its code
- * (`ENDED`), the command run in a shell of its own, whose `exit` ends it alone.
- * @param {RunWhat} what @param {{ marked?: boolean }} [o]
+ * (`ENDED`), each with `mark` after it — the run's own, inside the encoded script, so nothing printed there before it
+ * ran (a login banner, a profile) says it —, the command run in a shell of its own, whose `exit` ends it alone.
+ * @param {RunWhat} what @param {{ marked?: boolean, mark?: string }} [o]
  */
-export function commandOf(what, { marked = false } = {}) {
+export function commandOf(what, { marked = false, mark = "" } = {}) {
   if ("script" in what && what.shell === "powershell") {
-    const ps = `${marked ? `[Console]::Error.WriteLine('${BEGAN}')\n` : ""}${String(what.script)}`;
+    const ps = `${marked ? `[Console]::Error.WriteLine('${BEGAN}-${mark}')\n` : ""}${String(what.script)}`;
     const line = `powershell -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(ps, "utf16le").toString("base64")}`;
     if (line.length > PS_LINE_MAX) throw new Error(`a command line for PowerShell there is kept to ${PS_LINE_MAX} characters encoded`);
     return line;
   }
   if ("argv" in what && (!Array.isArray(what.argv) || !what.argv.length)) throw new Error("a command there needs its words");
   const body = "argv" in what ? what.argv.map((w) => shQuote(String(w))).join(" ") : String(what.script);
-  const script = marked ? `printf '%s\\n' ${BEGAN} >&2\n(\n${body}\n)\nc=$?\nprintf '%s %s\\n' ${ENDED} "$c" >&2\nexit "$c"` : body;
+  const script = marked ? `printf '%s\\n' ${BEGAN}-${mark} >&2\n(\n${body}\n)\nc=$?\nprintf '%s %s\\n' ${ENDED}-${mark} "$c" >&2\nexit "$c"` : body;
   const sh = Buffer.from(script, "utf8").toString("base64");
   if (sh.length > SCRIPT_MAX) throw new Error(`a command there is kept to ${SCRIPT_MAX / 1024} KiB encoded: send what is longer on its standard input`);
   // Not decoded, it is not run: sh ends with base64's code. A macOS from before 13 decodes with -D alone.
@@ -156,10 +159,18 @@ const textOf = (parts, cut) => {
   const s = Buffer.concat(parts).toString("utf8");
   return cut ? s.replace(/\uFFFD+$/, "") : s;
 };
-/** `BEGAN`'s line, wherever what the login there printed first put it on stderr. */
-const BEGAN_LINE = new RegExp(`${BEGAN}\\r?\\n`);
-/** `ENDED`'s line and the code in it, after whatever the command said last on stderr. */
-const ENDED_LINE = new RegExp(`${ENDED} (\\d+)\\r?\\n`);
+/**
+ * A run's marks as its stderr says them (`commandOf`): `BEGAN`'s line, wherever what the login there printed first with
+ * no newline put it; `ENDED`'s and the code in it, after whatever the command said last. Each holds the run's own
+ * mark, so a line no run of this one said — a banner's, a profile's, an echo of another run's — is none of them.
+ * @param {string} mark
+ */
+const marksOf = (mark) => ({
+  began: new RegExp(`${BEGAN}-${mark}\\r?\\n`),
+  ended: new RegExp(`${ENDED}-${mark} (\\d+)\\r?\\n`),
+  /** Every one of its lines, taken out of the words: a trace there (set -x) says them twice. */
+  all: new RegExp(`(?:${BEGAN}-${mark}|${ENDED}-${mark} \\d+)\\r?\\n`, "g"),
+});
 /** A stream's last lines in a line, for words: what failed is said last. @param {string} s */
 const lastSaid = (s) => {
   const said = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(" ");
@@ -184,7 +195,9 @@ const unsaid = (s, input) =>
  * @returns {Promise<SshRun>}
  */
 function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild, cli = () => sshCli() }) {
-  const line = commandOf(what, { marked: true });
+  const mark = randomBytes(8).toString("hex");
+  const marks = marksOf(mark);
+  const line = commandOf(what, { marked: true, mark });
   // PowerShell's script says no end: a 255 after it began is its own.
   const ends = !("script" in what && what.shell === "powershell");
   return new Promise((resolve) => {
@@ -234,7 +247,7 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
       grace.unref?.();
     };
     const timer = setTimeout(() => {
-      // One that ended as the time ran out ended: its close comes.
+      // ssh exited as the time ran out: it is not ended, and its close comes (or the grace after its exit ends it).
       if (exited) return;
       timedOut = true;
       try {
@@ -253,16 +266,19 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
       child.stdout?.destroy?.();
       child.stderr?.destroy?.();
       const raw = textOf(err, cut.err);
-      const began = BEGAN_LINE.test(raw);
-      const ended = ENDED_LINE.exec(raw) || ENDED_LINE.exec(errTail.toString("utf8"));
+      const began = marks.began.test(raw);
+      const ended = marks.ended.exec(raw) || marks.ended.exec(errTail.toString("utf8"));
       let stdout = textOf(out, cut.out);
-      let stderr = raw.replace(BEGAN_LINE, "").replace(ENDED_LINE, "");
+      let stderr = raw.replace(marks.all, "");
       if (!began && stdin) {
         stdout = unsaid(stdout, stdin);
         stderr = unsaid(stderr, stdin);
       }
       const base = { stdout, stderr, cut: cut.out || cut.err, began };
       if (failed != null) return resolve({ code: null, ...base, ...execWords(failed, alias) });
+      // The command's own code, whatever ssh's: the connection may drop once it said it, and the time run out as ssh
+      // was ending — it ended there.
+      if (ended) return resolve({ code: Number(ended[1]), ...base, why: null, ask: null });
       if (timedOut)
         return resolve({
           code: null,
@@ -273,8 +289,6 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
           ask: null,
           timedOut: true,
         });
-      // The command's own code, whatever ssh's: the connection may drop once it said it.
-      if (ended) return resolve({ code: Number(ended[1]), ...base, why: null, ask: null });
       if (code === null) return resolve({ code, ...base, why: `ssh to ${alias} was stopped before it ended.`, ask: null });
       if (!began) {
         if (code === 255) return resolve({ code, ...base, ...execWords(stderr, alias) });
@@ -431,8 +445,9 @@ export function platformOf(said, shell) {
 export async function probeSsh(alias, o = {}) {
   const r = await runSsh(alias, { script: PROBE_SH }, { timeoutMs: 30_000, ...o });
   if (r.began && r.code === 0 && /^os=/m.test(r.stdout)) return { ok: true, platform: platformOf(r.stdout, "sh") };
-  // Read by sh, or not reached: PowerShell has nothing to add.
-  if (r.began || r.ask || r.code === null || r.code === 255) return { ok: false, run: r };
+  // Not reached, or let go of: PowerShell has nothing to add. A sh there that began and failed, or said no system — a
+  // Windows host's sh that is no POSIX one —, is asked again as a shell that runs none.
+  if (r.ask || r.code === null || r.code === 255) return { ok: false, run: r };
   const ps = await runSsh(alias, { script: PROBE_PS, shell: "powershell" }, { timeoutMs: 30_000, ...o, interactive: null });
   if (ps.began && ps.code === 0 && /^os=/m.test(ps.stdout)) return { ok: true, platform: platformOf(ps.stdout, "powershell") };
   // A sh there with no base64 to read the probe with: install.sh needs one too.

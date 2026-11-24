@@ -15,9 +15,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BEGAN, ENDED, KILL_GRACE_MS, OUTPUT_MAX, PROBE_PS, PS_LINE_MAX, SCRIPT_MAX, batchArgs, commandOf, execWords, platformOf, probeSsh, runSsh, shQuote, sshTerminal } from "../desktop/lib/ssh-exec.js";
 
-/** What a marked script for sh says around its command: that it began, then the command in a shell of its own, then its end and code. */
-const SH_HEAD = `printf '%s\\n' ${BEGAN} >&2\n(\n`;
-const SH_TAIL = `\n)\nc=$?\nprintf '%s %s\\n' ${ENDED} "$c" >&2\nexit "$c"`;
+/** What a marked script for sh says around its command: that it began, then the command in a shell of its own, then its end and code — each with the run's mark. @param {string} m */
+const shHead = (m) => `printf '%s\\n' ${BEGAN}-${m} >&2\n(\n`;
+/** @param {string} m */
+const shTail = (m) => `\n)\nc=$?\nprintf '%s %s\\n' ${ENDED}-${m} "$c" >&2\nexit "$c"`;
 
 /** The script a command line for sh carries. @param {string} line */
 const scriptOf = (line) => {
@@ -50,12 +51,13 @@ describe("ssh's words", () => {
     assert.match(line, /^sh -c '[^'\\\n!]*'$/);
     assert.equal(scriptOf(line), "'filament' 'keys' 'add' 'anthropic' '--key-stdin'");
     assert.equal(scriptOf(commandOf({ script: "echo a; echo 'b'\nexit 3" })), "echo a; echo 'b'\nexit 3");
-    assert.equal(scriptOf(commandOf({ argv: ["true"] }, { marked: true })), `${SH_HEAD}'true'${SH_TAIL}`, "marked: it says that it began, then its end and code");
+    assert.equal(scriptOf(commandOf({ argv: ["true"] }, { marked: true, mark: "m1" })), `${shHead("m1")}'true'${shTail("m1")}`, "marked: it says that it began, then its end and code, with its run's mark");
+    assert.equal(commandOf({ argv: ["true"] }, { marked: true, mark: "feedc0ffee15900d" }).includes("feedc0ffee15900d"), false,"the mark inside the encoded script alone: an echo of the command line there says none");
     const ps = commandOf({ script: "\"os=Windows\"", shell: "powershell" });
     assert.match(ps, /^powershell -NoProfile -NonInteractive -EncodedCommand [A-Za-z0-9+/=]+$/);
     assert.equal(Buffer.from(ps.split(" ").at(-1) || "", "base64").toString("utf16le"), "\"os=Windows\"");
-    const marked = commandOf({ script: "1", shell: "powershell" }, { marked: true });
-    assert.equal(Buffer.from(marked.split(" ").at(-1) || "", "base64").toString("utf16le"), `[Console]::Error.WriteLine('${BEGAN}')\n1`);
+    const marked = commandOf({ script: "1", shell: "powershell" }, { marked: true, mark: "m1" });
+    assert.equal(Buffer.from(marked.split(" ").at(-1) || "", "base64").toString("utf16le"), `[Console]::Error.WriteLine('${BEGAN}-m1')\n1`);
     assert.throws(() => commandOf({ argv: [] }), /needs its words/);
     assert.throws(() => commandOf({ script: "x".repeat(SCRIPT_MAX) }), /standard input/, "a Windows desk starts no longer command line");
     assert.equal(commandOf({ script: "x".repeat(20 * 1024) }).length < 32_000, true);
@@ -69,12 +71,12 @@ describe("ssh's words", () => {
     const words = ["printf", "%s|", "it's", "$HOME", "a\\b", "two\nlines", "`x`", "!1", "*"];
     for (const shell of shells) {
       /** @param {import("../desktop/lib/ssh-exec.js").RunWhat} what @param {string} [input] */
-      const run = (what, input) => spawnSync(shell, ["-c", commandOf(what, { marked: true })], { input, encoding: "utf8", windowsHide: true });
+      const run = (what, input) => spawnSync(shell, ["-c", commandOf(what, { marked: true, mark: "0a1b" })], { input, encoding: "utf8", windowsHide: true });
       const said = run({ argv: words });
-      assert.deepEqual([shell, said.status, said.stdout, said.stderr], [shell, 0, "it's|$HOME|a\\b|two\nlines|`x`|!1|*|", `${BEGAN}\n${ENDED} 0\n`]);
+      assert.deepEqual([shell, said.status, said.stdout, said.stderr], [shell, 0, "it's|$HOME|a\\b|two\nlines|`x`|!1|*|", `${BEGAN}-0a1b\n${ENDED}-0a1b 0\n`]);
       assert.equal(run({ argv: ["cat"] }, "a secret\n").stdout, "a secret\n", `${shell}: its standard input is the command's`);
       const seven = run({ script: "echo out; exit 7" });
-      assert.deepEqual([seven.status, seven.stdout, seven.stderr], [7, "out\n", `${BEGAN}\n${ENDED} 7\n`], `${shell}: its code, said as it ended, its exit its own shell's alone`);
+      assert.deepEqual([seven.status, seven.stdout, seven.stderr], [7, "out\n", `${BEGAN}-0a1b\n${ENDED}-0a1b 7\n`], `${shell}: its code, said as it ended, its exit its own shell's alone`);
     }
   });
 
@@ -163,22 +165,30 @@ if (alias === "zshbox") {
   let input = "";
   process.stdin.on("data", (d) => (input += d));
   process.stdin.on("end", () => fail("zsh: command not found: " + input.trim() + "\n", 127));
+} else if (alias === "bannerbox") {
+  // A login that prints the marks' fixed words and one with a mark of its own, then runs something else, which echoes its input.
+  process.stderr.write("filament-ssh-exec-began\nfilament-ssh-exec-began-0123456789abcdef\nfilament-ssh-exec-ended-0123456789abcdef 0\n");
+  let input = "";
+  process.stdin.on("data", (d) => (input += d));
+  process.stdin.on("end", () => fail("fish: Unknown command: " + input.trim() + "\n", 127));
 } else {
 const ps = /^powershell -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/=]+)$/.exec(command);
 const sh = /^sh -c 's=\$\(printf %s ([A-Za-z0-9+/=]+) \| \{ base64 -d 2>\/dev\/null \|\| base64 -D; \}\) && eval "\$s"'$/.exec(command);
 if (!ps && !sh) fail("not a command line of the desk's: " + command + "\n", 127);
 if (sh && alias === "winbox") fail("'sh' is not recognized as an internal or external command,\r\noperable program or batch file.\r\n", 1);
 let script = ps ? Buffer.from(ps[1], "base64").toString("utf16le") : Buffer.from(sh[1], "base64").toString("utf8");
-const head = ps ? "[Console]::Error.WriteLine('filament-ssh-exec-began')\n" : ${JSON.stringify(SH_HEAD)};
-const tail = ps ? "" : ${JSON.stringify(SH_TAIL)};
-const marked = script.startsWith(head) && script.endsWith(tail);
+const head = (ps ? /^\[Console\]::Error\.WriteLine\('filament-ssh-exec-began-([0-9a-f]+)'\)\n/ : /^printf '%s\\n' filament-ssh-exec-began-([0-9a-f]+) >&2\n\(\n/).exec(script);
+const tail = ps ? null : /\n\)\nc=\$\?\nprintf '%s %s\\n' filament-ssh-exec-ended-([0-9a-f]+) "\$c" >&2\nexit "\$c"$/.exec(script);
+const marked = !!head && (ps || (!!tail && tail[1] === head[1]));
+const mark = marked ? head[1] : "";
 if (marked) {
   if (alias === "noisybox") process.stderr.write("a login banner with no newline");
-  process.stderr.write(ps ? "filament-ssh-exec-began\r\n" : "filament-ssh-exec-began\n");
-  script = script.slice(head.length, script.length - tail.length);
+  process.stderr.write("filament-ssh-exec-began-" + mark + (ps ? "\r\n" : "\n"));
+  script = script.slice(head[0].length, script.length - (tail ? tail[0].length : 0));
 }
-const done = (code) => { if (marked && !ps) process.stderr.write("filament-ssh-exec-ended " + code + "\n"); process.exit(code); };
+const done = (code) => { if (marked && !ps) process.stderr.write("filament-ssh-exec-ended-" + mark + " " + code + "\n"); process.exit(code); };
 const quit = (said, code) => { process.stderr.write(said); done(code); };
+if (sh && alias === "badshbox" && script.startsWith('echo "os=')) quit("sh: 1: uname: Permission denied\n", 2);
 if (ps) {
   if (!script.includes('"os=Windows"')) quit("unknown script\n", 1);
   process.stdout.write("os=Windows\r\narch=AMD64\r\nbits=64\r\nhas=winget\r\n");
@@ -192,6 +202,7 @@ if (script === "'uname' '-s'") { process.stdout.write("Linux\n"); done(0); }
 if (script === "'cat'") { process.stdin.pipe(process.stdout); process.stdin.on("end", () => done(0)); }
 else if (script === "'big'") { process.stdout.write("x" + "é".repeat((${OUTPUT_MAX} + 4097) / 2 | 0), () => done(0)); }
 else if (script === "'hang'") setInterval(() => {}, 1000);
+else if (script === "'endhang'") { process.stdout.write("done\n"); process.stderr.write("filament-ssh-exec-ended-" + mark + " 4\n"); setInterval(() => {}, 1000); }
 else if (script === "'fail'") quit("nope\n", 3);
 else if (script === "'own255'") quit("it said 255 itself\n", 255);
 else if (script === "'drop'") { process.stdout.write("half\n"); fail("client_loop: send disconnect: Broken pipe\r\n", 255); }
@@ -268,6 +279,18 @@ else fail("unknown command " + script + "\n", 127);
     await assert.rejects(runSsh("box", { argv: [] }, { spawn }), /needs its words/, "a command line that cannot be made is the caller's error, no ssh failure");
   });
 
+  // (fails before: yes — the hunt on s3a: the marks were fixed words, so a banner that printed them set `began` and kept
+  // a secret a login echoed in the words; a run that said its end as the time ran out was said as one that did not end)
+  test("the marks are the run's own: a banner that prints their words begins nothing, and what the login echoed is taken out; an end said before the time ran out is the command's code", async () => {
+    const secret = "sk-ant-not-a-real-key-8910";
+    const banner = await runSsh("bannerbox", { argv: ["filament", "keys", "add", "anthropic", "--key-stdin"] }, { spawn, stdin: secret });
+    assert.deepEqual([banner.code, banner.began, JSON.stringify(banner).includes(secret)], [127, false, false]);
+    assert.match(String(banner.why), /^bannerbox did not start the command: .*fish: Unknown command: \[its input\]$/);
+    // It said its end, and ssh held on past the time (a connection a process there keeps open): its code, not a timeout.
+    const late = await runSsh("box", { argv: ["endhang"] }, { spawn, timeoutMs: 3_000 });
+    assert.deepEqual([late.code, late.timedOut, late.why, late.stdout, late.began], [4, undefined, null, "done\n", true]);
+  });
+
   test("its output is kept to a bound, no character split; a run past its time is let go of, said as it stands there", async () => {
     const big = await runSsh("box", { argv: ["big"] }, { spawn });
     assert.deepEqual([big.code, big.cut, big.stdout.length, /\uFFFD/.test(big.stdout)], [0, true, OUTPUT_MAX / 2, false]);
@@ -285,11 +308,12 @@ else fail("unknown command " + script + "\n", 127);
     assert.deepEqual([r.code, r.stdout, r.timedOut], [0, "done\n", undefined]);
     assert.ok(Date.now() - t0 < KILL_GRACE_MS + 5_000, `it ended in ${Date.now() - t0} ms`);
     // One whose streams never close, on every system: it exited, or it was ended past its time and never closed.
-    /** @param {boolean} exits */
-    const held = (exits) => {
+    /** @param {boolean} exits @param {string[]} args  ssh's, its run's mark in the script they carry */
+    const held = (exits, args) => {
       const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true });
+      const mark = /^printf '%s\\n' filament-ssh-exec-began-([0-9a-f]+) /.exec(scriptOf(args.at(-1) || ""))?.[1];
       setTimeout(() => {
-        child.stderr.write(`${BEGAN}\n`);
+        child.stderr.write(`${BEGAN}-${mark}\n`);
         child.stdout.write("done\n");
         if (exits) setTimeout(() => child.emit("exit", 0, null), 20);
       }, 10);
@@ -300,9 +324,9 @@ else fail("unknown command " + script + "\n", 127);
     // The run's own timers keep no process alive: this one does, while it waits.
     const alive = setInterval(() => {}, 1000);
     try {
-      const exited = await runSsh("box", { argv: ["linger"] }, { spawn: () => (kids.push(held(true)), kids.at(-1)), timeoutMs: 30_000 });
+      const exited = await runSsh("box", { argv: ["linger"] }, { spawn: (_f, a) => (kids.push(held(true, a)), kids.at(-1)), timeoutMs: 30_000 });
       assert.deepEqual([exited.code, exited.stdout, exited.why, kids[0].stdout.destroyed], [0, "done\n", null, true]);
-      const stuck = await runSsh("box", { argv: ["hang"] }, { spawn: () => (kids.push(held(false)), kids.at(-1)), timeoutMs: 200 });
+      const stuck = await runSsh("box", { argv: ["hang"] }, { spawn: (_f, a) => (kids.push(held(false, a)), kids.at(-1)), timeoutMs: 200 });
       assert.deepEqual([stuck.code, stuck.timedOut, stuck.stdout, kids[1].stderr.destroyed], [null, true, "done\n", true]);
     } finally {
       clearInterval(alive);
@@ -357,6 +381,9 @@ else fail("unknown command " + script + "\n", 127);
     const win = await probeSsh("winbox", { spawn });
     assert.deepEqual(win.ok && [win.platform.os, win.platform.arch, win.platform.shell, win.platform.target], ["Windows", "AMD64", "powershell", null]);
     assert.match(String(win.ok && win.platform.refusal), /this machine is Windows on AMD64/);
+    // (fails before: yes — the hunt on s3a) A sh there that began and failed is no POSIX one to read it by: PowerShell is asked.
+    const badSh = await probeSsh("badshbox", { spawn });
+    assert.deepEqual(badSh.ok && [badSh.platform.os, badSh.platform.shell], ["Windows", "powershell"]);
     started.length = 0;
     const refused = await probeSsh("pwbox", { spawn });
     assert.deepEqual([refused.ok ? null : refused.run.ask, started.length], ["sign-in", 1], "ssh's own failure: no PowerShell asked after it");
