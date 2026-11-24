@@ -2057,6 +2057,9 @@ async function run() {
   link.start();
   updater?.start();
   if (owned) sup.start();
+  // Attached at the start to a Filament already running (a terminal's, a service's): the windows' session first, so the
+  // harness they open calls it as its owner — under the owner key, without one it was its pairing page.
+  else await ownerSession();
   // The harness shows at once — while its own Filament starts, with the app's page saying so — unless the app started
   // hidden (tray only, as at logon).
   if (!process.argv.includes("--hidden")) openWindow("harness");
