@@ -5,7 +5,7 @@
 // it knew is said to be another. Not memory.json's deviceId: that one belongs to the memory folder, goes with it to a
 // fresh install or a restore, and is absent while memory is off.
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { hostname } from "node:os";
@@ -47,6 +47,28 @@ export function gapWords(gap, { name, version }, self = "this app") {
 export const NAME_MAX = 64;
 
 /** @typedef {{ id: string, name: string }} Machine */
+
+/**
+ * This Filament's own name under `localhost` for a browser on this computer (`pageHost`): a label made once, kept in
+ * machine.json. A browser paired by `filament open` or the tray's Open in browser holds its cookie there, a name no
+ * other program's server answers at, never on 127.0.0.1, whose cookies a browser sends to every port of it — a server
+ * an agent runs among them. Said to this computer's owner alone (the pairing rows), never in `get`.
+ */
+const PAGE_LABEL = /^filament-[0-9a-f]{12}$/;
+/** A browser's address on this computer at its page name (`pageHost`), where `url` is loopback by IPv4 or the name
+ * localhost: the scheme, port and path kept; any other address as it is (a network address, an IPv6 one, which a
+ * `.localhost` name may not reach). @param {string} url @param {string | null | undefined} pageHost */
+export function pageAt(url, pageHost) {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    if (!pageHost || !/^filament-[0-9a-f]{12}\.localhost$/.test(pageHost) || u.protocol !== "http:" || !(h === "localhost" || /^127(?:\.\d{1,3}){3}$/.test(h))) return url;
+    u.hostname = pageHost;
+    return url.endsWith("/") || u.pathname !== "/" ? u.href : u.href.replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
 
 /**
  * A name as kept: control characters and runs of spaces gone, and the invisible format characters — bidi controls that
@@ -93,6 +115,8 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
   let named = false;
   /** A kept name that is an address the machine was named by, never the person: read as the machine's own again. */
   let stale = false;
+  /** This Filament's page name's label (`PAGE_LABEL`): "" until read or made. */
+  let page = "";
   if (file)
     try {
       const j = JSON.parse(readFileSync(file, "utf8"));
@@ -101,6 +125,7 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
       const name = cleanName(j.name);
       stale = !!name && !named && isIP(name) !== 0 && isIP(hostName()) === 0;
       kept = { id: j.id.trim(), name: (!stale && name) || hostName() };
+      page = typeof j.page === "string" && PAGE_LABEL.test(j.page) ? j.page : "";
     } catch (/** @type {any} */ e) {
       if (e?.code !== "ENOENT") {
         // Set aside, never overwritten: the id another machine paired with may still be read out of it by hand.
@@ -116,7 +141,7 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
     try {
       // Written beside the file, then put in its place: a write cut short leaves the id as it was, never torn.
       const tmp = `${file}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ version: 1, id: kept.id, name: kept.name, ...(named ? { named: true } : {}) }, null, 1));
+      writeFileSync(tmp, JSON.stringify({ version: 1, id: kept.id, name: kept.name, ...(named ? { named: true } : {}), page }, null, 1));
       renameSync(tmp, file);
     } catch (/** @type {any} */ e) {
       log("warn", `[machine] could not keep this machine's id and name: ${e.message}`);
@@ -124,12 +149,16 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
   };
   const made = !kept;
   if (!kept) kept = { id: randomUUID(), name: hostName() };
+  const paged = !page;
+  if (!page) page = `filament-${randomBytes(6).toString("hex")}`;
   // A stale name kept anew too: the desktop app reads it from the file (desktop/main.js `ownName`).
-  if (made || stale) save();
+  if (made || stale || paged) save();
   const self = /** @type {Machine} */ (kept);
   return {
     /** This machine's id and name. @returns {Machine} */
     get: () => ({ id: self.id, name: self.name }),
+    /** This Filament's own name under localhost for a browser on this computer (`PAGE_LABEL`, `pageAt`). */
+    pageHost: () => `${page}.localhost`,
     /** A new name; an empty one is the machine's own (its Computer Name, or its hostname). @param {unknown} name @returns {Machine} */
     rename(name) {
       const given = cleanName(name);

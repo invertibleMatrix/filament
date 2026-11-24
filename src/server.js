@@ -3500,7 +3500,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   // every 30 s, or as often as a shorter deadline needs.
   const requestMs = Math.max(1000, Number(overrides.requestMs) || 300_000);
   // The artifacts' pages, at their own addresses: this machine's `<name>.art.localhost`, and the network's (below).
-  const artifactsAnswer = createArtifactsHandler({ store: artifactStore, server: () => config.get().server, port: selfPort, feeds: artifactFeeds, dashboards, sql: appSql });
+  const artifactsAnswer = createArtifactsHandler({ store: artifactStore, server: () => config.get().server, port: selfPort, feeds: artifactFeeds, dashboards, sql: appSql, pageHost: () => machine.pageHost() });
   const frontDoor = createFrontDoor({
       config,
       log,

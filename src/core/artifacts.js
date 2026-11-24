@@ -659,15 +659,19 @@ export function artifactPolicy(framers, sandbox = "") {
  * address is none of them: a policy cannot name one, and a browser refuses the policy's part that tries. An artifact
  * asked for on the network's artifacts address (`network`) is framed by the harness of the device that asked, on the
  * name it reached this machine by: over https, at whichever port its route gives the harness — the network's listener's,
- * a tailnet's 443 (the owner's remote Filament of 11-06, Part 4).
+ * a tailnet's 443 (the owner's remote Filament of 11-06, Part 4). `pageHost`: this Filament's own name under localhost,
+ * where a browser on this computer is paired (services/machine.js `pageHost`).
  * @param {number} port @param {{ host?: string, allowedHosts?: readonly string[] }} server  the `server` config section
  * @param {{ host: string } | null} [network]  the name the request reached the network's artifacts address by
+ * @param {string} [pageHost]
  */
-export function harnessOrigins(port, server, network = null) {
+export function harnessOrigins(port, server, network = null, pageHost = "") {
+  const page = String(pageHost || "").toLowerCase();
+  const own = /^[a-z0-9-]+\.localhost$/.test(page) ? [page] : [];
   const named = [server.host, ...(server.allowedHosts || [])]
     .map((h) => String(h || "").trim().toLowerCase())
     .filter((h) => h && !h.includes(":") && h !== "0.0.0.0" && h !== "localhost" && h !== "127.0.0.1" && !h.endsWith(`.${ART_DOMAIN}`) && h !== ART_DOMAIN);
   const far = String(network?.host || "").trim().toLowerCase();
   const remote = /^[a-z0-9.-]+$/.test(far) ? [`https://${far}:*`] : [];
-  return [...new Set([...["127.0.0.1", "localhost", ...named].map((h) => `http://${h}:${port}`), ...remote])];
+  return [...new Set([...["127.0.0.1", "localhost", ...own, ...named].map((h) => `http://${h}:${port}`), ...remote])];
 }

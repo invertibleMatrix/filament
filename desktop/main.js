@@ -53,6 +53,7 @@ import { createRouteLearner } from "./lib/learn-routes.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { usePinBook } from "../src/services/machines/key-pins.js";
 import { OWNER_HEADER, OWNER_SESSION_HEADER, ownerHeaders } from "../src/services/owner.js";
+import { pageAt } from "../src/services/machine.js";
 import { mergedPath, readShellPath } from "./lib/shell-path.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -959,15 +960,18 @@ async function run() {
   /**
    * The tray's Open in browser: Filament in the person's own browser, paired by a one-time link as this computer's own
    * browser — a code made here with the app's press on it (the person pressed the tray), for loopback alone
-   * (devices.js `here`), the pairing page opened at it, which claims it and opens the harness (src/ui/pair.js). The
-   * browser is this computer itself to Filament, its pairing naming it; paired again, it takes its old pairing's place.
+   * (devices.js `here`), the pairing page opened at it — at Filament's own name under localhost —, which claims it and
+   * opens the harness (src/ui/pair.js). The browser is this computer itself to Filament, its pairing naming it; paired
+   * again, it takes its old pairing's place.
    */
   const openInBrowser = async () => {
     try {
       const r = await ask("/api/remote/pair", { method: "POST", body: JSON.stringify({ scope: "full", here: true }), headers: { "x-filament-press": pressKey } });
       const p = /** @type {any} */ (r.ok ? await r.json() : await r.json().catch(() => null));
       if (!r.ok || typeof p?.code !== "string" || !p.code) throw new Error(String(p?.error || `HTTP ${r.status}`));
-      await shell.openExternal(`${origin}/ui/pair.html#code=${encodeURIComponent(p.code)}`);
+      // At Filament's own name under localhost (src/services/machine.js `pageAt`): the browser's cookie goes to no
+      // other port of this computer's address.
+      await shell.openExternal(`${pageAt(origin, p.pageHost)}/ui/pair.html#code=${encodeURIComponent(p.code)}`);
     } catch (/** @type {any} */ e) {
       log.line(`Open in browser: no pairing code was made (${e?.message || e})`);
       dialog.showErrorBox("Filament did not open in your browser", `No pairing code was made for it: ${e?.message || e}`);

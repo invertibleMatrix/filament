@@ -364,11 +364,12 @@ const isObject = (x) => Object.prototype.toString.call(x) === "[object Object]";
 
 /**
  * @param {{ store: import("../services/artifacts.js").ArtifactStore, server: () => any, port: () => number, feeds?: import("../services/artifact-feeds.js").Feeds | null,
- *   dashboards?: import("../services/dashboard-runner.js").DashboardRunner | null, sql?: import("../services/app-sql.js").AppSql | null }} deps
+ *   dashboards?: import("../services/dashboard-runner.js").DashboardRunner | null, sql?: import("../services/app-sql.js").AppSql | null, pageHost?: () => string }} deps
  *   `server`: the `server` config section, read per request; `port`: the port Filament listens on now; `feeds`:
  *   Filament's own numbers, which a Dashboard reads — where none are given, its tiles that read them say so;
  *   `dashboards`: what runs a Space's dashboards, which answers a kept Dashboard's sources (HarnessV4_Space_Plan S2);
- *   `sql`: each app's own SQLite database (10-29) — where none is given, an app has none
+ *   `sql`: each app's own SQLite database (10-29) — where none is given, an app has none; `pageHost`: this Filament's
+ *   own name under localhost (services/machine.js), whose page frames an artifact as 127.0.0.1's does
  * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, name: string, url: URL, o?: { still?: boolean, network?: { base: string, preview?: boolean } }) => void | Promise<void>}
  *   `still`: the request came to the artifact's still address, which the harness's previews frame — or from a page
  *   that reads alone (a view-only device's) —: its page reads its data, its database and its sources as they stand, and
@@ -376,7 +377,7 @@ const isObject = (x) => Object.prototype.toString.call(x) === "[object Object]";
  *   pass (`artifactsDoor`) and handed it on with `url` the path inside the artifact, which sits under `base` there, the
  *   pass in it — `preview`, a still preview's —: its page is an origin of none, and its pass alone says what it writes
  */
-export function createArtifactsHandler({ store, server, port, feeds = null, dashboards = null, sql = null }) {
+export function createArtifactsHandler({ store, server, port, feeds = null, dashboards = null, sql = null, pageHost = () => "" }) {
   const pageData = store.data;
   return function artifactAnswer(req, res, name, url, { still = false, network } = {}) {
     // Where the artifact sits on the address asked: "" at its own; its name's path on the network's artifacts address.
@@ -386,7 +387,7 @@ export function createArtifactsHandler({ store, server, port, feeds = null, dash
     /** What an address that names no artifact is answered. */
     const nowhere = () => (network ? "No artifact has this address. An artifact's address here is /<name>/." : `No artifact has this address. An artifact's address is <name>.art.localhost:${port()}.`);
     const head = {
-      "content-security-policy": artifactPolicy(harnessOrigins(port(), server(), network ? { host: String(hostNameOf(req) || "") } : null), network ? (network.preview ? STILL_SANDBOX : NETWORK_SANDBOX) : ""),
+      "content-security-policy": artifactPolicy(harnessOrigins(port(), server(), network ? { host: String(hostNameOf(req) || "") } : null, pageHost()), network ? (network.preview ? STILL_SANDBOX : NETWORK_SANDBOX) : ""),
       "x-content-type-options": "nosniff",
       // On the network's artifacts address the page's own files are another origin's to it (its sandbox), let in by its
       // pass alone; its address, the pass in it, goes to its own address alone — a module it imports from the top is led

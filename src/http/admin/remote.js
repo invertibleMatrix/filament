@@ -589,6 +589,8 @@ export function remoteRoutes(a) {
   /** @type {import("../../services/devices.js").DeviceStore | null} */
   const devices = a.devices || null;
   const machine = () => a.machine?.get?.() ?? null;
+  /** This Filament's own name under localhost, for a browser on this computer: null where none is kept. @returns {string | null} */
+  const pageHost = () => a.machine?.pageHost?.() ?? null;
   /** No device store wired: nothing here answers. @param {any} r */
   const none = (r) => sendJson(r.res, 503, { error: "pairing is not wired in this Filament" });
   /** Only this computer starts or ends a pairing. @param {any} r */
@@ -660,7 +662,9 @@ export function remoteRoutes(a) {
         // kept as they are (devices.js `pressless`).
         const here = b?.here === true;
         const open = devices.startPairing({ scope: b.scope, here });
-        if (here) return sendJson(r.res, 200, { ...open, machine: machine(), addresses: [], links: [], fingerprint: null, hostOnly: null });
+        // A browser here is paired at this Filament's own name under localhost (services/machine.js `pageHost`), so its
+        // cookie is that name's alone, never 127.0.0.1's, which a browser sends to every port of it.
+        if (here) return sendJson(r.res, 200, { ...open, machine: machine(), pageHost: pageHost(), addresses: [], links: [], fingerprint: null, hostOnly: null });
         // Where the other machine opens it: each address the network's listener answers at, the code and the
         // certificate's fingerprint in the link's fragment — once a save that turned it on or moved it is made, as
         // `filament pair` right after `filament settings set server.lan.enabled true` asks (the sv-live hunt's).
@@ -672,7 +676,7 @@ export function remoteRoutes(a) {
         return sendJson(r.res, 200, { ...open, machine: machine(), addresses: links.length ? n?.addresses ?? [] : [], links: [...links, ...(tail ? [tail] : [])], fingerprint: links.length ? n?.fingerprint ?? null : null, hostOnly: links.length ? n?.hostOnly ?? null : null });
       }),
     ],
-    ["GET", "/remote/pair", guard((r) => (!devices ? none(r) : localOnly(r) || sendJson(r.res, 200, { pending: devices.pending() })))],
+    ["GET", "/remote/pair", guard((r) => (!devices ? none(r) : localOnly(r) || sendJson(r.res, 200, { pending: devices.pending(), pageHost: pageHost() })))],
     [
       // `?id=` closes the one code the page showed, another window's or `filament pair`'s left open; none closes all.
       "DELETE",

@@ -7,7 +7,8 @@ import http from "node:http";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, protocolGap } from "../src/services/machine.js";
+import { computerName, createMachine, cleanName, gapWords, MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST, NAME_MAX, pageAt, protocolGap } from "../src/services/machine.js";
+import { harnessOrigins } from "../src/core/artifacts.js";
 import { createFrontDoor } from "../src/http/front-door.js";
 import { defaultConfig } from "../src/config.js";
 import { startApp } from "./helpers/app.js";
@@ -56,7 +57,9 @@ test("a kept name that is only an address the machine was named by is its own na
     const id = "1a8abe5b-793a-444b-81d9-f37af35b242e";
     writeFileSync(file, JSON.stringify({ version: 1, id, name: "192.168.0.77" }));
     assert.deepEqual(createMachine({ dataDir: dir, host: () => "Kai’s MacBook Air" }).get(), { id, name: "Kai’s MacBook Air" });
-    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { version: 1, id, name: "Kai’s MacBook Air" }, "kept anew: the app reads the file");
+    const { page, ...kept } = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual(kept, { version: 1, id, name: "Kai’s MacBook Air" }, "kept anew: the app reads the file");
+    assert.match(page, /^filament-[0-9a-f]{12}$/, "its page name made beside it");
     writeFileSync(file, JSON.stringify({ version: 1, id, name: "fe80::1" }));
     assert.equal(createMachine({ dataDir: dir, host: () => "box" }).get().name, "box", "an IPv6 address too");
     writeFileSync(file, JSON.stringify({ version: 1, id, name: "10.0.0.7" }));
@@ -109,6 +112,73 @@ const get = (port, path, headers) =>
     req.on("error", reject);
     req.end();
   });
+
+/** A POST of JSON over node:http, with the Host given. @param {number} port @param {string} path @param {Record<string, string>} headers @param {any} body */
+const post = (port, path, headers, body) =>
+  new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "application/json", ...headers } }, (res) => {
+      let b = "";
+      res.on("data", (d) => (b += d));
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify(body));
+  });
+
+// (fails before: yes — the plan's s0f: a browser here was paired at 127.0.0.1, whose cookies a browser sends to every
+// port of it, a server an agent runs among them)
+test("this Filament's own name under localhost: made once and kept, never said to a stranger; a browser here paired at it holds its cookie there alone, and its page frames artifacts", async () => {
+  const dir = fresh();
+  try {
+    const m = createMachine({ dataDir: dir, host: () => "BOX" });
+    const host = m.pageHost();
+    assert.match(host, /^filament-[0-9a-f]{12}\.localhost$/);
+    assert.equal(createMachine({ dataDir: dir }).pageHost(), host, "read again, the same name");
+    assert.deepEqual(Object.keys(m.get()), ["id", "name"], "never in what the machine says of itself");
+    const { id } = m.get();
+    writeFileSync(join(dir, "machine.json"), JSON.stringify({ version: 1, id, name: "BOX", page: "evil.example" }));
+    const again = createMachine({ dataDir: dir });
+    assert.equal(again.get().id, id, "its id kept");
+    assert.match(again.pageHost(), /^filament-[0-9a-f]{12}\.localhost$/, "a label that is none is made anew");
+    assert.equal(`${JSON.parse(readFileSync(join(dir, "machine.json"), "utf8")).page}.localhost`, again.pageHost(), "and kept");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  const H = "filament-0123456789ab.localhost";
+  assert.equal(pageAt("http://127.0.0.1:20300", H), `http://${H}:20300`);
+  assert.equal(pageAt("http://127.0.0.1:20300/", H), `http://${H}:20300/`);
+  assert.equal(pageAt("http://localhost:20300/ui/harness.html", H), `http://${H}:20300/ui/harness.html`);
+  assert.equal(pageAt("http://192.168.1.20:20300", H), "http://192.168.1.20:20300", "a network address, as it is");
+  assert.equal(pageAt("http://[::1]:20300", H), "http://[::1]:20300", "an IPv6 one, which a .localhost name may not reach");
+  assert.equal(pageAt("https://127.0.0.1:20343", H), "https://127.0.0.1:20343");
+  assert.equal(pageAt("http://127.0.0.1:20300", null), "http://127.0.0.1:20300");
+  assert.equal(pageAt("http://127.0.0.1:20300", "evil.example"), "http://127.0.0.1:20300", "no name of another's");
+  assert.deepEqual(harnessOrigins(20300, {}, null, H), ["http://127.0.0.1:20300", "http://localhost:20300", `http://${H}:20300`]);
+  assert.deepEqual(harnessOrigins(20300, {}, null, "evil.example"), ["http://127.0.0.1:20300", "http://localhost:20300"]);
+
+  const shim = await startApp();
+  try {
+    const own = `${JSON.parse(readFileSync(join(shim.dataDir, "machine.json"), "utf8")).page}.localhost`;
+    const pair = (/** @type {any} */ body) => fetch(`${shim.url}/api/remote/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+    const made = await pair({ scope: "full", here: true });
+    assert.equal(made.pageHost, own, "said to this computer as it makes a code for a browser here");
+    assert.equal((await pair({ scope: "full" })).pageHost, undefined, "not for another machine's code");
+    assert.equal((await (await fetch(`${shim.url}/api/remote/pair`)).json()).pageHost, own);
+    assert.ok(!(await (await fetch(`${shim.url}/.well-known/filament`)).text()).includes(own.split(".")[0]), "never to a stranger");
+    const at = `${own}:${shim.port}`;
+    assert.equal(/** @type {any} */ (await get(shim.port, "/ui/pair.html", { host: at })).status, 200, "its pages answered at that name");
+    const claimed = /** @type {any} */ (await post(shim.port, "/api/remote/claim", { host: at, origin: `http://${at}` }, { code: made.code, name: "Browser here" }));
+    assert.equal(claimed.status, 200, claimed.body);
+    const cookie = String(claimed.headers["set-cookie"]);
+    assert.match(cookie, /^filament_device=/);
+    assert.doesNotMatch(cookie, /domain=/i, "host-only: that name's alone, sent to no other name's server");
+    assert.equal(JSON.parse(claimed.body).device.here, true);
+  } finally {
+    await shim.stop();
+  }
+  assert.match(readFileSync(new URL("../src/server.js", import.meta.url), "utf8"), /createArtifactsHandler\(\{[^}]*pageHost: \(\) => machine\.pageHost\(\) \}\)/, "artifacts framed by its page");
+  assert.match(readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8"), /shell\.openExternal\(`\$\{pageAt\(origin, p\.pageHost\)\}\/ui\/pair\.html#code=/, "the tray's Open in browser pairs it there");
+});
 
 // (fails before: yes — nothing answered /.well-known/filament, and /api/state said neither the machine nor who reads it)
 test("/.well-known/filament says who answers — its id, name, wire and version — by any name that reached it; /api/state says the machine and who reads it", async () => {

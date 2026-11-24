@@ -1428,7 +1428,8 @@ describe("through the app", () => {
     assert.equal(page.status, 200);
     assert.equal(page.headers["content-type"], "text/html; charset=utf-8");
     assert.equal(page.body, servedPage(PAGE, "Spend"));
-    assert.match(String(page.headers["content-security-policy"]), new RegExp(`frame-ancestors http://127\\.0\\.0\\.1:${shim.port} http://localhost:${shim.port}$`));
+    // And this Filament's own name under localhost, where a browser here is paired (services/machine.js `pageHost`).
+    assert.match(String(page.headers["content-security-policy"]), new RegExp(`frame-ancestors http://127\\.0\\.0\\.1:${shim.port} http://localhost:${shim.port} http://filament-[0-9a-f]{12}\\.localhost:${shim.port}$`));
     assert.deepEqual([page.headers["x-content-type-options"], page.headers["referrer-policy"], page.headers["set-cookie"]], ["nosniff", "no-referrer", undefined]);
     assert.deepEqual([(await raw("/app.js", { host: at(name) })).body, (await raw("/css/style.css", { host: at(name) })).headers["content-type"], (await raw("/data.json", { host: at(name) })).body], [APP, "text/css; charset=utf-8", "[1,2]"]);
     const head = await raw("/", { host: at(name), method: "HEAD" });
