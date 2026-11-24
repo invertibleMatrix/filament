@@ -148,6 +148,7 @@ import { createSpaceSync } from "./app/space-sync.js";
 import { createSpaceNews } from "./app/space-news.js";
 import { createSpaceLanes, placeFiles } from "./app/space-lanes.js";
 import { branchOf, remoteOf, uncommittedIn } from "./adapters/git/inspect.js";
+import { folderHung } from "./adapters/git/folder-there.js";
 import { repoStandingOf } from "./adapters/git/standing.js";
 import { createDashboardRunner, JOBS_KEPT } from "./services/dashboard-runner.js";
 import { createPulls } from "./app/space-pulls.js";
@@ -451,8 +452,10 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
         },
       }),
     // Whether memory may ask the disk of a folder a request names: a network share the folder rules keep out it may not
-    // (`shareKeptOut`), and that folder stands in its own project, as written.
-    mayAsk: (/** @type {string} */ folder) => !shareKeptOut(config.get(), folder),
+    // (`shareKeptOut`), nor one on a drive or share known not to answer now (`folderHung`, asking nothing), whose walk
+    // up to its repository would hold the server's thread as long as the share; that folder stands in its own project,
+    // as written, unkept, and is walked once its share answers.
+    mayAsk: (/** @type {string} */ folder) => !shareKeptOut(config.get(), folder) && !folderHung(folder),
     ...(overrides.importHome ? { home: overrides.importHome } : {}),
   });
   // Filament's own numbers a Dashboard reads (E18 step 7, AF-D12): the records' and the archive's, read-only,

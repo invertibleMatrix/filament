@@ -5,12 +5,13 @@
 // folder's project and keeps its own folder (GW-D47, GWC-110).
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { projectFolderOf } from "../src/services/project-folder.js";
+import { folderHung, folderThere } from "../src/adapters/git/folder-there.js";
 import { chainLookup, projectOf } from "../src/services/memory/brain.js";
 import { normalizeCwd, projectIdOf } from "../src/core/project-id.js";
 import { taskWorktreePath } from "../src/adapters/git/worktree.js";
@@ -144,4 +145,22 @@ describe("the folder a folder's project is made of", { skip: !hasGit && "git is 
     assert.equal(inMain.cwd, repo);
     assert.equal("meta" in inMain, false);
   });
+});
+
+// (fails before: yes — the review of x2: a folder's project was found by walking up it on the server's thread, which
+// waited as long as a share gone offline does, every request with it)
+test("a folder whose share does not answer stands as its own project at once, unwalked: memory asks the disk of none (server.js mayAsk)", async () => {
+  /** @type {() => void} */
+  let open = () => {};
+  const shut = new Promise((r) => (open = () => r(undefined)));
+  try {
+    assert.equal(await folderThere("//dead-pf/s/proj", { ms: 30, statOf: () => shut }), null);
+    const at = Date.now();
+    assert.equal(projectOf({ cwdHint: "//dead-pf/s/proj/sub/", mayAsk: (f) => !folderHung(f) }).home, "//dead-pf/s/proj/sub");
+    assert.ok(Date.now() - at < 200, `at once: ${Date.now() - at} ms`);
+  } finally {
+    open();
+  }
+  const server = readFileSync("src/server.js", "utf8");
+  assert.ok(server.includes("mayAsk: (/** @type {string} */ folder) => !shareKeptOut(config.get(), folder) && !folderHung(folder),"), "the server wires it");
 });
