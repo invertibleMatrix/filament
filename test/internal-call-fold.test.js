@@ -116,7 +116,7 @@ test("through the front door each streamed event is parsed once, and the call's 
 });
 
 // (fails before: yes — the bug hunt of 10-30: a line of the reply was held whole however long it ran)
-test("a reply with a line past 256 MiB is the call's failure, in words: that line's event is lost, and the reply with it", { timeout: 120_000 }, async () => {
+test("a reply with a line past 64 MiB is the call's failure, in words: that line's event is lost, and the reply with it", { timeout: 120_000 }, async () => {
   const piece = "x".repeat(2 ** 20);
   const door = http.createServer((req, res) => {
     req.resume();
@@ -124,7 +124,7 @@ test("a reply with a line past 256 MiB is the call's failure, in words: that lin
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write([start, whole[6]].map(sse).join(""));
       res.write('event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"');
-      for (let i = 0; i < 257; i++) if (!res.write(piece)) await once(res, "drain");
+      for (let i = 0; i < 65; i++) if (!res.write(piece)) await once(res, "drain");
       res.write('"}}\n\n');
       res.end([whole[10], whole.at(-2), whole.at(-1)].map(sse).join(""));
     });
@@ -135,7 +135,7 @@ test("a reply with a line past 256 MiB is the call's failure, in words: that lin
     /** @type {string[]} */
     const logged = [];
     const r = await createInternalCall({ config: () => ({ server: { port } }), log: (level, msg) => logged.push(`${level} ${msg}`) })({ body: { model: "x", messages: [] }, onDelta: () => {} });
-    const words = "the reply had a line of 257 MiB, past the 256 MiB Filament reads of one: it was dropped unread, and the reply with it";
+    const words = "the reply had a line of 65 MiB, past the 64 MiB Filament reads of one: it was dropped unread, and the reply with it";
     assert.deepEqual([r.ok, r.status, r.inStream, r.json?.error?.message], [false, 502, true, words]);
     assert.deepEqual(logged, [`warn internal call: ${words}`]);
   } finally {

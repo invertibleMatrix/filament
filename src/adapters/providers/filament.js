@@ -254,18 +254,20 @@ export function filamentDestination(upstream, { machines, inFlight, silentMs = S
     e?.code === "FILAMENT_PIN"
       ? gone(`${named}: its certificate changed — ${e.message}. If that machine's was made anew, pair it again from its Settings › Remote access`, e)
       : gone(`${named} did not answer: ${e?.cause?.code || e?.code || e?.message || e}`, e);
+  /** A redirect, which a call never follows: the machine offline, said with where it sent the call. @param {Response} r */
+  const redirectGone = (r) => {
+    void r.body?.cancel().catch(() => {});
+    return gone(`${named} answered with a redirect (HTTP ${r.status}${r.headers.get("location") ? ` to ${r.headers.get("location")}` : ""}): a call goes to the machine kept, never on elsewhere`);
+  };
   /**
    * A reply that is no answer of the machine's models: its door refusing this device (offline), its door saying the
    * device has its calls in flight already (busy: a failure another try may pass, which teaches no model a ceiling and
-   * takes nothing offline), or a redirect, which a call never follows (offline). Null for an answer: the call's own.
+   * takes nothing offline), or a redirect (`redirectGone`). Null for an answer: the call's own.
    * A refusal's words are what came of them within `silentMs`: one whose words never come holds no turn there.
    * @param {Response} r @returns {Promise<Error | null>}
    */
   const notAnswer = async (r) => {
-    if (r.status >= 300 && r.status < 400) {
-      void r.body?.cancel().catch(() => {});
-      return gone(`${named} answered with a redirect (HTTP ${r.status}${r.headers.get("location") ? ` to ${r.headers.get("location")}` : ""}): a call goes to the machine kept, never on elsewhere`);
-    }
+    if (r.status >= 300 && r.status < 400) return redirectGone(r);
     if (!marked(r)) return null;
     if (DOOR_REFUSALS.has(r.status)) return gone(`${named} said: ${await refusalOf(r, silentMs)}`);
     if (r.status === 429) return Object.assign(new Error(`${named} is busy: ${await refusalOf(r, silentMs)}`), { busy: true });
@@ -345,9 +347,9 @@ export function filamentDestination(upstream, { machines, inFlight, silentMs = S
           /** @type {Awaited<ReturnType<typeof forwardRequest>>} */
           let fw;
           try {
-            fw = await forwardRequest({ url: there, headers: sent, bodyString, signal: signal ? AbortSignal.any([signal, late.signal]) : late.signal, fetchImpl: way.fetch });
-          } catch (e) {
-            if (signal?.aborted) throw e;
+            fw = await forwardRequest({ url: there, headers: sent, bodyString, signal: signal ? AbortSignal.any([signal, late.signal]) : late.signal, fetchImpl: way.fetch, refuseRedirect: redirectGone });
+          } catch (/** @type {any} */ e) {
+            if (signal?.aborted || e?.offline) throw e;
             if (late.signal.aborted) throw gone(`${named}: it sent no answer in ${whileWords(headWait)}, and the call ended`, e);
             throw unanswered(e);
           } finally {

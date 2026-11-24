@@ -518,6 +518,26 @@ describe("the writers", () => {
     assert.deepEqual(sessions.loadSubagentThreads(id).map((t) => t.exchanges[0].prompt), ["three", "two"]);
     assert.throws(() => sessions.saveSubagentThread("nope", thread("a", "x"), 30), /no such session/);
   });
+
+  // (fails before: yes — a chat's waiting messages and kept reports held their texts for as long as Filament ran, its
+  // lists emptied or the chat deleted, only a thread's let go)
+  test("the texts a chat's lists kept are let go of once a list is empty, and all of them once the chat is deleted", () => {
+    const sessions = sessionsWith();
+    const id = chatWith(0, sessions);
+    const at = sessions.keptTextLists();
+    const thread = /** @type {any} */ ({ id: "t", status: "done", startedAt: 1, card: { tag: "x", name: "X", thinks: "think" }, team: null, exchanges: [{ startedAt: 2, prompt: "p", outcome: { report: "r", tokens: 5 } }] });
+    sessions.saveSubagentQueue(id, [{ text: "q", from: "a", description: "d", kind: "report" }]);
+    sessions.saveSubagentHeld(id, [{ text: "h", agentId: "a", exchange: 1, description: "d" }]);
+    sessions.saveSubagentThread(id, thread, 30);
+    assert.equal(sessions.keptTextLists(), at + 3, "the queue, the reports kept aside and the thread");
+    sessions.saveSubagentQueue(id, []);
+    sessions.saveSubagentHeld(id, []);
+    assert.equal(sessions.keptTextLists(), at + 1, "an emptied list holds no text");
+    sessions.saveSubagentQueue(id, [{ text: "q2", from: "a", description: "d", kind: "report" }]);
+    assert.equal(sessions.forgetKeptTexts(id), 2, "the deleted chat's queue and thread");
+    assert.equal(sessions.keptTextLists(), at);
+    assert.equal(sessions.forgetKeptTexts(id), 0);
+  });
 });
 
 describe("what a request reads of its chain", () => {

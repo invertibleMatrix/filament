@@ -10,7 +10,7 @@ import {
   randomBytes,
   randomUUID,
 } from "node:crypto";
-import { providerFetch } from "./fetch.js";
+import { providerFetch, redirected, redirectRefusal } from "./fetch.js";
 import { LINE_MAX, createLineReader } from "../../core/lines.js";
 import { INCOMPLETE_STREAM } from "../../core/wire/errors.js";
 // The old src/qoder.js path exported the catalogue; it lives in core now and stays reachable from here.
@@ -943,7 +943,9 @@ export async function chat({
     }),
   };
   // No clock (HarnessV3-FailurePoints §4 A): Qoder answers or fails, or the client hangs up (`signal`).
-  const res = await fetchImpl(url, { method: "POST", headers, body: bytes, signal });
+  const res = await fetchImpl(url, { method: "POST", headers, body: bytes, signal, redirect: "manual" });
+  // A redirect is never followed (fetch.js), nor answered to the client as though it were Qoder's reply.
+  if (redirected(res)) throw redirectRefusal("its server", res);
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     if (isSignatureRejection(res.status, t)) throw signatureRejectionError();

@@ -5,12 +5,13 @@
 // square of its length.
 // A line is held to `LINE_MAX` characters. Past that it is no message anything Filament reads sends — the largest
 // carries a file or a picture, an attachment at most 20 MB, a third more in base64 — and held whole it would take the
-// memory it names, up to where a string cannot grow at all. Its pieces are let go of as they come, its two ends kept,
+// memory it names. It is the most a WebSocket message (http/ws.js) and another machine's answer (machines/client.js) may
+// be, so no stream holds more of one line than they do. Its pieces are let go of as they come, its two ends kept,
 // and its reader is told of it at its newline (`onOver`), in its place: the stream goes on with the next line. A stream
 // that ends inside one tells of it at its end (`end`).
 
-/** The most characters of one line a reader holds (256 MiB). */
-export const LINE_MAX = 256 * 1024 * 1024;
+/** The most characters of one line a reader holds (64 MiB). */
+export const LINE_MAX = 64 * 1024 * 1024;
 /** How much of a line too long to hold is kept at each end: enough for its reader to tell what it was. */
 const ENDS_KEPT = 4096;
 

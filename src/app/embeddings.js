@@ -11,7 +11,7 @@ import {
 import { lowerHeaders } from "../core/headers.js";
 import { errorBody } from "../core/wire/errors.js";
 import { admitHeaders } from "../services/house.js";
-import { providerFetch } from "../adapters/providers/fetch.js";
+import { providerFetch, redirected, redirectRefusal } from "../adapters/providers/fetch.js";
 import { sendJson } from "./pipeline/respond.js";
 
 /** @typedef {import("./deps.js").AppDeps} AppDeps */
@@ -82,6 +82,7 @@ export async function handleEmbeddings({ config, usage, finish, checkInboundAuth
       body: JSON.stringify({ ...body, model }),
       signal: hangUp.signal,
     });
+    if (redirected(r)) throw redirectRefusal(`upstream ${upstream.id}`, r);
     const text = await r.text();
     usage.firstByte(rec);
     let j = null;

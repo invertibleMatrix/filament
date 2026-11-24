@@ -140,7 +140,7 @@ const longLine = async (out, start, size, end) => {
 
 // (fails before: yes — the bug hunt of 10-30: an agent's message of any size was held whole, and one past what a string
 // takes threw in the pipe's handler; the request in it went to its handler, and an answer to its request)
-test("an agent's message past 256 MiB is dropped unread: its request is refused in words, Filament's request it answered fails in words, each is logged, and the stream reads on", { timeout: 120_000 }, async () => {
+test("an agent's message past 64 MiB is dropped unread: its request is refused in words, Filament's request it answered fails in words, each is logged, and the stream reads on", { timeout: 120_000 }, async () => {
   /** @type {string[]} */
   const logged = [];
   const { child, p } = onFakeChild((level, msg) => logged.push(`${level} ${msg}`));
@@ -148,19 +148,19 @@ test("an agent's message past 256 MiB is dropped unread: its request is refused 
   const answers = [];
   child.stdin.setEncoding("utf8");
   child.stdin.on("data", (/** @type {string} */ d) => answers.push(...d.trim().split("\n").map((l) => JSON.parse(l))));
-  const size = 2 ** 28 + 2 ** 20;
+  const size = 2 ** 26 + 2 ** 20;
   await longLine(child.stdout, '{"jsonrpc":"2.0","id":7,"method":"fs/write_text_file","params":{"path":"a.txt","content":"', size, '"}}\n');
   const asked = p.request("session/load", { sessionId: "s" });
-  const failed = assert.rejects(asked, { message: "long answered session/load with 257 MiB on one line, past the 256 MiB Filament reads of one message: Filament dropped the answer unread" });
+  const failed = assert.rejects(asked, { message: "long answered session/load with 65 MiB on one line, past the 64 MiB Filament reads of one message: Filament dropped the answer unread" });
   await longLine(child.stdout, '{"jsonrpc":"2.0","id":1,"result":{"history":"', size, '"}}\n');
   await failed;
   const heard = new Promise((resolve) => p.on("notification", (/** @type {string} */ method) => resolve(method)));
   child.stdout.write('{"jsonrpc":"2.0","method":"session/update","params":{}}\n');
   assert.equal(await heard, "session/update", "the next line is read");
-  assert.deepEqual(answers.filter((a) => a.id === 7), [{ jsonrpc: "2.0", id: 7, error: { code: -32000, message: "Filament dropped this fs/write_text_file request unread: it was 257 MiB on one line, past the 256 MiB Filament reads of one message" } }]);
+  assert.deepEqual(answers.filter((a) => a.id === 7), [{ jsonrpc: "2.0", id: 7, error: { code: -32000, message: "Filament dropped this fs/write_text_file request unread: it was 65 MiB on one line, past the 64 MiB Filament reads of one message" } }]);
   assert.deepEqual(logged.filter((l) => l.startsWith("warn")), [
-    "warn [long] the agent's fs/write_text_file request was 257 MiB on one line, past the 256 MiB Filament reads of one message: dropped unread, and refused",
-    "warn [long] the agent's answer to session/load was 257 MiB on one line, past the 256 MiB Filament reads of one message: dropped unread",
+    "warn [long] the agent's fs/write_text_file request was 65 MiB on one line, past the 64 MiB Filament reads of one message: dropped unread, and refused",
+    "warn [long] the agent's answer to session/load was 65 MiB on one line, past the 64 MiB Filament reads of one message: dropped unread",
   ]);
 });
 

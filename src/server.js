@@ -1557,6 +1557,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       browsers.forget(id);
     }
     void dropForks(ids);
+    // And the texts its lists kept, which nothing reads again (sessions/service.js `forgetKeptTexts`).
+    for (const id of ids) sessions.forgetKeptTexts(id);
   };
   // What is still open in each chat (the owner's plan of 11-02, Phase 4): its commands running, its coding agent's own
   // background tasks, its sub-agents working, asking, waiting or failed — said after a summary, after the agent's own

@@ -11,7 +11,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 import { sendJson } from "../app/pipeline/respond.js";
-import { providerFetch } from "../adapters/providers/fetch.js";
+import { providerFetch, redirected, redirectRefusal } from "../adapters/providers/fetch.js";
 
 /** The path a connector's address starts with, after Filament's own. */
 export const CONNECTOR_PATH = "/mcp/c/";
@@ -23,6 +23,11 @@ const ANSWERED = Object.freeze(["content-type", "mcp-session-id", "cache-control
 const GIVEN_MAX = 500;
 /** How long an agent is told to wait before it asks again, where a sign-in could not be renewed just now, s. */
 const RETRY_AFTER_S = 30;
+/**
+ * The most redirects a request follows, each a 307 or 308 to the server's own origin (a server that answers `/mcp` at
+ * `/mcp/`): its token and headers go to that server alone, never on to another address, and its method and body stay.
+ */
+const SAME_SERVER_REDIRECTS = 3;
 
 /**
  * @typedef {import("../app/sessions/mcp-sign-in.js").Connector} Connector
@@ -111,8 +116,26 @@ export function createConnectorDoor({ key = randomBytes(32), auth, fetchImpl = p
       });
       /** The token's header now; null where none can be had; an Error where asking for it failed. @returns {Promise<string | null | Error>} */
       const header = () => auth.header(at.url, at.headers, at.account).catch((/** @type {any} */ e) => (e instanceof Error ? e : new Error(String(e))));
-      /** @param {string} authorization @returns {Promise<Response>} */
-      const send = (authorization) => fetchImpl(at.url, { method, headers: { ...at.headers, ...asked, authorization }, ...(method === "POST" ? { body } : {}), signal: ctl.signal });
+      /**
+       * The request sent with its token, a redirect to the server's own origin followed (SAME_SERVER_REDIRECTS); one to
+       * anywhere else, or of a kind that changes the request, fails in words (fetch.js `redirectRefusal`).
+       * @param {string} authorization @returns {Promise<Response>}
+       */
+      const send = async (authorization) => {
+        let url = at.url;
+        for (let hop = 0; ; hop++) {
+          const r = await fetchImpl(url, { method, headers: { ...at.headers, ...asked, authorization }, ...(method === "POST" ? { body } : {}), signal: ctl.signal, redirect: "manual" });
+          if (!redirected(r)) return r;
+          /** @type {URL | null} */
+          let to = null;
+          try {
+            to = new URL(String(r.headers.get("location") || ""), url);
+          } catch {}
+          if (!to || to.origin !== new URL(url).origin || (r.status !== 307 && r.status !== 308) || hop >= SAME_SERVER_REDIRECTS) throw redirectRefusal(`${name} at ${host(at.url)}`, r);
+          void r.body?.cancel().catch(() => {});
+          url = to.href;
+        }
+      };
       /** No token to send: a sign-in that ended, or none, asks the person to sign in; one that could not be renewed just now, to ask again. @param {Error | null} [e] */
       const noToken = (e = null) => {
         const standing = e ? "in" : auth.standing ? auth.standing(at.url, at.headers, at.account) : "none";
@@ -142,6 +165,10 @@ export function createConnectorDoor({ key = randomBytes(32), auth, fetchImpl = p
         }
       } catch (/** @type {any} */ e) {
         if (ctl.signal.aborted) return;
+        if (e?.redirect) {
+          log("warn", `mcp connector: ${String(e.message).slice(0, 300)}`);
+          return sendJson(res, 502, { error: String(e.message) });
+        }
         log("warn", `mcp connector: ${name} at ${host(at.url)} did not answer (${String(e?.message || e).slice(0, 120)})`);
         return sendJson(res, 502, { error: `${name} at ${host(at.url)} did not answer: ${String(e?.message || e).slice(0, 200)}` });
       }

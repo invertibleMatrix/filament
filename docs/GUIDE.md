@@ -1624,6 +1624,10 @@ destinations that have none.
 
 A rail on the left lists every destination; the card on the right edits the selected one: type, address, key, wire API
 (OpenAI-style servers), extra headers, model discovery, rule overrides, **Test connection** (Test and discovery send the provider's extra headers too, a stored one as stored).
+A provider's redirect is never followed, since its key would go with it: a request, an embeddings call, a Test or the
+model list it answers with one fails, naming where it sent the call; set the provider's address to where it answers.
+A signed-in connector's server is followed to another path of its own address (a 307 or 308, as `/mcp` to `/mcp/`),
+never to another address.
 
 - **Model table**: every model the upstream offers and your routes can reach, one row per model with its variants
   folded in (▸ lists its ids). Click a name to ping it (a tiny real request through your routes and rules). Each row
@@ -2056,6 +2060,8 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
   (`POST /api/config/reload`); and memory put back from a backup: each puts in place what an agent then runs by. So
   does what starts a program as you, or names one Filament starts by itself from then on: a terminal opened or typed
   into — the Terminal pane's stream opens with a ticket the app's window asks for, good once and for half a minute —;
+  a command started by the API's command row (`POST /api/exec`: another machine's agents run theirs as their grant
+  and fence let them, unless their device was paired without the app's key);
   a hook, the check after edits (`loop.verify.afterEdits`), an MCP server's command or address, a plugin switched on
   or a language server's command, written or changed in a chat's settings (a message's own, a new chat's and a fork's
   among them), your defaults, a project or the configuration; an MCP server tested, brought in from another app,

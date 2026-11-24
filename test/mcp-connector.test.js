@@ -124,6 +124,46 @@ describe("a coding agent's signed-in connector at Filament's door", () => {
     assert.equal(seen[0].init.body, JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
   });
 
+  // (fails before: yes — the codebase review of 11-23: the door's fetch followed any redirect, the server's configured
+  // headers going on to whatever address it named; and with the provider fetch's redirects refused, a server's own
+  // /mcp → /mcp/ came back to the agent a bare 307)
+  test("a 307 or 308 to the server's own origin is followed with its method, body and token; one elsewhere, one that changes the request, or past three, fails in words and sends nothing elsewhere", async () => {
+    /** @type {{ url: string, method: string, body: any, auth: string, redirect: string }[]} */
+    const seen = [];
+    /** @type {Record<string, () => Response>} */
+    const answers = {
+      "https://srv.example/mcp": () => new Response(null, { status: 307, headers: { location: "/mcp/" } }),
+      "https://srv.example/mcp/": () => new Response('{"jsonrpc":"2.0","id":1,"result":{}}', { status: 200, headers: { "content-type": "application/json" } }),
+      "https://srv.example/away": () => new Response(null, { status: 308, headers: { location: "https://other.example/mcp" } }),
+      "https://srv.example/moved": () => new Response(null, { status: 302, headers: { location: "/mcp/" } }),
+      "https://srv.example/loop": () => new Response(null, { status: 307, headers: { location: "/loop" } }),
+    };
+    const door = createConnectorDoor({
+      auth: { header: async () => "Bearer from-filament", renew: async () => ({ ok: false }) },
+      fetchImpl: /** @type {any} */ (async (/** @type {string} */ url, /** @type {any} */ init) => {
+        seen.push({ url, method: init.method, body: init.body, auth: init.headers.authorization, redirect: init.redirect });
+        return (answers[url] || (() => new Response("no", { status: 500 })))();
+      }),
+    });
+    const base = await doorAt(door);
+    const at = (/** @type {string} */ path) => door.give(base, "c", { name: "n", url: `https://srv.example${path}` }).url;
+    const r = await post(at("/mcp"));
+    assert.equal(r.status, 200);
+    assert.deepEqual(seen.map((s) => [s.url, s.method, s.auth, s.redirect]), [
+      ["https://srv.example/mcp", "POST", "Bearer from-filament", "manual"],
+      ["https://srv.example/mcp/", "POST", "Bearer from-filament", "manual"],
+    ]);
+    assert.equal(seen[1].body, seen[0].body, "its body with it");
+    for (const [path, status, to] of /** @type {const} */ ([["/away", 308, "https://other.example/mcp"], ["/moved", 302, "/mcp/"], ["/loop", 307, "/loop"]])) {
+      seen.length = 0;
+      const no = await post(at(path));
+      assert.equal(no.status, 502, path);
+      assert.equal((await no.json()).error, `n at srv.example answered with a redirect (HTTP ${status} to ${to}): a call with its key goes to the address kept and never on elsewhere, so set its address to where it answers`);
+      assert.ok(seen.length > 0 && seen.every((s) => s.url.startsWith("https://srv.example/")), `${path}: nothing went elsewhere`);
+    }
+    assert.equal(seen.length, 4, "past three redirects, no fourth");
+  });
+
   // (the review of 11-07: an address was good for good — kept by a key on disk, and its server held after the chat let
   // it go — and Node's own fetch gave up on a server silent for five minutes)
   test("an address is this run's and its chat's turn's: another run gives another, and a server the chat no longer gives answers no more; no time limit on the server", async () => {

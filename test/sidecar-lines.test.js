@@ -51,7 +51,7 @@ function fakeEngine(answer, cut) {
 
 // (fails before: yes — the bug hunt of 10-30: an answer of any size was held whole, and one past what a string takes
 // threw in the pipe's handler)
-test("an answer past 256 MiB is dropped unread: its call fails in words, the log says its size alone, and the next call is answered", { timeout: 120_000 }, async () => {
+test("an answer past 64 MiB is dropped unread: its call fails in words, the log says its size alone, and the next call is answered", { timeout: 120_000 }, async () => {
   const spawnImpl = () => {
     const child = Object.assign(new EventEmitter(), { pid: 0, exitCode: /** @type {number | null} */ (null), signalCode: null, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
     const exit = () => {
@@ -60,11 +60,11 @@ test("an answer past 256 MiB is dropped unread: its call fails in words, the log
       setImmediate(() => child.emit("exit", 0, null));
     };
     Object.assign(child, { kill: () => (exit(), true) });
-    /** The answer to `stats`: a text of 257 MiB, a MiB a write, as the pipe takes it. @param {number} id */
+    /** The answer to `stats`: a text of 65 MiB, a MiB a write, as the pipe takes it. @param {number} id */
     const long = async (id) => {
       const piece = "x".repeat(2 ** 20);
       child.stdout.write(`{"id": ${id}, "ok": true, "result": {"text": "`);
-      for (let i = 0; i < 257; i++) if (!child.stdout.write(piece)) await once(child.stdout, "drain");
+      for (let i = 0; i < 65; i++) if (!child.stdout.write(piece)) await once(child.stdout, "drain");
       child.stdout.write('"}}\n');
     };
     let pending = "";
@@ -86,9 +86,9 @@ test("an answer past 256 MiB is dropped unread: its call fails in words, the log
   const e = new MemoryEngine({ command: "x", writeConfig: false, spawnImpl: /** @type {any} */ (spawnImpl), log: (/** @type {string} */ l, /** @type {string} */ m) => logged.push(`${l} ${m}`) });
   try {
     await e.ensure();
-    await assert.rejects(e.stats(), { message: "the memory engine answered stats with 257 MiB on one line, past the 256 MiB Filament reads of one answer: Filament dropped the answer unread" });
+    await assert.rejects(e.stats(), { message: "the memory engine answered stats with 65 MiB on one line, past the 64 MiB Filament reads of one answer: Filament dropped the answer unread" });
     assert.deepEqual(await e.canonical({}), { op: "canonical_list" }, "the next call is answered");
-    assert.deepEqual(logged.filter((l) => l.startsWith("warn")), ["warn memory engine: its answer to stats was 257 MiB on one line, past the 256 MiB Filament reads of one answer: dropped unread"]);
+    assert.deepEqual(logged.filter((l) => l.startsWith("warn")), ["warn memory engine: its answer to stats was 65 MiB on one line, past the 64 MiB Filament reads of one answer: dropped unread"]);
   } finally {
     await e.stop();
   }

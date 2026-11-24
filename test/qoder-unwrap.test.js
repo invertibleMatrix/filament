@@ -61,11 +61,11 @@ test("a reply Qoder ends without its [DONE]: the last line, which no newline clo
 });
 
 // (fails before: yes — the bug hunt of 10-30: a line of Qoder's was held whole however long it ran, and read on past)
-test("a line of Qoder's past 256 MiB ends the reply with an error that says so, and nothing after it is read", { timeout: 120_000 }, async () => {
+test("a line of Qoder's past 64 MiB ends the reply with an error that says so, and nothing after it is read", { timeout: 120_000 }, async () => {
   const piece = enc.encode("x".repeat(2 ** 20));
   const said = (/** @type {string} */ content) => `${wrap({ id: "chatcmpl-abcdefgh", choices: [{ index: 0, delta: { content } }] })}\n`;
-  /** What Qoder sends at each read: a line, a line of 257 MiB a MiB at a time, then a line after it. */
-  const at = (/** @type {number} */ n) => (n === 0 ? enc.encode(said("before")) : n === 1 ? enc.encode('data: {"statusCodeValue":200,"body":"') : n < 259 ? piece : n === 259 ? enc.encode(`"}\n${said("after")}`) : null);
+  /** What Qoder sends at each read: a line, a line of 65 MiB a MiB at a time, then a line after it. */
+  const at = (/** @type {number} */ n) => (n === 0 ? enc.encode(said("before")) : n === 1 ? enc.encode('data: {"statusCodeValue":200,"body":"') : n < 67 ? piece : n === 67 ? enc.encode(`"}\n${said("after")}`) : null);
   let n = 0;
   const qoder = new ReadableStream({
     pull(c) {
@@ -79,7 +79,7 @@ test("a line of Qoder's past 256 MiB ends the reply with an error that says so, 
     text,
     [
       `data: ${JSON.stringify({ id: "chatcmpl-abcdefgh", choices: [{ index: 0, delta: { content: "before" } }], model: "q", object: "chat.completion.chunk" })}\n\n`,
-      `data: ${JSON.stringify({ error: { message: "Qoder sent a line of 257 MiB, past the 256 MiB Filament reads of one: the reply ends here", type: "api_error" } })}\n\n`,
+      `data: ${JSON.stringify({ error: { message: "Qoder sent a line of 65 MiB, past the 64 MiB Filament reads of one: the reply ends here", type: "api_error" } })}\n\n`,
       "data: [DONE]\n\n",
     ].join(""),
   );
@@ -87,10 +87,10 @@ test("a line of Qoder's past 256 MiB ends the reply with an error that says so, 
 
 // (fails before: yes — the bug hunt of 10-30, noticed: a reply Qoder ended inside such a line lost it with no word, and
 // ended as though it had finished)
-test("a reply Qoder ends inside a line past 256 MiB ends with the error that says so", { timeout: 120_000 }, async () => {
+test("a reply Qoder ends inside a line past 64 MiB ends with the error that says so", { timeout: 120_000 }, async () => {
   const piece = enc.encode("x".repeat(2 ** 20));
-  /** What Qoder sends at each read: a line, then a line of 257 MiB a MiB at a time, and nothing after it. */
-  const at = (/** @type {number} */ n) => (n === 0 ? enc.encode(`${wrap({ id: "chatcmpl-abcdefgh", choices: [{ index: 0, delta: { content: "before" } }] })}\n`) : n === 1 ? enc.encode('data: {"statusCodeValue":200,"body":"') : n < 259 ? piece : null);
+  /** What Qoder sends at each read: a line, then a line of 65 MiB a MiB at a time, and nothing after it. */
+  const at = (/** @type {number} */ n) => (n === 0 ? enc.encode(`${wrap({ id: "chatcmpl-abcdefgh", choices: [{ index: 0, delta: { content: "before" } }] })}\n`) : n === 1 ? enc.encode('data: {"statusCodeValue":200,"body":"') : n < 67 ? piece : null);
   let n = 0;
   const qoder = new ReadableStream({
     pull(c) {
@@ -104,7 +104,7 @@ test("a reply Qoder ends inside a line past 256 MiB ends with the error that say
     text,
     [
       `data: ${JSON.stringify({ id: "chatcmpl-abcdefgh", choices: [{ index: 0, delta: { content: "before" } }], model: "q", object: "chat.completion.chunk" })}\n\n`,
-      `data: ${JSON.stringify({ error: { message: "Qoder sent a line of 257 MiB, past the 256 MiB Filament reads of one: the reply ends here", type: "api_error" } })}\n\n`,
+      `data: ${JSON.stringify({ error: { message: "Qoder sent a line of 65 MiB, past the 64 MiB Filament reads of one: the reply ends here", type: "api_error" } })}\n\n`,
       "data: [DONE]\n\n",
     ].join(""),
   );

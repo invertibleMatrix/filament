@@ -401,6 +401,24 @@ describe("what starts a program is a press, on one Filament", () => {
     assert.equal((await upgrade(shim.port, `/api/terminal/${theirs.json.terminal.id}/stream`, far)).status, 101, "a paired device's stream");
   });
 
+  // (fails before: yes — the codebase review of 11-23: the exec row was classed "an agent may", so a program on this
+  // computer, a model's own shell among them, started a command as the person with no key, past every press)
+  test("a command started by the exec row is a press: refused without the key; with it, and for a paired device as the gate lets it in, it is reached", async () => {
+    const body = { cwd: root, command: "echo ran-by-exec", timeoutMs: 5000 };
+    refused(await call("/api/exec?stream=0", { method: "POST", body }), "a command started");
+    const keyed = await call("/api/exec?stream=0", { method: "POST", headers: PRESS, body });
+    assert.equal(keyed.status, 200, keyed.text);
+    const own = { origin: `http://127.0.0.1:${shim.port}` };
+    const pair = await call("/api/remote/pair", { method: "POST", headers: PRESS, body: { scope: "full" } });
+    assert.equal(pair.status, 200, pair.text);
+    const claimed = await call("/api/remote/claim", { method: "POST", headers: { ...FAR, ...own }, body: { code: pair.json.code, name: "a device that runs a command" } });
+    assert.equal(claimed.status, 200, claimed.text);
+    const far = { ...FAR, ...own, cookie: String(claimed.headers["set-cookie"]?.[0] || "").split(";")[0] };
+    const theirs = await call("/api/exec?stream=0", { method: "POST", headers: far, body });
+    reached(theirs, "a paired device's command");
+    assert.equal(theirs.status, 200, theirs.text);
+  });
+
   // (fails before: no — with no key nothing changed; it guards that it still does not)
   test("with no key — a browser, a server, the CLI —, this computer starts what it did: a hook written, a server kept, a terminal opened and streamed with no ticket, the listener's field", async () => {
     setPressKey("");

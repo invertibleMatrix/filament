@@ -4109,20 +4109,22 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
    * words — by the text, for the list it was last kept in: a list kept again (at every message that comes or is taken,
    * at every change of an agent) archives none of the texts it kept last time anew, nor serializes and hashes them. A
    * message stays in the archive once there (its rows are content-addressed; none is deleted), so its hash stands. Each
-   * keep holds the texts it kept alone.
+   * keep holds the texts it kept alone: a list kept empty holds none, nor does a chat deleted (`forgetKeptTexts`).
    * @type {Map<string, { a: any, hashes: Map<string, string> }>}
    */
   const keptTexts = new Map();
   /**
    * The list `key`'s texts as this keep archives them: each the hash the archive keeps it under, as `putMessage` says it.
-   * @param {any} a  the archive @param {string} key @returns {(text: string) => string}
+   * `any`: whether the list keeps any text; one that keeps none lets go of what it kept.
+   * @param {any} a  the archive @param {string} key @param {boolean} [any] @returns {(text: string) => string}
    */
-  const textsKept = (a, key) => {
+  const textsKept = (a, key, any = true) => {
     const was = keptTexts.get(key);
     const old = was && was.a === a ? was.hashes : null;
     /** @type {Map<string, string>} */
     const hashes = new Map();
-    keptTexts.set(key, { a, hashes });
+    if (any) keptTexts.set(key, { a, hashes });
+    else keptTexts.delete(key);
     return (text) => {
       let hash = hashes.get(text) ?? old?.get(text);
       if (hash === undefined) hash = /** @type {string} */ (a.putMessage("user", { role: "user", content: [{ type: "text", text }] }).hash);
@@ -4166,7 +4168,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
   function saveSubagentQueue(id, list) {
     const chainId = chainIdOf(id);
     const a = archive();
-    const hashOf = textsKept(a, `${chainId}\nqueue`);
+    const hashOf = textsKept(a, `${chainId}\nqueue`, list.length > 0);
     const entries = list.map((d) => ({ hash: hashOf(String(d.text || "")), ...(d.subject ? { subjectHash: hashOf(String(d.subject)) } : {}), ...queueFacts(d) }));
     a.mergeMeta(chainId, { subagentQueue: entries.length ? entries : undefined });
   }
@@ -4201,7 +4203,7 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
   function saveSubagentHeld(id, list) {
     const chainId = chainIdOf(id);
     const a = archive();
-    const hashOf = textsKept(a, `${chainId}\nheld`);
+    const hashOf = textsKept(a, `${chainId}\nheld`, list.length > 0);
     const entries = list.map((h) => ({
       hash: hashOf(String(h.text || "")),
       agentId: String(h.agentId || ""),
@@ -4328,6 +4330,23 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     if (rest.length !== kept.length) archive().mergeMeta(chain.id, { subagentThreads: rest.length ? rest : undefined });
     keptTexts.delete(`${chain.id}\nthread\n${agentId}`);
   }
+
+  /**
+   * A chat deleted (server.js `onSessionsDeleted`): what `textsKept` held of its waiting messages, its reports kept aside
+   * and its threads goes with it. → how many lists let go. @param {string} chainId
+   */
+  function forgetKeptTexts(chainId) {
+    const of = `${chainId}\n`;
+    let n = 0;
+    for (const key of keptTexts.keys())
+      if (key.startsWith(of)) {
+        keptTexts.delete(key);
+        n++;
+      }
+    return n;
+  }
+  /** How many lists `textsKept` holds texts of, for a test. */
+  const keptTextLists = () => keptTexts.size;
 
   /**
    * What `saveSubagentThread` kept, texts restored, the oldest first. A text whose message is gone reads empty; a
@@ -6728,6 +6747,8 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     loadSubagentHeld,
     saveSubagentThread,
     forgetSubagentThread,
+    forgetKeptTexts,
+    keptTextLists,
     loadSubagentThreads,
     settingsOf,
     effectiveOf,

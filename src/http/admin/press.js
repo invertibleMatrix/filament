@@ -667,8 +667,9 @@ export const PRESS_TABLE = [
   // lsp.js
   ["GET /lsp/symbols", READS],
   ["GET /lsp/servers", READS],
-  // exec.js
-  ["POST /exec", AGENT],
+  // exec.js. A command started here is a program run as the person: a press, as answering its ask is. Another machine's
+  // agents' device presses as the gate let it in (guards.js `pressRefusal`), and its fence judges the command.
+  ["POST /exec", ALWAYS],
   ["GET /exec/:id", READS],
   ["POST /exec/:id/stop", NARROWS],
   ["POST /exec/:id/answer", ALWAYS],

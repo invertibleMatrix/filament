@@ -10,10 +10,10 @@ import http from "node:http";
 import { startApp } from "./helpers/app.js";
 
 const sse = (/** @type {any} */ o) => `event: ${o.type}\ndata: ${JSON.stringify(o)}\n\n`;
-const WORDS = "the reply had a line of 257 MiB, past the 256 MiB Filament reads of one: it was dropped unread, and the reply with it";
+const WORDS = "the reply had a line of 65 MiB, past the 64 MiB Filament reads of one: it was dropped unread, and the reply with it";
 
 /**
- * A provider that streams whatever it is asked, its text delta 257 MiB on one line, written as its socket takes it:
+ * A provider that streams whatever it is asked, its text delta 65 MiB on one line, written as its socket takes it:
  * Responses events on its Responses path, Anthropic's otherwise. A model named "claude-short" gets a short whole reply.
  */
 const longLineProvider = async () => {
@@ -36,7 +36,7 @@ const longLineProvider = async () => {
         res.write(sse({ type: "message_start", message: { id: "m1", type: "message", role: "assistant", model: "claude-x", content: [], usage: { input_tokens: 3, output_tokens: 0 } } }) + sse({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
         res.write('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"');
       }
-      for (let i = 0; i < 257; i++) if (!res.write(piece)) await once(res, "drain");
+      for (let i = 0; i < 65; i++) if (!res.write(piece)) await once(res, "drain");
       if (responses) {
         res.write('"}\n\n');
         return res.end(sse({ type: "response.completed", response: { id: "r1", status: "completed", output: [{ type: "message", id: "i1", role: "assistant", content: [{ type: "output_text", text: "the rest" }] }], usage: { input_tokens: 3, output_tokens: 3 } } }));
@@ -75,7 +75,7 @@ const logged = async (shim, said) => {
 };
 
 // (fails before: yes — the bug hunt of 10-30, noticed: the readers dropped such a line with no word to anyone)
-test("a streamed reply's line past 256 MiB reaches its client whole, and its readers' drop of it is said once in the log", { timeout: 180_000 }, async () => {
+test("a streamed reply's line past 64 MiB reaches its client whole, and its readers' drop of it is said once in the log", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url);
   try {
@@ -87,8 +87,8 @@ test("a streamed reply's line past 256 MiB reaches its client whole, and its rea
     assert.equal(r.status, 200);
     let bytes = 0;
     for await (const chunk of /** @type {any} */ (r.body)) bytes += chunk.length;
-    assert.ok(bytes > 257 * 2 ** 20, `the client got the line as it came: ${bytes} bytes`);
-    const { said, all } = await logged(shim, /: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: its client got it as it came/);
+    assert.ok(bytes > 65 * 2 ** 20, `the client got the line as it came: ${bytes} bytes`);
+    const { said, all } = await logged(shim, /: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: its client got it as it came/);
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();
@@ -98,13 +98,13 @@ test("a streamed reply's line past 256 MiB reaches its client whole, and its rea
 
 // (fails before: yes — the bug hunt of 10-30, noticed: a client that asked for a whole reply was answered with the
 // fold of the stream, the line's text gone, as though the reply had said nothing more)
-test("a whole reply folded from a stream with a line past 256 MiB is an error that says so, and the drop is said once in the log", { timeout: 180_000 }, async () => {
+test("a whole reply folded from a stream with a line past 64 MiB is an error that says so, and the drop is said once in the log", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url);
   try {
     const r = await shim.post("/v1/messages", { model: "claude-x", max_tokens: 10, messages: [{ role: "user", content: "hi" }] }, { "x-session-id": "long-json" });
     assert.deepEqual([r.status, (await r.json())?.error?.message], [502, WORDS]);
-    const { said, all } = await logged(shim, /: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it/);
+    const { said, all } = await logged(shim, /: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it/);
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();
@@ -114,7 +114,7 @@ test("a whole reply folded from a stream with a line past 256 MiB is an error th
 
 // (fails before: yes — the bug hunt of 10-30, noticed: a translation held such a line whole and handed it on, and the
 // log said the client got it as it came)
-test("a stream translated for its client drops an event with a line past 256 MiB from what the client gets, and the log says so once", { timeout: 180_000 }, async () => {
+test("a stream translated for its client drops an event with a line past 64 MiB from what the client gets, and the log says so once", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url, { memory: false });
   try {
@@ -122,7 +122,7 @@ test("a stream translated for its client drops an event with a line past 256 MiB
     assert.equal(r.status, 200);
     const text = await r.text();
     assert.ok(text.length < 2 ** 20 && /"finish_reason":"stop"/.test(text), `the client got the reply without it: ${text.length} characters, ${text.slice(-300)}`);
-    const { said, all } = await logged(shim, /: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: its client got the reply without it, and so do the request's usage, its record and memory's copy of the reply$/);
+    const { said, all } = await logged(shim, /: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: its client got the reply without it, and so do the request's usage, its record and memory's copy of the reply$/);
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();
@@ -132,13 +132,13 @@ test("a stream translated for its client drops an event with a line past 256 MiB
 
 // (fails before: yes — the bug hunt of 10-30, noticed: a Responses-wire reply asked for whole was kept whole, such a line
 // in it, and read by a converter of its own)
-test("a whole reply from a Responses-only server, its stream holding a line past 256 MiB, is the error that says so", { timeout: 180_000 }, async () => {
+test("a whole reply from a Responses-only server, its stream holding a line past 64 MiB, is the error that says so", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url, { memory: false });
   try {
     const r = await shim.post("/v1/chat/completions", { model: "resp-x", max_tokens: 10, messages: [{ role: "user", content: "hi" }] });
     assert.deepEqual([r.status, (await r.json())?.error?.message], [502, WORDS]);
-    const { said, all } = await logged(shim, /: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the client is answered with an error that says so$/);
+    const { said, all } = await logged(shim, /: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the client is answered with an error that says so$/);
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();
@@ -148,12 +148,12 @@ test("a whole reply from a Responses-only server, its stream holding a line past
 
 // (fails before: yes — the bug hunt of 10-30, noticed: memory's call kept the whole stream and read it with `sseToJson`,
 // which went on without such a line)
-test("memory's call to its model fails in words where the reply had a line past 256 MiB, said once in the log", { timeout: 180_000 }, async () => {
+test("memory's call to its model fails in words where the reply had a line past 64 MiB, said once in the log", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url);
   try {
     await assert.rejects(/** @type {any} */ (shim.app).memory.callModel({ system: "s", user: "u", model: "claude-x" }), (/** @type {any} */ e) => String(e?.message).includes(WORDS));
-    const { said, all } = await logged(shim, /^memory: the memory call \S+: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the call fails in those words$/);
+    const { said, all } = await logged(shim, /^memory: the memory call \S+: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the call fails in those words$/);
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();
@@ -163,7 +163,7 @@ test("memory's call to its model fails in words where the reply had a line past 
 
 // (fails before: yes — the bug hunt of 10-30, noticed: the replay kept the whole stream and read it with `sseToJson`,
 // which went on without such a line)
-test("a replay whose reply had a line past 256 MiB fails in words, said once in the log", { timeout: 180_000 }, async () => {
+test("a replay whose reply had a line past 64 MiB fails in words, said once in the log", { timeout: 180_000 }, async () => {
   const up = await longLineProvider();
   const shim = await onProvider(up.url, { memory: false });
   try {
@@ -172,7 +172,7 @@ test("a replay whose reply had a line past 256 MiB fails in words, said once in 
     assert.ok(orig?.id, "the original is recorded");
     const rep = await (await shim.api(`/api/requests/${orig.id}/replay`, { method: "POST", body: { model: "claude-x" } })).json();
     assert.deepEqual([rep.ok, rep.error], [false, WORDS]);
-    const { said, all } = await logged(shim, new RegExp(`^replay of ${orig.id}: the reply had a line of 257 MiB, past the 256 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the replay fails in those words$`));
+    const { said, all } = await logged(shim, new RegExp(`^replay of ${orig.id}: the reply had a line of 65 MiB, past the 64 MiB Filament reads of one, which its readers dropped: it was dropped unread, and the reply with it: the replay fails in those words$`));
     assert.equal(said.length, 1, JSON.stringify(all));
   } finally {
     await shim.stop();

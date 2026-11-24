@@ -4,7 +4,7 @@ import { usageFromAnthropic, usageFromOpenAI, usageFromResponses } from "../../c
 import { createSseDataReader, createSseFold, parseKnown } from "../../core/wire/sse.js";
 import { EFFORT_LEVELS, UPSTREAM_TYPES } from "../../core/schema.js";
 import { upstreamBaseUrl, upstreamVersionedBase, authHeaders } from "../../core/routing.js";
-import { providerFetch } from "./fetch.js";
+import { providerFetch, redirected, redirectRefusal } from "./fetch.js";
 // Hot path: bytes from the upstream are written to the client as they arrive; only SSE "data:" lines are
 // inspected, and only to pull usage numbers out. No buffering of the full response in streaming mode.
 
@@ -94,14 +94,17 @@ function silenceWatched(res, abort, ms) {
 // between the chunks of its body, until it has sent nothing for the silence limit (`SILENT_REPLY_MS`). It ends when the
 // provider answers or fails, when the network fails it, or when the client hangs up (`signal`) — one that already has
 // sends the provider nothing: an abort that came before the listener is never heard by it. `fetchImpl`: another way
-// there — another machine's Filament, pinned to its certificate (filament.js).
-export async function forwardRequest({ url, headers, bodyString, signal, fetchImpl = providerFetch }) {
+// there — another machine's Filament, pinned to its certificate (filament.js). A redirect is never followed, by any
+// way there (fetch.js): it fails the call in words (`refuseRedirect`, a provider's `redirectRefusal` but where the way
+// there says its own), its key sent nowhere else.
+export async function forwardRequest({ url, headers, bodyString, signal, fetchImpl = providerFetch, refuseRedirect = (/** @type {Response} */ r) => redirectRefusal("the provider", r) }) {
   signal?.throwIfAborted();
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    const res = await fetchImpl(url, { method: "POST", headers, body: bodyString, signal: ctrl.signal });
+    const res = await fetchImpl(url, { method: "POST", headers, body: bodyString, signal: ctrl.signal, redirect: "manual" });
+    if (redirected(res)) throw refuseRedirect(res);
     return {
       res: silenceWatched(res, () => ctrl.abort(), silentReplyMs()),
       cleanup: () => signal?.removeEventListener("abort", onAbort),
@@ -593,8 +596,10 @@ async function readListing(u) {
   const url = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? "" : "/"}${path}`;
   const t0 = performance.now();
   // Composed as a request's are (core/shaping.js `shapeHeaders`): the upstream's own extra headers over the defaults,
-  // and its key over them, so a provider that asks for a header of its own lists its models too.
+  // and its key over them, so a provider that asks for a header of its own lists its models too. A redirect is never
+  // followed (fetch.js): it fails the listing in words, as it fails a call, so no Test calls it an answer.
   const r = await fetch(url, {
+    redirect: "manual",
     headers: {
       "anthropic-version": "2023-06-01",
       "user-agent": "filament/0.1",
@@ -604,6 +609,7 @@ async function readListing(u) {
     },
     signal: AbortSignal.timeout(15000),
   });
+  if (redirected(r)) throw redirectRefusal("the provider", r);
   return listingRead(r, t0);
 }
 
@@ -785,10 +791,10 @@ export function httpDestination(upstream) {
     agent: null,
     answers: {
       open: ({ url, headers, bodyString, signal }) => forwardRequest({ url, headers, bodyString, signal }),
-      unreachable: (e) => ({
-        message: `upstream ${upstream.id} unreachable: ${e.cause?.code || e.message}`,
-        retryable: true,
-      }),
+      unreachable: (e) =>
+        e?.redirect
+          ? { message: `upstream ${upstream.id}: ${e.message}`, retryable: false }
+          : { message: `upstream ${upstream.id} unreachable: ${e.cause?.code || e.message}`, retryable: true },
     },
     listModels: (opts = {}) => fetchUpstreamModels(upstream, opts),
     test: () => testProvider(upstream),

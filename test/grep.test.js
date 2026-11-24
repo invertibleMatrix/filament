@@ -178,18 +178,18 @@ test("the search card counts the matching lines: not the context, the separators
 });
 
 // (fails before: yes — the bug hunt of 10-30: rg's line for a match on a line of 257 MiB was held whole, and shown cut)
-test("rg: a match on a line past 256 MiB is left out, and the answer says so; the matches around it are shown", { timeout: 120_000, skip: spawnSync("rg", ["--version"]).status !== 0 && "no rg here" }, async () => {
+test("rg: a match on a line past 64 MiB is left out, and the answer says so; the matches around it are shown", { timeout: 120_000, skip: spawnSync("rg", ["--version"]).status !== 0 && "no rg here" }, async () => {
   const big = mkdtempSync(join(tmpdir(), "filament-grep-long-"));
   try {
     const fd = openSync(join(big, "one.txt"), "w");
     const piece = Buffer.from("x".repeat(2 ** 20));
     writeSync(fd, "needle ");
-    for (let i = 0; i < 257; i++) writeSync(fd, piece);
+    for (let i = 0; i < 65; i++) writeSync(fd, piece);
     writeSync(fd, "\nneedle two\n");
     closeSync(fd);
     assert.equal(
       await runHand("grep", { pattern: "needle" }, { root: big, noRg: false }),
-      "one.txt:2:needle two\n[A line of the search's output past 256 MiB — a match on a line as long in its file, or a line around one — was left out: Filament reads no line that long.]",
+      "one.txt:2:needle two\n[A line of the search's output past 64 MiB — a match on a line as long in its file, or a line around one — was left out: Filament reads no line that long.]",
     );
   } finally {
     await removeDirs(big);
