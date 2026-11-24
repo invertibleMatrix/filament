@@ -1182,7 +1182,8 @@ export function renderRemote(body, cb = {}, io = {}) {
   const stateOf = (c, where) => {
     const x = c.row;
     if (x?.ready) return ["ok", "Connected"];
-    if (x?.away === "quiet") return ["bad", `Not reachable: ${c.name} doesn't answer. Check it's on, with Filament open.`];
+    // One that answers on a wire this app does not speak: its words say which side to update.
+    if (x?.away === "quiet") return ["bad", x.update && x.words ? String(x.words) : `Not reachable: ${c.name} doesn't answer. Check it's on, with Filament open.`];
     if (x?.away === "off") return ["off", "Disconnected in this window: connect it from the machines menu."];
     if (c.app && c.app.revokedAt == null) return ["off", `Paired with ${where} · ${seenWords(c.app)}`];
     if (c.agents) return ["off", `Its agents are paired with ${where} · ${seenWords(c.agents)}`];
@@ -1278,12 +1279,14 @@ export function renderRemote(body, cb = {}, io = {}) {
     // why —, or what stands in the way; else what the machine said of this Filament's device there. Whole, never cut.
     const refused = browsing && x.browserLink === "refused" && !!x.browserWords;
     const notReady = x.words ? String(x.words) : `${x.name} does not answer now.`;
+    // On a wire this app does not speak, its pills wait for an update, not for an answer: its head says which side.
+    const gap = !x.ready && x.update === true;
     // Not read there, with a device kept here: Agents and Full control may be on there or off, and are said unknown.
     const unknown = !x.ready && !!x.kept;
-    const unknownWords = `${notReady} Whether it is on there is unknown until it answers.`;
-    const said = refused ? String(x.browserWords) : !x.ready ? (x.away ? "Changes wait until it answers" : notReady) : x.words ? String(x.words) : `This app opens ${x.name} from the machines menu at the top`;
+    const unknownWords = `${notReady} Whether it is on there is unknown until ${gap ? "that update" : "it answers"}.`;
+    const said = refused ? String(x.browserWords) : gap ? "Changes wait for that update" : !x.ready ? (x.away ? "Changes wait until it answers" : notReady) : x.words ? String(x.words) : `This app opens ${x.name} from the machines menu at the top`;
     /** @type {any[]} */
-    const lines = [lineOf(said, refused || (!x.ready && !x.away) ? " is-warn" : "")];
+    const lines = [lineOf(said, refused || gap || (!x.ready && !x.away) ? " is-warn" : "")];
     if (x.full === true) lines.push(lineOf(`Full control: this machine's agents act on ${x.name} as you, in any folder, without asking.`, " is-warn"));
     const link = browsing ? ({ connected: "ok", connecting: "wait", refused: "bad" })[/** @type {string} */ (x.browserLink)] || "" : "";
     const pills = m("span", { class: "rset-pills", role: "group", "aria-label": `What this Filament may do on ${x.name}` },

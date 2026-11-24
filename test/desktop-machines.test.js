@@ -279,10 +279,12 @@ describe("which route a view loads", () => {
     const gone = await pickRoute(BOX, { ask: at({ id: "m-box", name: "DESKTOP-1", version: "9.0.0", protocol: 9, protocolLowest: 9 }) });
     assert.equal(gone.route, null);
     assert.deepEqual(gone.update, { side: "here", route: BOX.routes[0] });
+    // (fails before: yes — the review of x14: the gap's words came first, and each reader of the last why said another
+    // way's failure in their place)
     assert.deepEqual(gone.tried, [
-      { url: String(BOX.routes[0].url), why: "Workstation runs Filament 9.0.0, too new for this app: update this app." },
       { url: "https://box.tail1234.ts.net", why: "this app does not know a tailscale route: update it" },
-    ]);
+      { url: String(BOX.routes[0].url), why: "Workstation runs Filament 9.0.0, too new for this app: update this app." },
+    ], "the gap's words last, where its readers take the why");
     assert.deepEqual([gone.name, gone.version], ["DESKTOP-1", "9.0.0"]);
     assert.equal(asked.length, 4, "its ways asked at once; the best one's answer says it");
   });

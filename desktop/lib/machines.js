@@ -493,7 +493,7 @@ export function rankOf(route) {
  * app does not know is passed over. Null `route` where none answers, with each route's why in their order — `wrong`
  * where another machine answered there. The machine answering on a wire this app does not speak (services/machine.js
  * `protocolGap`) is no way to it either: `update` says which side must update, and the route where it answered — its
- * own page still opens there, at the person's word (lib/rail.js `updatePage`).
+ * own page still opens there, at the person's word (lib/rail.js `updatePage`) —, its why last of those tried.
  * @param {Machine} machine @param {{ ask?: Ask, timeoutMs?: number, hold?: (route: Route) => Promise<string | null>, headStartMs?: number, betterMs?: number }} [o]
  * @returns {Promise<{ route: Route | null, name: string | null, version: string | null, tried: Tried[], update?: Update }>}
  */
@@ -541,8 +541,10 @@ export async function pickRoute(machine, { ask = askRoute, timeoutMs = ASK_MS, h
         const got = found.get(w.i);
         if (got && !got.side) return end({ route: got.route, name: got.name, version: got.version, tried: tried() });
         if (got?.side) {
-          fails[w.i] = { url: String(got.route.url ?? ""), why: gapWords(got.side, { name: machine.name, version: got.version }) };
-          return end({ route: null, name: got.name, version: got.version, tried: tried(), update: { side: got.side, route: got.route } });
+          // Its words last, where each reader of the why takes it: another way's failure is no reason here (the review of x14).
+          const gap = { url: String(got.route.url ?? ""), why: gapWords(got.side, { name: machine.name, version: got.version }) };
+          fails[w.i] = null;
+          return end({ route: null, name: got.name, version: got.version, tried: [...tried(), gap], update: { side: got.side, route: got.route } });
         }
         if (settled.has(w.i) || (!patient && found.size)) continue;
         // A better way is still asked; one not asked yet costs more, and every better one failed: those asked now.

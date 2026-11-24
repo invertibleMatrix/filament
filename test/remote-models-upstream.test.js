@@ -10,6 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +20,7 @@ import { removeDirs } from "./helpers/wait.js";
 import { anthropicReply, anthropicStream, fakeUpstream } from "./helpers/app.js";
 import { createMachines } from "../src/services/machines/index.js";
 import { pinnedFetch } from "../src/services/machines/pinned.js";
+import { lanIdentity } from "../src/services/lan-tls.js";
 import { houseAuth } from "../src/services/house.js";
 import { AGENTS_CHAT_HEADER, lendModels } from "../src/services/devices.js";
 import { normalizeConfig, validateConfig } from "../src/services/config/store.js";
@@ -120,6 +122,44 @@ async function lending({ granted = true, script } = {}) {
 
 /** What here's config.json says, whole. @param {string} dataDir */
 const configText = (dataDir) => readFileSync(join(dataDir, "config.json"), "utf8");
+
+// (fails before: yes — the hunt on s4c: a pinned machine's wire was never asked, and its token went to a Filament this
+// one speaks nothing with)
+test("a pinned machine on a wire this Filament does not speak is sent no token, its refusal saying which side to update; on this wire, its wire is asked once a minute, not at each call", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "filament-wire-here-"));
+  const certDir = mkdtempSync(join(tmpdir(), "filament-wire-there-"));
+  const id = lanIdentity(certDir, { name: "Studio" });
+  const STUDIO = "22222222-2222-4222-8222-222222222222";
+  /** @type {any} */
+  let said = { id: STUDIO, name: "Studio", version: "9.0.0", protocol: 9, protocolLowest: 9 };
+  /** @type {string[]} */
+  const heard = [];
+  const server = https.createServer({ key: id.key, cert: id.cert }, (req, res) => {
+    heard.push(`${req.method} ${req.url}${req.headers.authorization ? " with a token" : ""}`);
+    res.writeHead(200, JSON_TYPE);
+    res.end(JSON.stringify(said));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", () => r(undefined)));
+  try {
+    const url = `https://127.0.0.1:${/** @type {net.AddressInfo} */ (server.address()).port}`;
+    const machines = createMachines({ dataDir });
+    machines.keep({ url, fingerprint: id.fingerprint, machine: { id: STUDIO, name: "Studio" }, device: { id: "d-studio", name: "Filament agents", scope: "agent" }, token: "fdt_studio" });
+    await assert.rejects(machines.modelsWay("Studio", { agents: true }), (/** @type {any} */ e) => {
+      assert.equal(e.message, "Studio runs Filament 9.0.0, too new for this Filament: update this Filament. Here: filament update, or the Filament app's Check for updates. Nothing was sent.");
+      return true;
+    });
+    assert.deepEqual(heard, ["GET /.well-known/filament"], "its token never went");
+    said = { id: STUDIO, name: "Studio", version: "0.9.0", protocol: 1, protocolLowest: 1 };
+    heard.length = 0;
+    const way = await machines.modelsWay("Studio", { agents: true });
+    assert.deepEqual([way.url, way.headers.authorization], [url, "Bearer fdt_studio"]);
+    await machines.modelsWay("Studio", { agents: true });
+    assert.deepEqual(heard, ["GET /.well-known/filament"], "asked once: its pass is kept");
+  } finally {
+    await new Promise((r) => server.close(() => r(undefined)));
+    await removeDirs(dataDir, certDir);
+  }
+});
 
 // (fails before: yes — the add was refused, 400 "A provider here is openai-compatible, anthropic-compatible, openai,
 // anthropic…": `filament` was no upstream type, and config.json had no field to name a machine)
@@ -768,6 +808,30 @@ test("a machine found offline is tried after its route's other upstreams for as 
   } finally {
     forgetOffline(id);
   }
+});
+
+// (fails before: yes — the review of x14: every refusal of the wire's ask that carried a cause was said by its code, and
+// a time limit's is the number 23: "Box did not answer: 23")
+test("a machine whose wire's ask failed: a connection's code or a changed certificate said as a call's own failure is; a time limit, a status or an answer no Filament gives, in the store's own words", async () => {
+  /** @param {string} id @param {Error} e */
+  const offlineAfter = async (id, e) => {
+    try {
+      await filamentDestination({ id, name: "Box", type: "filament", machine: `${id}-m` }, { machines: { modelsWay: async () => Promise.reject(e) }, inFlight: LENT_IN_FLIGHT }).test();
+      return String(offlineWords(id));
+    } finally {
+      forgetOffline(id);
+    }
+  };
+  /** machineAt's refusal, with what failed beneath it. @param {string} words @param {any} cause */
+  const refused = (words, cause) => Object.assign(new Error(words), { cause });
+  const refusedConnection = Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }) });
+  assert.equal(await offlineAfter("u-refused", refused("No Filament answers at https://box.example: … (fetch failed)", refusedConnection)), "Box did not answer: ECONNREFUSED");
+  const pin = Object.assign(new Error("the certificate at box.example is AB, not the one this command line pinned (CD): nothing was sent"), { code: "FILAMENT_PIN" });
+  assert.match(await offlineAfter("u-pin", refused("the certificate at box.example …", pin)), /^Box: its certificate changed — the certificate at box\.example is AB/);
+  const slow = "No Filament answers at https://box.example: is the machine on, Filament running there, and its address one this machine reaches? (The operation was aborted due to timeout)";
+  assert.equal(await offlineAfter("u-slow", refused(slow, new DOMException("The operation was aborted due to timeout", "TimeoutError"))), `Box: ${slow}`);
+  const odd = "No Filament answers at https://box.example: is the machine on, Filament running there, and its address one this machine reaches? (HTTP 502)";
+  assert.equal(await offlineAfter("u-odd", refused(odd, new Error("HTTP 502"))), `Box: ${odd}`);
 });
 
 /** @param {number} ms */

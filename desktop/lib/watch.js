@@ -481,7 +481,12 @@ export function createFleet({ machines, cookieOf, keepSignIn = async () => {}, p
     }
     const route = k.route;
     if (!route) {
+      // Its first look waits for its first pick (the tick waits on it no longer than FLEET_WAIT_MS), so a machine on a wire
+      // this app does not speak is said so from the start, which side to update (`gap`); one that answers is looked at
+      // from its next look, its way learned.
+      const first = !k.pickedAt;
       pickFor(k);
+      if (first) await k.picking;
       return said(k, { answered: false });
     }
     // A better way than its own kept (the home network back after the tailnet): its ways asked again, aside, each

@@ -731,14 +731,15 @@ describe("every machine, watched", () => {
   });
 
   // (fails before: yes — the review of s4c: the watch said such a machine reconnecting for half a minute where the window
-  // said it offline at once)
-  test("a machine on a wire this app does not speak: offline at once, saying which side to update, as the window says it; nothing sent there", async () => {
+  // said it offline at once; and the review of s4c's hunt: its first look said it before its first pick was heard)
+  test("a machine on a wire this app does not speak: offline at once, from its first look, saying which side to update, as the window says it; nothing sent there", async () => {
     let t = 4_000_000;
     const x = fleetOf();
     const why = "Studio runs Filament 9.0.0, too new for this app: update this app.";
     const pick = async (/** @type {any} */ m) => (m.id === "m-box" ? { route: null, name: "Studio", version: "9.0.0", tried: [{ url: m.routes[0].url, why }], update: { side: "here", route: m.routes[0] } } : x.pick(m));
     const fleet = createFleet({ machines: () => MACHINES, cookieOf, pick: /** @type {any} */ (pick), fetchOf: x.fetchOf, now: () => t });
-    await fleet.look();
+    const first = await fleet.look();
+    assert.deepEqual(first.find((m) => m.id === "m-box") && [first.find((m) => m.id === "m-box")?.status, first.find((m) => m.id === "m-box")?.why], ["offline", why], "its first look says it");
     await settle();
     t += WATCH_MS;
     const got = await fleet.look();

@@ -316,8 +316,10 @@ it out of the window and forgets its sign-in here. A machine that cannot be reac
 takes you to another. One whose Filament is too old or too new for this app says which to update, at once: **Update
 Filament on** it — a server's from here, with its button there (below); the Filament app there updates itself —, with **Open its page** to
 use it meanwhile, or **Update this app**, which opens Settings › About here. It opens as usual once the two work
-together. `filament connect`, `--machine` and Add a machine say the same, and send nothing; `filament disconnect` still
-signs out there, so its sign-in stops.
+together. Its card in Settings › Remote access and the tray say the same, its switches there waiting for that update;
+`filament connect`, `--machine` and Add a machine say it too, and send nothing, and a call to the models it lends here
+is refused in those words, nothing sent there (a machine updated onto another version meanwhile is found so within a
+minute). `filament disconnect` still signs out there, so its sign-in stops.
 
 **Updating the other machines.** A machine whose Filament is older than this app, as it last answered, has **Update
 Filament on** *it* **to** *this app's version*… in its **⋯**, and the machines menu shows **Update all machines…** above

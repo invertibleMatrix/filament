@@ -43,9 +43,10 @@ export const FOR = Object.freeze({
  * @typedef {{ send: Send, open: Open, route: Route, origin: string, me: any, flags: string[], who: string }} Reached
  *   `who`: who the machine takes this window for — "device", "tailnet" (the person's tailnet login), or "local" (through a
  *   tunnel where no device is paired, this computer for itself); `flags`: what its Filament does for the desk (watch.js `deskFlagsOf`)
- * @typedef {{ words: string, away?: "off" | "quiet" }} Unreached
+ * @typedef {{ words: string, away?: "off" | "quiet", update?: true }} Unreached
  *   what stands in the way, in words; `away` where that is the machine itself, not this window's sign-in there —
- *   disconnected in this window (`off`), or no way to it answers (`quiet`)
+ *   disconnected in this window (`off`), or no way to it answers (`quiet`); `update` where it answers on a wire this
+ *   app does not speak, its words saying which side to update
  */
 
 /** How long a device went unused before its pairing ran out, as the machine's refusal says it (`days`). @param {any} j */
@@ -81,7 +82,10 @@ export function createReach({ cookieOf, keepSignIn = async () => {}, pick = pick
     const ways = f.tunnel ? m.routes : m.routes.filter((_, i) => held[i]);
     const picked = await pick(ways.length ? { ...m, routes: ways } : m).catch((/** @type {any} */ e) => ({ route: null, tried: [{ why: String(e?.message || e) }] }));
     // One that answers on a wire this app does not speak says which side to update, in its own words (machines.js `gapWords`).
-    if (!picked.route) return stop(/** @type {any} */ (picked).update ? String(picked.tried.at(-1)?.why) : `${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
+    if (!picked.route) {
+      if (/** @type {any} */ (picked).update) return { ...stop(String(picked.tried.at(-1)?.why), "quiet"), update: true };
+      return stop(`${m.name} does not answer: ${picked.tried.at(-1)?.why ?? "no way to it answers"}.`, "quiet");
+    }
     const route = picked.route;
     const origin = new URL(String(route.url)).origin;
     /** @type {Open} */

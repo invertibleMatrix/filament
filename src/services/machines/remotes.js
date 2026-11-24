@@ -205,10 +205,11 @@ export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire
     // Something answered, too much of who it is (bodyText's refusal): said as that, not as no one there.
     if (e instanceof CliError)
       throw new CliError(`${url} answered who it is (/.well-known/filament) with more than ${WHO_MAX / 1024} KB, where a Filament says its id, name and version in far less: it is read no further`, EXIT.failed);
-    // Something answered, with another certificate than the one pinned: said as that, not as no one there.
+    // Something answered, with another certificate than the one pinned: said as that, not as no one there. Each carries
+    // what failed (`cause`), for a caller that says it in words of its own (providers/filament.js `reach`).
     for (let x = e, n = 0; x && n < 5; x = x.cause, n++)
-      if (x.code === "FILAMENT_PIN") throw new CliError(`${x.message}. If that machine's certificate was made anew, connect again with the link its Settings › Remote access shows.`, EXIT.noFilament);
-    throw new CliError(`No Filament answers at ${url}: is the machine on, Filament running there, and its address one this machine reaches? (${e?.message || e})`, EXIT.noFilament);
+      if (x.code === "FILAMENT_PIN") throw Object.assign(new CliError(`${x.message}. If that machine's certificate was made anew, connect again with the link its Settings › Remote access shows.`, EXIT.noFilament), { cause: x });
+    throw Object.assign(new CliError(`No Filament answers at ${url}: is the machine on, Filament running there, and its address one this machine reaches? (${e?.message || e})`, EXIT.noFilament), { cause: e });
   }
   if (typeof j?.id !== "string" || !j.id) throw new CliError(`What answers at ${url} is no Filament (it did not say who it is)`, EXIT.noFilament);
   const who = { id: j.id, name: cleanName(j.name) || cleanName(j.id) || j.id, version: String(j.version || "") };
@@ -490,8 +491,10 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
  * new address with its new token. Over https, or plain http through an SSH tunnel on this computer: there its main
  * listener takes a model call that sends a device's token through the same door (front-door.js `mainDoor`) — its grant,
  * a revoke, the calls one device may have. Where no pin says who answers, the machine at the address says it first, as
- * `connectRemote` asks it. Else a CliError whose words say why: none kept so, plain http on the network, its token
- * sealed with another secret.key, another machine at its address, none answering there.
+ * `connectRemote` asks it; where one does, it says its wire all the same — one this Filament does not speak is sent no
+ * token, its refusal saying which side to update —, a pass kept `WIRE_KEPT_MS` (`wirePassed`). Else a CliError whose
+ * words say why: none kept so, plain http on the network, its token sealed with another secret.key, another machine at
+ * its address, none answering there, a wire this Filament does not speak.
  * @param {string} dataDir @param {string} which @param {{ agents?: boolean, connectMs?: number }} [o]
  * @returns {Promise<{ machine: Machine, url: string, fetch: typeof fetch | null, headers: Record<string, string> }>}
  */
@@ -500,14 +503,27 @@ export async function modelsWayOf(dataDir, which, { agents = false, connectMs = 
   usePinBook(dataDir);
   if (!row.url.startsWith("https:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again.`, EXIT.failed);
   if (isSealed(row.token)) throw new CliError(`${row.name}: its token was sealed with another secret.key than this data folder's, and cannot be read: put that secret.key back, or connect again.`, EXIT.failed);
-  if (!row.fingerprint) {
+  const pinned = row.fingerprint ? pinnedFetch(row.fingerprint, { connectMs }) : null;
+  const key = `${dataDir}\n${row.machine.id}\n${row.url}\n${row.fingerprint || ""}`;
+  if (!pinned || Date.now() - (wirePassed.get(key) ?? 0) >= WIRE_KEPT_MS) {
     /** @type {typeof fetch} */
     const unfollowed = (url, init = {}) => fetch(url, { ...init, redirect: "manual" });
-    const who = await machineAt(row.url, { fetchImpl: unfollowed, ...(connectMs > 0 ? { timeoutMs: connectMs } : {}) });
+    // A pinned fetch gives up on the connection itself at `connectMs`, said as that (ETIMEDOUT): its answer is given past it.
+    const timeoutMs = connectMs > 0 ? connectMs + (pinned ? 2_000 : 0) : undefined;
+    const who = await machineAt(row.url, { fetchImpl: pinned ?? unfollowed, ...(timeoutMs ? { timeoutMs } : {}) });
     if (who.id !== row.machine.id) throw new CliError(`The Filament at ${row.url} is ${who.name} (${who.id}), not ${row.name}: its token is not sent there.`, EXIT.noFilament);
+    if (pinned) wirePassed.set(key, Date.now());
   }
-  return { machine: withoutToken(row), url: row.url, fetch: row.fingerprint ? pinnedFetch(row.fingerprint, { connectMs }) : null, headers: { authorization: `Bearer ${row.token}` } };
+  return { machine: withoutToken(row), url: row.url, fetch: pinned, headers: { authorization: `Bearer ${row.token}` } };
 }
+
+/**
+ * How long a pinned machine's wire, once it passed (`modelsWayOf`), goes unasked: its model calls pay no look each.
+ * A machine updated meanwhile onto another wire is said so by its first call past it.
+ */
+export const WIRE_KEPT_MS = 60_000;
+/** The pinned machines whose wire passed, by data folder, id, address and pin: when. @type {Map<string, number>} */
+const wirePassed = new Map();
 
 /**
  * This device signs out of a connected machine: its token stops there. Throws where the machine does not answer as the

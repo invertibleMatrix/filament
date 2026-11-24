@@ -25,9 +25,10 @@ import { FOR, createReach } from "./reach.js";
  * grant on there; `models`: that device's grant `models` is on there — the machine lends this Filament its models;
  * `full`: its grant `full` is on there — this Filament's agents act there as the person (Full control); `kept`: a token is kept here (Forget); `ready`: the switches move — the machine answered, and this window is a full
  * device there; `words`: what stands in the way, or what is so; `away`: where that is the machine itself, not this
- * window's sign-in there — disconnected in this window (`off`), or no way to it answers (`quiet`); `said`, an outcome
- * to tell once — `failed` where it went wrong.
- * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", said?: string, failed?: true }} AgentsRow
+ * window's sign-in there — disconnected in this window (`off`), or no way to it answers (`quiet`); `update`: it answers
+ * on a wire this app does not speak, `words` saying which side to update; `said`, an outcome to tell once — `failed`
+ * where it went wrong.
+ * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", update?: true, said?: string, failed?: true }} AgentsRow
  * One machine in the new-chat menu (pk-list): its projects, newest first; null where they could not be read, `words`
  * saying why.
  * @typedef {{ id: string, name: string, projects: { cwd: string, name: string }[] | null, words: string | null }} ProjectsRow
@@ -82,7 +83,7 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
   async function reach(m, f = FOR.switch) {
     const kept = !!keptOf(m);
     const r = await reachThere(m, f);
-    return "words" in r ? { row: rowOf(m, { kept, words: r.words, ...(r.away ? { away: r.away } : {}) }) } : r;
+    return "words" in r ? { row: rowOf(m, { kept, words: r.words, ...(r.away ? { away: r.away } : {}), ...(r.update ? { update: r.update } : {}) }) } : r;
   }
 
   /**
@@ -310,7 +311,8 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
         const r = await reach(m);
         if (!kept) return "row" in r ? r.row : standing(m, r);
         /** @type {string | null} */
-        let left = "row" in r ? `${m.name} did not answer` : null;
+        // One on a wire this app does not speak is sent nothing: its words, which side to update, said as they are (`update`).
+        let left = "row" in r ? (r.row.update && r.row.words ? `${m.name} was sent nothing (${r.row.words.replace(/\.$/, "")})` : `${m.name} did not answer`) : null;
         if (!("row" in r)) {
           const d = await r.send(`/remote/devices/${encodeURIComponent(kept.device.id)}`, { method: "DELETE" }).catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
           if (d.status !== 200 && d.status !== 404) left = `${m.name} did not revoke it (${refusal(d)})`;

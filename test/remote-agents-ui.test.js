@@ -582,6 +582,20 @@ test("a machine's own words are on its line and in its Agents pill's title, its 
   assert.equal(hasClass(lines(itemOf(p.body, "What this machine may do on Build box"))[0], "is-warn"), true);
 });
 
+// (fails before: yes — the hunt on s4c: its card said "Not reachable: Studio doesn't answer. Check it's on", and its line
+// that its changes wait until it answers, where it answered on a wire this app does not speak)
+test("a machine on a wire this app does not speak: its card says which side to update, never that it does not answer; its line, warned, that its changes wait for that update", async () => {
+  const why = "Studio runs Filament 9.0.0, too new for this app: update this app.";
+  const quiet = { id: "m-box", name: "Build box", on: false, kept: true, ready: false, away: "quiet", words: "Build box does not answer." };
+  const p = await open({ app: bridge([{ id: "m-studio", name: "Studio", on: false, kept: true, ready: false, away: "quiet", update: true, words: why }, quiet]).app });
+  assert.ok(textOf(cardOf(p.body, "m-studio")).startsWith(`Studio|${why}|`), textOf(cardOf(p.body, "m-studio")));
+  const line = lines(itemOf(p.body, "What this machine may do on Studio"))[0];
+  assert.deepEqual([textOf(line), hasClass(line, "is-warn")], ["Changes wait for that update", true]);
+  assert.match(textOf(cardOf(p.body, "m-box")), /^Build box\|Not reachable: Build box doesn't answer\./, "one that does not answer: said as that");
+  const away = lines(itemOf(p.body, "What this machine may do on Build box"))[0];
+  assert.deepEqual([textOf(away), hasClass(away, "is-warn")], ["Changes wait until it answers", false]);
+});
+
 test("an outcome that went wrong is said as the app said it", async () => {
   const b = bridge([{ id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null }], {
     on: (id) => ({ id, name: "Mac mini", on: false, kept: false, ready: false, words: "This app's sign-in on Mac mini is gone.", said: "Not switched on: This app's sign-in on Mac mini is gone.", failed: true }),
@@ -772,6 +786,30 @@ test("main's switch: a device minted there whose token cannot be kept here is sa
   store.keep = keep;
   const again = await flow.set("m-mac", true);
   assert.deepEqual([again.on, there.minted(), store.list()[0].device.id], [true, 2, "d-agents-2"]);
+});
+
+// (fails before: yes — the review of x14: reach said the gap's words with no mark of it, so the row carried none, and
+// Forget said the machine "did not answer")
+test("a machine gone onto a wire this app does not speak: its row says which side to update, marked so; Forget sends it nothing, and says why in those words", async (t) => {
+  const there = scripted();
+  const store = createMachines({ dataDir: folder(t) });
+  const why = "Mac mini runs Filament 9.0.0, too new for this app: update this app.";
+  let gap = false;
+  const flow = createMachineAgents({
+    machines: () => [kept()],
+    cookieOf: async () => "__Host-filament_device=c",
+    store,
+    pick: async (m) => (gap ? { route: null, name: m.name, version: "9.0.0", tried: [{ url: String(m.routes[0].url), why }], update: { side: "here", route: m.routes[0] } } : { route: m.routes[0], name: m.name, version: "9", tried: [] }),
+    fetchOf: () => there.fetchImpl,
+  });
+  assert.equal((await flow.set("m-mac", true)).on, true);
+  gap = true;
+  const asked = there.calls.length;
+  const row = (await flow.list()).find((x) => x.id === "m-mac");
+  assert.deepEqual([row?.ready, row?.away, row?.update, row?.words, row?.kept], [false, "quiet", true, why, true]);
+  const gone = await flow.forget("m-mac");
+  assert.equal(gone.said, `Forgotten here. Mac mini was sent nothing (${why.replace(/\.$/, "")}): it stays listed there until it is revoked in its Settings › Remote access.`);
+  assert.deepEqual([gone.failed, gone.kept, store.list().length, there.calls.length], [true, false, 0, asked], "nothing sent there");
 });
 
 // (fails before: yes — the f-ui hunt's: the kept row's name stayed the one it was minted under, after the window renamed it)

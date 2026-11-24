@@ -275,8 +275,8 @@ export function filamentDestination(upstream, { machines, inFlight, silentMs = S
   };
   /**
    * The way there now: its address, a fetch through it — pinned to its certificate, else the one every provider's call
-   * goes through, its redirects never followed, once the machine at the address said it is the one kept — and the
-   * headers that carry the token.
+   * goes through, its redirects never followed —, once the machine at the address said it is the one kept, on a wire
+   * this Filament speaks, and the headers that carry the token.
    */
   const reach = async () => {
     if (!machines) throw gone(`${named}: this Filament keeps no machines`);
@@ -286,6 +286,11 @@ export function filamentDestination(upstream, { machines, inFlight, silentMs = S
       const unpinned = (url, init = {}) => providerFetch(url, { ...init, redirect: "manual" });
       return { ...way, fetch: way.fetch || unpinned };
     } catch (/** @type {any} */ e) {
+      // Its wire asked first (remotes.js `modelsWayOf`): a connection that failed by its code, or another certificate than
+      // the one pinned, is said as a call's own failure is (`cause`, remotes.js `machineAt`); a time limit, an HTTP status
+      // or an answer that is no Filament's has no code to say, and goes in the store's own words.
+      const code = e?.cause?.cause?.code || e?.cause?.code;
+      if (typeof code === "string") throw unanswered(e.cause);
       // The machines store's refusal names a machine it keeps; one it keeps none of, by its id alone, is named here.
       const said = String(e?.message || e);
       throw gone(said.includes(named) ? said : `${named}: ${said}`);
