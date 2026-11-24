@@ -53,7 +53,7 @@ import { isCommandHand, safeEnv } from "../adapters/tools/hands.js";
 import { keptFolders, keptWords, resolvedPath, resolveInside, sharePath } from "../adapters/tools/fs-fence.js";
 import { DEPENDENCY_DIRS } from "../adapters/git/worktree.js";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { homedir, hostname, tmpdir } from "node:os";
+import { homedir, hostname, networkInterfaces, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { permissionShape } from "../services/memory/permissions.js";
 
@@ -225,6 +225,8 @@ export function namesOutside(command, folder, worktree, shared = linkedIn(folder
   for (const word of plain.split(WORD_BREAK)) {
     const p = asWindows(word, drives);
     if (!SHORT_NAME.test(p) || !isAbsolute(p)) continue;
+    // Another drive's short name leads to no folder on this one, and its look could wait on a mapped drive gone away.
+    if (drives && /^[a-z]:/i.test(p) && p[0].toLowerCase() !== folder[0].toLowerCase()) continue;
     const at = leadsTo(p, folder, folder);
     if (within(folder, at) && !(worktree && within(worktree, at)) && !shared.some((s) => within(s, at))) return true;
   }
@@ -609,33 +611,47 @@ const pathsIn = (v, out = [], depth = 0) => {
 };
 
 /**
- * A variable a command names a folder by: cmd's `%NAME%`, PowerShell's `${env:NAME}` and `$env:NAME`, a POSIX shell's
- * `${NAME}` and `$NAME`.
+ * A variable a command names a folder by: cmd's `%NAME%` and `%NAME:…%` (a part of it, or its value changed),
+ * PowerShell's `${env:NAME}` and `$env:NAME`, a POSIX shell's `${NAME}` and `$NAME`.
  */
-const VARIABLE = /%([a-z_][a-z0-9_]*)%|\$\{env:([a-z_][a-z0-9_]*)\}|\$env:([a-z_][a-z0-9_]*)|\$\{([a-z_][a-z0-9_]*)\}|\$([a-z_][a-z0-9_]*)/gi;
+const VARIABLE = /%([a-z_][a-z0-9_]*)(:[^%]*)?%|\$\{env:([a-z_][a-z0-9_]*)\}|\$env:([a-z_][a-z0-9_]*)|\$\{([a-z_][a-z0-9_]*)\}|\$([a-z_][a-z0-9_]*)/gi;
 /** The variables a shell keeps of its own, which say nothing of where this process stands: left as said. */
 const SHELL_OWN = new Set(["oldpwd", "_"]);
+/** The home folder's variables, which a shell sets where this process has none (the desktop app on Windows has no HOME). */
+const HOMES = new Set(["home", "userprofile"]);
 /**
  * A command with each variable this process knows put in its value — by any case of its name on Windows, by its own
- * elsewhere (`%APPDATA%`, `$HOME`) —, and the folder it runs in for the shell's own (`$PWD`, cmd's `%CD%`). One it
- * does not know stays as said. @param {string} command @param {string} from
+ * elsewhere (`%APPDATA%`, `$HOME`) —, the home folder for `HOME` and `USERPROFILE` where it has neither, and the folder
+ * it runs in for the shell's own (`$PWD`, cmd's `%CD%`). A part of one (`%APPDATA:~0,9%`) is its value up to a point not
+ * known here (`*`, as `UNSURE` reads it). One it does not know stays as said. @param {string} command @param {string} from
  */
 const withVariables = (command, from) => {
   const win = process.platform === "win32";
   const names = new Map(Object.keys(process.env).map((k) => [win ? k.toLowerCase() : k, k]));
-  return command.replace(VARIABLE, (m, ...n) => {
-    const name = String(n.slice(0, 5).find(Boolean) || "");
+  return command.replace(VARIABLE, (m, cmdName, part, ...n) => {
+    const name = String(cmdName || n.slice(0, 4).find(Boolean) || "");
     const key = win ? name.toLowerCase() : name;
-    if (key === (win ? "pwd" : "PWD") || (win && m.startsWith("%") && key === "cd")) return from;
-    if (SHELL_OWN.has(key.toLowerCase())) return m;
-    const k = names.get(key);
-    return k ? String(process.env[k]) : m;
+    /** @returns {string | null} */
+    const value = () => {
+      if (key === (win ? "pwd" : "PWD") || (win && m.startsWith("%") && key === "cd")) return from;
+      if (SHELL_OWN.has(key.toLowerCase())) return null;
+      const k = names.get(key);
+      if (k) return String(process.env[k]);
+      return HOMES.has(key.toLowerCase()) && (win || key === "HOME") ? homedir() : null;
+    };
+    const v = value();
+    return v === null ? m : part ? `${v}*` : v;
   });
 };
-/** This computer by a name a share's path says it by: `localhost`, a loopback address, its own name. @param {string} host */
+/**
+ * This computer by a name a share's path says it by: `localhost`, a loopback address, its own name (alone or with a
+ * domain after it), an address of its own. @param {string} host
+ */
 const thisHost = (host) => {
-  const h = host.toLowerCase();
-  return h === "localhost" || /^127\.\d+\.\d+\.\d+$/.test(h) || h === "[::1]" || h === "0--1.ipv6-literal.net" || h === hostname().toLowerCase();
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  const me = hostname().toLowerCase();
+  if (h === "localhost" || /^127\.\d+\.\d+\.\d+$/.test(h) || h === "::1" || h === "0--1.ipv6-literal.net" || h === me || h.split(".")[0] === me) return true;
+  return Object.values(networkInterfaces()).some((list) => (list || []).some((a) => a.address.toLowerCase() === h));
 };
 /**
  * A path a call names as Windows reads its device and share forms, by its words alone: `\\?\C:\…`, and a drive's own
@@ -650,11 +666,50 @@ const ownPath = (p) => {
 };
 /**
  * Where a share's path leads, judged with no look (`sharePath`: a look goes out to its host): another share of this
- * computer's may lead anywhere on it ("anywhere"); another host's leads nowhere here (""). @param {string} p  `ownPath`'s
+ * computer's, or a device's own name for a disk of it (`\\?\GLOBALROOT\…`, `\\?\Volume{…}\…`), may lead anywhere on it
+ * ("anywhere"); another host's share, and a pipe, lead nowhere here (""). @param {string} p  `ownPath`'s
  */
 const shareLeads = (p) => {
-  const host = /^\\\\([^\\]+)/.exec(p);
-  return host && thisHost(host[1]) ? "anywhere" : "";
+  const host = /^\\\\([^\\]+)/.exec(p)?.[1] ?? "";
+  if (host === "?" || host === ".") return /^\\\\[?.]\\pipe\\/i.test(p) ? "" : "anywhere";
+  return thisHost(host) ? "anywhere" : "";
+};
+/**
+ * A path that begins with a shell's `~`, as bash reads it: the home folder; `~+`, the folder it runs in; `~name`, that
+ * user's home beside this one's; `~-`, the folder it was in, not known here ("anywhere"). @param {string} p @param {string} from
+ */
+const tildeOf = (p, from) => {
+  const m = /^~([^\\/]*)(?=[\\/]|$)/.exec(p);
+  if (!m) return p;
+  const rest = p.slice(m[0].length);
+  if (m[1] === "") return homedir() + rest;
+  if (m[1] === "+") return from + rest;
+  if (m[1] === "-") return "anywhere";
+  return /^[a-z_][\w.-]*$/i.test(m[1]) ? join(dirname(homedir()), m[1]) + rest : p;
+};
+/** What runs a command in a word, as a POSIX shell and PowerShell say it: `$(…)`, innermost first, and a backtick's. */
+const RUNS_IN = [/\$\([^()]*\)/g, /`[^`]*`/g];
+/** A command with what runs in it taken for a name not known here (`$`, as `UNSURE` reads it). @param {string} command */
+const ranAway = (command) => {
+  let s = command;
+  for (let i = 0; i < 16; i++) {
+    const t = s.replace(RUNS_IN[0], "$");
+    if (t === s) break;
+    s = t;
+  }
+  return s.replace(RUNS_IN[1], "$");
+};
+/** A `cd` with no folder said, which goes to the home folder in bash and in PowerShell 7. */
+const CD_HOME = /(?:^|[;&|(){}\n])\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s*(?=$|[;&|(){}\n])/i;
+/**
+ * The ways a word may say a path: as said, cmd's `^` taken out on Windows, and an option's value glued to it —
+ * PowerShell's `-Path:value`, a short option's (`-C/x`). @param {string} raw
+ */
+const pathWays = (raw) => {
+  const w = process.platform === "win32" ? raw.replace(/\^/g, "") : raw;
+  if (!/^-[a-z]/i.test(w) || w.startsWith("--")) return [w];
+  const colon = w.indexOf(":");
+  return [w, w.slice(2), ...(colon > 0 ? [w.slice(colon + 1)] : [])];
 };
 /** What a call that names Filament's data folder in another machine's agents' chat is answered (s0d). */
 export const FILAMENT_FOLDER_WORDS = "another machine's agents never touch Filament's data folder, which holds its owner key; this call names it or a folder that holds it";
@@ -664,27 +719,38 @@ const UNSURE = /[*?[{$%]/;
  * Filament's own folder a call names (fs-fence.js `keepFromAgents`: its data folder), or "": named itself, a place
  * inside it, or a folder that holds it, from which a search, a copy or an archive reads it whole (`grep -r`, `cd ..`,
  * `Get-ChildItem -Recurse $env:APPDATA`). A command's by any way a shell says a path — as `namesOutside` reads one,
- * through a variable (`%APPDATA%`, `$HOME`), from the folder it runs in or with `..`, where a link or a short name on
- * its way leads, and up to where a wildcard or a name not known here begins (`~/.config/fil{,}ament`) —, a file tool's
- * by its paths, an MCP tool's by a path among its arguments. For another machine's agents' chat without Full control,
- * whose calls never touch it (s0d), in every mode. Its words are read, never run: a program that makes the name itself
- * is the limit the guide says. Another host's share is judged by its words, with no look that would reach it.
+ * through a variable (`%APPDATA%`, `$HOME`, `%APPDATA:~0%`), from the folder it runs in or with `..`, a `~` of bash's, a
+ * `cd` to the home folder, an option's value glued to it (`-Path:x`, `-Cx`), where a link or a short name on its way
+ * leads, and up to where a wildcard, a name not known here or what runs in the word begins (`~/.config/fil{,}ament`,
+ * `$(pwd)`): past which a climb (`..`) leads anywhere —, a file tool's by its paths, an MCP tool's by a path among its
+ * arguments. A command's own words alone are read so (`ownWords`): an interpreter's inline source and a heredoc's body
+ * are the program's, read for the folder's own name alone (`namesOutside`), so `python -c "print(4 / 2)"` names no root.
+ * For another machine's agents' chat without Full control, whose calls never touch it (s0d), in every mode. Its words
+ * are read, never run: a program that makes the name itself is the limit the guide says. Another host's share, and a
+ * drive none of Filament's folders is on, are judged by their words, with no look that would reach the host or wait on
+ * a mapped drive gone away.
  * @param {{ name: string, input?: any }} c @param {string} root  the folder the call runs in
  */
 export function filamentFolderNamed(c, root) {
   const folders = keptFolders();
   if (!folders.length) return "";
+  /** A path on a drive none of Filament's folders is on, on Windows: judged by its words. @param {string} abs */
+  const elsewhere = (abs) => process.platform === "win32" && /^[a-z]:/i.test(abs) && !folders.some((d) => d.slice(0, 2).toLowerCase() === abs.slice(0, 2).toLowerCase());
   /** The folder of Filament's that `at` is in or holds, by its words and where the disk resolves it. @param {string} at */
   const hit = (at) => {
     if (!at) return "";
     if (at === "anywhere") return folders[0];
-    const real = sharePath(at) ? at : resolvedPath(at);
+    const real = sharePath(at) || elsewhere(at) ? at : resolvedPath(at);
     return folders.find((d) => within(d, at) || within(at, d) || within(d, real) || within(real, d)) || "";
   };
   /** Where a path said from `from` lands. @param {string} p @param {string} from */
   const landed = (p, from) => {
-    const at = ownPath(/^~(?=[\\/]|$)/.test(p) ? homedir() + p.slice(1) : p);
-    return sharePath(at) ? shareLeads(at) : leadsTo(at, from, root);
+    const t = tildeOf(p, from);
+    if (t === "anywhere") return t;
+    const at = ownPath(t);
+    if (sharePath(at)) return shareLeads(at);
+    const abs = resolve(from, WINDOWS_PATH.test(root) ? undotted(at) : at);
+    return elsewhere(abs) ? abs : longNamed(abs);
   };
   if (isCommandHand(c.name)) {
     const from = typeof c.input?.cwd === "string" && c.input.cwd ? resolve(root, c.input.cwd) : root;
@@ -693,21 +759,36 @@ export function filamentFolderNamed(c, root) {
     const command = withVariables(String(c.input?.command ?? ""), from);
     const named = folders.find((d) => namesOutside(command, d, null, []));
     if (named) return named;
-    const drives = WINDOWS_PATH.test(root);
-    for (const raw of unquoted(command).split(WORD_BREAK)) {
-      const word = ownPath(asWindows(raw, drives));
-      if (!/[\\/]/.test(word) && !/^[.~]/.test(word)) continue;
-      const unsure = word.search(UNSURE);
-      if (unsure < 0) {
-        const at = hit(landed(word, from));
-        if (at) return at;
-        continue;
+    if (CD_HOME.test(command)) {
+      const home = hit(homedir());
+      if (home) return home;
+    }
+    // A drive as Git Bash and WSL say one (`/c/…`): bash's alone, where PowerShell's and cmd's `/c` is a switch.
+    const drives = c.name === "bash" && WINDOWS_PATH.test(root);
+    for (const text of new Set([command, ranAway(command)])) {
+      for (const own of ownWords(text, { from, worktree: from, folder: from })) {
+        for (const raw of unquoted(own.text).split(WORD_BREAK)) {
+          for (const way of pathWays(raw)) {
+            const word = ownPath(asWindows(way, drives));
+            if (!/[\\/]/.test(word) && !/^[.~]/.test(word)) continue;
+            // A device path's `?` (`\\?\Volume{…}`) is its name's, no wildcard.
+            const head = /^\\\\[?.]\\/.test(word) ? 4 : 0;
+            const found = word.slice(head).search(UNSURE);
+            const unsure = found < 0 ? -1 : found + head;
+            if (unsure < 0) {
+              const at = hit(landed(word, own.from));
+              if (at) return at;
+              continue;
+            }
+            // Past a wildcard or a name not known here, any folder below the base may be meant: the base is judged, as
+            // a folder that holds the data folder is; a climb past it leads anywhere.
+            if (CLIMB.test(word.slice(unsure))) return folders[0];
+            const cut = Math.max(word.lastIndexOf("/", unsure), word.lastIndexOf("\\", unsure));
+            const at = hit(landed(cut >= 0 ? word.slice(0, cut + 1) : ".", own.from));
+            if (at) return at;
+          }
+        }
       }
-      // Past a wildcard or a name not known here, any folder below the base may be meant: the base is judged, as a
-      // folder that holds the data folder is.
-      const cut = Math.max(word.lastIndexOf("/", unsure), word.lastIndexOf("\\", unsure));
-      const at = hit(landed(cut >= 0 ? word.slice(0, cut + 1) : ".", from));
-      if (at) return at;
     }
     return "";
   }

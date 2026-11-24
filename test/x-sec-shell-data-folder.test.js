@@ -9,8 +9,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { homedir, networkInterfaces, tmpdir } from "node:os";
+import { basename, join, sep } from "node:path";
 import { FILAMENT_KEPT, filamentBelow, inFilamentFolder, keepFromAgents, keptFromAgents, keptRefusal, keptWords, resolveInside } from "../src/adapters/tools/fs-fence.js";
 import { FILAMENT_FOLDER_WORDS, createAgentPermits, filamentFolderNamed } from "../src/app/agent-permits.js";
 import { readOnlyCommand } from "../src/adapters/tools/read-only-commands.js";
@@ -132,6 +132,55 @@ test("a call names the data folder: by its path in any way a shell says one, a v
   } finally {
     delete process.env.S0D_TOP;
   }
+});
+
+// (fails before: yes — x44, the second review of 7efacd80f: each of these ran unasked under Auto with their device's grant)
+test("the shell's other ways to say a path: a bare cd, bash's ~ forms, what runs in a word before a climb, an option's glued value, cmd's ^ and %X:~n%, $HOME where Filament has none", () => {
+  process.env.S0D_TOP = top;
+  // A folder of Filament's in the home folder, as the data folder is (AppData, ~/.config): told by name, nothing made.
+  const inHome = join(homedir(), `.s0d-${process.pid}`, "Filament");
+  const unkeepHome = keepFromAgents(inHome);
+  const home = process.env.HOME;
+  try {
+    // The home folder holds the one kept there (and the test's own, where the temp folder is in it): either is said.
+    for (const c of [bash("cd; cat AppData/Roaming/Filament/owner.key"), bash("Set-Location; gc x"), bash(`grep -r fok_ ~${basename(homedir())}`)]) assert.ok(filamentFolderNamed(c, proj), JSON.stringify(c));
+    delete process.env.HOME;
+    assert.ok(filamentFolderNamed(bash("ls $HOME"), proj), "$HOME with none in Filament's own environment");
+    if (home !== undefined) process.env.HOME = home;
+    for (const c of [
+      bash("cat ~+/../AppData/Roaming/Filament/owner.key"),
+      bash("cat ~-/x"),
+      bash("cat $(pwd)/../AppData/Roaming/Filament/owner.key"),
+      bash("cat `pwd`/../AppData/Roaming/Filament/owner.key"),
+      { name: "powershell", input: { command: "Get-ChildItem -Recurse -Path:$env:S0D_TOP | Select-String fok_" } },
+      bash("tar -cf - -C$S0D_TOP . | tar -xO x"),
+    ])
+      assert.ok(filamentFolderNamed(c, proj), JSON.stringify(c));
+    if (process.platform === "win32") {
+      for (const c of [bash(`type ${data.replace(/Filament$/, "Fil^ament")}\\owner.key`), bash("type %S0D_TOP:~0%\\AppData\\Roaming\\Filament\\owner.key"), bash("type \\\\?\\GLOBALROOT\\Device\\HarddiskVolume3\\x"), bash("type \\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\x")])
+        assert.ok(filamentFolderNamed(c, proj), JSON.stringify(c));
+      const ip = Object.values(networkInterfaces()).flat().find((a) => a && a.family === "IPv4" && !a.internal)?.address;
+      if (ip) assert.equal(filamentFolderNamed(bash(`type \\\\${ip}\\${data.slice(0, 1)}$${data.slice(2)}\\owner.key`), proj), data, "by an address of this computer's");
+      assert.equal(filamentFolderNamed(bash("type \\\\.\\pipe\\docker_engine"), proj), "", "a pipe is no place on the disk");
+      assert.equal(filamentFolderNamed(bash("type Q:\\s0d\\x~1\\y"), proj), "", "another drive: by its words, no look");
+    }
+  } finally {
+    if (home !== undefined) process.env.HOME = home;
+    unkeepHome();
+    delete process.env.S0D_TOP;
+  }
+});
+
+// (fails before: yes — x44: a switch's /c read as Git Bash's C: drive, and a / in a program's own source as the root)
+test("ordinary work in their chat names no folder of Filament's: cmd's /c, an inline program's division or comment, a substitution that climbs nowhere", () => {
+  for (const c of [
+    { name: "powershell", input: { command: "cmd /c ver" } },
+    bash('python -c "print(4 / 2)"'),
+    bash('node -e "const a = 1 // b"'),
+    bash("ls $(git rev-parse --show-toplevel)/src"),
+    bash("echo done"),
+  ])
+    assert.equal(filamentFolderNamed(c, proj), "", JSON.stringify(c));
 });
 
 // (fails before: yes — a share's path was looked up, a look that goes out to its host, and this computer's own share named nothing)

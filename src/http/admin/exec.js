@@ -31,6 +31,8 @@ import { durationWords, headChars } from "../../core/text.js";
 import { fullControl, grantEnds, heldGrant } from "../../services/devices.js";
 import { folderKeyOf, inFolder } from "../../services/copies.js";
 
+/** What a command of theirs that names Filament's data folder is answered (s0d). */
+const FOLDER_REFUSED = `Not run: ${FILAMENT_FOLDER_WORDS}.`;
 /** How long a command runs when its caller names no timeout: the bash hand's two minutes. */
 export const EXEC_TIMEOUT_MS = 120_000;
 /** The longest a caller may name: an hour, as long as a command its timeout sent to the background may run (hands.js). */
@@ -252,7 +254,7 @@ export function execRoutes(a) {
     const input = { command };
     const fenced = device !== null && !fullControl(a.devices, device);
     // Nor does a command of theirs touch Filament's data folder, in any mode, as their chat's bash never does (s0d).
-    if (fenced && filamentFolderNamed({ name: "bash", input }, root)) return { mode, redact: redactorOf(doc?.privacy?.redact), verdict: /** @type {const} */ ("refuse"), text: `Not run: ${FILAMENT_FOLDER_WORDS}.`, rule: null };
+    if (fenced && filamentFolderNamed({ name: "bash", input }, root)) return { mode, redact: redactorOf(doc?.privacy?.redact), verdict: /** @type {const} */ ("refuse"), text: FOLDER_REFUSED, rule: null };
     const readsOnly = (/** @type {string} */ c) => readOnlyCommand(c, { root, shell: SHELL, env: safeEnv(), agentsDevice: fenced });
     const g = gate(mode, "bash", input, null, undefined, readsOnly, root);
     return { mode, redact: redactorOf(doc?.privacy?.redact), ...ruled(g, ruleFor(rulesFrom(doc), "bash", input, { root, shell: SHELL.kind }), "bash", input, root, (c) => !!readsOnly(c)?.ok) };
@@ -527,7 +529,7 @@ export function execRoutes(a) {
         // Refused by its mode or a rule: the words a chat's agent would read.
         const v = judged(root, b.command, agentsDevice(r.who) ? String(r.who.device.id) : null, sent);
         if (v.verdict === "refuse") {
-          a.log?.("info", `exec: ${by} in ${root}: ${loggedCommand(b.command, v.redact)} — refused (${v.mode} mode${v.rule ? `, the rule ${describeRule(v.rule)}` : ""})`);
+          a.log?.("info", `exec: ${by} in ${root}: ${loggedCommand(b.command, v.redact)} — refused (${v.text === FOLDER_REFUSED ? "it names Filament's data folder" : `${v.mode} mode`}${v.rule ? `, the rule ${describeRule(v.rule)}` : ""})`);
           return sendJson(r.res, 403, { error: v.text, mode: v.mode, ...(v.rule ? { rule: describeRule(v.rule) } : {}) });
         }
         /** @type {() => void} */
