@@ -324,6 +324,11 @@ test("a listener that runs renews its certificate once it is due, served from th
     assert.equal(held.destroyed, false, "the connection it held stays");
     assert.equal(held.getPeerCertificate().fingerprint256, first);
     assert.equal(said.filter((m) => /renewed with its key/.test(m)).length, 1, `renewed once, by one listener: ${said.join(" | ")}`);
+    // Its key gone from the folder: the next look makes a new one, said as one, never as a renewal (the review of x47).
+    rmSync(join(dir, LAN_DIR, "key.pem"));
+    await until(() => said.some((m) => /a new key and certificate for this machine on the network, its key kept no more/.test(m)));
+    assert.notEqual(lanIdentity(dir, { now: t }).keyPrint, key);
+    assert.equal(said.filter((m) => /renewed with its key/.test(m)).length, 1);
     // Closed: no look makes another.
     await main.close();
     await art.close();

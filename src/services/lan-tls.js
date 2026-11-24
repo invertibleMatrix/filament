@@ -308,7 +308,8 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     // Its context whole: what it leaves out goes back to Node's own (`minVersion` with it).
     s.setSecureContext({ key: got.key, cert: got.cert, minVersion: MIN_TLS });
     identity = got;
-    if (got.made) log("info", `remote: the certificate for this machine on the network was renewed with its key — its fingerprint ${got.fingerprint}`);
+    // A key that would not read is made anew with it (`lanIdentity`): every device pinned the old one, and pairs again.
+    if (got.made) log(got.renewed ? "info" : "warn", got.renewed ? `remote: the certificate for this machine on the network was renewed with its key — its fingerprint ${got.fingerprint}` : `remote: a new key and certificate for this machine on the network, its key kept no more — its fingerprint ${got.fingerprint}: the machines and command lines paired over it pair again`);
   };
   // Looked at while it listens, through the same line of changes, and holding no Filament open.
   const look = setInterval(() => void then(renew), lookEvery);

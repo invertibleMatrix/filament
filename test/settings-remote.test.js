@@ -1088,6 +1088,11 @@ test("the pairing page: a link's code read and taken off the address, a link ope
   const toConsole = await pairPage({ me: { who: "local" }, hash: "#code=WXYZ-2345&to=console" });
   assert.deepEqual([toConsole.posted.length, toConsole.loc.went], [1, ["/"]], "`filament open console`: the console once paired");
   assert.deepEqual([goesTo("#code=A&to=console"), goesTo("#code=A"), goesTo("")], ["/", "/ui/harness.html", "/ui/harness.html"]);
+  // (fails before: yes — the review of x46: `npm run app -- -Page` with any other page opened the harness) A page of this
+  // Filament's own address, never another's.
+  assert.equal(goesTo(`#code=A&to=${encodeURIComponent("/ui/flows.html#f1")}`), "/ui/flows.html#f1");
+  for (const away of ["//evil.example/x", "/\\evil.example", "https://evil.example/", "javascript:alert(1)", "ui/x.html", "/ui/a b"])
+    assert.equal(goesTo(`#code=A&to=${encodeURIComponent(away)}`), "/ui/harness.html", away);
   // (fails before: yes — your own tailnet login, let in where it is trusted, was told it was the machine itself)
   const tailnet = await pairPage({ me: { who: "tailnet", login: "owner@example.com" } });
   assert.equal(tailnet.el("pair-lead").textContent, "This browser is signed in to Tailscale as owner@example.com, whom Workstation trusts: opening Filament…");

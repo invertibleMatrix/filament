@@ -2,10 +2,12 @@
 # taskbar entry and window, no address bar or tabs, its own browser profile under the Filament data folder so nothing
 # it stores mixes with your everyday browsing. It is the same page the browser tab shows, served by the same server:
 # a fix in the tree is live in this window on the next reload (Ctrl+R / F5), nothing is packaged or copied. The window
-# opens at a one-time link `filament open` makes, which pairs it as this computer's own (Filament's owner key).
+# opens at a one-time link `filament open` makes, which pairs it as this computer's own (Filament's owner key), at
+# Filament's own name under localhost.
 # Windows PowerShell 5.1, no dependencies. Run with:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File filament-app.ps1
-# Options: -Page ui/harness.html   the page to open (default: the harness; "/" is the console; a full address as given)
+# Options: -Page ui/harness.html   the page to open, once paired (default: the harness; "/" is the console; a full
+#                                  address opens as given, unpaired)
 #          -Browser edge|chrome    prefer one; default: Edge, then Chrome, then whichever is found
 #          -SharedProfile          use the browser's normal profile instead of the dedicated one
 #          -NoStart                do not start the server when it is not running; wait for it instead
@@ -18,8 +20,12 @@ $devDir = Join-Path $env:APPDATA "Filament-dev"
 $dataDir = if ($env:FILAMENT_DATA_DIR) { $env:FILAMENT_DATA_DIR } elseif (Test-Path (Join-Path $root ".git")) { $devDir } else { Join-Path $env:APPDATA "Filament" }
 $port = if ($dataDir -eq $devDir) { 20301 } else { 20300 }
 try { $cfg = Get-Content (Join-Path $dataDir "config.json") -Raw | ConvertFrom-Json; if ($cfg.server.port) { $port = [int]$cfg.server.port } } catch {}
+# Where a Filament of this folder says it listens wins, as the command line reads it (src/cli/client.js): one started
+# with --port, or on any free port, answers nowhere else.
+try { $l = Get-Content (Join-Path $dataDir "listening.json") -Raw | ConvertFrom-Json; if ($l.port) { $listens = [int]$l.port; try { $null = Invoke-RestMethod -Uri "http://127.0.0.1:$listens/health" -TimeoutSec 1; $port = $listens } catch {} } } catch {}
 $base = "http://127.0.0.1:$port"
-$url = if ($Page -match '^https?://') { $Page } else { "$base/$($Page.TrimStart('/'))" }
+$path = $Page.TrimStart('/')
+$url = if ($Page -match '^https?://') { $Page } else { "$base/$path" }
 
 function Find-Browser([string]$prefer) {
   $edge = @("$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe")
@@ -53,13 +59,33 @@ if (-not (Test-Server)) {
 
 # A window at 127.0.0.1 is no one's under the owner key (server.loopbackTrust "token"): the link `filament open --no-open`
 # makes pairs it as this computer's own, at Filament's own name under localhost, where its profile keeps the pairing. A
-# window paired already goes straight on, and the link's code runs out unused in five minutes.
-if ($Page -notmatch '^https?://' -and $node -and (Test-Server)) {
-  $words = @(if ($Page.Trim('/') -eq "") { "console" })
-  $said = @()
-  try { $said = @(& $node (Join-Path $root "bin\filament.js") --data-dir $dataDir open --no-open @words) } catch {}
-  $link = $said | Where-Object { $_ -match '^https?://\S+/ui/pair\.html#code=' } | Select-Object -First 1
-  if ($link) { $url = $link } else { $said | ForEach-Object { Write-Host $_ } }
+# window paired already goes straight on, and the link's code runs out unused in five minutes. -Page rides on the link
+# (`&to=`, src/ui/pair.js `goesTo`).
+$link = $null
+if ($Page -notmatch '^https?://' -and (Test-Server)) {
+  if ($node) {
+    $words = @(if ($path -eq "") { "console" })
+    Write-Host "asking Filament for this window's pairing link (while Filament opens its memory, this waits up to 30 s)"
+    # Its stderr is the command line's words, never an error of this script's: a redirected stderr (an agent's shell)
+    # would otherwise stop the call under "Stop" and lose the link. Its output read as the UTF-8 it is.
+    $enc = [Console]::OutputEncoding
+    $said = @(& {
+      $ErrorActionPreference = "Continue"
+      try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+      & $node (Join-Path $root "bin\filament.js") --data-dir $dataDir open --no-open @words
+    })
+    try { [Console]::OutputEncoding = $enc } catch {}
+    $link = $said | Where-Object { $_ -is [string] -and $_ -match '^https?://\S+/ui/pair\.html#code=' } | Select-Object -First 1
+    if ($link) { $url = if ($path -ne "" -and $path -ne "ui/harness.html") { "$link&to=$([Uri]::EscapeDataString("/$path"))" } else { $link } }
+    else { $said | ForEach-Object { Write-Host $_ } }
+  } else { Write-Host "node was not found, so no pairing link was made for this window" }
+  # No link (the Filament app holds the key, or the command line failed): the page at Filament's own name, where a
+  # window paired already goes straight on, and one not yet paired types a code there, which pairs it at that name.
+  if (-not $link) {
+    # (PowerShell's names know no case: $Page is the option.)
+    $ownName = ""; try { $ownName = [string](Get-Content (Join-Path $dataDir "machine.json") -Raw | ConvertFrom-Json).page } catch {}
+    if ($ownName -match '^filament-[0-9a-f]{12}$') { $url = "http://$ownName.localhost:$port/$path" }
+  }
 }
 
 $argList = @("--app=$url", "--no-first-run", "--no-default-browser-check", "--window-size=1480,940")
@@ -70,4 +96,6 @@ if (-not $SharedProfile) {
   $argList += "`"--user-data-dir=$profileDir`""
 }
 Start-Process -FilePath $browser -ArgumentList $argList | Out-Null
-Write-Host "opened $($url -replace '#.*$', '') in $([IO.Path]::GetFileNameWithoutExtension($browser)) app mode$(if ($profileDir) { " (profile: $profileDir)" } else { '' })"
+# Filament's own name is said to no one (services/machine.js): a program that knew it could be sent the window's sign-in.
+$shown = if ($url -match '^http://filament-[0-9a-f]{12}\.localhost') { "/$path at Filament's own name (port $port)" } else { $url -replace '#.*$', '' }
+Write-Host "opened $shown in $([IO.Path]::GetFileNameWithoutExtension($browser)) app mode$(if ($profileDir) { " (profile: $profileDir)" } else { '' })"

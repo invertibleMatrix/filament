@@ -134,10 +134,15 @@ export const opensAt = (url) =>
 export const HARNESS = "/ui/harness.html";
 
 /**
- * Where a link sends the browser once paired (`&to=console`: the console, `filament open console`'s), else the harness.
+ * Where a link sends the browser once paired (`&to=console`: the console, `filament open console`'s; `&to=/<page>`: that
+ * page of this Filament's, as `npm run app -- -Page` names one), else the harness. A page is a path at this page's own
+ * address alone: never `//host`, a backslash (which a browser reads as a slash) or a scheme.
  * @param {string} hash
  */
-export const goesTo = (hash) => (new URLSearchParams(String(hash || "").replace(/^#/, "")).get("to") === "console" ? "/" : HARNESS);
+export const goesTo = (hash) => {
+  const to = String(new URLSearchParams(String(hash || "").replace(/^#/, "")).get("to") || "");
+  return to === "console" ? "/" : /^\/(?![/\\])[^\s\\]*$/.test(to) ? to : HARNESS;
+};
 
 /**
  * The page's behaviour over its elements (pair.html).
