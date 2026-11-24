@@ -44,25 +44,31 @@ export function ownerKeyOf(dataDir) {
 }
 /** This computer's own addresses, as a URL writes them: a key goes to no other. */
 const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|localhost|\[::1\])$/i;
+/** A host written without brackets, lower-cased. @param {unknown} h */
+const bare = (h) => String(h ?? "").replace(/^\[|\]$/g, "").toLowerCase();
+/** A listener's host that takes every address of this computer's. */
+const EVERY_ADDRESS = new Set(["", "0.0.0.0", "::", "*"]);
 /**
- * The port the data folder's Filament listens on now, as its listening.json says — written by that Filament after its
- * key, taken away as it stops —; 0 where none says one, or its process is gone or another account's (its pid reused).
- * @param {string} dataDir
+ * Where the data folder's Filament listens now, as its listening.json says — written by that Filament after its key,
+ * taken away as it stops —; null where none says it, or its process is gone or another account's (its pid reused).
+ * A file a Filament that stopped without a word left holds that start's key, which no start takes again.
+ * @param {string} dataDir @returns {{ port: number, host: string } | null}
  */
-const listeningPort = (dataDir) => {
+const listeningAt = (dataDir) => {
   try {
     const row = JSON.parse(readFileSync(join(dataDir, "listening.json"), "utf8"));
-    if (!Number.isInteger(row?.port) || !Number.isInteger(row?.pid)) return 0;
+    if (!Number.isInteger(row?.port) || !Number.isInteger(row?.pid)) return null;
     process.kill(row.pid, 0);
-    return row.port;
+    return { port: row.port, host: bare(row.host) };
   } catch {
-    return 0;
+    return null;
   }
 };
 /**
  * The header a call to `url` carries the data folder's key in, read now: only where `url` is this computer's own
- * address at the port that folder's Filament listens on (`listeningPort`) — never to whatever answers at a port it
- * does not hold, a config's port it moved from or another account's listener —; none where no key reads.
+ * address, the one that folder's Filament listens on, at its port (`listeningAt`) — never to whatever answers at a port
+ * it does not hold, a config's port it moved from, another account's listener, or another address's listener at its
+ * port (`localhost` and [::1] where it listens on 127.0.0.1 alone, the hunt on s0a) —; none where no key reads.
  * @param {string} dataDir @param {string} url @returns {Record<string, string>}
  */
 export const ownerHeaders = (dataDir, url) => {
@@ -73,7 +79,9 @@ export const ownerHeaders = (dataDir, url) => {
   } catch {
     return {};
   }
-  if (u.protocol !== "http:" || !LOOPBACK.test(u.hostname) || Number(u.port || 80) !== listeningPort(dataDir)) return {};
+  const at = listeningAt(dataDir);
+  if (u.protocol !== "http:" || !LOOPBACK.test(u.hostname) || !at || Number(u.port || 80) !== at.port) return {};
+  if (!EVERY_ADDRESS.has(at.host) && bare(u.hostname) !== at.host) return {};
   const k = ownerKeyOf(dataDir);
   return k ? { [OWNER_HEADER]: k } : {};
 };

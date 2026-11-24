@@ -564,6 +564,9 @@ test("a request that waits for memory's open longer than the front door allows i
     assert.deepEqual(await refused("/v1/models", {}), [503, "openai", true], "and as an OpenAI client does");
     const state = await within("/api/state");
     assert.equal(state?.status, 200, "/api/state answers meanwhile");
+    // (fails before: yes — the hunt on s0a: the app's windows' session waited out the door and was refused, and they
+    // loaded on none for the whole start)
+    assert.equal((await within("/api/owner/session", post))?.status, 200, "the app's windows' session is minted meanwhile");
     g.open();
     assert.equal((await within("/api/sessions/c1/goal"))?.status, 200, "and every request once memory is open");
   } finally {

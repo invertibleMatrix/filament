@@ -5,6 +5,7 @@
 // key itself; a session lasts while this start of Filament does.
 import { sendJson } from "../../app/pipeline/respond.js";
 import { OWNER_COOKIE } from "../../services/owner.js";
+import { ownerKeySent } from "../guards.js";
 
 /** What a call without the key is told. */
 export const SESSION_REFUSED = "a browser session is minted for a call from this computer with its owner key: the Filament app's own";
@@ -19,7 +20,9 @@ export function ownerRoutes(a) {
       "POST",
       "/owner/session",
       (r) => {
-        if (r.who?.kind !== "local" || !r.who.owner || !a.owner) return sendJson(r.res, 403, { error: SESSION_REFUSED });
+        // The key itself, never a session: one a session minted would let whatever read a session (its cookie reaches
+        // every port of this computer's address) hold one for as long as this start runs (the hunt on s0a).
+        if (r.who?.kind !== "local" || !ownerKeySent(r.req) || !a.owner) return sendJson(r.res, 403, { error: SESSION_REFUSED });
         return sendJson(r.res, 200, { cookie: OWNER_COOKIE, token: a.owner.session() }, { "cache-control": "no-store" });
       },
     ],

@@ -34,6 +34,11 @@ const MODEL_PATH = /^\/(v1\/|memory-engine\/|(messages|chat\/completions|respons
 const ANSWERS_WHILE_OPENING = /^\/(health|\.well-known\/filament|api\/state|ui(\/.*)?|docs\/.+)?\/*$/;
 const STOPS_WHILE_OPENING = /^\/api\/shutdown\/*$/;
 /**
+ * The desktop app's windows' browser session, minted as Filament answers its state (admin/owner.js): it needs nothing of
+ * memory, and the app asks it before its windows load, so a slow open held them on no session (the hunt on s0a).
+ */
+const MINTS_WHILE_OPENING = /^\/api\/owner\/session\/*$/;
+/**
  * The events stream (`GET /api/events`), which waits for memory's open however long it takes: it lives as long as its
  * page, and a page's EventSource answered anything but its stream is closed for good.
  */
@@ -203,8 +208,8 @@ export const STILL_OPENING = "Filament is still opening memory; try again in a m
  *   a watcher's address (the plan of 11-11, its v2-b)
  * @param {() => Promise<unknown> | null} [front.opening]  live: while memory opens as Filament starts, its end; null once
  *   it has. A request that reads memory waits for it, `openingWaitMs` at the most (`OPENING_WAIT_MS`), then is answered
- *   503 (`STILL_OPENING`) — the events stream as long as it takes (`WAITS_OUT_OPENING`); `ANSWERS_WHILE_OPENING` and
- *   `STOPS_WHILE_OPENING` are answered meanwhile.
+ *   503 (`STILL_OPENING`) — the events stream as long as it takes (`WAITS_OUT_OPENING`); `ANSWERS_WHILE_OPENING`,
+ *   `STOPS_WHILE_OPENING` and `MINTS_WHILE_OPENING` are answered meanwhile.
  * @param {number} [front.openingWaitMs]
  * @param {() => boolean} front.isDraining  live: stop() sets the flag
  * @param {string} front.VERSION
@@ -329,7 +334,7 @@ export function createFrontDoor({
     const wait = opening();
     const meanwhile =
       art === null &&
-      (((req.method === "GET" || req.method === "HEAD") && ANSWERS_WHILE_OPENING.test(url.pathname)) || (req.method === "POST" && STOPS_WHILE_OPENING.test(url.pathname)));
+      (((req.method === "GET" || req.method === "HEAD") && ANSWERS_WHILE_OPENING.test(url.pathname)) || (req.method === "POST" && (STOPS_WHILE_OPENING.test(url.pathname) || MINTS_WHILE_OPENING.test(url.pathname))));
     if (wait && !meanwhile) {
       if (art === null && req.method === "GET" && WAITS_OUT_OPENING.test(url.pathname)) await wait;
       else {

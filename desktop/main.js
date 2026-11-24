@@ -108,6 +108,9 @@ const LOOK_MS = 5000;
  * each that long, however busy it is.
  */
 const SOON_MS = 2000;
+/** How many times the windows' browser session is asked for as Filament comes up, and how far apart (`ownerSession`). */
+const SESSION_TRIES = 4;
+const SESSION_RETRY_MS = 750;
 
 /** What later launches asked before this one was ready — a double-click while it starts, a `--quit` —, done once it is. @type {string[][]} */
 const early = [];
@@ -966,14 +969,26 @@ async function run() {
    */
   const ownerSession = async () => {
     sessionFor = ownerHeaders(dataDir, origin)[OWNER_HEADER] || "";
-    try {
-      const r = await ask("/api/owner/session", { method: "POST", body: "{}" });
-      const j = /** @type {any} */ (r.ok ? await r.json() : null);
-      if (typeof j?.token === "string" && j.token) await session.defaultSession.cookies.set({ url: origin, name: String(j.cookie || OWNER_COOKIE), value: j.token, path: "/", httpOnly: true, sameSite: "strict" });
-      else log.line(`Filament minted no browser session for the app's windows (HTTP ${r.status})`);
-    } catch (/** @type {any} */ e) {
-      log.line(`Filament minted no browser session for the app's windows (${e?.message || e})`);
+    // Asked again a few times, a moment apart, before the windows load without it: a call that failed once — Filament
+    // busy as it starts — left them on no session for the whole start (the hunt on s0a).
+    let why = "";
+    for (let tries = 0; tries < SESSION_TRIES; tries++) {
+      if (tries) await new Promise((r) => setTimeout(r, SESSION_RETRY_MS));
+      try {
+        const r = await ask("/api/owner/session", { method: "POST", body: "{}" });
+        const j = /** @type {any} */ (r.ok ? await r.json() : null);
+        if (typeof j?.token === "string" && j.token) {
+          await session.defaultSession.cookies.set({ url: origin, name: String(j.cookie || OWNER_COOKIE), value: j.token, path: "/", httpOnly: true, sameSite: "strict" });
+          return;
+        }
+        why = `HTTP ${r.status}`;
+        // Refused: no key read, or another Filament's — asked again, it says the same.
+        if (r.status === 403) break;
+      } catch (/** @type {any} */ e) {
+        why = String(e?.message || e);
+      }
     }
+    log.line(`Filament minted no browser session for the app's windows (${why})`);
   };
   const sup = createSupervisor({
     fork: () => {

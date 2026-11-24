@@ -220,6 +220,9 @@ describe("the owner key, through a real Filament", () => {
     await call("/api/state", { headers: { cookie: `${OWNER_COOKIE}=fos_an-earlier-start` } });
     await call("/api/state", { headers: { [OWNER_HEADER]: `fot_${"B".repeat(43)}` } });
     assert.equal((await counted()).count, was, "the window's session, and an earlier start's, are not counted");
+    // (fails before: yes — the hunt on s0a: a session minted a session, so whatever read one held one for the start)
+    const again = await call("/api/owner/session", { method: "POST", body: {}, headers: { cookie: `${OWNER_COOKIE}=${minted.json.token}` } });
+    assert.deepEqual([again.status, again.json.error], [403, SESSION_REFUSED], "a session mints none: the key itself does");
   });
 
   test("through a proxy, the key opens nothing: refused as any proxied call is", async () => {
@@ -238,9 +241,23 @@ describe("the owner key, through a real Filament", () => {
   // port they asked, before reading whose Filament it was)
   test("the key goes only to this computer's own address at the port the folder's Filament listens on", async () => {
     assert.ok(ownerHeaders(shim.dataDir, shim.url)[OWNER_HEADER], "its own address and port");
-    assert.ok(ownerHeaders(shim.dataDir, `http://localhost:${shim.port}/api/state`)[OWNER_HEADER], "by the name localhost too");
     for (const url of [`http://127.0.0.1:${shim.port + 1}`, `https://127.0.0.1:${shim.port}`, `http://192.168.1.20:${shim.port}`, "no address"])
       assert.deepEqual(ownerHeaders(shim.dataDir, url), {}, url);
+    // (fails before: yes — the hunt on s0a: by the name localhost, or [::1], the key went to whatever listens at that port
+    // on ::1 while Filament listens on 127.0.0.1 alone) Its own host alone, or any where it listens on every address.
+    const folder = mkdtempSync(join(tmpdir(), "owner-host-"));
+    try {
+      writeFileSync(join(folder, OWNER_FILE), `fot_${"H".repeat(43)}\n`);
+      const listens = (/** @type {string} */ host) => writeFileSync(join(folder, "listening.json"), JSON.stringify({ url: "", host, port: 4567, pid: process.pid }));
+      listens("127.0.0.1");
+      assert.deepEqual(["http://127.0.0.1:4567", "http://localhost:4567", "http://[::1]:4567"].map((u) => !!ownerHeaders(folder, u)[OWNER_HEADER]), [true, false, false]);
+      listens("::1");
+      assert.deepEqual(["http://127.0.0.1:4567", "http://localhost:4567", "http://[::1]:4567"].map((u) => !!ownerHeaders(folder, u)[OWNER_HEADER]), [false, false, true]);
+      listens("0.0.0.0");
+      assert.deepEqual(["http://127.0.0.1:4567", "http://localhost:4567", "http://[::1]:4567"].map((u) => !!ownerHeaders(folder, u)[OWNER_HEADER]), [true, true, true]);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
     // Another program at a port this folder's Filament does not hold — the config's after a move, another account's —
     // is asked without it, whoever it says it is.
     /** @type {http.IncomingHttpHeaders[]} */

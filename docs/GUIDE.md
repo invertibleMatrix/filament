@@ -2190,10 +2190,12 @@ pairing page named as `pair`). Mutating calls from a browser page must come from
 - **This computer's own programs carry Filament's owner key.** Each start of Filament makes a key into `owner.key` in
   its data folder, readable by your account alone, before the command line can find it, and takes it away as it stops.
   The `filament` command line, the desktop app and Filament's own calls to itself send it with each call to the admin
-  API (the `x-filament-owner` header), read at each call, and only to this computer's own address at the port that
-  data folder's Filament says it listens on (`listening.json`) — never to another program that answers at a port it
-  asked, the config's after a move or another account's; the app's windows hold a browser session made with it, a cookie the page itself
-  cannot read, kept in memory alone and made again at each start of Filament. It counts over this computer's own address
+  API (the `x-filament-owner` header), read at each call, and only to the address and port that data folder's Filament
+  says it listens on (`listening.json`) — never to another program that answers at a port it asked, the config's after a
+  move, another account's, or one at that port on another of this computer's addresses (`localhost` reaching `::1`
+  where Filament listens on 127.0.0.1 alone); the app's windows hold a browser session made with it, a cookie the page
+  itself cannot read, kept in memory alone and made again at each start of Filament — by the key itself, never by a
+  session. It counts over this computer's own address
   alone: a request a proxy hands on that carries it is refused, as any such request is, and said once in the log. It is taken out of
   each request as Filament reads it, so no record, log or answer holds it, nor any program's environment. For now
   nothing needs it: a program here that calls the admin API without it is answered all the same, and counted by the name it
