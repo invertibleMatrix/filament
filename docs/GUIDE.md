@@ -612,8 +612,11 @@ back says which files would come into your folder and how much each changed, and
 here too is merged, and one whose lines overlap yours waits for your choice — *Keep yours*, *Take its*, or *Both, with
 markers*. What it showed you is what comes: they come in as uncommitted edits — nothing is staged or committed, and HEAD
 stays where it is —, and the dialog stays until they have. Changed there again while you chose, it says what comes now
-and asks again. While a turn of it still runs there, Bring back says *Studio is still working in your chat there*. The
-next round brings only what changed since the last one.
+and asks again. While a turn of it still runs there, Bring back says *Studio is still working in your chat there*. A
+file your folder will not take — read-only, or held open by an editor — is said as that in the dialog (*1 file does not
+come through cleanly — z.txt: your folder would not take it*), nothing written and nothing to choose: free the file and
+press Bring back again. Where it had written some files and could not put them all back as they were, it says *Applied
+only in part* with the files to check by hand. The next round brings only what changed since the last one.
 
 In the desktop app, each machine added to the app has a card in Settings › Remote access › Machines, and on it the
 line *What this machine may do on <machine>*, with a pill for each thing this Filament may do there — what each does on its

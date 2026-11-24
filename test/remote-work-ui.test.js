@@ -219,6 +219,39 @@ describe("the desk's rows and Bring back, in a stand-in page", () => {
     assert.equal(d.shown.length, 2);
   });
 
+  // (fails before: yes — the review of s2b: a write the folder would not take was asked again as a file that overlaps your
+  // edits, and Keep yours on it marked a change that never came)
+  test("a bring back the folder will not take says why in the dialog, with nothing to choose; one written in part says which files to check, and closes", async () => {
+    const { createDeskWork } = await import("../src/ui/harness/desk-work.js");
+    const files = [{ path: "src/a.js", status: "M", added: 1, removed: 1 }];
+    /** @type {any} */
+    let answer = null;
+    const pc = computer({ look: () => ({ unchanged: false, files, count: 1, came: [], conflicts: [], at: "c1", left: [] }), back: () => answer });
+    const d = dialogs();
+    /** @type {[string, string | undefined][]} */
+    const toasts = [];
+    const desk = createDeskWork({ api: pc.api, toast: (w, tone) => void toasts.push([w, tone]), dialog: d.dialog, onChange: () => {} });
+    desk.sync(deskOf());
+    await until(() => desk.waiting("m-studio", "c-there"), "read");
+    const locked = "1 file does not come through cleanly — src/a.js: your folder would not take it (EBUSY)";
+    answer = Object.assign(new Error(locked), { status: 409, body: { ok: false, error: locked, conflicts: [{ path: "src/a.js", why: "your folder would not take it (EBUSY)" }], at: "c1", left: [] } });
+    const brought = desk.bringBack("w1");
+    await until(() => d.shown.length === 1, "asked");
+    press(d.shown[0], "Bring back");
+    await until(() => String(d.shown[0].body.textContent).includes("EBUSY"), "its words in the dialog");
+    assert.equal(d.shown.length, 1, "not asked again as an overlap");
+    assert.equal(d.shown[0].open, true);
+    assert.equal(d.shown[0].body.querySelector(".desk-work-pick"), null, "nothing to choose");
+    // Pressed again, it was written in part and could not all be put back: which files to check, said, and the dialog closes.
+    const partial = "Applied only in part: src/a.js: your folder would not take it (EBUSY), and 1 file could not be put back as it was — src/b.js. Check it by hand; the rest of the folder is as it was";
+    answer = Object.assign(new Error(partial), { status: 409, body: { ok: false, partial: true, error: partial, conflicts: [{ path: "src/a.js", why: "your folder would not take it (EBUSY)" }], stuck: ["src/b.js"], at: "c1", left: [] } });
+    press(d.shown[0], "Bring back");
+    await brought;
+    assert.equal(d.shown[0].open, false);
+    assert.equal(d.shown.length, 1);
+    assert.deepEqual(toasts.at(-1), [partial, "err"]);
+  });
+
   // (fails before: yes — the review of s2d: Cancel while it brought back closed the dialog, and the folder was written all
   // the same)
   test("a bring back under way runs to its end: Cancel waits for it", async () => {

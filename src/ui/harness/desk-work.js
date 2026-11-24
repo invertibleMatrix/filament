@@ -289,7 +289,14 @@ export function createDeskWork(io) {
             if (b.work) put(b.work);
             return askAgain(() => fresh(w.id, `It changed again on ${w.machine.name} since you looked: this is what comes now.`));
           }
-          if (e?.status === 409 && Array.isArray(b?.conflicts) && b.conflicts.length) {
+          // Written in part, and not all put back: which files to check by hand, said once the dialog has gone.
+          if (e?.status === 409 && b?.partial) {
+            if (b.work) put(b.work);
+            d.close(true);
+            return void io.toast(String(b.error || e?.message || e), "err");
+          }
+          // Only a file whose change overlaps your edits asks a choice: a write the folder would not take is said below.
+          if (e?.status === 409 && Array.isArray(b?.conflicts) && b.conflicts.length && b.conflicts.every((/** @type {any} */ c) => c?.kind)) {
             if (b.work) put(b.work);
             // Your edits here moved meanwhile: what stops it now.
             return askAgain(() => ask(w, { ...got, conflicts: b.conflicts, at: String(b.at || got.at), left: b.left || got.left }, "These files overlap your edits now: choose what comes for each."));

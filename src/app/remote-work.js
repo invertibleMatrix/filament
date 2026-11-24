@@ -12,7 +12,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { git, repoOf } from "../adapters/git/snapshot.js";
-import { applyTaskWork, previewApply } from "../adapters/git/worktree.js";
+import { applyTaskWork, notApplied, previewApply } from "../adapters/git/worktree.js";
 
 /** Where a record's commits are held in the folder's repository, against git's pruning: `<id>/copy`, `/back`, `/applied`. */
 export const WORK_REF_PREFIX = "refs/filament/work/";
@@ -157,10 +157,11 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
     if (!w) throw refused(404, `no Run on ${String(id).slice(0, 60)} here`);
     return w;
   };
-  /** Past `WORKS_MAX`, the oldest brought back or gone go, their refs with them. */
+  /** Past `WORKS_MAX`, the oldest brought back or gone go, their refs with them; one still in use never does, kept past it. */
   const trim = async () => {
     while (works.length > WORKS_MAX) {
-      const old = [...works].sort((a, b) => a.madeAt - b.madeAt).find((w) => w.state === "brought" || w.state === "gone") ?? works[0];
+      const old = [...works].sort((a, b) => a.madeAt - b.madeAt).find((w) => w.state === "brought" || w.state === "gone");
+      if (!old) return;
       works = works.filter((w) => w !== old);
       for (const n of ["copy", "back", "applied"]) await hold(old.repo, old.id, n, "");
     }
@@ -261,12 +262,13 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
      * and HEAD untouched. A file both changed that cannot come through stops it, nothing written (`conflicts`), until the
      * person's `choices` (by path: `yours`, `its`, `both`) or an `overlap` way name one for each, for the capture they
      * saw (`at`, as `conflicts` or a look came with it: one taken since says `moved`, `at` alone too — what the person
-     * was shown is what comes). → what came in and what stayed there; refused in words, with a status (410 where its
-     * copy there went).
+     * was shown is what comes). A write the folder would not take is said in words (`error`), nothing written, with no
+     * choice to make; one it could not all put back says `partial` and the files to check by hand (`stuck`). → what came
+     * in and what stayed there; refused in words, with a status (410 where its copy there went).
      * @param {string} id
      * @param {{ choices?: Readonly<Record<string, import("../adapters/git/worktree.js").ApplyChoice>>, overlap?: import("../adapters/git/worktree.js").OverlapWay | null, at?: string, signal?: AbortSignal | null }} [o]
      * @returns {Promise<{ ok: true, work: RemoteWork, unchanged: boolean, files: { path: string, status: string, added: number, removed: number }[], came: { path: string, how: string }[], left: { path: string, why: string }[] }
-     *   | { ok: false, work: RemoteWork, conflicts: import("../adapters/git/worktree.js").ApplyConflict[], stuck?: string[], moved?: true, error?: string, at: string, left: { path: string, why: string }[] }>}
+     *   | { ok: false, work: RemoteWork, conflicts: import("../adapters/git/worktree.js").ApplyConflict[], stuck?: string[], partial?: true, moved?: true, error?: string, at: string, left: { path: string, why: string }[] }>}
      */
     back(id, { choices = {}, overlap = null, at = "", signal = null } = {}) {
       return inTurn(String(id), async () => {
@@ -287,7 +289,13 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
           return { ok: /** @type {const} */ (false), work: said(w), conflicts: now?.conflicts ?? [], moved: true, at: got.commit, left: got.left, error: `it changed again on ${w.machine.name} since those choices: choose again for what stops it now` };
         }
         const applied = await writeIn(w.repo, () => applyTaskWork(w.repo, { base: from, head: got.commit }, { choices, overlap }));
-        if (!applied.ok) return { ok: /** @type {const} */ (false), work: said(w), conflicts: applied.conflicts, ...(applied.stuck ? { stuck: applied.stuck } : {}), at: got.commit, left: got.left };
+        if (!applied.ok) {
+          // A file whose change overlaps the person's edits asks a choice for it. A write the folder would not take (a
+          // file an editor holds, a version git cannot read) is said as that, with none to make — Keep yours there would
+          // mark as come a change that never came —; one it could not all put back names the files to check by hand.
+          const failed = !!applied.stuck || applied.conflicts.some((c) => !c.kind);
+          return { ...(failed ? notApplied(applied) : { ok: /** @type {const} */ (false), conflicts: applied.conflicts }), work: said(w), at: got.commit, left: got.left };
+        }
         w.applied = got.commit;
         w.broughtAt = now();
         w.state = "brought";

@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startTwoMachines } from "./helpers/two-machines.js";
@@ -347,4 +347,95 @@ test("a send's ask comes before its bundle, with what git keeps of what goes", a
   assert.notEqual(outer.commit, inner.commit);
   assert.deepEqual((await bundleHeaderOf(String(outer.file)))?.heads.map((h) => h.sha), [outer.commit], "its yes sends what it asked about");
   assert.deepEqual(outer.untracked, ["loose.txt"]);
+});
+
+/**
+ * A store over a real repository whose machine there is a stand-in: each send placed at the folder's HEAD, each bring
+ * back the commit `back()` names. @param {string} dir @param {string} data @param {() => string} back
+ */
+const standIn = (dir, data, back) => {
+  let sends = 0;
+  const remote = {
+    placeForPerson: async (/** @type {string} */ m, /** @type {any} */ o) => {
+      o.sent.has("machine-1", dir);
+      sends++;
+      return { machine: { id: "machine-1", name: m }, project: "widgets", repo: dir, commit: gitIn(dir, "rev-parse", "HEAD"), sub: "", files: 1, bytes: 1, left: [], copy: { id: `c${sends}`, folder: `/there/${sends}` }, cwd: `/there/${sends}`, reused: false };
+    },
+    takeBack: async () => ({ commit: back(), left: [] }),
+    placesFor: async () => ({ here: true, machines: [] }),
+  };
+  return createRemoteWork({ dataDir: data, remote: /** @type {any} */ (remote) });
+};
+
+// (fails before: yes — the review of s2b: a write the folder would not take came back as a file that overlaps your
+// edits, and Keep yours on it moved `applied` past a change that never came, which then never waited again)
+test("a bring back the folder will not take is said as that failure, with no choice to make; nothing is marked as come, and it comes once the folder takes it", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "filament-remote-work-fail-"));
+  const data = mkdtempSync(join(tmpdir(), "filament-remote-work-data-"));
+  const locked = join(dir, "z.txt");
+  t.after(() => (existsSync(locked) && chmodSync(locked, 0o644), rmSync(dir, { recursive: true, force: true }), rmSync(data, { recursive: true, force: true })));
+  gitIn(dir, "init", "-q");
+  writeFileSync(join(dir, "a.txt"), "a\n");
+  writeFileSync(locked, "z\n");
+  gitIn(dir, "add", "-A");
+  gitIn(dir, "commit", "-q", "-m", "first");
+  const base = gitIn(dir, "rev-parse", "HEAD");
+  // What its chat made there: both files changed.
+  gitIn(dir, "checkout", "-q", "-b", "there");
+  writeFileSync(join(dir, "a.txt"), "a, changed there\n");
+  writeFileSync(locked, "z, changed there\n");
+  gitIn(dir, "add", "-A");
+  gitIn(dir, "commit", "-q", "-m", "there");
+  const head = gitIn(dir, "rev-parse", "HEAD");
+  gitIn(dir, "checkout", "-q", "-");
+  assert.equal(gitIn(dir, "rev-parse", "HEAD"), base);
+  const s = standIn(dir, data, () => head);
+  const w = await s.send({ machine: "Studio", folder: dir });
+  s.chat(w.id, "c-there");
+  // z.txt read-only here, as a file an editor holds: the folder will not take what comes.
+  chmodSync(locked, 0o444);
+  const failed = /** @type {any} */ (await s.back(w.id));
+  assert.equal(failed.ok, false);
+  assert.match(String(failed.error), /^1 file does not come through cleanly — z\.txt: your folder would not take it \(/);
+  assert.ok(failed.conflicts.length && failed.conflicts.every((/** @type {any} */ c) => !c.kind), "nothing of it is an overlap to choose for");
+  assert.equal(failed.at, head);
+  assert.equal(textOf(join(dir, "a.txt")), "a\n", "nothing written: a.txt put back");
+  assert.equal(s.get(w.id)?.applied, "");
+  // Choices named for it change nothing: the folder still will not take it, and nothing is marked as come.
+  const chose = /** @type {any} */ (await s.back(w.id, { choices: { "z.txt": "yours" }, at: failed.at }));
+  assert.equal(chose.ok, false);
+  assert.equal(s.get(w.id)?.applied, "", "Keep yours never marks a change that did not come");
+  // The folder takes it once the file may be written again.
+  chmodSync(locked, 0o644);
+  const came = /** @type {any} */ (await s.back(w.id));
+  assert.equal(came.ok, true, JSON.stringify(came));
+  assert.deepEqual([textOf(join(dir, "a.txt")), textOf(locked)], ["a, changed there\n", "z, changed there\n"]);
+  assert.equal(s.get(w.id)?.applied, head);
+});
+
+// (fails before: yes — the review of s2b: past 200 records with none brought back or gone, the oldest went, a running one
+// with its refs)
+test("past the most records kept, the oldest brought back or gone goes; a record still in use never does", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "filament-remote-work-trim-"));
+  const data = mkdtempSync(join(tmpdir(), "filament-remote-work-data-"));
+  t.after(() => (rmSync(dir, { recursive: true, force: true }), rmSync(data, { recursive: true, force: true })));
+  gitIn(dir, "init", "-q");
+  writeFileSync(join(dir, "a.txt"), "a\n");
+  gitIn(dir, "add", "-A");
+  gitIn(dir, "commit", "-q", "-m", "first");
+  const { WORKS_MAX } = await import("../src/app/remote-work.js");
+  const rec = (/** @type {number} */ i, /** @type {string} */ state) => ({ id: `old-${i}`, machine: { id: "machine-1", name: "Studio" }, folder: dir, repo: dir, project: "widgets", base: "", copy: { id: `k${i}`, folder: "/there" }, cwd: "/there", chat: `c${i}`, back: "", applied: "", left: [], files: 1, bytes: 1, madeAt: i + 1, broughtAt: 0, state, waiting: null, checkedAt: 0, seen: 0 });
+  // The oldest records still at work; one brought back among the newer ones.
+  const old = Array.from({ length: WORKS_MAX }, (_, i) => rec(i, i === WORKS_MAX - 5 ? "brought" : i % 2 ? "running" : "placed"));
+  writeFileSync(join(data, "remote-work.json"), JSON.stringify({ version: 1, works: old }));
+  const s = standIn(dir, data, () => "");
+  const send = () => s.send({ machine: "Studio", folder: dir });
+  await send();
+  const ids = s.list().map((w) => w.id);
+  assert.equal(ids.length, WORKS_MAX);
+  assert.ok(!ids.includes(`old-${WORKS_MAX - 5}`), "the one brought back went");
+  assert.ok(ids.includes("old-0") && ids.includes("old-1"), "the oldest, still in use, stay");
+  await send();
+  assert.equal(s.list().length, WORKS_MAX + 1, "kept past the most, rather than one still in use dropped");
+  assert.ok(s.list().every((w) => w.state === "placed" || w.state === "running"));
 });

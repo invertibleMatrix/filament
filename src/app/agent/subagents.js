@@ -75,7 +75,7 @@ import { changeSource } from "../sessions/changes-view.js";
 import { sideLineOf } from "../sessions/compaction.js";
 import { ASSUMED_WINDOW } from "../sessions/compactor.js";
 import { sessionWindowFor } from "../../core/model-families.js";
-import { CHOICES, DEPENDENCY_DIRS, MARK_KEPT_MS, applyTaskWork, compareApply, copyFacts, copyHeldBy, fetchLfsFile, foundWhole, previewApply, captureTaskWork, changedFiles, diffTaskWork, dropMarkHold, dropTaskRefs, folderSnapshot, holdMarkedWork, holdCopyCommit, dropCopyCommit, keepTaskWork, letGoHelpers, markApplied, markHolds, markUnsaved, openCheckTree, openTaskWorktree, patchRecorded, pruneTaskWorktrees, rebaseMarks, rebaseTaskWork, releaseTaskWorktree, reposOf, resetLane, reviveTaskWorktree, taskRefs, taskWorkSoFar, taskWorktreePath, unholdMarkedWork, untilCopyFree, widenFor } from "../../adapters/git/worktree.js";
+import { CHOICES, DEPENDENCY_DIRS, MARK_KEPT_MS, applyTaskWork, compareApply, copyFacts, copyHeldBy, fetchLfsFile, foundWhole, previewApply, captureTaskWork, changedFiles, diffTaskWork, dropMarkHold, dropTaskRefs, folderSnapshot, holdMarkedWork, holdCopyCommit, dropCopyCommit, keepTaskWork, letGoHelpers, markApplied, markHolds, markUnsaved, notApplied, openCheckTree, openTaskWorktree, patchRecorded, pruneTaskWorktrees, rebaseMarks, rebaseTaskWork, releaseTaskWorktree, reposOf, resetLane, reviveTaskWorktree, taskRefs, taskWorkSoFar, taskWorktreePath, unholdMarkedWork, untilCopyFree, widenFor } from "../../adapters/git/worktree.js";
 import { sparseWords, widenedWords } from "../../adapters/git/sparse.js";
 import { cliCommand } from "./environment.js";
 import { capturePatch, dropPatch, holdWork, markPatchUnsaved, movesOf, noteMove, openPatch, parkPatch, patchHeldBy, patchSoFar, promotePatch, revivePatch } from "../../adapters/git/patch.js";
@@ -7441,18 +7441,6 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
     const a = sa?.work?.applied.at(-1);
     if (a?.hand && a.by === "found") return `sub-agent ${key}'s changes were found in the folder already, brought in another way: nothing of them waits`;
     return a?.hand ? `sub-agent ${key}'s changes were marked as applied by ${a.by === "agent" ? "the session's agent" : "the developer"}: nothing of them waits` : `sub-agent ${key} has no changes waiting to be applied`;
-  };
-  /**
-   * An apply that did not come through, in its words: in part — a file it could not put back — or not at all.
-   * @param {{ conflicts: import("../../adapters/git/worktree.js").ApplyConflict[], stuck?: string[] }} r @returns {Extract<ApplyResult, { ok: false }>}
-   */
-  const notApplied = (r) => {
-    if (r.stuck) {
-      const [c] = r.conflicts;
-      const n = r.stuck.length;
-      return { ok: false, partial: true, error: `Applied only in part: ${c.path}: ${c.why}, and ${n === 1 ? "1 file" : `${n} files`} could not be put back as ${n === 1 ? "it was" : "they were"} — ${r.stuck.join(", ")}. Check ${n === 1 ? "it" : "them"} by hand; the rest of the folder is as it was`, conflicts: r.conflicts, stuck: r.stuck };
-    }
-    return { ok: false, error: `${r.conflicts.length === 1 ? "1 file does" : `${r.conflicts.length} files do`} not come through cleanly — ${r.conflicts.map((c) => `${c.path}: ${c.why}`).join("; ")}`, conflicts: r.conflicts };
   };
   /**
    * A sub-agent's work went in: its base moves to it, nothing of it waits, and the apply is kept — who, how many files,

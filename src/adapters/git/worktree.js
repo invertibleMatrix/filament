@@ -3002,6 +3002,21 @@ export async function applyTaskWork(repo, { base, head }, { choices = {}, overla
 }
 
 /**
+ * An apply that did not come through (`applyTaskWork`), in its words: in part — a file it could not put back, to check
+ * by hand (`stuck`) — or not at all.
+ * @param {{ conflicts: ApplyConflict[], stuck?: string[] }} r
+ * @returns {{ ok: false, error: string, conflicts: ApplyConflict[], partial?: true, stuck?: string[] }}
+ */
+export function notApplied(r) {
+  if (r.stuck) {
+    const [c] = r.conflicts;
+    const n = r.stuck.length;
+    return { ok: false, partial: true, error: `Applied only in part: ${c.path}: ${c.why}, and ${n === 1 ? "1 file" : `${n} files`} could not be put back as ${n === 1 ? "it was" : "they were"} — ${r.stuck.join(", ")}. Check ${n === 1 ? "it" : "them"} by hand; the rest of the folder is as it was`, conflicts: r.conflicts, stuck: r.stuck };
+  }
+  return { ok: false, error: `${r.conflicts.length === 1 ? "1 file does" : `${r.conflicts.length} files do`} not come through cleanly — ${r.conflicts.map((c) => `${c.path}: ${c.why}`).join("; ")}`, conflicts: r.conflicts };
+}
+
+/**
  * Where a write at `abs` would not land in the file it names (the copies hunt of 10-23): `here`, a link stands at its
  * path, so the write lands wherever it points; `out`, a folder on its way is a link out of the repository. Null where
  * neither. An apply asks it of each file before it writes, and a rewind too; `look`, the read's own of the folder,

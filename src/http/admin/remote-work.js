@@ -95,8 +95,9 @@ export function remoteWorkRoutes(a) {
     // `{ choices?, overlap?, at? }`: what its chat changed there brought back and applied to the folder as uncommitted
     // edits → `{ work, unchanged, files, came, left }`; 409 with `conflicts` and `at` where a file stops it, nothing
     // written, until `choices` (by path: yours, its, both) or `overlap` (markers, mine) names a way for each, with that
-    // `at`; `at` alone, a look's, brings that capture or nothing (one changed there since says `moved`); 410 where its
-    // copy went.
+    // `at`; `at` alone, a look's, brings that capture or nothing (one changed there since says `moved`); 409 with `error`
+    // and no choice to make where the folder would not take a file (`partial` and `stuck`, the files to check, where it
+    // could not all be put back); 410 where its copy went.
     [
       "POST",
       "/remote-work/:id/back",
