@@ -148,14 +148,17 @@ test("Run on between two Filaments: asked first, sent with its uncommitted work,
     // person's own change stays.
     writeFileSync(join(work.cwd, "src", "a.js"), "one\ntwo, there\nthree\nfour\nfive\nsix\nseven\n");
     writeFileSync(join(work.cwd, "src", "c.js"), "new there\n");
+    // (fails before: yes — the review of s2d) The person made a.js's change here too: it would come in as it is, so it is
+    // listed and comes, and is none of what waits.
+    writeFileSync(join(dir, "src", "a.js"), "one\ntwo, there\nthree\nfour\nfive\nsix\nseven\n");
     // (fails before: yes — the remote desk's s2d: nothing said what waited there until a bring back took it)
     const waits = await look({ seen: 2000 });
     const waiting = await waits.json();
     assert.equal(waits.status, 200, JSON.stringify(waiting));
     assert.deepEqual([waiting.unchanged, waiting.count, waiting.files.map((/** @type {any} */ f) => f.path).sort(), waiting.conflicts], [false, 2, ["src/a.js", "src/c.js"], []]);
-    assert.deepEqual(waiting.work.waiting, { at: waiting.at, files: 2, conflicts: 0 });
+    assert.deepEqual(waiting.work.waiting, { at: waiting.at, files: 1, conflicts: 0 }, "what would change the folder: c.js alone");
     assert.equal(existsSync(join(dir, "src", "c.js")), false, "a look writes nothing here");
-    assert.deepEqual((await (await here.api("/api/remote-work")).json()).works.find((/** @type {any} */ w) => w.id === work.id)?.waiting, { at: waiting.at, files: 2, conflicts: 0 }, "listed with what waits");
+    assert.deepEqual((await (await here.api("/api/remote-work")).json()).works.find((/** @type {any} */ w) => w.id === work.id)?.waiting, { at: waiting.at, files: 1, conflicts: 0 }, "listed with what waits");
     assert.equal((await look({ seen: -1 })).status, 400);
     const back = await here.api(`/api/remote-work/${work.id}/back`, { method: "POST", body: {} });
     const brought = await back.json();

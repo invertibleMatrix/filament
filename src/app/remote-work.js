@@ -325,7 +325,10 @@ export function createRemoteWork({ dataDir, remote, may = () => "", inRepo = nul
         const p = got.commit === from ? null : await previewApply(w.repo, { base: from, head: got.commit });
         w.checkedAt = now();
         if (seen > 0) w.seen = seen;
-        w.waiting = p?.files.length ? { at: got.commit, files: p.files.length, conflicts: p.conflicts.length } : null;
+        // What waits is what would change the folder: a file it already holds as the chat left it comes in "same", and
+        // is none of them (the review of s2d).
+        const differ = p ? p.came.filter((c) => c.how !== "same").length + p.conflicts.length : 0;
+        w.waiting = differ ? { at: got.commit, files: differ, conflicts: p?.conflicts.length ?? 0 } : null;
         save();
         return { work: said(w), unchanged: !w.waiting, files: (p?.files ?? []).slice(0, SAID_MAX).map(fileOf), count: p?.files.length ?? 0, came: (p?.came ?? []).slice(0, SAID_MAX), conflicts: p?.conflicts ?? [], at: got.commit, left: got.left };
       });

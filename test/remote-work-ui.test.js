@@ -164,6 +164,56 @@ describe("the desk's rows and Bring back, in a stand-in page", () => {
     assert.deepEqual(desk.cardsOf(row, h), []);
   });
 
+  // (fails before: yes — the review of s2d: every overlapping file was drawn with a choice of its own, however many)
+  test("past 200 overlapping files, the rest take one choice for them all, sent for each", async () => {
+    const { createDeskWork, STOPS_SHOWN } = await import("../src/ui/harness/desk-work.js");
+    const stops = Array.from({ length: STOPS_SHOWN + 5 }, (_, i) => ({ path: `src/f${i}.js`, why: "2 changes overlap yours", kind: "lines" }));
+    /** @type {any[]} */
+    const backs = [];
+    const pc = computer({
+      look: () => ({ unchanged: false, files: stops.map((s) => ({ path: s.path, status: "M", added: 1, removed: 1 })), count: stops.length, came: [], conflicts: stops, at: "c1", left: [] }),
+      back: (b) => (backs.push(b), { unchanged: false, files: stops, came: stops.map((s) => ({ path: s.path, how: "replaced" })), left: [] }),
+    });
+    const d = dialogs();
+    const desk = createDeskWork({ api: pc.api, toast: () => {}, dialog: d.dialog, onChange: () => {} });
+    desk.sync(deskOf());
+    await until(() => desk.waiting("m-studio", "c-there"), "read");
+    const brought = desk.bringBack("w1");
+    await until(() => d.shown.length === 1, "asked");
+    const picks = /** @type {any[]} */ (d.shown[0].body.querySelectorAll(".desk-work-pick"));
+    assert.equal(picks.length, STOPS_SHOWN + 1, "200 of their own, and one for the rest");
+    assert.match(String(d.shown[0].body.textContent), /and 5 more files/);
+    for (const p of picks.slice(0, STOPS_SHOWN)) {
+      p.value = "yours";
+      p.dispatch("change");
+    }
+    picks.at(-1).value = "its";
+    picks.at(-1).dispatch("change");
+    press(d.shown[0], "Bring back");
+    await brought;
+    assert.equal(Object.keys(backs[0].choices).length, STOPS_SHOWN + 5);
+    assert.deepEqual([backs[0].choices["src/f0.js"], backs[0].choices[`src/f${STOPS_SHOWN + 4}.js`]], ["yours", "its"]);
+  });
+
+  // (fails before: yes — the review of s2d: one look at a time for every record, so a machine that never answered held
+  // every other record's look, for good)
+  test("a look that never answers holds no other machine's looks, and is let go of past its wait, to be asked again", async () => {
+    const { createDeskWork } = await import("../src/ui/harness/desk-work.js");
+    /** @type {(() => void)[]} */
+    const timers = [];
+    const api = (/** @type {string} */ path, /** @type {any} */ init = {}) => {
+      if (path === "/remote-work") return Promise.resolve({ works: [work({ id: "w-hung", machine: { id: "m-hung", name: "Hung" }, chat: "c-hung" }), work()] });
+      if (path.includes("w-hung")) return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("The operation timed out."), { name: "TimeoutError" }))));
+      return Promise.resolve({ work: work({ seen: init.body?.seen, waiting: { at: "c1", files: 1, conflicts: 0 } }) });
+    };
+    const two = deskOf();
+    two.machines.push({ id: "m-hung", name: "Hung", color: "teal", icon: "server", status: "online", refused: false, flags: [], rows: { needs: [], works: [], done: [] }, recent: [{ there: { chain: "c-hung", thread: null }, when: 5000 }] });
+    const desk = createDeskWork({ api, toast: () => {}, dialog: dialogs().dialog, onChange: () => {}, lookMs: 300, later: (fn) => void timers.push(fn) });
+    desk.sync(two);
+    await until(() => desk.waiting("m-studio", "c-there"), "the other machine's record looked at");
+    await until(() => timers.length === 1 || null, "the hung look let go of, and asked again later");
+  });
+
   test("a file both changed takes the person's choice, for the capture they saw; one that moved since is looked at again; nothing changed is said so", async () => {
     const { createDeskWork } = await import("../src/ui/harness/desk-work.js");
     const conflict = { path: "src/a.js", why: "2 changes overlap yours", kind: "lines" };

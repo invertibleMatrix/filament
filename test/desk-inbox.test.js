@@ -441,4 +441,27 @@ describe("Now draws them under their row (now-list.js askCards)", () => {
     buttonsOf(crews[0]).at(-1).dispatch("click");
     assert.deepEqual(openedThere, ["s1"], "Open opens it there, as a press on its row does");
   });
+
+  // (fails before: yes — the review of s2d: a Run on chat whose turn ended cleanly stands in Done, which asked for no
+  // cards, so its Bring back card showed nowhere in Now)
+  test("another machine's row in Done carries its cards too: a Run on chat's Bring back under it", async () => {
+    const d = readDesk({
+      here: { id: "m-here", name: "Desk" },
+      machines: [{ id: "m-studio", name: "Studio", color: "teal", icon: "server", status: "online", flags: [], rows: { needs: [], works: [], done: [{ key: "chat:s3", chain: "s3", group: "done", title: "Widgets", fact: "done", tone: "done", tile: "done", at: Date.now() - 1000, under: [] }] }, recent: [] }],
+    });
+    const more = deskGroups(d);
+    const now = createNow({
+      h: mk, drawIn: fakeDrawIn, call: /** @type {any} */ (async () => ({ events: [] })),
+      chats: () => null, unread: () => new Set(), holders: () => new Map(), onOpen: () => {}, onSeen: () => {},
+      // The bar's own Now (sidebar.js): its Done shows by itself.
+      place: true,
+      more: () => more, onOpenMore: () => {},
+      askCards: (r, h) => (r.there?.chain === "s3" ? [h("div", { class: "desk-ask desk-back" }, "3 files changed on Studio")] : []), asksKey: () => "1",
+    });
+    await now.update(/** @type {any} */ ([]));
+    const crews = every(now.el, "now-asks");
+    assert.equal(crews.length, 1);
+    assert.deepEqual(crews[0].kids.map((/** @type {any} */ k) => String(k.attrs.class).split(" ")[0]), ["now-row", "desk-ask"]);
+    assert.equal(crews[0].attrs["data-key"], "crew:m:m-studio/chat:s3");
+  });
 });

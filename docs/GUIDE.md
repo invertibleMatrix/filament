@@ -614,11 +614,14 @@ What a chat in a copy of your work changes there waits in that copy until you br
 clean clone works in that machine's own clone of your project: what it changes comes back by git — commit and push
 there, then pull here —, never by Bring back.) Once a turn of it ends —
 not while it works, nor while it waits for you — the desk looks at what it changed: while its row stands in Now, a
-card under it says *3 files changed on Studio*, with **Bring back**, and its row under its project wears *↩ 3*. Bring
+card under it says *3 files changed on Studio* — the files that would change your folder, not one it holds already as
+the chat left it —, with **Bring back**, and its row under its project wears *↩ 3*; folded, the project's head says
+how many of its chats wait (*↩ 2*). A machine that does not answer a look in 45 seconds is let go of and asked again
+later, and holds no other machine's looks. Bring
 back says which files would come into your folder and how much each changed, and what stayed there; a file you changed
 here too is merged, and one whose lines overlap yours waits for your choice — *Keep yours*, *Take its*, or *Both, with
-markers*. What it showed you is what comes: they come in as uncommitted edits — nothing is staged or committed, and HEAD
-stays where it is —, and the dialog stays until they have. Changed there again while you chose, it says what comes now
+markers* (past 200 such files, one choice takes the rest). What it showed you is what comes: they come in as
+uncommitted edits — nothing is staged or committed, and HEAD stays where it is —, and the dialog stays until they have. Changed there again while you chose, it says what comes now
 and asks again. While a turn of it still runs there, Bring back says *Studio is still working in your chat there*. A
 file your folder will not take — read-only, or held open by an editor — is said as that in the dialog (*1 file does not
 come through cleanly — z.txt: your folder would not take it*), nothing written and nothing to choose: free the file and

@@ -1808,6 +1808,7 @@ export function createSidebar(host, cb, rail = null) {
         h("span", { class: `${own ? "proj-ic own-space-ic" : "proj-ic"} c-${chipTone(named)}`, html: folderIc(opened) }),
         h("span", { class: "proj" }, leaf),
         mark,
+        backCount(theirs),
         own ? null : h("span", { class: "proj-count", "data-key": "count", title: counted }, String(home.length + theirs.length)),
         own ? ownSpaceMenuBtn(own) : projectMenuBtn(g));
     };
@@ -2083,6 +2084,17 @@ export function createSidebar(host, cb, rail = null) {
   }
 
   /**
+   * A project's mark that changes made by its chats on other machines wait to come back (desk-work.js): how many of
+   * them, on its head, seen while it is folded — open, each row wears its own (`pill`), and CSS hides this.
+   * @param {import("./lib/desk.js").DeskChat[]} chats
+   */
+  function backCount(chats) {
+    const n = work ? chats.filter((c) => work.waiting(c.machine.id, c.there.chain)).length : 0;
+    if (!n) return null;
+    return h("span", { class: "desk-back-count", title: `${n === 1 ? "A chat" : `${n} chats`} of it on another machine ${n === 1 ? "has" : "have"} changes waiting to bring back` }, `↩ ${n}`);
+  }
+
+  /**
    * A project of the other machines' that has none here — a repository's on every machine as one, else one machine's —:
    * its folder in its chip's colour, its name, its machines' icons; its chats under it, each opening on its machine.
    * @param {ReturnType<typeof deskProjects>["apart"][number]} dg
@@ -2104,6 +2116,7 @@ export function createSidebar(host, cb, rail = null) {
         h("span", { class: `proj-ic c-${chipTone(leaf)}`, html: opened ? ICONS.folderOpen : ICONS.folder }),
         h("span", { class: "proj" }, leaf),
         h("span", { class: "desk-group-machines" }, ...dg.machines.map((m) => h("span", { class: `desk-machine-ic c-${m.color}`, html: glyphOf(m.icon), title: m.name }))),
+        backCount(dg.chats),
         h("span", { class: "proj-count", "data-key": "count" }, String(dg.chats.length))),
       h("div", { class: "sess-group-body" }, ...dg.chats.map(deskChatRow)));
     return det;

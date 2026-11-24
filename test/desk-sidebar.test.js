@@ -337,4 +337,16 @@ describe("the left bar's desk (sidebar.js, pinned in the source)", () => {
     assert.doesNotMatch(row, /chatMenu|deleteChat|markSeen|pinned/);
     assert.match(row, /h\("span", \{ class: "sess-title" \}, c\.title\)/, "its words as text");
   });
+
+  // (fails before: yes — the review of s2d: a folded project hid its rows' Bring back pills, and nothing on its head said
+  // that changes waited)
+  test("a folded project's head says how many of its chats on other machines have changes waiting; open, its rows say it", () => {
+    const fn = bar.slice(bar.indexOf("function backCount(chats)"), bar.indexOf("function deskGroupEl(dg)"));
+    assert.match(fn, /chats\.filter\(\(c\) => work\.waiting\(c\.machine\.id, c\.there\.chain\)\)\.length/);
+    assert.match(fn, /`↩ \$\{n\}`/);
+    const group = bar.slice(bar.indexOf("function deskGroupEl(dg)"), bar.indexOf("function deskChatRow(c)"));
+    assert.ok(group.includes("backCount(dg.chats),"), "a project of the other machines' alone");
+    assert.match(bar, /mark,\n\s+backCount\(theirs\),\n\s+own \? null : h\("span", \{ class: "proj-count"/, "a project here, for its repository's chats there");
+    assert.ok(readFileSync(new URL("../src/ui/harness.css", import.meta.url), "utf8").includes(".sess-group[open] > summary .desk-back-count { display: none; }"), "open, its rows' pills say it");
+  });
 });

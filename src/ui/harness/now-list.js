@@ -379,7 +379,8 @@ export function createNow(o) {
         o.onMenu?.(r, /** @type {HTMLElement} */ (e.currentTarget || row));
       });
     }
-    // Another machine's asks under its row in Needs you, answered here (desk-inbox.js): the row and its cards one.
+    // Another machine's asks under its row in Needs you, answered here (desk-inbox.js), and its Bring back card there or
+    // in Done (desk-work.js): the row and its cards one.
     const cards = there && bar && o.askCards ? o.askCards(there, mk, { away, onOpen: go }) : [];
     if (cards.length) return mk("div", { class: "now-crew now-asks", "data-key": `crew:${flip}` }, row, ...cards);
     if (!r.under.length) return row;
@@ -431,7 +432,8 @@ export function createNow(o) {
     if (works.length) nodes.push(groupHead("works"), ...works.map((r) => rowEl(r, now, placing)));
     const shown = both(placing || earlier ? g.done : g.done.slice(0, DONE_SHOWN), theirDone);
     if (shown.length) {
-      nodes.push(groupHead("done"), ...shown.map((r) => rowEl(r, now, placing)));
+      // Another machine's Done row carries its Bring back card too: its turn ended with changes waiting there.
+      nodes.push(groupHead("done"), ...shown.map((r) => rowEl(r, now, placing, !!w.bar)));
       const own = placing ? (earlier ? 0 : groups.done.filter((r) => !r.thread && !placed.has(r.chain)).length) : earlier ? 0 : Math.max(0, g.done.length - DONE_SHOWN);
       const left = own + more.done.length - theirDone.length;
       if (left > 0) {

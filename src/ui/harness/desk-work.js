@@ -14,10 +14,14 @@ import { choiceLabel, choicesFor, counted, kindWords, leaf, leftNote, markersWor
 
 /** A look refused (its turn still runs, its machine cut off) is asked again no sooner. */
 export const LOOK_AGAIN_MS = 30_000;
+/** How long a look waits for its machine's answer: past it, it is let go of and asked again (`LOOK_AGAIN_MS`). */
+export const LOOK_MS = 45_000;
 /** The records are read again, as the desk moves, no oftener. */
 export const READ_AGAIN_MS = 60_000;
 /** The files a Bring back names: the rest are counted. */
 export const FILES_SHOWN = 40;
+/** The files that stop a Bring back each shown with its own choice: the rest take one choice for them all. */
+export const STOPS_SHOWN = 200;
 
 /**
  * A record as the desk keeps it: its id, its machine, its project and folder here, the chat there, its state, what waits
@@ -123,10 +127,10 @@ export function cameWords(w, out) {
 
 /**
  * The desk's records and their looks, and Bring back. `api`: this computer's (lib/api.js); `toast`, `dialog`: the
- * page's; `onChange`: what a row says moved; `later`: the page's timer, a test's own.
+ * page's; `onChange`: what a row says moved; `later`: the page's timer, a test's own; `lookMs`: a look's wait (`LOOK_MS`).
  * @param {{ api: (path: string, init?: any) => Promise<any>, toast: (words: string, kind?: string) => void,
  *   dialog: (o: any) => { close: (force?: boolean) => void }, onChange: () => void, now?: () => number,
- *   later?: (fn: () => void, ms: number) => unknown }} io
+ *   later?: (fn: () => void, ms: number) => unknown, lookMs?: number }} io
  */
 export function createDeskWork(io) {
   const now = io.now || Date.now;
@@ -144,8 +148,8 @@ export function createDeskWork(io) {
   const refused = new Map();
   /** When each record was last put from an answer: a read asked before then keeps it. @type {Map<string, number>} */
   const putAt = new Map();
-  /** One look at a time. @type {Promise<unknown>} */
-  let line = Promise.resolve();
+  /** One look at a time on each machine, by its id. @type {Map<string, Promise<unknown>>} */
+  const lines = new Map();
   /** Bring backs under way, by record. @type {Set<string>} */
   const bringing = new Set();
   /** The desk as last told. @type {import("./lib/desk.js").Desk | null} */
@@ -186,9 +190,12 @@ export function createDeskWork(io) {
   const look = () => {
     for (const d of dueLooks(works, desk, { looking, failed, refused, now: now() })) {
       looking.add(d.id);
-      line = line.then(async () => {
+      const machine = works.find((w) => w.id === d.id)?.machine.id || "";
+      // One look at a time on each machine, each given LOOK_MS: one that never answers is let go of and asked again
+      // later, and holds no other machine's looks (the review of s2d).
+      const line = (lines.get(machine) || Promise.resolve()).then(async () => {
         try {
-          const out = await io.api(`/remote-work/${encodeURIComponent(d.id)}/check`, { method: "POST", body: { seen: d.seen } });
+          const out = await io.api(`/remote-work/${encodeURIComponent(d.id)}/check`, { method: "POST", body: { seen: d.seen }, signal: AbortSignal.timeout(io.lookMs ?? LOOK_MS) });
           failed.delete(d.id);
           refused.delete(d.id);
           put(out?.work);
@@ -204,6 +211,8 @@ export function createDeskWork(io) {
           looking.delete(d.id);
         }
       });
+      lines.set(machine, line);
+      void line.finally(() => lines.get(machine) === line && lines.delete(machine));
     }
   };
   /** The record of a machine's chat, its copy not gone. @param {string} machine @param {string} chain */
@@ -225,7 +234,10 @@ export function createDeskWork(io) {
       const said = h("p", { class: "desk-work-said", role: "status" }, note);
       const shown = got.files.slice(0, FILES_SHOWN);
       const more = got.count - shown.length;
-      const stops = got.conflicts.map((c) =>
+      // The first STOPS_SHOWN each its own choice; the rest one choice for them all, of those every one of them takes.
+      const rest = got.conflicts.slice(STOPS_SHOWN);
+      const restChoices = rest.length ? choicesFor(rest[0]).filter((ch) => rest.every((c) => choicesFor(c).includes(ch))) : [];
+      const stops = got.conflicts.slice(0, STOPS_SHOWN).map((c) =>
         h("li", { class: "desk-work-stop" },
           h("span", { class: "desk-work-path", title: c.path }, h("b", {}, leaf(c.path)), ` — ${kindWords(c)}`),
           h("select", {
@@ -244,7 +256,17 @@ export function createDeskWork(io) {
           ...shown.map((f) => h("li", {}, h("span", { class: "desk-work-st" }, f.status), h("span", { class: "desk-work-path", title: f.path }, f.path), h("span", { class: "desk-work-n" }, `+${f.added} −${f.removed}`))),
           more > 0 ? h("li", { class: "desk-work-more" }, `and ${many(more, "more file")}`) : null),
         stops.length ? h("p", {}, `${many(stops.length, "file")} overlap${stops.length === 1 ? "s" : ""} your edits: choose what comes for each.`) : null,
-        stops.length ? h("ul", { class: "desk-work-stops" }, ...stops) : null,
+        stops.length ? h("ul", { class: "desk-work-stops" }, ...stops,
+          rest.length ? h("li", { class: "desk-work-stop" },
+            h("span", { class: "desk-work-path" }, `and ${many(rest.length, "more file")}`),
+            h("select", {
+              class: "desk-work-pick",
+              "aria-label": `What comes for the other ${many(rest.length, "file")}`,
+              onchange: (/** @type {any} */ e) => {
+                const v = String(e.target?.value || "");
+                for (const c of rest) v ? picks.set(c.path, v) : picks.delete(c.path);
+              },
+            }, h("option", { value: "" }, "Choose…"), ...restChoices.map((ch) => h("option", { value: ch }, choiceLabel(undefined, ch))))) : null) : null,
         left ? h("p", { class: "desk-work-left" }, left) : null,
         said);
       const d = io.dialog({
