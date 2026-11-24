@@ -29,9 +29,10 @@ const GONE = new Set(["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"]);
 const THERE = new Set(["EACCES", "EPERM"]);
 
 /**
- * @typedef {{ answer: Promise<boolean | null>, late: boolean }} Stat
+ * @typedef {{ answer: Promise<boolean | null>, late: boolean, drop: (() => void) | null }} Stat
  *   Stat  a stat under way: true, false (gone), or null (no turn for it, or an error that says nothing of the folder —
- *   a share's timeout, a host not reached); `late`: an asker waited it out, and it has not answered yet
+ *   a share's timeout, a host not reached); `late`: an asker waited it out, and it has not answered yet; `drop`: while
+ *   it waits for its turn, takes it out of the queue
  */
 
 /** The stats under way, by path — a folder's, or a share's root —, so each is asked once however often it is read. @type {Map<string, Stat>} */
@@ -47,8 +48,12 @@ let underWay = 0;
 /** @type {Array<() => void>} */
 const waiting = [];
 
-/** A turn to stat within `ms`: true once one is free, false where none frees by then. @param {number} ms @returns {Promise<boolean>} */
-const turn = (ms) => {
+/**
+ * A turn for a stat within `ms`: true once one is free, false where none frees by then, or where its asker stops
+ * waiting first (`it.drop`), so no stat nobody waits on is made once a turn frees.
+ * @param {number} ms @param {Stat} it @returns {Promise<boolean>}
+ */
+const turn = (ms, it) => {
   if (underWay < FOLDER_STATS_HUNG && !waiting.length) {
     underWay++;
     return Promise.resolve(true);
@@ -56,15 +61,20 @@ const turn = (ms) => {
   return new Promise((r) => {
     const go = () => {
       clearTimeout(timer);
+      it.drop = null;
       underWay++;
       r(true);
     };
-    const timer = setTimeout(() => {
+    const drop = () => {
+      clearTimeout(timer);
       const i = waiting.indexOf(go);
       if (i >= 0) waiting.splice(i, 1);
+      it.drop = null;
       r(false);
-    }, Math.max(0, ms));
+    };
+    const timer = setTimeout(drop, Math.max(0, ms));
     timer.unref?.();
+    it.drop = drop;
     waiting.push(go);
   });
 };
@@ -82,8 +92,8 @@ const ask = (path, ms, statOf) => {
   const under = statting.get(path);
   if (under) return under;
   /** @type {Stat} */
-  const it = { answer: Promise.resolve(null), late: false };
-  it.answer = turn(ms).then((got) =>
+  const it = { answer: Promise.resolve(null), late: false, drop: null };
+  it.answer = turn(ms, it).then((got) =>
     !got
       ? null
       : Promise.resolve()
@@ -112,7 +122,14 @@ const within = async (it, ms) => {
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   /** @type {Promise<null>} */
-  const waited = new Promise((r) => (timer = setTimeout(() => ((it.late = true), r(null)), Math.max(0, ms))));
+  const waited = new Promise(
+    (r) =>
+      (timer = setTimeout(() => {
+        it.late = true;
+        it.drop?.();
+        r(null);
+      }, Math.max(0, ms))),
+  );
   try {
     return await Promise.race([it.answer, waited]);
   } finally {
