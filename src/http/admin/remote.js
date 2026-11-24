@@ -720,6 +720,9 @@ export function remoteRoutes(a) {
         const got = devices.claim(b?.code, { name: b?.name, kind: page ? "browser" : "cli", from: callerAddress(r.req), machine: b?.machine, local: isLocalCaller(r.req), at: hostNameOf(r.req) });
         if (!got.ok) return sendJson(r.res, got.unsaved ? 500 : got.retryAt ? 429 : 403, { error: got.why, ...(got.retryAt ? { retryAt: got.retryAt } : {}) }, got.retryAt ? { "retry-after": String(Math.max(1, Math.ceil((got.retryAt - Date.now()) / 1000))) } : {});
         a.log?.("info", `remote: ${got.device.name} paired (${got.device.scope}, ${got.device.kind}) from ${callerAddress(r.req) || "an unknown address"}${was ? `, replacing ${was.name}, which went unused` : ""}`);
+        // Its machine's copies here, Run on's among them, go with it (services/copies.js `repaired`): before the device it
+        // replaces is revoked, which would hand them to another app of that machine's that runs its agents here.
+        if (was && got.device.scope === "full") a.remoteCopies?.repaired?.(got.device.id, { from: was.id });
         if (was) devices.revoke(was.id);
         if (hereBefore && got.device.here) {
           devices.revoke(hereBefore.id);
@@ -850,6 +853,8 @@ export function remoteRoutes(a) {
         const got = devices.mintAgents(r.who.device.id, { from: typeof b?.from === "string" ? b.from : undefined });
         if (!got.ok) return sendJson(r.res, got.unsaved ? 500 : 403, { error: got.why });
         a.log?.("info", `remote: ${got.device.name} minted, its grants on: ${GRANTS.filter((k) => got.device.grants[k]).join(", ") || "none"}`);
+        // The app paired again runs its machine's agents here: the copies its pairing let go kept go to it (services/copies.js `repaired`).
+        a.remoteCopies?.repaired?.(r.who.device.id);
         return sendJson(r.res, 200, { device: got.device, machine: machine(), token: got.token }, { "cache-control": "no-store" });
       }),
     ],

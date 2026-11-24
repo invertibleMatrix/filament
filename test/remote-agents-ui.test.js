@@ -238,6 +238,24 @@ test("on the machine worked on: the copies its agents work in here are on its ca
   assert.equal(yours.asked[0].description, "Its 2 copies on this machine are deleted, with the chats its agents worked in there: one at work there stops. Your 2 chats running there from Laptop are deleted too: “Fix the widgets”, “Untitled chat”. The next time they work here, Laptop sends a new copy.");
   const none = await open({ devices: [AGENTS, FULL] });
   assert.doesNotMatch(textOf(itemOf(none.body, "What Laptop may do on this machine")), /Copies from/);
+  // (fails before: yes — the review of s2a: a revoked machine's copies were said nowhere, and nothing cleared them but its
+  // app paired again) Revoked, its copies left are said, and Clear stands beside Forget.
+  const gone = await open({ confirm: false, devices: [{ ...AGENTS, revokedAt: T0, copies: { count: 2, bytes: 5 * 1024 ** 2, folder, chats: [{ id: "c1", title: "Fix the widgets" }] } }, { ...FULL, revokedAt: T0 }] });
+  const revoked = itemOf(gone.body, "What Laptop may do on this machine");
+  assert.ok(textOf(revoked).includes(`Copies from Laptop left: 2, 5 MB, in ${folder}. Its app paired again takes them back, unless it keeps copies of its own here; else they go a week after last used.`), textOf(revoked));
+  assert.deepEqual(buttonsOf(revoked).map(textOf), ["Clear copies", "Forget"]);
+  buttonsOf(revoked).find((b) => textOf(b) === "Clear copies").attrs.onclick();
+  await settle();
+  assert.match(gone.asked[0].description, /Your chat running there from Laptop is deleted too: “Fix the widgets”/);
+  const bare = await open({ devices: [{ ...AGENTS, revokedAt: T0 }, { ...FULL, revokedAt: T0 }] });
+  assert.deepEqual(buttonsOf(itemOf(bare.body, "What Laptop may do on this machine")).map(textOf), ["Forget"], "none kept: Forget alone");
+  // Its old pairing revoked beside the app paired again, listed apart: its copies there, said, with their Clear.
+  const old = { ...FULL, id: "d-laptop-old", machine: "m-laptop", createdAt: T0 - 50, revokedAt: T0 - 5 };
+  const oldAgents = { ...AGENTS, id: "d-agents-old", of: "d-laptop-old", from: "Laptop", revokedAt: T0 - 5, copies: { count: 1, bytes: 0, folder } };
+  const beside = await open({ devices: [{ ...AGENTS, from: "Laptop" }, { ...FULL, machine: "m-laptop" }, oldAgents, old] });
+  const apart = itemOf(beside.body, "Laptop");
+  assert.match(textOf(apart), /Copies from Laptop left: 1, /);
+  assert.deepEqual(buttonsOf(apart).map(textOf), ["Clear copies", "Forget"]);
 });
 
 test("a grant the server would not keep is said, and the list read again", async () => {

@@ -586,7 +586,13 @@ turn of a chat whose copy went is refused in words: Run on sends a fresh one wit
 **Run on** pill on that machine's line lets it do this with **Agents** off — send copies, place them for
 your chats, read back what changed —, and nothing more: no chat or command of its agents runs here by it. Agents holds
 Run on while it is on. **Clear copies** names your chats it would delete with the copies — *Your chat running there
-from Laptop is deleted too: “Fix the widgets”.* — before it asks. On the machine that sends, `/api/remote-work`
+from Laptop is deleted too: “Fix the widgets”.* — before it asks. Its copies stay that machine's when its app is
+paired again — after a revoke, a pairing that ran out unused, or a new key —: the app paired again takes them as it
+makes its agents' device here again (Run on or Agents switched on for this machine there), and Bring back, a new chat
+there and Clear go on working, a pairing forgotten since too. Never while the old pairing
+stands: revoke it, and its copies go to the app paired again — unless that one keeps copies of its own here by then,
+when the old ones stay apart. A revoked pairing's line says the copies it left, with **Clear copies** beside
+**Forget**; else they go a week after last used. On the machine that sends, `/api/remote-work`
 ([Admin API](#admin-api-api)) sends the folder — asking first, as a sub-agent's first copy does, and again for a new
 file in no commit that your yes did not name, or for files Git LFS keeps, whose content stays here —, names the chat
 started there, and brings what it changed back into the folder as uncommitted edits: a file you changed too is merged,

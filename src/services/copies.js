@@ -141,8 +141,10 @@ export { keyOf as folderKeyOf, within as inFolder };
  *   `at`, when its chat last used the copy, which `idleMs` count from; `read`: its machine read it whole, or holds it
  * @typedef {{ usedAt: number, bytes: number, repo?: string }} Store  a project's store of a machine's: when something last
  *   came for it, its size as last measured, and the repository it is of (none on one kept from before one was sent)
- * @typedef {{ folder: string, name: string, store?: string, stores?: Record<string, Store> }} MachineFolder
- *   `store`: the folder in `STORES` its projects' stores are kept in, `stores` each by its name there (`storeName`)
+ * @typedef {{ folder: string, name: string, stated?: string, store?: string, stores?: Record<string, Store> }} MachineFolder
+ *   `store`: the folder in `STORES` its projects' stores are kept in, `stores` each by its name there (`storeName`);
+ *   `stated`: the machine id its app's claim stated, by which the app paired again takes its copies once that device
+ *   is forgotten (`repaired`)
  * @typedef {{ machine: string, devices: string[], folders: string[], keys: string[], chats: string[], why: "cleared" | "idle" | "room" | "again" }} Cleared
  *   `keys`: each folder as the filesystem named it before it went (`folderKey`), for what compares a chat's folder by
  *   it; `chats`: the person's chats bound to owned copies among them, which go with them as their agents' chats do;
@@ -153,7 +155,7 @@ export { keyOf as folderKeyOf, within as inFolder };
  */
 
 /**
- * @param {{ dataDir?: string | null, root?: string, devices: { get: (id: string) => any, list: () => any[] }, now?: () => number,
+ * @param {{ dataDir?: string | null, root?: string, devices: { get: (id: string) => any, list: () => any[], onRevoke?: (fn: (id: string) => void) => unknown }, now?: () => number,
  *   log?: (level: string, line: string) => void, maxCopies?: number, maxBytes?: number, idleMs?: number, removeFolder?: (folder: string) => Promise<void> }} o
  *   `devices`: this machine's paired devices (services/devices.js), which say whose machine an agents' device is;
  *   `removeFolder`: how a folder let go is removed (a test's in its place)
@@ -221,7 +223,7 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
         /** @type {Record<string, Store>} */
         const stores = {};
         for (const [p, s] of Object.entries(v.stores && typeof v.stores === "object" ? v.stores : {})) if (folderName(p) === p) stores[p] = { usedAt: Number(/** @type {any} */ (s)?.usedAt) || 0, bytes: Number(/** @type {any} */ (s)?.bytes) || 0, ...repoOf(/** @type {any} */ (s)?.repo) };
-        machines[k] = { folder: v.folder, name: String(v.name || ""), ...(inRoot(v.store) ? { store: v.store, stores } : {}) };
+        machines[k] = { folder: v.folder, name: String(v.name || ""), ...(typeof v.stated === "string" && v.stated ? { stated: v.stated } : {}), ...(inRoot(v.store) ? { store: v.store, stores } : {}) };
       } else if (typeof v?.folder === "string") out(v.folder);
     // Held for work a restart ended — a turn, a launch's checkout —: its chat's for the while after a turn alone, as the
     // turn's end would have left it; a question's hold still waits (the swarm's review of 11-10).
@@ -249,6 +251,11 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
       machines[to] = machines[k];
       delete machines[k];
       for (const x of [...under, ...leftovers.filter((l) => l.machine === k)]) x.machine = to;
+    }
+    // A record kept before it said its machine: the id its app's claim stated, while that device is listed.
+    for (const [k, x] of Object.entries(machines)) {
+      const d = x.stated ? null : devices.get(k);
+      if (d?.scope === "full" && d.machine) x.stated = String(d.machine);
     }
   };
   load();
@@ -301,7 +308,7 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     // remove, or a list set aside, is no machine's to open.
     const free = (/** @type {string} */ f) => [f, storeAt(f)].every((x) => !taken.has(keyOf(x)) && !existsSync(x));
     const folder = [base, `${base} (${folderName(m.stated || m.key).slice(0, 8)})`, `${base} (${randomUUID().slice(0, 8)})`].map((n) => join(root, n)).find(free) || join(root, `${base} (${randomUUID()})`);
-    machines[m.key] = { folder, name: m.name, store: storeAt(folder), stores: {} };
+    machines[m.key] = { folder, name: m.name, ...(m.stated ? { stated: m.stated } : {}), store: storeAt(folder), stores: {} };
     save();
     return folder;
   };
@@ -528,7 +535,54 @@ export function createCopies({ dataDir = null, root = copiesRootOf(), devices, n
     return join(projectFolder, String(n));
   };
 
+  /** Whether a machine key keeps anything here: its folder, or a copy. @param {string} key */
+  const keepsAny = (key) => !!machines[key] || copies.some((c) => c.machine === key);
+  /** Whether a person's device is let go: revoked, or lapsed unused (devices.js `expiresAt`). @param {any} d */
+  const letGoDevice = (d) => d.revokedAt != null || (d.expiresAt != null && now() >= d.expiresAt);
+  /**
+   * A machine's app paired again (a revoke, a pairing that lapsed unused, a new key): the copies kept for the full device
+   * it replaces go to the new one, and with them the person's chats in them, so Bring back, a new chat's binding and
+   * Clear keep working, and the week's sweep finds them used. The one replaced: the lapsed or revoked device whose token
+   * the claim carried (`from`); else one revoked, or forgotten since, whose app's claim stated the machine this one's
+   * does, the last revoked first. Never one that stands, nor one lapsed alone, whose agents' device still works: its
+   * copies stay its own. A claim states its machine as it likes (the security re-read of 11-11: two machines that stated
+   * one id shared their copies): what it takes so is a pairing the person let go, by a device paired with their code,
+   * which drives as they do. One that keeps a folder of its own takes none: its copies and the old one's are two
+   * machines' folders, each with its stores, and the old one's go when idle or with a Clear. → how many copies moved.
+   * @param {string} deviceId  the full device paired again @param {{ from?: string }} [o]
+   */
+  const repaired = (deviceId, { from = "" } = {}) => {
+    const d = devices.get(String(deviceId || ""));
+    if (!d || d.scope !== "full" || letGoDevice(d)) return 0;
+    const to = String(d.id);
+    if (keepsAny(to)) return 0;
+    const was = from ? devices.get(String(from)) : null;
+    const said = String(d.machine || "");
+    const revoked = said ? devices.list().filter((x) => x.scope === "full" && x.machine === said && x.revokedAt != null).sort((a, b) => b.revokedAt - a.revokedAt).map((x) => String(x.id)) : [];
+    const forgotten = said ? Object.keys(machines).filter((k) => machines[k].stated === said && !devices.get(k)) : [];
+    const k = [...(was?.scope === "full" && letGoDevice(was) ? [String(was.id)] : []), ...revoked, ...forgotten].find((x) => x !== to && keepsAny(x));
+    if (!k) return 0;
+    if (machines[k]) {
+      machines[to] = { ...machines[k], ...(said ? { stated: said } : {}) };
+      delete machines[k];
+    }
+    const moved = copies.filter((c) => c.machine === k);
+    for (const x of [...moved, ...keptStates.filter((s) => s.machine === k), ...leftovers.filter((l) => l.machine === k)]) x.machine = to;
+    save();
+    log("info", `[copies] ${moved.length} ${moved.length === 1 ? "copy" : "copies"} from ${machines[to]?.name || "another machine"} go with its app paired again`);
+    return moved.length;
+  };
+  // An old pairing revoked while the machine's app, paired again, already runs its agents here: its copies go to that one.
+  devices.onRevoke?.((id) => {
+    const x = devices.get(String(id));
+    if (x?.scope !== "full" || !x.machine || !keepsAny(String(x.id))) return;
+    const all = devices.list();
+    const app = all.find((y) => y.scope === "full" && !letGoDevice(y) && y.machine === x.machine && all.some((a) => a.scope === "agent" && a.of === y.id && a.revokedAt == null));
+    if (app) repaired(app.id, { from: String(x.id) });
+  });
+
   return {
+    repaired,
     /** The copies folder. */
     root,
     /** How long a change that stayed in a copy here is kept after its chat last used it: in the copy while it is idle, then as what was kept of it (`keepState`). */

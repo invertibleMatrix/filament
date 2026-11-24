@@ -1254,18 +1254,32 @@ export function renderRemote(body, cb = {}, io = {}) {
   function deviceItem(d, s) {
     const a = d.revokedAt == null && d.scope !== "agent" ? (devices || []).find((x) => x.scope === "agent" && x.of === d.id && x.revokedAt == null) ?? null : null;
     const name = a ? String(a.from || d.name) : "";
+    // An app's old pairing revoked beside the one that stands: the copies it kept here, where its new one could not take them.
+    const left = d.revokedAt != null && d.scope !== "agent" ? copiesLeft(d) : null;
+    const from = left ? String(left.from || d.name) : "";
     return m("div", { class: `nset-item rset-item${d.revokedAt ? " is-off" : ""}`, "data-device": d.id },
       m("span", { class: "nset-preset-text" },
         m("span", { class: "nset-preset-name" }, m("span", { class: "nset-preset-title rset-name" }, `${d.name}${s.device?.id === d.id ? " (this device)" : ""}`)),
         m("span", { class: "nset-preset-line rset-line" }, deviceWords(d, now())),
         a ? lineOf(`${name}'s agents work here by this sign-in too: Revoke signs both out.`) : null,
-        a?.grants?.full === true && a.grants.agents === true ? lineOf(`Full control: ${name}'s agents act here as you, in any folder, without asking.`, " is-warn") : null),
+        a?.grants?.full === true && a.grants.agents === true ? lineOf(`Full control: ${name}'s agents act here as you, in any folder, without asking.`, " is-warn") : null,
+        left ? leftLine(left, from) : null),
       m("span", { class: "rset-end" },
         a ? grantPills(a, name) : null,
+        left ? clearLeft(left, from) : null,
         d.revokedAt
           ? m("button", { class: "ghost sm", type: "button", onclick: () => void forget(d) }, "Forget")
           : m("button", { class: "ghost sm danger", type: "button", onclick: () => void (a ? revoke(d, name, true) : revoke(d)) }, "Revoke")));
   }
+  /**
+   * The copies a revoked app's agents' device keeps here (services/copies.js `usage`): its app paired again takes them
+   * (`repaired`), else they go a week after last used, or with a Clear; Forget leaves them to the week. @param {any} d  the app's device
+   */
+  const copiesLeft = (d) => (devices || []).find((x) => x.scope === "agent" && x.of === d.id && (x.copies?.count || x.copies?.bytes)) ?? null;
+  /** @param {any} left  `copiesLeft`'s @param {string} name */
+  const leftLine = (left, name) => lineOf(`Copies from ${name} left: ${left.copies.count}, ${sizeWords(left.copies.bytes)}, in ${left.copies.folder}. Its app paired again takes them back, unless it keeps copies of its own here; else they go a week after last used.`);
+  /** @param {any} left @param {string} name */
+  const clearLeft = (left, name) => m("button", { class: "ghost sm", type: "button", "data-clear-copies": left.id, onclick: () => void clearCopies(left, name) }, "Clear copies");
 
   /** When a device was last seen, and when it lapses unused (`expiryWords`), in a few words. @param {any} d */
   const seenWords = (d) => {
@@ -1328,8 +1342,10 @@ export function renderRemote(body, cb = {}, io = {}) {
     // The machine whose window this is, marked beside its own name.
     const title = inTitle(`${c.name}${d && s.device?.id === d.id ? " (this device)" : ""}`, where);
     if (!d && !a) return wayOf(title, [lineOf(`Not paired with ${where}`)], null, " is-muted", { "data-in": c.key });
-    if (d && d.revokedAt != null)
-      return wayOf(title, [lineOf(`Revoked ${agoWords(now() - d.revokedAt)} · pair it again with a code to undo`)], m("button", { class: "ghost sm", type: "button", onclick: () => void forget(d) }, "Forget"), " is-off", { "data-device": d.id });
+    if (d && d.revokedAt != null) {
+      const left = copiesLeft(d);
+      return wayOf(title, [lineOf(`Revoked ${agoWords(now() - d.revokedAt)} · pair it again with a code to undo`), left ? leftLine(left, c.name) : null], [left ? clearLeft(left, c.name) : null, m("button", { class: "ghost sm", type: "button", onclick: () => void forget(d) }, "Forget")], " is-off", { "data-device": d.id });
+    }
     const worked = a ? (a.lastSeenAt ? `Its agents last worked here ${agoWords(now() - a.lastSeenAt)}.` : "Its agents have not worked here yet.") : "";
     /** @type {any[]} */
     const lines = [d ? lineOf(d.scope === "view" ? `${c.name}'s app views ${where}, read-only · ${seenWords(d)}` : `${c.name}'s app opens ${where} in its window · ${seenWords(d)}`, "", worked) : lineOf(`Its agents' own sign-in here · ${seenWords(a)}`)];

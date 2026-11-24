@@ -130,6 +130,103 @@ test("a copy placed for the person: kept past 2 h idle and a new launch, never l
   assert.deepEqual(heard.flatMap((c) => c.chats), ["chat-p"]);
 });
 
+// (fails before: yes — the review of s2a: copies were the full device's that minted their agents' device, so the app
+// paired again — after a revoke, a pairing that lapsed unused, a new key — found none: Bring back, a new chat's binding
+// and Clear failed there, and the week's sweep took the person's chats in them)
+test("the app paired again takes its machine's copies and the person's chats in them; never from a pairing that stands", async (t) => {
+  const dir = project(folder(t, "repo"));
+  const data = folder(t, "data");
+  const root = join(folder(t, "root"), COPIES);
+  let at = Date.now();
+  const devices = createDevices({ dataDir: data, now: () => at });
+  const LAPTOP = "66666666-6666-4666-8666-666666666666";
+  /** An app's pairing, its claim stating `machine` (none: a claim that stated none). @param {string} [machine] @param {string} [name] */
+  const app = (machine, name = "Laptop") => {
+    const full = devices.claim(devices.startPairing({ scope: "full" }).code, { name: `Filament app on ${name}`, ...(machine ? { machine } : {}) });
+    assert.ok(full.ok);
+    return full.device.id;
+  };
+  /** @param {string} full */
+  const mint = (full) => {
+    const a = devices.mintAgents(full, { from: "Laptop" });
+    assert.ok(a.ok);
+    return a.device.id;
+  };
+  const copies = createCopies({ dataDir: data, root, devices, now: () => at });
+  const s = createTransfers({ copies, take: importBundle, haves: mirrorHaves, has: mirrorHas, checkout: checkoutCopy, capture: captureCopy });
+  const b = await bundleSnapshot(dir, { machine: "m", project: "widgets", haves: [] });
+  assert.ok(b.ok && b.file);
+  t.after(() => b.ok && b.dir && rmSync(b.dir, { recursive: true, force: true }));
+  const f1 = app(LAPTOP);
+  const a1 = mint(f1);
+  const opened = await s.open(a1, { project: "widgets", bytes: b.bytes, sha256: b.sha256 });
+  assert.ok("id" in opened);
+  await s.part(a1, opened.id, { offset: 0, data: readFileSync(String(b.file)).toString("base64") });
+  assert.deepEqual(await s.commit(a1, opened.id), { commit: b.commit, project: "widgets" });
+  const mine = await s.place(a1, { project: "widgets", commit: b.commit, for: "person" });
+  assert.ok("copy" in mine, JSON.stringify(mine));
+  assert.equal(copies.bind(mine.copy, "chat-p"), true);
+  writeFileSync(join(mine.folder, "src", "a.js"), "export const a = 3;\n");
+
+  // Another app whose claim states that machine's id while its pairing stands takes nothing (the security re-read of 11-11).
+  const other = app(LAPTOP, "Elsewhere");
+  mint(other);
+  assert.equal(copies.repaired(other), 0);
+  assert.equal(copies.ownedAt(other, mine.folder), null);
+  devices.revoke(other);
+
+  // Revoked, then paired again from that machine: the new app takes them as it runs its machine's agents.
+  devices.revoke(f1);
+  assert.equal(copies.ownedAt(f1, mine.folder), null, "a revoked app starts nothing");
+  const f2 = app(LAPTOP);
+  const a2 = mint(f2);
+  assert.equal(copies.repaired(f2), 1);
+  assert.equal(copies.repaired(f2), 0, "once");
+  assert.equal(copies.ownedAt(f2, join(mine.folder, "src"))?.id, mine.copy, "a new chat there binds");
+  assert.equal(copies.folderOf(a2), join(root, "From Laptop"));
+  const back = await s.back(a2, { copy: mine.copy, chat: "chat-p" }, { agents: false });
+  assert.ok(!("status" in back), JSON.stringify(back));
+  assert.ok(back.files >= 1, JSON.stringify(back));
+  assert.deepEqual(copies.usage(a2)?.chats, ["chat-p"], "Clear names the person's chat there");
+  assert.equal(copies.usage(a1), null, "the old pairing's agents keep none");
+  assert.equal(createCopies({ dataDir: data, root, devices: { get: devices.get, list: devices.list }, now: () => at }).ownedAt(f2, mine.folder)?.id, mine.copy, "kept");
+
+  // Paired again while the old pairing stands (a window that lost its sign-in): nothing goes until that one is revoked,
+  // then its copies go to the app that runs the machine's agents.
+  const f3 = app(LAPTOP);
+  mint(f3);
+  assert.equal(copies.repaired(f3), 0);
+  devices.revoke(f2);
+  assert.equal(copies.ownedAt(f3, mine.folder)?.id, mine.copy);
+
+  // Lapsed unused: taken by the token of it the claim carried (`from`, the claim route's) alone — its agents' device
+  // still works, and a claim states its machine as it likes.
+  at += 91 * 24 * HOUR;
+  const f4 = app(LAPTOP);
+  mint(f4);
+  assert.equal(copies.repaired(f4), 0);
+  assert.equal(copies.repaired(f4, { from: f3 }), 1);
+  assert.equal(copies.ownedAt(f4, mine.folder)?.id, mine.copy);
+
+  // A pairing whose claim stated no machine goes by `from` alone too, once that one is let go.
+  const bare = app();
+  assert.equal(copies.repaired(bare), 0);
+  assert.equal(copies.repaired(bare, { from: f4 }), 0, "it stands");
+  devices.revoke(f4);
+  assert.equal(copies.repaired(bare, { from: f4 }), 1);
+  assert.equal(copies.ownedAt(bare, mine.folder)?.id, mine.copy);
+
+  // (fails before: yes — the review of x17: Forget left the copies no one's) Revoked and forgotten, then paired again:
+  // the machine their record keeps takes them to the app paired again.
+  devices.revoke(bare);
+  assert.ok(devices.forget(bare));
+  const f5 = app(LAPTOP);
+  mint(f5);
+  assert.equal(copies.repaired(f5), 1);
+  assert.equal(copies.ownedAt(f5, mine.folder)?.id, mine.copy);
+  assert.equal(copies.get(mine.copy)?.chat, "chat-p");
+});
+
 // (fails before: yes — the review of s2a: a copy held one chat, so a fork, a thread or a replay of the person's chat in it
 // was bound to nothing, two turns in it at once left it unheld when the first ended, and a chat moved out went with a Clear)
 test("chats made from the person's chat in its copy: bound beside it, each turn holds it, a Clear takes them all; one moved out leaves it, back is its again", async (t) => {
@@ -383,5 +480,43 @@ test("between two Filaments: the app's full device starts its chat in the copy p
   } finally {
     await two.stop();
     await up.close();
+  }
+});
+
+// (fails before: yes — the review of s2a: the app paired again after a revoke found none of its Run on copies)
+test("between two Filaments: the app paired again after a revoke takes its machine's copies as it mints its agents' device", async (t) => {
+  const base = mkdtempSync(join(tmpdir(), "filament-person-copy-again-"));
+  const was = process.env.FILAMENT_COPIES_DIR;
+  process.env.FILAMENT_COPIES_DIR = join(base, "copies");
+  t.after(() => {
+    if (was === undefined) delete process.env.FILAMENT_COPIES_DIR;
+    else process.env.FILAMENT_COPIES_DIR = was;
+    rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  });
+  const two = await startTwoMachines();
+  const { there } = two;
+  try {
+    // The app's claim states its machine's id, as the desktop app's does (desktop/lib/add-machine.js `claimScript`).
+    const claim = async () => {
+      const open = await (await there.api("/api/remote/pair", { method: "POST", body: { scope: "full" } })).json();
+      const r = await pinnedFetch(there.lan.fingerprint)(`${there.far}/api/remote/claim`, { method: "POST", headers: JSON_TYPE, body: JSON.stringify({ code: open.code, name: "Filament app on Laptop", machine: two.here.machine.id }) });
+      const j = await r.json();
+      assert.equal(r.status, 200, JSON.stringify(j));
+      const agents = await (await as(there, j.token)("/api/remote/agent-device", { method: "POST", body: { from: "Laptop" } })).json();
+      assert.ok(agents.device?.id, JSON.stringify(agents));
+      return { full: String(j.device.id), agents: String(agents.device.id) };
+    };
+    const first = await claim();
+    const taken = there.app.remoteCopies.take(first.agents, "widgets", { owned: true, fresh: true });
+    assert.ok(taken.ok);
+    assert.equal(there.app.remoteCopies.bind(taken.copy.id, "chat-p"), true);
+    assert.equal((await there.api(`/api/remote/devices/${encodeURIComponent(first.full)}`, { method: "DELETE" })).status, 200);
+    const again = await claim();
+    assert.equal(there.app.remoteCopies.ownedAt(again.full, taken.copy.folder)?.id, taken.copy.id);
+    const listed = await (await there.api("/api/remote/devices")).json();
+    assert.equal(listed.devices.find((/** @type {any} */ d) => d.id === again.agents)?.copies?.count, 1, "Settings lists them under the app paired again");
+    assert.equal(listed.devices.find((/** @type {any} */ d) => d.id === first.agents)?.copies, undefined);
+  } finally {
+    await two.stop();
   }
 });
