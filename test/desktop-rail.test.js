@@ -864,6 +864,28 @@ describe("the rail, run", () => {
     assert.match(page(), /id="inst"/, "it may be asked again");
   });
 
+  // (fails before: yes — the review of s3d: one updated from its update page had that page drawn again, its Update
+  // Filament on it offered anew, until the machine's next look)
+  test("one updated from its update page: asked at once, its own page opens where it answers on this app's wire now; the update page is not drawn again", async () => {
+    const updateThere = { look: async () => ({ words: "no answer" }), start: async (/** @type {any} */ _m, /** @type {string} */ v) => ({ ok: true, version: v, ssh: true }) };
+    const t = rig({ appVersion: "1.0.0", updateThere, confirm: async () => true });
+    await t.settle();
+    t.answers["m-box"] = { route: null, name: "Workstation", version: "0.9.40", tried: [{ url: String(BOX.routes[1].url), why: "Workstation runs Filament 0.9.40, too old for this app: update Filament on Workstation." }], update: { side: "there", route: BOX.routes[1] } };
+    t.r.select("m-box");
+    await t.settle();
+    const v = t.viewOf("persist:machine-m-box");
+    const loads = () => v.webContents.loads.map((/** @type {string} */ u) => decodeURIComponent(u));
+    assert.match(loads().at(-1), /^data:text\/html/, "its update page");
+    // Updated over SSH: it answers on this app's wire now.
+    t.answers["m-box"] = { route: BOX.routes[1], name: "Workstation", version: "1.0.0", tried: [] };
+    const from = loads().length;
+    t.r.updateOn("m-box", "install");
+    await t.settle();
+    const after = loads().slice(from);
+    assert.equal(after.at(-1), "https://box.tail1234.ts.net/ui/harness.html", "its own page");
+    assert.deepEqual(after.filter((u) => /Update Filament on Workstation<\/button>/.test(u) && !/updating to/.test(u)), [], "the update page not drawn again with its update offered");
+  });
+
   // (fails before: yes — the review of p3-shell: with no route answering, a page standing stayed, its harness asking on
   // at an address another machine now answers, its cookie with each ask)
   test("another machine answers at its page's address: the page goes at once, its cookie sent there no more", async () => {

@@ -751,11 +751,21 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const v = views.get(m.id);
     if (v && v.update && v.at === null && alive(v.view)) showUpdate(m, v, v.update, v.updateWhy || "");
   };
-  /** An update of its done: it runs `ran`; its row's line let go. @param {Machine} m @param {string} ran */
-  const updated = (m, ran) => {
+  /**
+   * An update of its done: it runs `ran`; its row's line let go. Its update page is not drawn again: it is asked at
+   * once, and its own page opens where it answers on this app's wire now — the ask that read `ran` (`asking`) does.
+   * @param {Machine} m @param {string} ran @param {{ asking?: boolean }} [o]
+   */
+  const updated = (m, ran, { asking = false } = {}) => {
     updates.delete(m.id);
     versions.set(m.id, ran);
     log(`update: ${m.id} runs Filament ${ran}`);
+    const v = views.get(m.id);
+    if (v?.update && v.at === null && alive(v.view)) {
+      paint();
+      if (!asking) void ask(m);
+      return;
+    }
     redraw(m);
   };
   /** An update of its not started, or ended failing: said on its row and its update page until it is asked again. @param {Machine} m @param {string} note */
@@ -778,7 +788,7 @@ export function createRail({ win, View, sessionOf, railPage, railPreload, machin
     const u = updates.get(m.id);
     if (!u || gone) return;
     const ran = versions.get(m.id);
-    if (ran && !isNewer(u.to, ran)) return updated(m, ran);
+    if (ran && !isNewer(u.to, ran)) return updated(m, ran, { asking: true });
     if (u.failed) {
       if (ran && ran !== u.from) {
         updates.delete(m.id);

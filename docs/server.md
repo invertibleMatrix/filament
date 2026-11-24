@@ -253,6 +253,9 @@ before: `current` points back at it, it is started again, and the update says so
 | `filament update --force` | Restarts now, cutting a turn that runs |
 | `filament update --wait` | Waits until no turn runs, asking again every few seconds, then restarts; the new version, started by systemd meanwhile, that does not come up is left for the one before — the desktop app's **Update Filament** runs it so |
 
+Where no Filament answers and systemd cannot say whether its unit runs, `filament update` says so, restarts nothing
+and goes back to nothing, and exits with code 1: `filament service status` says where it stands.
+
 Every version runs on the same data folder. Where the version that starts does not read a file as another saved
 it — your teams, your agents, a Space, the usage files, telemetry's —, it sets the file aside whole beside itself,
 under a name that says its version (`teams.json.v3.20261112T093005Z`), saves nothing over it, and starts that store

@@ -128,9 +128,9 @@ const builtFrom = (dir, name) => !isLink(dir) && buildOf(dir)?.file === name && 
  * The install this Filament is: its version's folder, the folder of its versions (`base`), its version, its kind, the
  * machine its build is for and the repository its releases are in. Refused in words where it is none install.sh
  * installed. `moved`: current may point at another server build of its versions — an update's, which this Filament
- * restarts on once no turn runs (`createSelfUpdate`).
+ * restarts on once no turn runs (`createSelfUpdate`); `pointed`: the version current points at.
  * @param {string} root @param {{ moved?: boolean }} [o]
- * @returns {{ dir: string, base: string, version: string, engine: boolean, target: string, owner: string, repo: string }}
+ * @returns {{ dir: string, base: string, version: string, pointed: string, engine: boolean, target: string, owner: string, repo: string }}
  */
 function installOf(root, { moved = false } = {}) {
   const dir = resolve(root);
@@ -153,7 +153,7 @@ function installOf(root, { moved = false } = {}) {
       EXIT.failed,
     );
   if (!named) throw new CliError(`This build's ${MARKER} names no GitHub repository its releases are published to: there is nowhere to look for an update.`, EXIT.failed);
-  return { dir, base, version, engine: build.engine !== false, target: String(build.target || ""), owner, repo };
+  return { dir, base, version, pointed: basename(/** @type {string} */ (at)), engine: build.engine !== false, target: String(build.target || ""), owner, repo };
 }
 
 /**
@@ -234,7 +234,8 @@ const stands = (base, from, e) => (e?.gone ? `current is gone — the link it wa
 
 /**
  * current moved from `before` to `version`: every other version's folder removed — a folder named as a version that
- * holds a server build's build-info.json, as install.sh's prune — and said. One that cannot be removed is said, and
+ * holds a server build's build-info.json, as install.sh's prune — and said, older or newer: `--back` goes to the one
+ * before, the one other kept (`keptOf`). One that cannot be removed is said, and
  * the rest goes on: current has moved, and the restart is still to come. → the versions removed.
  * @param {string} base @param {string} version @param {string} before @param {(s: string) => void} say
  */
@@ -251,7 +252,7 @@ function prune(base, version, before, say) {
       continue;
     }
     removed.push(n);
-    say(`Removed Filament ${n}, older than the two kept (${d}).`);
+    say(`Removed Filament ${n}, not one of the two kept (${d}).`);
   }
   return removed;
 }
@@ -435,11 +436,14 @@ async function sayUnread(dataDir, dir, to, from, say) {
   if (back.length) say(`${named(back)} ${them ? "are" : "is"} in place again as Filament ${to} reads ${them ? "them" : "it"} (from ${named(from_)}, which ${them ? "stay beside them" : "stays beside it"}): ${to} is from before this rule, and takes nothing back by itself.`);
 }
 
-/** The process systemd's unit runs Filament as: its pid, 0 where it runs none, or no systemd here says. @param {AbortSignal} [signal] */
+/**
+ * The process systemd's unit runs Filament as: its pid, 0 where it runs none or no systemd is here, null where systemd
+ * could not say. @param {AbortSignal} [signal] @returns {Promise<number | null>}
+ */
 async function unitPid(signal) {
   if (!onPath("systemctl")) return 0;
   const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "--value"], signal);
-  return p.code === 0 ? Number(p.out) || 0 : 0;
+  return p.code === 0 ? Number(p.out) || 0 : null;
 }
 
 /**
@@ -476,13 +480,18 @@ async function restartOn(r, { base, version, from }, say) {
   }
   if (!client) {
     const pid = await unitPid(r.signal);
-    if (!pid) {
+    if (pid === 0) {
       say(`No Filament answers now: it runs ${version} at its next start.`);
       return "not-running";
     }
     const url = whereFilament(r.dataDir).url;
-    const mute = `systemd runs a Filament (process ${pid}) that did not answer at ${url} within ${ANSWER_MS / 1000} seconds`;
-    if (r.flags.force !== true) throw new CliError(`Filament ${version} is installed, and current points at it; ${mute}, so it goes on — systemctl --user restart ${UNIT} starts ${version} now, and cuts what runs.`, EXIT.failed);
+    // One systemd could not say is no Filament that stopped: it is said, never taken for done.
+    const mute =
+      pid === null
+        ? `no Filament answered at ${url} within ${ANSWER_MS / 1000} seconds, and systemd could not say whether its unit runs`
+        : `systemd runs a Filament (process ${pid}) that did not answer at ${url} within ${ANSWER_MS / 1000} seconds`;
+    if (r.flags.force !== true)
+      throw new CliError(`Filament ${version} is installed, and current points at it; ${mute}, so ${pid === null ? "nothing is restarted" : "it goes on"} — systemctl --user restart ${UNIT} starts ${version} now, and cuts what runs.`, EXIT.failed);
     say(`${mute}: --force restarts it.`);
     // --force restarts the unit at once and asks nothing of Filament: its answer once it runs again is waited for at
     // the data folder's address.
@@ -505,7 +514,8 @@ async function restartOn(r, { base, version, from }, say) {
         // --wait: asked again every `here.idleMs`, said once, until nothing runs.
         if (!told) say(`Filament ${version} is installed, and current points at it; the Filament that runs (${runs.version}) goes on while it works — ${e.message}: it restarts on ${version} once nothing runs.`);
         told = true;
-        old = await unitPid(r.signal);
+        // Where systemd could not say, the process it said last stands: none is taken for a start of its own.
+        old = (await unitPid(r.signal)) ?? old;
       }
       await pause(here.idleMs, r.signal);
       /** @type {import("./client.js").Client | "not-running" | null} */
@@ -571,13 +581,17 @@ async function unitNow(signal) {
  * Filament is (service.js `upOf`). One that answers is handed back; one stopped is "not-running", which runs `version`
  * at its next start. A start of systemd's own meanwhile — `version`, which current points at, after the one that ran
  * ended or was restarted — that ended as it started, or ran and did not answer in that time, is left for `from`
- * (`goBack`); the one that ran (`old`), silent all that time, goes on, said as one that does not answer is.
+ * (`goBack`); the one that ran (`old`), silent all that time, goes on, said as one that does not answer is. A read
+ * systemd could not answer is no word: what it said last stands, and where it said none all the while and nothing
+ * answered, that is said, and nothing goes back.
  * @param {import("./commands.js").Run} r @param {{ base: string, version: string, from: string }} to @param {number} old
  * @returns {Promise<import("./client.js").Client | "not-running">}
  */
 async function cameBack(r, to, old) {
   let started = 0;
   let pid = 0;
+  /** Whether systemd said a word on its unit while it was watched. */
+  let heard = false;
   for (const end = Date.now() + tools.upMs; Date.now() < end; ) {
     try {
       const c = await connect(r.dataDir, { timeoutMs: ANSWER_MS, signal: r.signal });
@@ -586,13 +600,22 @@ async function cameBack(r, to, old) {
       if (e?.code === EXIT.interrupted || r.signal?.aborted) throw e;
     }
     const u = await unitNow(r.signal);
-    pid = u.pid;
-    if (u.active === "failed") throw await goBack(r, to, upWords(true));
-    if (!pid && (u.active === "inactive" || !u.active)) return "not-running";
-    if (pid && pid !== old && !started) started = pid;
-    else if (started && pid !== started) throw await goBack(r, to, upWords(true));
+    // One systemd cannot say is watched on, never taken for one that stopped: what it last said stands.
+    if (u.active) {
+      heard = true;
+      pid = u.pid;
+      if (u.active === "failed") throw await goBack(r, to, upWords(true));
+      if (!pid && u.active === "inactive") return "not-running";
+      if (pid && pid !== old && !started) started = pid;
+      else if (started && pid !== started) throw await goBack(r, to, upWords(true));
+    }
     await pause(500, r.signal);
   }
+  if (!heard && !started)
+    throw new CliError(
+      `Filament ${to.version} is installed, and current points at it; no Filament answered at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, and systemd could not say whether its unit runs — filament service status says where it stands, and systemctl --user restart ${UNIT} starts ${to.version}.`,
+      EXIT.failed,
+    );
   if (started || !pid) throw await goBack(r, to, upWords(!pid));
   throw new CliError(
     `Filament ${to.version} is installed, and current points at it; systemd runs a Filament (process ${pid}) that did not answer at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, so it goes on — systemctl --user restart ${UNIT} starts ${to.version} now, and cuts what runs.`,
@@ -735,6 +758,13 @@ export const UPDATE_UNIT = "filament-update";
  */
 export const UPDATE_SCRIPT = 'f=$1; shift; "$@" >"$f.json" 2>"$f.log"; echo $? >"$f.code"';
 
+/**
+ * A word of the unit's command as systemd-run hands it on: systemd expands `$` in it as in an ExecStart= line's (a
+ * word that is `$NAME`, and `${NAME}` anywhere; `$$` is one `$`), so every `$` goes doubled and the shell gets the
+ * word as written — the script, and a folder's name that holds one. @param {string} w
+ */
+export const unexpanded = (w) => w.replace(/\$/g, "$$$$");
+
 /** The most of an update's words `state` says. */
 const WORDS_MAX = 4000;
 
@@ -823,6 +853,11 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
       if (await running()) throw refusal(409, "An update runs here already: it says how it went once it ends.");
       const c = can();
       if (!c.can) throw refusal(409, String(c.why));
+      // An update installed and not restarted on — current moved from the version that runs —: that one restarted on
+      // alone. Another, older or newer, would go over it, and prune the folder of the Filament that runs (`prune`).
+      const pointed = installOf(root(), { moved: true }).pointed;
+      if (pointed !== c.version && asked !== pointed)
+        throw refusal(409, `Filament ${pointed} is installed here, and current points at it (${c.version} runs until it restarts): filament restart there starts ${pointed}, and an update goes on from there.`);
       if (asked === c.version) throw refusal(409, `Filament ${asked} runs here already: nothing to update.`);
       if (asked !== null && c.version && isNewer(c.version, asked)) throw refusal(409, `Filament ${c.version} runs here, newer than ${asked}: filament update --version ${asked} there goes back to it.`);
       mkdirSync(dir, { recursive: true });
@@ -835,18 +870,7 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
         "--quiet",
         `--unit=${UPDATE_UNIT}`,
         "--",
-        "/bin/sh",
-        "-c",
-        UPDATE_SCRIPT,
-        "sh",
-        join(dir, "last"),
-        cli,
-        "--data-dir",
-        dataDir,
-        "update",
-        ...(asked ? ["--version", asked] : []),
-        "--wait",
-        "--json",
+        ...["/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(dir, "last"), cli, "--data-dir", dataDir, "update", ...(asked ? ["--version", asked] : []), "--wait", "--json"].map(unexpanded),
       ]);
       if (p.code !== 0) {
         rmSync(at("started"), { force: true });

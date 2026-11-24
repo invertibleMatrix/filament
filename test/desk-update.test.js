@@ -9,9 +9,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate } from "../src/cli/update.js";
+import { UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate, unexpanded } from "../src/cli/update.js";
 import { updateRoutes } from "../src/http/admin/update.js";
-import { SSH_UPDATE_MS, createUpdateThere } from "../desktop/lib/update-there.js";
+import { SSH_UPDATE_MS, createUpdateThere, updateScript } from "../desktop/lib/update-there.js";
 import { removeDirs } from "./helpers/wait.js";
 
 const WIN = process.platform === "win32";
@@ -52,6 +52,21 @@ async function withSystemdRun(fn) {
     process.env.PATH = was;
   }
 }
+
+/** What the unit's environment holds, for `systemdExpands`. */
+const SYSTEMD_ENV = { HOME: "/home/me", PATH: "/usr/local/bin:/usr/bin" };
+
+/**
+ * A command's words as systemd hands them to its program (an ExecStart= line's rule, which systemd-run's command
+ * follows): a word that is `$NAME` split at whitespace, `${NAME}` its value, `$$` one `$`, any other `$` as it is.
+ * @param {string[]} words @param {Record<string, string>} env
+ */
+const systemdExpands = (words, env) =>
+  words.flatMap((w) => {
+    const whole = /^\$([A-Za-z_]\w*)$/.exec(w);
+    if (whole) return String(env[whole[1]] ?? "").split(/\s+/).filter(Boolean);
+    return [w.replace(/\$(\$|\{([A-Za-z_]\w*)\})/g, (_, x, name) => (x === "$" ? "$" : String(env[name] ?? "")))];
+  });
 
 /** systemd's tools as a test says: `systemd-run`'s exit and words, whether the unit runs. */
 function fakeRun() {
@@ -104,7 +119,7 @@ describe("this Filament updated on request", () => {
       const [name, args] = /** @type {[string, string[]]} */ (f.ran.find(([n]) => n === "systemd-run"));
       assert.equal(name, "systemd-run");
       // The command line current points at: the version an update waiting to restart installed, where one did.
-      assert.deepEqual(args, ["--user", "--collect", "--quiet", `--unit=${UPDATE_UNIT}`, "--", "/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(data, "update", "last"), join(dirname(dir), "current", "bin", "filament"), "--data-dir", data, "update", "--version", "1.1.0", "--wait", "--json"]);
+      assert.deepEqual(args, ["--user", "--collect", "--quiet", `--unit=${UPDATE_UNIT}`, "--", "/bin/sh", "-c", unexpanded(UPDATE_SCRIPT), "sh", join(data, "update", "last"), join(dirname(dir), "current", "bin", "filament"), "--data-dir", data, "update", "--version", "1.1.0", "--wait", "--json"]);
       f.active = "active";
       assert.deepEqual(await u.state(), { running: true, last: { version: "1.1.0", at: 1_000, code: null, report: null, words: "" } });
       await assert.rejects(u.start("1.1.0"), { status: 409, message: "An update runs here already: it says how it went once it ends." });
@@ -165,15 +180,44 @@ describe("this Filament updated on request", () => {
       await assert.rejects(u.start("1.1.0"), { status: 409, message: "An update runs here already: it says how it went once it ends." });
       assert.equal(f.ran.filter(([n]) => n === "systemd-run").length, 0);
     });
+    // (fails before: yes — the review of s3d: its unit ended with the restart let go, a version older than the one
+    // current points at was installed over it, as newer than the one that runs)
+    // (and the review of x30) Nor a newer one: it would prune the folder of the Filament that runs.
+    f.active = "inactive";
+    await withSystemdRun(async () => {
+      for (const other of ["1.0.5", "1.0.0", "1.2.0", null])
+        await assert.rejects(u.start(other), { status: 409, message: "Filament 1.1.0 is installed here, and current points at it (1.0.0 runs until it restarts): filament restart there starts 1.1.0, and an update goes on from there." });
+      assert.equal(f.ran.filter(([n]) => n === "systemd-run").length, 0);
+      assert.deepEqual(await u.start("1.1.0"), { ok: true, version: "1.1.0" }, "the one current points at: its update restarts on it");
+    });
     // A folder beside it that is no server build is not taken for its install.
     rmSync(join(base, "1.1.0", "build-info.json"));
     assert.match(String(u.can().why), /is not where install\.sh installs it/);
   });
 
+  // (fails before: yes — the review of s3d: what systemd-run was handed went through systemd's own `$` expansion, so a
+  // data folder whose name holds `${…}` or `$$` reached the update as another; the script itself had none to lose)
+  test("what systemd hands the unit's shell is each word as written: every `$` doubled for its expansion, the script's and a folder's name's", async () => {
+    const dir = serverBuild("1.0.0");
+    const data = join(folder(), "data $HOME ${PATH} $$ end");
+    mkdirSync(data);
+    const f = fakeRun();
+    const u = createSelfUpdate({ dataDir: data, supervisor: "systemd", root: () => dir, run: f.run });
+    await withSystemdRun(async () => void (await u.start("1.1.0")));
+    const args = /** @type {string[]} */ (f.ran.find(([n]) => n === "systemd-run")?.[1]);
+    const command = args.slice(args.indexOf("--") + 1);
+    const plain = ["/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(data, "update", "last"), join(dirname(dir), "current", "bin", "filament"), "--data-dir", data, "update", "--version", "1.1.0", "--wait", "--json"];
+    assert.deepEqual(systemdExpands(command, SYSTEMD_ENV), plain);
+    assert.notDeepEqual(systemdExpands(plain, SYSTEMD_ENV), plain, "handed as written, the folder's name is another by the time it runs");
+  });
+
   test("what the unit runs keeps the update's lines, its words and its exit code beside the name it is given", { skip: spawnSync("sh", ["-c", "true"]).status !== 0 && "no sh here" }, () => {
-    const at = join(folder(), "last");
-    const p = spawnSync("sh", ["-c", UPDATE_SCRIPT, "sh", at, process.execPath, "-e", "console.log('{\"result\":\"updated\"}'); console.error('said'); process.exit(3)"], { encoding: "utf8" });
-    assert.equal(p.status, 0);
+    const at = join(folder(), "a $HOME ${PATH} $$ b", "last");
+    mkdirSync(dirname(at));
+    // As systemd hands it on: its `$` expansion taken back.
+    const words = systemdExpands(["-c", UPDATE_SCRIPT, "sh", at, process.execPath, "-e", "console.log('{\"result\":\"updated\"}'); console.error('said'); process.exit(3)"].map(unexpanded), SYSTEMD_ENV);
+    const p = spawnSync("sh", words, { encoding: "utf8" });
+    assert.equal(p.status, 0, p.stderr);
     assert.deepEqual([readFileSync(`${at}.json`, "utf8"), readFileSync(`${at}.log`, "utf8"), readFileSync(`${at}.code`, "utf8").trim()], ['{"result":"updated"}\n', "said\n", "3"]);
   });
 
@@ -296,7 +340,7 @@ describe("another machine's Filament updated from the desk", () => {
     const over = desk({ answer: old, run: said({ result: "updated", version: "1.0.0", restart: "systemd" }) });
     assert.equal(/** @type {any} */ (await over.u.look(box([WAY, SSH]))).can, true);
     assert.deepEqual(await over.u.start(box([WAY, SSH]), "1.0.0"), { ok: true, version: "1.0.0", ssh: true });
-    assert.deepEqual(over.ssh, [["me@box", { script: 'exec "$HOME/.local/bin/filament" update --version 1.0.0 --json' }, { timeoutMs: SSH_UPDATE_MS }]]);
+    assert.deepEqual(over.ssh, [["me@box", { script: 'case ${XDG_DATA_HOME:-} in /*) d=$XDG_DATA_HOME ;; *) d=$HOME/.local/share ;; esac; f="$d/filament/current/bin/filament"; [ -x "$f" ] || f="$HOME/.local/bin/filament"; [ -x "$f" ] || f=filament; exec "$f" update --version 1.0.0 --json' }, { timeoutMs: SSH_UPDATE_MS }]]);
     // (the review of s3d) Done only once systemd's Filament restarted on it: installed and not restarted on, said as it stands.
     const stands = async (/** @type {any} */ report) => desk({ answer: old, run: said(report) }).u.start(box([WAY, SSH]), "1.0.0");
     assert.deepEqual(await stands({ result: "installed", installed: "1.0.0" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on: filament restart there starts it." });
@@ -309,5 +353,25 @@ describe("another machine's Filament updated from the desk", () => {
     assert.deepEqual(await key.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, words: "ssh me@box asks for its host key to be trusted: run filament update there in a terminal (ssh me@box)." });
     const failed = desk({ answer: old, run: { code: 1, stdout: "", stderr: "Downloading…\nGitHub was not reached (ENOTFOUND): nothing changed.\n" } });
     assert.deepEqual(await failed.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, words: "GitHub was not reached (ENOTFOUND): nothing changed." });
+  });
+
+  // (fails before: yes — the review of s3d: over SSH it ran ~/.local/bin/filament alone, so a Filament on the PATH
+  // there, put elsewhere than install.sh puts it, was never found)
+  test("over SSH, Filament as install.sh put it, else the one on the PATH there, as a pairing over SSH finds it", { skip: spawnSync("sh", ["-c", "true"]).status !== 0 && "no sh here" }, () => {
+    const home = folder();
+    const bin = folder();
+    writeFileSync(join(bin, "filament"), '#!/bin/sh\necho "on the PATH: $*"\n', { mode: 0o755 });
+    /** @type {Record<string, string | undefined>} */
+    const env = { ...process.env, HOME: home, PATH: [bin, String(process.env.PATH || "")].join(delimiter) };
+    delete env.XDG_DATA_HOME;
+    const ran = () => spawnSync("sh", ["-c", updateScript("1.0.0")], { env, encoding: "utf8" }).stdout.trim();
+    assert.equal(ran(), "on the PATH: update --version 1.0.0 --json");
+    mkdirSync(join(home, ".local", "bin"), { recursive: true });
+    writeFileSync(join(home, ".local", "bin", "filament"), '#!/bin/sh\necho "its command: $*"\n', { mode: 0o755 });
+    assert.equal(ran(), "its command: update --version 1.0.0 --json");
+    // (the review of x30) Its folder of versions first: a file of the person's own may stand in ~/.local/bin.
+    mkdirSync(join(home, ".local", "share", "filament", "current", "bin"), { recursive: true });
+    writeFileSync(join(home, ".local", "share", "filament", "current", "bin", "filament"), '#!/bin/sh\necho "installed: $*"\n', { mode: 0o755 });
+    assert.equal(ran(), "installed: update --version 1.0.0 --json");
   });
 });

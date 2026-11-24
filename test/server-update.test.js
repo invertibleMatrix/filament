@@ -461,7 +461,7 @@ describe("filament update, on a server installed by install.sh", () => {
     running();
     const r = await run(["update"]);
     assert.equal(r.code, EXIT.ok, r.err);
-    assert.match(r.out, /^Removed Filament 1\.0\.0, older than the two kept \(\S+\)\.$/m);
+    assert.match(r.out, /^Removed Filament 1\.0\.0, not one of the two kept \(\S+\)\.$/m);
     assert.deepEqual(folders(), ["1.1.0", "1.2.0", "current"]);
     calls();
     here.root = join(base, "1.2.0");
@@ -478,6 +478,38 @@ describe("filament update, on a server installed by install.sh", () => {
     assert.equal((await run(["update", "--back", "--force"])).code, EXIT.ok);
     assert.equal(current(), "1.2.0");
     assert.deepEqual(calls(), [["systemctl", "--user", "restart", "filament"]], "--force: systemctl restart at once");
+  });
+
+  // (fails before: yes — the review of s3d: an update to an older version removed every build but the two kept, a
+  // newer one among them, said as one older than the two kept)
+  test("an update to an older version: every build but the two kept removed, a newer one too, each said as it is; --back goes to the one before", async () => {
+    await release("1.0.5");
+    installed(["1.0.0", "1.1.0", "1.2.0"], "1.2.0");
+    running();
+    const r = await run(["update", "--version", "1.0.5"]);
+    assert.equal(r.code, EXIT.ok, r.err);
+    assert.match(r.out, /^Removed Filament 1\.0\.0, not one of the two kept \(\S+\)\.$/m);
+    assert.match(r.out, /^Removed Filament 1\.1\.0, not one of the two kept \(\S+\)\.$/m);
+    assert.doesNotMatch(r.out, /older than the two kept/);
+    assert.deepEqual(folders(), ["1.0.5", "1.2.0", "current"]);
+    here.root = join(base, "1.0.5");
+    const back = await run(["update", "--back"]);
+    assert.equal(back.code, EXIT.ok, back.err);
+    assert.equal(current(), "1.2.0", "the one before, as the update said");
+  });
+
+  // (fails before: yes — the review of x30: where systemd could not say its unit's main process and no Filament answered,
+  // the update said none ran, exit 0, and the desk took it for done)
+  test("no Filament answers and systemd cannot say whether its unit runs: said, nothing restarted, exit 1", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0");
+    running({ hung: true, unsaid: true });
+    const r = await run(["update"]);
+    assert.equal(r.code, EXIT.failed, `${r.out}\n${r.err}`);
+    assert.match(r.err, /Filament 1\.1\.0 is installed, and current points at it; no Filament answered at http:\/\/127\.0\.0\.1:\d+ within \d+ seconds, and systemd could not say whether its unit runs, so nothing is restarted — systemctl --user restart filament starts 1\.1\.0 now, and cuts what runs\.$/);
+    assert.equal(current(), "1.1.0");
+    assert.deepEqual(calls().filter((c) => c[2] !== "show"), [], "systemd told nothing");
   });
 
   test("--back with no version kept beside: refused, nothing changed", async () => {
@@ -685,6 +717,46 @@ describe("filament update, on a server installed by install.sh", () => {
       assert.equal(mute.code, EXIT.failed, mute.out);
       assert.equal(current(), "1.1.0", "installed: current points at it");
       assert.match(mute.err, /Filament 1\.1\.0 is installed, and current points at it; systemd runs a Filament \(process 4242\) that did not answer at http:\/\/127\.0\.0\.1:\d+ within 1\.5 seconds, so it goes on — systemctl --user restart filament starts 1\.1\.0 now, and cuts what runs\.$/);
+    } finally {
+      tools.upMs = up;
+    }
+  });
+
+  // (fails before: yes — the review of s3d: a read of systemd's that failed while --wait watched was taken for a unit
+  // that had stopped: the update said none ran, exit 0, while one ran on)
+  test("--wait: where systemd cannot say its unit's state it is watched on — one that answers again is done —, and where nothing answers all the while, that is said, nothing gone back", async () => {
+    await release("1.1.0");
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0");
+    running({ busy: true });
+    here.idleMs = 300;
+    const up = tools.upMs;
+    tools.upMs = 1500;
+    const asked = () => came.filter((c) => c.path === "/api/shutdown").length;
+    const shown = () => calls().filter((c) => c.join(" ") === "systemctl --user show filament -p MainPID -p ActiveState").length;
+    try {
+      const going = run(["update", "--wait", "--json"]);
+      await until(() => asked() >= 1, "asked to stop once idle");
+      set({ hung: true, unsaid: true });
+      await until(() => shown() >= 1, "systemd asked, and could not say");
+      // Restarted meanwhile on the new one, it answers again.
+      set({ hung: false, busy: false, unsaid: false, ran: "1.1.0", mainPid: 4343 });
+      const done = await going;
+      assert.equal(done.code, EXIT.ok, `${done.out}\n${done.err}`);
+      assert.equal(JSON.parse(done.out).restart, "systemd");
+      // Again, and nothing answers nor does systemd say a thing the whole wait.
+      here.root = join(base, "1.1.0");
+      await release("1.2.0");
+      latest = "1.2.0";
+      running({ busy: true });
+      const before = asked();
+      const again = run(["update", "--wait", "--json"]);
+      await until(() => asked() > before, "asked to stop once idle");
+      set({ hung: true, unsaid: true });
+      const mute = await again;
+      assert.equal(mute.code, EXIT.failed, mute.out);
+      assert.match(mute.err, /Filament 1\.2\.0 is installed, and current points at it; no Filament answered at http:\/\/127\.0\.0\.1:\d+ within 1\.5 seconds, and systemd could not say whether its unit runs — filament service status says where it stands, and systemctl --user restart filament starts 1\.2\.0\.$/);
+      assert.equal(current(), "1.2.0", "nothing gone back: nothing said it failed");
     } finally {
       tools.upMs = up;
     }

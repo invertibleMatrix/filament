@@ -348,11 +348,14 @@ app's version and restarts on it once no turn runs there, as `filament update --
 the new version does not come up goes back to the version it ran. Its row in the menu says *updating to* the version
 meanwhile, why where it did not start or failed there, and nothing once the machine answers on the new version; one
 that failed is left out of Update all machines until it runs another version, and its **⋯** asks again. A machine
-too old for this app to open has the same as a button on its page. Nothing goes to an older version than a machine
-runs. It updates Filament for servers run by its systemd service (`filament service install`); the Filament app on
-another computer updates itself, and says so. A server whose Filament is from before this is updated over SSH where
-this window keeps an SSH way to it — refused while a turn runs there, which its row says: the new version is
-installed, and asking again once the turn ends restarts it on it —, else at its terminal with `filament update`.
+too old for this app to open has the same as a button on its page; once it is updated, its own page opens there. Nothing
+goes to an older version than a machine runs; where an update installed there waits to restart, no other version goes
+there, and the row says so: `filament restart` there starts the one installed. It updates Filament for servers run by its
+systemd service (`filament service install`); the Filament app on another computer updates itself, and says so. A
+server whose Filament is from before this is updated over SSH where this window keeps an SSH way to it — the
+`filament` install.sh installed there, else the one on its PATH; refused while a turn runs there, which its row says:
+the new version is installed, and asking again once the turn ends restarts it on it —, else at its terminal with
+`filament update`.
 
 A machine reached more than one way is reached by the best that answers, by where its address is: this computer
 itself first (another Filament here, a tunnel you hold), then the home network, the tailnet, an SSH tunnel, and an

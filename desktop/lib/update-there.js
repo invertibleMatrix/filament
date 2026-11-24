@@ -16,6 +16,13 @@ const CALL_MS = 15_000;
 export const SSH_UPDATE_MS = 10 * 60_000;
 /** A release's version, as `filament update --version` takes it. */
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+/**
+ * What the SSH way runs there: `filament update --version <v> --json`, the one install.sh installed — under its folder
+ * of versions, then its command in ~/.local/bin, where a file of the person's own may stand instead —, else the one on
+ * its PATH, as a pairing over SSH finds it (add-machine.js `PAIR_SCRIPT`). @param {string} version  one `VERSION` takes
+ */
+export const updateScript = (version) =>
+  `case \${XDG_DATA_HOME:-} in /*) d=$XDG_DATA_HOME ;; *) d=$HOME/.local/share ;; esac; f="$d/filament/current/bin/filament"; [ -x "$f" ] || f="$HOME/.local/bin/filament"; [ -x "$f" ] || f=filament; exec "$f" update --version ${version} --json`;
 
 /**
  * @typedef {import("./machines.js").Machine} Machine
@@ -79,7 +86,7 @@ export function createUpdateThere({ pick = pickRoute, cookieOf, fetchOf = routeF
    */
   const overSsh = async (m, alias, version) => {
     log(`update: ${m.id}'s Filament has no update route; filament update over ssh ${alias}`);
-    const run = await ssh(alias, { script: `exec "$HOME/.local/bin/filament" update --version ${version} --json` }, { timeoutMs: SSH_UPDATE_MS });
+    const run = await ssh(alias, { script: updateScript(version) }, { timeoutMs: SSH_UPDATE_MS });
     /** @type {any} */
     let report = null;
     try {
