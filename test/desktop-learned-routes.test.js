@@ -193,12 +193,16 @@ test("paired over the tailnet: its network's way learned and taken at home; a ne
   assert.equal(back.route?.url, "https://192.168.1.31:20343", "home again on its new address");
 });
 
-test("main.js: the desk learns each machine's ways as it reaches it; kept in the machines file, the sign-in given in its partition, the window reading them at once, nothing once the app quits", () => {
+test("main.js: the desk learns each machine's ways as it reaches it; kept in the machines file, the sign-in given in its partition, the window and this Filament's agents reading them at once, nothing once the app quits", () => {
   const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
   assert.match(main, /keep: \(id, routes\) => setLearnedRoutes\(machinesFile, id, routes,/);
   assert.match(main, /giveSignIn: \(partition, url, routes\) => giveSignIn\(session\.fromPartition\(partition\), url, routes\),/);
-  assert.match(main, /changed: \(\) => \{\n\s+if \(quitting\) return;\n\s+rail\?\.refresh\(\);/);
+  assert.match(main, /changed: \(\) => \{\n\s+if \(quitting\) return;\n\s+rail\?\.refresh\(\);\n\s+machineBrowsers\.sync\(\);\n\s+keepAgentsWays\(\);/);
   assert.match(main, /learn: learner\.learn,/);
+  // (fails before: yes — s4d) The agents' devices take the window's ways as the app starts, and as a machine is added.
+  assert.match(main, /const keepAgentsWays = \(\) => \{\n\s+try \{\n\s+agentsThere\.keepWays\(\);/);
+  assert.match(main, /\n {2}keepAgentsWays\(\);\n/);
+  assert.match(main, /const got = addMachine\(machinesFile, m, \{ log: \(line\) => log\.line\(line\) \}\);\n\s+machineBrowsers\.sync\(\);\n\s+keepAgentsWays\(\);/);
 });
 
 test("read as a full device alone, over a way that proves its word; once each LEARN_MS by one way, at once by another; a part not read keeps what it learned; one disconnected meanwhile keeps nothing", async () => {

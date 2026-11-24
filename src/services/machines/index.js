@@ -69,8 +69,9 @@ export function createMachines({ dataDir }) {
     },
     /**
      * A client of the machine's admin API as this device (remotes.js `connectRemote`): get, post, patch, del and an SSE
-     * `stream`, its token on each call; else a CliError whose words say why — none named so, another machine at its
-     * address, its certificate another than the one pinned, the device revoked there.
+     * `stream`, its token on each call, at the first of its ways that answers as it; else a CliError whose words say why
+     * — none named so, another machine at its address, its certificate another than the one pinned, none of its ways
+     * answering, the device revoked there.
      * @param {Which} which @param {{ signal?: AbortSignal, timeoutMs?: number, agents?: boolean }} [o]
      */
     clientOf: (which, o = {}) => connectRemote(dataDir, named(which), { ...o, agents: agentsOf(which, o) }),

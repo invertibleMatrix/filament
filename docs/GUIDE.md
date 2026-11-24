@@ -591,14 +591,21 @@ token go. While it does not answer, Agents and Full control are dashed: on or of
 **Full control** pill, once Agents
 is on, switches Full control on there (above), after asking in words that say what it crosses; off switches it off.
 Each read of the card and each switch keeps the address and certificate the app reaches the machine by now, so the
-agents' sub-agents, commands and models follow a machine that moved. A read of the list that fails after one that
+agents' sub-agents, commands and models follow a machine that moved. Its agents keep every other way the app has to the
+machine too, the ones it says it has among them, kept as the app starts and as they are learned. Where the address
+kept does not answer as that machine within a second and a half, its other ways are asked at once — yours by where they
+reach, then the home network's it said, an address on this computer such as an SSH tunnel's end last — and the first
+that answers as it is its address from then on: a machine that is off is said so in one wait. A sub-agent's stream
+that is already running stays on the way it started on; the next call moves. A read of the list that fails after one that
 worked leaves the cards as last read, and says so.
 It needs the app paired there as a full
 device — over the network, the tailnet, or by `ssh://`, where Add's **Pair** makes the device over SSH; added through a
 tunnel with no device there, the machine's line says to add it again by `ssh://`. Through an SSH tunnel the agents
-reach the machine while the app runs here, holding the tunnel — whose port on this computer is open to every program
+reach the machine while the app runs here, holding the tunnel, with the machine connected in its window — the agents'
+failure says so where it is not — and its port on this computer is open to every program
 here, and the machine answers one that sends no device's token as itself: there Agents' grants fence your agents'
-device, not the tunnel.
+device, not the tunnel. The app ends a tunnel two minutes after a better way takes its place; the agents then go by
+that way, which they keep too.
 Switch it on only where you would let your agents work as freely as here: an agent with a shell on this computer can
 use this computer's sign-ins to the other machine. Your chats here then send sub-agents there
 ([Your agents on your other machines](#your-agents-on-your-other-machines)) and run commands there

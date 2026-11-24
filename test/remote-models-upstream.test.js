@@ -195,6 +195,56 @@ test("adding a machine's models: refused where it is kept for the person alone, 
   }
 });
 
+// (fails before: yes — s4d: a machine's models were reached at the one address kept for it alone: there, another
+// certificate refused them, and the way it answered by as itself was never tried)
+test("a machine's models where its address answers with another certificate: its next way, pinned to its own, is taken and kept as its address; its token never goes to the other", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "filament-ways-here-"));
+  const certDir = mkdtempSync(join(tmpdir(), "filament-ways-there-"));
+  const otherDir = mkdtempSync(join(tmpdir(), "filament-ways-other-"));
+  const id = lanIdentity(certDir, { name: "Studio" });
+  const otherId = lanIdentity(otherDir, { name: "Studio" });
+  const STUDIO = "33333333-3333-4333-8333-333333333333";
+  /** @type {string[]} */
+  const heard = [];
+  /** @param {{ key: string, cert: string }} who @param {string} name */
+  const serve = async (who, name) => {
+    const s = https.createServer({ key: who.key, cert: who.cert }, (req, res) => {
+      heard.push(`${name} ${req.method} ${req.url}${req.headers.authorization ? " with a token" : ""}`);
+      res.writeHead(200, JSON_TYPE);
+      res.end(JSON.stringify({ id: STUDIO, name: "Studio", version: "0.9.0", protocol: 1, protocolLowest: 1 }));
+    });
+    await new Promise((r) => s.listen(0, "127.0.0.1", () => r(undefined)));
+    return { s, url: `https://127.0.0.1:${/** @type {net.AddressInfo} */ (s.address()).port}` };
+  };
+  const studio = await serve(id, "studio");
+  const other = await serve(otherId, "other");
+  try {
+    const machines = createMachines({ dataDir });
+    machines.keep({ url: other.url, fingerprint: id.fingerprint, routes: [{ url: studio.url, fingerprint: id.fingerprint }], machine: { id: STUDIO, name: "Studio" }, device: { id: "d-studio", name: "Filament agents", scope: "agent" }, token: "fdt_studio" });
+    const way = await machines.modelsWay("Studio", { agents: true });
+    assert.deepEqual([way.url, way.headers.authorization], [studio.url, "Bearer fdt_studio"]);
+    assert.deepEqual(heard, ["studio GET /.well-known/filament"], "the other certificate ended its connection before a word");
+    const kept = machines.list().find((x) => x.machine.id === STUDIO);
+    assert.deepEqual([kept?.url, kept?.routes], [studio.url, [{ url: other.url, fingerprint: id.fingerprint }]], "its address from then on");
+    heard.length = 0;
+    const again = await machines.modelsWay("Studio", { agents: true });
+    assert.equal(again.url, studio.url);
+    assert.deepEqual(heard, [], "its wire's pass kept, nothing asked anew");
+    // (fails before: yes — the review of s4d) A call through it that does not reach it lets the pass go: the next is
+    // asked anew, its other ways with it, not taken unasked for the rest of the minute.
+    studio.s.closeAllConnections();
+    await new Promise((r) => studio.s.close(() => r(undefined)));
+    await assert.rejects(/** @type {typeof fetch} */ (again.fetch)(`${studio.url}/v1/models`));
+    await assert.rejects(machines.modelsWay("Studio", { agents: true }), (/** @type {any} */ e) => {
+      assert.match(e.message, /^No Filament answers at https:\/\/127\.0\.0\.1:\d+: .* Nor did its other ways answer as it \(https:\/\/127\.0\.0\.1:\d+\)\.$/s);
+      return true;
+    });
+  } finally {
+    for (const x of [studio, other]) await new Promise((r) => x.s.close(() => r(undefined)));
+    await removeDirs(dataDir, certDir, otherDir);
+  }
+});
+
 // (fails before: yes — the add was refused (400), so here listed nothing of there's and no route reached it)
 test("there's API models that answer show under the machine's name, its coding agents never; a message on here answers from there, streamed and not, in its client's own wire, by the device's token alone", async () => {
   const s = await lending();

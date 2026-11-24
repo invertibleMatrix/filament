@@ -886,17 +886,29 @@ test("the kept agents' device never takes a way the machine said it has on its h
   });
   assert.equal((await flow.set("m-mac", true)).on, true);
   const wayOf = () => store.list().map((r) => [r.url, r.fingerprint ?? null]);
+  // (fails before: yes — s4d: the row held one way, its agents none where that one did not answer)
+  const othersOf = () => store.list().map((r) => (r.routes ?? []).map((w) => [w.url, w.fingerprint ?? null]));
   assert.deepEqual(wayOf(), [["https://mac.tail1234.ts.net", null]], "minted at home: the tailnet's way, before an SSH tunnel");
+  assert.deepEqual(othersOf(), [[["https://192.168.1.20:20343", PRINT], ["http://127.0.0.1:41000", null]]], "its others after it: the home network's, the tunnel last");
   machine.routes = [{ ...home, url: "https://192.168.1.31:20343" }, ssh];
   await flow.list();
   assert.deepEqual(wayOf(), [["http://127.0.0.1:41000", null]], "added over SSH alone: its tunnel, never the home network's");
+  assert.deepEqual(othersOf(), [[["https://192.168.1.31:20343", PRINT]]], "the home network's, its agents' way once the tunnel ends at home");
   machine.routes = [{ ...tail, learned: true }, { kind: "lan", url: "https://192.168.1.9:20343", fingerprint: PRINT }];
   assert.equal((await flow.models("m-mac", true)).models, true);
   assert.deepEqual(wayOf(), [["https://mac.tail1234.ts.net", null]], "away from home, a learned tailnet way: taken");
+  assert.deepEqual(othersOf(), [[["https://192.168.1.9:20343", PRINT]]]);
   const OTHER = PRINT.replace(/^../, "CD");
   machine.routes = [home, { kind: "lan", url: "https://192.168.1.9:20343", fingerprint: OTHER }, tail];
   await flow.list();
   assert.deepEqual(wayOf(), [["https://192.168.1.9:20343", OTHER]], "paired again at home: the way paired, its new pin");
+  assert.deepEqual(othersOf(), [[["https://mac.tail1234.ts.net", null], ["https://192.168.1.20:20343", PRINT]]], "the tailnet's, then the home network's it said");
+  // A way it says it has, learned while nothing was pressed: kept among its others at once, its address as it is.
+  machine.routes = [home, { kind: "lan", url: "https://192.168.1.9:20343", fingerprint: OTHER }, tail, { kind: "url", url: "https://mac.example.net", learned: true }];
+  assert.equal(flow.keepWays(), 1);
+  assert.deepEqual(wayOf(), [["https://192.168.1.9:20343", OTHER]]);
+  assert.deepEqual(othersOf(), [[["https://mac.tail1234.ts.net", null], ["https://mac.example.net", null], ["https://192.168.1.20:20343", PRINT]]]);
+  assert.equal(flow.keepWays(), 0, "the same ways write nothing");
 });
 
 test("main's switch says what stands in the way, and moves nothing: no answer, the sign-in gone, view-only, a tailnet login, a tunnel with no device there, disconnected; a mint refused; a command line's device kept beside it", async (t) => {

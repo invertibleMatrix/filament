@@ -743,6 +743,7 @@ async function run() {
           add: (m) => {
             const got = addMachine(machinesFile, m, { log: (line) => log.line(line) });
             machineBrowsers.sync();
+            keepAgentsWays();
             return got;
           },
           remove: (id) => {
@@ -1507,6 +1508,16 @@ async function run() {
     }
   };
   const agentsThere = createMachineAgents({ machines: () => readKept(machinesFile), pick: pickHeld, cookieOf, keepSignIn, store: createMachines({ dataDir }), log: (line) => log.line(line), ownName });
+  // This Filament's agents fall back to every way the window has to a machine (lib/machine-agents.js `keepWays`): kept
+  // as the app starts, and again as the machines' ways change.
+  const keepAgentsWays = () => {
+    try {
+      agentsThere.keepWays();
+    } catch (/** @type {any} */ e) {
+      log.line(`machines: the ways this Filament's agents reach the machines by could not be kept: ${e?.message || e}`);
+    }
+  };
+  keepAgentsWays();
   // Each machine let use this app's browser (b-remote): its link to that machine's browser host, made here with the same
   // sign-in, and its chats' pages here — a profile of that machine's, the same guards as this computer's pages; their
   // localhost that machine's, through a proxy over the link (b-tunnel); and nothing of this computer's own: its loopback
@@ -1611,7 +1622,7 @@ async function run() {
   // here as this window's sign-in there — never a path, never a token. Each machine's events stream says what moved
   // there, to that page alone, and a turn, an ask or a stream (re)joined has that machine looked at again soon.
   // The ways each machine says it has — its network's, its tailnet's — learned as the desk reaches it (lib/learn-routes.js):
-  // kept after the person's, the sign-in given them first, and the window reading them at once.
+  // kept after the person's, the sign-in given them first, and the window and this Filament's agents reading them at once.
   const learner = createRouteLearner({
     machines: () => readKept(machinesFile),
     keep: (id, routes) => setLearnedRoutes(machinesFile, id, routes, { log: (line) => log.line(line) }),
@@ -1620,6 +1631,7 @@ async function run() {
       if (quitting) return;
       rail?.refresh();
       machineBrowsers.sync();
+      keepAgentsWays();
     },
     log: (line) => log.line(line),
   });

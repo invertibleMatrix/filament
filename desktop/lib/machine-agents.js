@@ -13,12 +13,15 @@
 // `full` switched there, on top of `agents`: its agents act there as the person (services/devices.js `fullControl`).
 // Forget: the device revoked there, the token let go here. What the page shows is read there: the device list says the
 // grants as they stand. Through an SSH tunnel too, where Add paired this window a device over SSH: the agents' device
-// kept here then reaches the machine at the tunnel's address, while this app holds it. The new-chat menu's
+// kept here then reaches the machine at the tunnel's address, while this app holds it. The agents' device keeps the
+// window's other ways to the machine after its address (`othersOf`), and its agents fall back to them where that does
+// not answer — the ones the machine said it has kept anew as they are learned (`keepWays`). The new-chat menu's
 // part per machine (pk-list) reads its projects the same way, as a full device or by the person's tailnet login. The
 // machine is reached as lib/reach.js reaches it. Plain Node (NA-D13).
 import { RANKS, isLearned, pickRoute, rankOf } from "./machines.js";
 import { routeFetch } from "./watch.js";
 import { FOR, createReach } from "./reach.js";
+import { ROUTES_MOST, onThisMachine } from "../../src/services/machines/remotes.js";
 
 /**
  * One machine as the page shows it. `on`: this Filament's agents may work there — their device's token kept here, its
@@ -36,6 +39,7 @@ import { FOR, createReach } from "./reach.js";
  * @typedef {import("./machines.js").Route} Route
  * @typedef {Pick<import("../../src/services/machines/index.js").Machines, "list" | "keep" | "forget">} Store
  * @typedef {import("./reach.js").Send} Send
+ * @typedef {import("../../src/services/machines/remotes.js").Way} Way
  */
 
 /**
@@ -114,26 +118,60 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
   /**
    * The way the agents' device kept here reaches a machine by: its address, and its certificate's pin on the network —
    * the way this window reached it by; where that is one the machine said it has on its home network, the best of its
-   * others by where it is (`rankOf`, then their order), a way held on this computer last. A row holds one way, and the
-   * home network's would leave this Filament's agents none away from home. @param {Machine} m @param {{ route: Route, origin: string }} r
+   * others by where it is (`rankOf`, then their order), a way held on this computer last: the home network's would be
+   * waited on first away from home. Its others after it (`othersOf`), the machine's ways as the window keeps them now —
+   * read again where they changed while the machine was asked (the review of s4d).
+   * @param {Machine} was @param {{ route: Route, origin: string }} r
    */
-  const wayOf = (m, r) => {
+  const wayOf = (was, r) => {
+    const m = machineOf(was.id) ?? was;
     const others = m.routes.filter((x) => !homeLearned(x) && (x.kind === "url" || x.kind === "lan" || x.kind === "ssh"));
     const best = others.slice().sort((a, b) => Number(held(a)) - Number(held(b)) || rankOf(a) - rankOf(b))[0];
     const route = homeLearned(r.route) && best ? best : r.route;
     const url = route === r.route ? r.origin : new URL(String(route.url)).origin;
-    return { url, ...(route.kind === "lan" ? { fingerprint: String(/** @type {any} */ (route).fingerprint) } : {}) };
+    const fingerprint = route.kind === "lan" ? String(/** @type {any} */ (route).fingerprint) : "";
+    return { url, ...(fingerprint ? { fingerprint } : {}), routes: othersOf(m, url) };
   };
+  /**
+   * The ways the agents' device kept for a machine falls back to where its address does not answer (services/machines
+   * remotes.js `waysOf`): every other way this window has to it, the ones it said it has among them, by where each is
+   * (`rankOf`), the home network's it said after the rest — gone once you are away, each would be waited on —, one held
+   * on this computer last: an SSH tunnel stands while this app holds it, and it holds it while a pick takes it, which it
+   * does where no better way answers. Each once, none at `url`, `ROUTES_MOST` at most, as the store keeps them.
+   * @param {Machine} m @param {string} url  its address @returns {Way[]}
+   */
+  const othersOf = (m, url) => {
+    /** @param {Route} x */
+    const late = (x) => (held(x) ? 2 : homeLearned(x) ? 1 : 0);
+    /** @type {Way[]} */
+    const out = [];
+    for (const x of m.routes.filter((x) => x.kind === "url" || x.kind === "lan" || x.kind === "ssh").sort((a, b) => late(a) - late(b) || rankOf(a) - rankOf(b))) {
+      /** @type {URL} */
+      let u;
+      try {
+        u = new URL(String(x.url));
+      } catch {
+        continue;
+      }
+      if (u.protocol !== "https:" && !(u.protocol === "http:" && onThisMachine(u.href))) continue;
+      const fingerprint = x.kind === "lan" ? String(/** @type {any} */ (x).fingerprint) : "";
+      if (u.origin !== url && !out.some((w) => w.url === u.origin)) out.push({ url: u.origin, ...(fingerprint ? { fingerprint } : {}) });
+      if (out.length >= ROUTES_MOST) break;
+    }
+    return out;
+  };
+  /** A list of ways as one text, to say whether two are the same. @param {Way[] | undefined} ways */
+  const waysText = (ways) => JSON.stringify((ways ?? []).map((w) => [w.url, w.fingerprint ?? ""]));
   /**
    * The agents' device kept for a machine still standing there takes the way this window reached it by (`wayOf`), its
    * token kept: their sub-agents, commands and models go where the machine answers now — another address, a
-   * certificate made anew and paired again —, not where it was minted. Written where it moved alone. → why it could
-   * not be kept, or null.
+   * certificate made anew and paired again —, not where it was minted, its other ways after it. Written where it moved
+   * alone. → why it could not be kept, or null.
    * @param {Machine} m @param {{ route: Route, origin: string }} r @param {ReturnType<typeof keptOf>} kept
    */
   const follow = (m, r, kept) => {
     const way = wayOf(m, r);
-    if (!kept || (kept.url === way.url && (kept.fingerprint ?? "") === (way.fingerprint ?? ""))) return null;
+    if (!kept || (kept.url === way.url && (kept.fingerprint ?? "") === (way.fingerprint ?? "") && waysText(kept.routes) === waysText(way.routes))) return null;
     return keepHere(() => store.keep({ ...way, machine: { ...kept.machine, name: m.name }, device: kept.device }));
   };
 
@@ -191,7 +229,6 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     const kept = keptOf(m);
     /** A grant asked of a device there. @param {string} id @param {boolean} on */
     const grant = (id, on) => r.send(`/remote/devices/${encodeURIComponent(id)}`, { method: "PATCH", body: { grants: { agents: on } } }).catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
-    const way = wayOf(m, r);
     if (kept) {
       const g = await grant(kept.device.id, true);
       // Still standing there: its grant is on, nothing minted, and its row takes the way this window's pairing reached
@@ -199,7 +236,7 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
       // gone there (`gone`): a new one is minted below.
       if (g.status === 200 && g.json?.device?.revokedAt == null) {
         // Its name as this window has it now: renamed here since, the kept row says the new one.
-        const unkept = keepHere(() => store.keep({ ...way, machine: { ...kept.machine, name: m.name }, device: kept.device }));
+        const unkept = keepHere(() => store.keep({ ...wayOf(m, r), machine: { ...kept.machine, name: m.name }, device: kept.device }));
         return { ...granted(m, g.json?.device), ...(unkept ? { said: `Switched on; the way this window reaches ${m.name} by could not be kept here: ${unkept}` } : {}) };
       }
       if (g.status !== 200 && !gone(g)) return { ...(await standing(m, r)), said: `Not switched on: ${refusal(g)}`, failed: true };
@@ -214,7 +251,7 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     const unkept = keepHere(
       () =>
         (made = store.keep({
-          ...way,
+          ...wayOf(m, r),
           machine: { id: String(minted.json.machine?.id || m.id), name: String(minted.json.machine?.name || m.name) },
           device: { id: device.id, name: String(device.name || ""), scope: "agent" },
           token: minted.json.token,
@@ -280,6 +317,26 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
       machines()
         .filter((m) => !m.local)
         .map((m) => ({ id: m.id, name: m.name })),
+    /**
+     * The agents' device kept for each machine the window keeps takes the ways the window has to it now as its others
+     * (`othersOf`), its address as it is: one added, or one the machine said it has (lib/learn-routes.js), is a way its
+     * agents fall back to at once, Settings opened or not. Nothing is asked of a machine; one whose ways are the same
+     * writes nothing. → how many were kept anew.
+     */
+    keepWays() {
+      const all = store.list();
+      let n = 0;
+      for (const m of machines().filter((m) => !m.local)) {
+        const kept = all.find((x) => x.machine.id.toLowerCase() === m.id && x.device.scope === "agent");
+        if (!kept) continue;
+        const routes = othersOf(m, kept.url);
+        if (waysText(kept.routes) === waysText(routes)) continue;
+        const unkept = keepHere(() => store.keep({ url: kept.url, ...(kept.fingerprint ? { fingerprint: kept.fingerprint } : {}), routes, machine: kept.machine, device: kept.device }));
+        if (unkept) log(`machines: the ways this Filament's agents reach ${m.name} by could not be kept: ${unkept}`);
+        else n++;
+      }
+      return n;
+    },
     /** Every machine the window keeps, as each stands there. @returns {Promise<AgentsRow[]>} */
     list: () =>
       Promise.all(

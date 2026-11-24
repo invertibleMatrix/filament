@@ -431,3 +431,84 @@ test("a machine that takes this command line's device no more because it went un
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+// (fails before: yes — s4d: a machine was reached at the one address kept for it: its home network's address gone, its
+// tailnet's, which the desktop app had too, was never tried, and this Filament's agents had no way to it)
+test("a machine kept with other ways: where its address does not answer as it, the next that does is asked and is its address from then on; another machine there gets no token, a wire gap is said at once, and none answering says each way", async () => {
+  const { WAY_HEAD_MS, keepRemote, remoteNamed } = await import("../src/services/machines/remotes.js");
+  const dataDir = mkdtempSync(join(tmpdir(), "cli-ways-"));
+  const id = "1a8abe5b-0000-4000-8000-000000000003";
+  const FP = `${"AB:".repeat(31)}CD`;
+  const LAN = "https://192.0.2.7:20343";
+  const TAIL = "https://studio.tail1234.ts.net";
+  const TUNNEL = "http://127.0.0.1:41234";
+  try {
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify({ server: { encryptSecrets: false } }));
+    const routes = [{ url: `${TAIL}/` }, { url: "http://192.0.2.8:20343" }, { url: LAN }, { url: "https://192.0.2.9", fingerprint: "AB:CD" }, { url: TUNNEL }, { url: TAIL }];
+    keepRemote(dataDir, { url: LAN, fingerprint: FP, routes, machine: { id, name: "Studio" }, device: { id: "dev-agents", name: "Filament agents", scope: "agent" }, token: "fdt_agents" });
+    assert.deepEqual(readRemotes(dataDir)[0].routes, [{ url: TAIL }, { url: TUNNEL }], "each once: no plain http to another machine, not its own address, no broken pin");
+    assert.equal(remoteNamed(dataDir, TAIL, { agents: true }).machine.id, id, "named by any of its ways");
+    /** @type {string[]} */
+    const asked = [];
+    /** @param {Record<string, any>} at  who answers at each origin, as its /.well-known/filament says it @returns {typeof fetch} */
+    let letGo = 0;
+    const ways = (at) =>
+      /** @type {any} */ (
+        async (/** @type {string} */ url, /** @type {any} */ init) => {
+          const u = new URL(url);
+          asked.push(`${u.origin}${u.pathname}${init?.headers?.authorization ? " with its token" : ""}`);
+          // One that takes the connection and says nothing: answered never, until it is let go.
+          if (at[u.origin] === "silent")
+            return new Promise((_, no) => init.signal.addEventListener("abort", () => no((letGo++, init.signal.reason)), { once: true }));
+          if (!at[u.origin]) throw new TypeError("fetch failed");
+          return Response.json(u.pathname === "/.well-known/filament" ? at[u.origin] : { version: "0.9.90" });
+        }
+      );
+    const studio = { id, name: "Studio", version: "0.9.90" };
+    // Its home network's address gone: its others asked at once, the tailnet's answers as it, and is its address from then on.
+    const client = await connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [TAIL]: studio }) });
+    assert.equal(client.url, TAIL);
+    assert.deepEqual(asked, [`${LAN}/.well-known/filament`, `${TAIL}/.well-known/filament`, `${TUNNEL}/.well-known/filament`, `${TAIL}/api/state with its token`]);
+    const moved = readRemotes(dataDir)[0];
+    assert.deepEqual([moved.url, moved.fingerprint, moved.routes, moved.token], [TAIL, undefined, [{ url: LAN, fingerprint: FP }, { url: TUNNEL }], "fdt_agents"]);
+    // Another machine at its address now: its token goes there never, and the next way that answers as it is taken.
+    asked.length = 0;
+    const other = await connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [TAIL]: { id: "someone-else", name: "Other", version: "0.9.90" }, [LAN]: studio }) });
+    assert.equal(other.url, LAN);
+    assert.ok(!asked.some((a) => a.startsWith(TAIL) && a.endsWith("with its token")), "no token to another machine");
+    assert.deepEqual([readRemotes(dataDir)[0].url, readRemotes(dataDir)[0].fingerprint], [LAN, FP], "its pin back with its address");
+    // (fails before: yes — the review of s4d) Another machine on a wire this Filament does not speak is passed over as
+    // another machine, not said as this one's gap.
+    const elsewhere = { id: "someone-else", name: "Other", version: "9.0.0", protocol: 9, protocolLowest: 9 };
+    assert.equal((await connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [LAN]: elsewhere, [TAIL]: studio }) })).url, TAIL);
+    assert.equal((await connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [LAN]: studio }) })).url, LAN);
+    // A wire this Filament does not speak is the machine's, whichever way: said at once, no other way asked.
+    asked.length = 0;
+    const newer = { id, name: "Studio", version: "9.0.0", protocol: 9, protocolLowest: 9 };
+    await assert.rejects(connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [LAN]: newer, [TAIL]: studio }) }), /Studio runs Filament 9\.0\.0, too new for this Filament/);
+    assert.deepEqual(asked, [`${LAN}/.well-known/filament`]);
+    // (fails before: yes — the review of s4d) An address that takes the connection and says nothing is waited on alone
+    // for WAY_HEAD_MS, not for its whole time: the others are asked then, the first that answers taken, it let go.
+    const t0 = Date.now();
+    assert.equal((await connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({ [LAN]: "silent", [TAIL]: studio }) })).url, TAIL);
+    const took = Date.now() - t0;
+    assert.ok(took >= WAY_HEAD_MS - 50 && took < 4000, `taken in ${took} ms`);
+    assert.equal(letGo, 1, "the silent one let go");
+    // None answering: the first way's failure, each other way named, and the tunnel's end said as what it may be.
+    await assert.rejects(connectRemote(dataDir, "Studio", { agents: true, fetchImpl: ways({}) }), (/** @type {any} */ e) => {
+      assert.equal(e.code, EXIT.noFilament);
+      assert.ok(e.message.startsWith(`No Filament answers at ${TAIL}:`), e.message);
+      assert.ok(e.message.includes(`Nor did its other ways answer as it (${LAN}, ${TUNNEL}).`), e.message);
+      assert.ok(e.message.endsWith(`${TUNNEL} is on this computer: an SSH tunnel's end there stands while the Filament app that holds it runs with Studio connected in its window.`), e.message);
+      return true;
+    });
+    assert.equal(readRemotes(dataDir)[0].url, TAIL, "kept where it was");
+    // (fails before: yes — the review of s4d) An address one machine has as its own names it, though another keeps it
+    // among its ways.
+    keepRemote(dataDir, { url: "https://other.tail1234.ts.net", routes: [{ url: TAIL }], machine: { id: "someone-else", name: "Other" }, device: { id: "dev-other", name: "Filament agents", scope: "agent" }, token: "fdt_other" });
+    assert.equal(remoteNamed(dataDir, TAIL, { agents: true }).machine.id, id);
+    assert.equal(remoteNamed(dataDir, TUNNEL, { agents: true }).machine.id, id);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});

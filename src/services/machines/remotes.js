@@ -40,13 +40,113 @@ async function jsonOf(r, who) {
 
 /**
  * A Filament on another machine, as kept: its token is this device's, never said — open here, sealed in the file;
- * `fingerprint`, the certificate its https address is pinned to.
- * @typedef {{ name: string, url: string, token: string, fingerprint?: string, machine: { id: string, name: string }, device: { id: string, name: string, scope: string }, connectedAt: number }} Remote
+ * `fingerprint`, the certificate its https address is pinned to; `routes`, its other ways, tried in their order where
+ * `url` does not answer as it (`waysOf`) — the agents' device the desktop app keeps for a machine it reaches more than
+ * one way: its tailnet's, its home network's, an SSH tunnel's end here.
+ * @typedef {{ url: string, fingerprint?: string }} Way
+ * @typedef {{ name: string, url: string, token: string, fingerprint?: string, routes?: Way[], machine: { id: string, name: string }, device: { id: string, name: string, scope: string }, connectedAt: number }} Remote
  */
 /** A machine as it is handed out: what is kept of it, its token aside. @typedef {Omit<Remote, "token">} Machine */
 
 /** A machine with its token left out. @param {Remote} r @returns {Machine} */
 export const withoutToken = ({ token: _token, ...machine }) => machine;
+
+/** The most other ways one machine is kept with. */
+export const ROUTES_MOST = 8;
+/**
+ * A way to a machine as kept: an https address — its certificate pinned where a fingerprint is given — or plain http to
+ * this machine alone (an SSH tunnel's end); null where it is none. @param {any} w @returns {Way | null}
+ */
+const wayKept = (w) => {
+  try {
+    const u = new URL(String(w?.url ?? ""));
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && onThisMachine(u.href))) return null;
+    const pin = u.protocol === "https:" && w.fingerprint ? printOf(w.fingerprint) : "";
+    if (w.fingerprint && u.protocol === "https:" && pin.length !== 95) return null;
+    return { url: u.origin, ...(pin ? { fingerprint: pin } : {}) };
+  } catch {
+    return null;
+  }
+};
+/** A machine's other ways as kept: each once, none at `url`, `ROUTES_MOST` at most. @param {unknown} list @param {string} url @returns {Way[]} */
+const waysKept = (list, url) => {
+  /** @type {Way[]} */
+  const out = [];
+  for (const w of Array.isArray(list) ? list : []) {
+    const k = wayKept(w);
+    if (k && k.url !== url && !out.some((x) => x.url === k.url)) out.push(k);
+    if (out.length >= ROUTES_MOST) break;
+  }
+  return out;
+};
+/** A row with its other ways as kept, none where it has none. @template {{ url: string, routes?: unknown }} R @param {R} r @returns {R} */
+const withWays = (r) => {
+  const { routes: _was, ...rest } = r;
+  const routes = waysKept(r.routes, r.url);
+  return /** @type {R} */ (routes.length ? { ...rest, routes } : rest);
+};
+/** Whether a way is plain http to this machine: an SSH tunnel's end, or a forward of the person's, there while it is held. @param {Way} w */
+const heldHere = (w) => w.url.startsWith("http:");
+/**
+ * A machine's ways in the order they are tried: its address, then its others, one on this computer last — a tunnel's
+ * port, its tunnel ended, is any program's here to listen at (the review of s4d). @param {Remote} r @returns {Way[]}
+ */
+export const waysOf = (r) => {
+  const all = [{ url: r.url, ...(r.fingerprint ? { fingerprint: r.fingerprint } : {}) }, ...(r.routes || [])];
+  return [...all.filter((w) => !heldHere(w)), ...all.filter(heldHere)];
+};
+
+/** How long a machine's first way is asked alone before its others are asked too (`firstWay`). */
+export const WAY_HEAD_MS = 1500;
+/**
+ * The first of a machine's ways `check` takes: the first of them (`waysOf`) asked alone, its others at once where it
+ * failed as a way does (`tryAnother`) or did not answer in `headMs`, the first that answers then taken and the rest let
+ * go (`check`'s signal) — a machine that is off is said so in one wait, not one for each of its ways. A failure that is
+ * the machine's whichever way, a wire this Filament does not speak, ends it at once. None taken: each one's failure, in
+ * their order.
+ * @template T @param {Way[]} ways @param {(way: Way, signal: AbortSignal) => Promise<T>} check @param {number} [headMs]
+ * @returns {Promise<{ way: Way, value: T } | { failed: CliError[] }>}
+ */
+function firstWay(ways, check, headMs = WAY_HEAD_MS) {
+  const stop = new AbortController();
+  return new Promise((resolve, reject) => {
+    /** @type {CliError[]} */
+    const failed = [];
+    let asked = 0;
+    let out = 0;
+    let done = false;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let head;
+    /** @param {() => void} then */
+    const end = (then) => {
+      if (done) return;
+      done = true;
+      clearTimeout(head);
+      stop.abort();
+      then();
+    };
+    const rest = () => {
+      clearTimeout(head);
+      while (asked < ways.length) ask(asked);
+    };
+    /** @param {number} i */
+    const ask = (i) => {
+      asked++;
+      check(ways[i], stop.signal).then(
+        (value) => end(() => resolve({ way: ways[i], value })),
+        (e) => {
+          if (done) return;
+          if (!tryAnother(e)) return end(() => reject(e));
+          failed[i] = e;
+          if (++out === ways.length) return end(() => resolve({ failed }));
+          if (i === 0) rest();
+        },
+      );
+    };
+    ask(0);
+    if (ways.length > 1) head = setTimeout(rest, headMs);
+  });
+}
 
 /**
  * Whether the data folder seals its secrets on disk: its config's `server.encryptSecrets`, read, never written — on where
@@ -84,7 +184,7 @@ export function readRemotes(dataDir) {
   try {
     text = readFileSync(join(dataDir, REMOTES_FILE), "utf8");
     const j = JSON.parse(text);
-    rows = (Array.isArray(j?.remotes) ? j.remotes : []).filter((/** @type {any} */ r) => r && typeof r.url === "string" && typeof r.token === "string" && typeof r.machine?.id === "string").map(namesCleaned);
+    rows = (Array.isArray(j?.remotes) ? j.remotes : []).filter((/** @type {any} */ r) => r && typeof r.url === "string" && typeof r.token === "string" && typeof r.machine?.id === "string").map((/** @type {any} */ r) => withWays(namesCleaned(r)));
   } catch {
     return [];
   }
@@ -190,15 +290,18 @@ export const plainWords = (url) =>
  * no more than WHO_MAX of it read, past which it says so —, the name it gives as kept (machine.js `cleanName`), its id
  * where that is none. One on a wire this Filament does not speak (machine.js `protocolGap`) is refused, saying which
  * side to update — its refusal's body `{ gap, name, version }`, for an app to say it in its own words —, unless `wire`
- * is false: a sign-out, which stops a token there, goes on any wire (the review of s4c).
- * @param {string} url @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, wire?: boolean }} [o]
+ * is false: a sign-out, which stops a token there, goes on any wire (the review of s4c). `expect`: the machine's id
+ * looked for — another is refused as no Filament there before its wire is weighed (`other`, who it is), a way passed
+ * over, not that machine's gap (the review of s4d); `signal`: the ask let go of.
+ * @param {string} url @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, wire?: boolean, expect?: string, signal?: AbortSignal }} [o]
  * @returns {Promise<{ id: string, name: string, version: string }>}
  */
-export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire = true } = {}) {
+export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire = true, expect = "", signal } = {}) {
   /** @type {any} */
   let j;
   try {
-    const r = await fetchImpl(`${url}/.well-known/filament`, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    const ends = signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs);
+    const r = await fetchImpl(`${url}/.well-known/filament`, { redirect: "manual", signal: ends });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     j = JSON.parse(await bodyText(r, WHO_MAX, url));
   } catch (/** @type {any} */ e) {
@@ -213,6 +316,7 @@ export async function machineAt(url, { fetchImpl = fetch, timeoutMs = 5000, wire
   }
   if (typeof j?.id !== "string" || !j.id) throw new CliError(`What answers at ${url} is no Filament (it did not say who it is)`, EXIT.noFilament);
   const who = { id: j.id, name: cleanName(j.name) || cleanName(j.id) || j.id, version: String(j.version || "") };
+  if (expect && who.id !== expect) throw Object.assign(new CliError(`The Filament at ${url} is ${who.name} (${who.id})`, EXIT.noFilament), { other: who });
   // A Filament on a wire this one does not speak is sent nothing: which side to update, said (services/machine.js).
   const gap = wire ? protocolGap(j) : null;
   if (gap)
@@ -351,9 +455,9 @@ const agentsOf = (r) => r.device?.scope === "agent";
  * Kept beside the person's own device for that machine (`filament connect`'s), never in its place: a device of the same
  * kind kept before is let go here, and stays listed there until it is revoked. No `token`: the device kept already for
  * that machine, by its id, takes the address and pin given and keeps its own token — a machine reached anew, nothing
- * minted there.
+ * minted there. `routes`: its other ways, tried where `url` does not answer (`waysOf`); one that is none is left out.
  * @param {string} dataDir
- * @param {{ url: string, fingerprint?: string, machine: { id: string, name?: string }, device: { id: string, name?: string, scope?: string }, token?: string }} given
+ * @param {{ url: string, fingerprint?: string, routes?: Way[], machine: { id: string, name?: string }, device: { id: string, name?: string, scope?: string }, token?: string }} given
  * @returns {Remote}
  */
 export function keepRemote(dataDir, given) {
@@ -376,8 +480,9 @@ export function keepRemote(dataDir, given) {
   const token = had ? had.token : given.token;
   if (typeof token !== "string" || !token) throw new CliError(`${cleanName(given.machine.name) || id} handed out no token to keep`, EXIT.usage);
   const name = String(given.machine.name || id);
+  const routes = waysKept(given.routes, u.origin);
   /** @type {Remote} */
-  const row = namesCleaned({ name, url: u.origin, token, ...(pin ? { fingerprint: pin } : {}), machine: { id, name }, device: { id: deviceId, name: String(given.device?.name ?? ""), scope }, connectedAt: had ? had.connectedAt : Date.now() });
+  const row = namesCleaned({ name, url: u.origin, token, ...(pin ? { fingerprint: pin } : {}), ...(routes.length ? { routes } : {}), machine: { id, name }, device: { id: deviceId, name: String(given.device?.name ?? ""), scope }, connectedAt: had ? had.connectedAt : Date.now() });
   writeRemotes(dataDir, [...all.filter((x) => !(x.machine.id === id && agentsOf(x) === agentsOf(row))), row]);
   return row;
 }
@@ -412,6 +517,46 @@ function renamedKept(dataDir, r, name) {
 }
 
 /**
+ * Keep the machine `r` is reached at `way` now, one of its other ways (`waysOf`): its address next time, the one it had
+ * first among its others — the next call goes where it answered, and back where that one does not. A file another
+ * process wrote meanwhile is left as it is. @param {string} dataDir @param {Remote} r @param {Way} way @returns {Remote}
+ */
+function movedKept(dataDir, r, way) {
+  /** @param {Remote} x @returns {Remote} */
+  const moved = (x) => {
+    const { fingerprint: _pin, routes: _ways, ...rest } = x;
+    const routes = waysKept([{ url: x.url, ...(x.fingerprint ? { fingerprint: x.fingerprint } : {}) }, ...(x.routes || [])], way.url);
+    return { ...rest, url: way.url, ...(way.fingerprint ? { fingerprint: way.fingerprint } : {}), ...(routes.length ? { routes } : {}) };
+  };
+  /** @param {Remote} x */
+  const same = (x) => x.machine.id === r.machine.id && x.device.id === r.device.id && agentsOf(x) === agentsOf(r);
+  try {
+    const was = readFileSync(join(dataDir, REMOTES_FILE), "utf8");
+    const all = readRemotes(dataDir);
+    // Its row as the file has it now, ways kept there meanwhile among them; one kept at another address or pin since
+    // this call read it — the desktop app's, paired again or reached anew — stands as it is (the review of s4d).
+    if (all.some((x) => same(x) && x.url === r.url && (x.fingerprint ?? "") === (r.fingerprint ?? ""))) writeRemotes(dataDir, all.map((x) => (same(x) ? moved(x) : x)), was);
+  } catch {} // not written: this call still goes where it answered
+  return moved(r);
+}
+
+/**
+ * Why none of a machine's ways took it: the first one's failure, its other ways named where it has any; for the agents'
+ * device, a way on this computer said as what it may be — an SSH tunnel the desktop app holds (desktop/lib/machine-agents.js).
+ * @param {CliError | null | undefined} first @param {Remote} r @returns {CliError}
+ */
+const noWay = (first, r) => {
+  const e = first ?? new CliError(`${r.name}: no way to it answers`, EXIT.noFilament);
+  const others = r.routes?.length ? ` Nor did its other ways answer as it (${r.routes.map((x) => x.url).join(", ")}).` : "";
+  const here = agentsOf(r) ? waysOf(r).find(heldHere) : undefined;
+  const held = here ? ` ${here.url} is on this computer: an SSH tunnel's end there stands while the Filament app that holds it runs with ${r.name} connected in its window.` : "";
+  if (!others && !held) return e;
+  return Object.assign(new CliError(`${e.message}${others}${held}`, e.code, e.body), { cause: /** @type {any} */ (e).cause });
+};
+/** Whether a failure to reach a machine at one way leaves its others to try: none answered there, or not as it. @param {any} e */
+const tryAnother = (e) => e instanceof CliError && e.code === EXIT.noFilament;
+
+/**
  * The machine a command names — by its name (any case, either apostrophe), its machine's id, or its address — or a
  * CliError (exit 2) that lists those kept. A name two machines call themselves names neither: its CliError (`several`)
  * says each by its id and its address, which do name one. `agents`: the agents' device kept for it, not the person's.
@@ -429,7 +574,9 @@ export function remoteNamed(dataDir, which, { agents = false } = {}) {
       return null;
     }
   })();
-  const hits = all.filter((r) => nameKey(r.name) === typed || r.machine.id === w || (byUrl && r.url === byUrl));
+  const named = all.filter((r) => nameKey(r.name) === typed || r.machine.id === w || (byUrl && r.url === byUrl));
+  // An address one machine has as its own names it, though another kept it among its ways (the review of s4d).
+  const hits = named.length || !byUrl ? named : all.filter((r) => !!r.routes?.some((x) => x.url === byUrl));
   if (hits.length === 1) return hits[0];
   if (hits.length) {
     const each = hits.map((r) => `${r.name} (${r.machine.id}, ${r.url})`);
@@ -441,8 +588,10 @@ export function remoteNamed(dataDir, which, { agents = false } = {}) {
 
 /**
  * A client of a connected machine's Filament, once the machine at its address says it is the one connected and it
- * still knows this device; else a CliError in words that say which. `anyWire`: whatever wire it speaks (`machineAt`'s
- * `wire`), for a sign-out alone.
+ * still knows this device; else a CliError in words that say which. Where none answers at its address, or not as it,
+ * or not at once, its other ways are asked too (`firstWay`), and the one that answers as it first is its address from
+ * then on (`movedKept`); a client stays bound to the address it was made at, so a stream it holds does not move — its
+ * next call does. `anyWire`: whatever wire it speaks (`machineAt`'s `wire`), for a sign-out alone.
  * @param {string} dataDir @param {string} which @param {{ fetchImpl?: typeof fetch, signal?: AbortSignal, timeoutMs?: number, agents?: boolean, anyWire?: boolean }} [o]
  */
 export async function connectRemote(dataDir, which, { fetchImpl: given, signal, timeoutMs = 5000, agents = false, anyWire = false } = {}) {
@@ -452,16 +601,28 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
   if (row.url.startsWith("http:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again (filament connect <link>).`, EXIT.failed);
   // A token still sealed: this data folder's secret.key does not open it, and the sealed text is no token to send.
   if (isSealed(row.token)) throw new CliError(`${row.name}: its token was sealed with another secret.key than this data folder's, and cannot be read: put that secret.key back, or connect again (filament connect <link>).`, EXIT.failed);
-  const fetchImpl = given ?? (row.fingerprint ? pinnedFetch(row.fingerprint) : fetch);
-  const who = await machineAt(row.url, { fetchImpl, timeoutMs, wire: !anyWire });
-  if (who.id !== row.machine.id)
-    throw new CliError(`The Filament at ${row.url} is ${who.name} (${who.id}), not ${row.name} that this command line paired with: its token is not sent there. Connect again (filament connect <link>) if that machine was set up anew.`, EXIT.noFilament);
+  const paired = row;
+  // None there, another certificate, or another machine: its next way. A wire this Filament does not speak is the
+  // machine's, whichever way.
+  const found = await firstWay(waysOf(row), async (way, stop) => {
+    const fetchImpl = given ?? (way.fingerprint ? pinnedFetch(way.fingerprint) : fetch);
+    try {
+      const who = await machineAt(way.url, { fetchImpl, timeoutMs, wire: !anyWire, expect: paired.machine.id, signal: signal ? AbortSignal.any([stop, signal]) : stop });
+      return { who, fetchImpl };
+    } catch (/** @type {any} */ e) {
+      if (!e?.other) throw e;
+      throw new CliError(`The Filament at ${way.url} is ${e.other.name} (${e.other.id}), not ${paired.name} that this command line paired with: its token is not sent there. Connect again (filament connect <link>) if that machine was set up anew.`, EXIT.noFilament);
+    }
+  });
+  if ("failed" in found) throw noWay(found.failed[0], row);
+  const { way } = found;
+  const { who, fetchImpl } = found.value;
   row = renamedKept(dataDir, row, who.name);
   const auth = { authorization: `Bearer ${row.token}` };
   /** @type {any} */
   let state;
   try {
-    const r = await fetchImpl(`${row.url}/api/state`, { headers: { "x-filament-ui": "1", ...auth }, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    const r = await fetchImpl(`${way.url}/api/state`, { headers: { "x-filament-ui": "1", ...auth }, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
     if (redirected(r)) throw redirectRefusal(r, row.name);
     if (r.status === 403) {
       // An agents' device whose grant is switched off there is known all the same: its refusal says so (`grant`).
@@ -478,9 +639,10 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
     state = JSON.parse(await bodyText(r, ANSWER_MAX, row.name, "GET /state"));
   } catch (/** @type {any} */ e) {
     if (e instanceof CliError) throw e;
-    throw new CliError(`${row.name} at ${row.url} did not answer: ${e?.message || e}`, EXIT.noFilament);
+    throw new CliError(`${row.name} at ${way.url} did not answer: ${e?.message || e}`, EXIT.noFilament);
   }
-  return clientAt(row.url, state, fetchImpl, signal, { headers: auth, remote: withoutToken(row) });
+  if (way.url !== row.url) row = movedKept(dataDir, row, way);
+  return clientAt(way.url, state, fetchImpl, signal, { headers: auth, remote: withoutToken(row) });
 }
 
 /**
@@ -492,29 +654,51 @@ export async function connectRemote(dataDir, which, { fetchImpl: given, signal, 
  * listener takes a model call that sends a device's token through the same door (front-door.js `mainDoor`) — its grant,
  * a revoke, the calls one device may have. Where no pin says who answers, the machine at the address says it first, as
  * `connectRemote` asks it; where one does, it says its wire all the same — one this Filament does not speak is sent no
- * token, its refusal saying which side to update —, a pass kept `WIRE_KEPT_MS` (`wirePassed`). Else a CliError whose
+ * token, its refusal saying which side to update —, a pass kept `WIRE_KEPT_MS` (`wirePassed`), let go where a call
+ * through it fails. Where none answers at its address, or not as it, or not at once, its other ways are asked as
+ * `connectRemote` asks them. Else a CliError whose
  * words say why: none kept so, plain http on the network, its token sealed with another secret.key, another machine at
  * its address, none answering there, a wire this Filament does not speak.
  * @param {string} dataDir @param {string} which @param {{ agents?: boolean, connectMs?: number }} [o]
  * @returns {Promise<{ machine: Machine, url: string, fetch: typeof fetch | null, headers: Record<string, string> }>}
  */
 export async function modelsWayOf(dataDir, which, { agents = false, connectMs = 0 } = {}) {
-  const row = remoteNamed(dataDir, which, { agents });
+  let row = remoteNamed(dataDir, which, { agents });
   usePinBook(dataDir);
   if (!row.url.startsWith("https:") && !onThisMachine(row.url)) throw new CliError(`${row.name}: ${plainWords(row.url)}; then connect again.`, EXIT.failed);
   if (isSealed(row.token)) throw new CliError(`${row.name}: its token was sealed with another secret.key than this data folder's, and cannot be read: put that secret.key back, or connect again.`, EXIT.failed);
-  const pinned = row.fingerprint ? pinnedFetch(row.fingerprint, { connectMs }) : null;
-  const key = `${dataDir}\n${row.machine.id}\n${row.url}\n${row.fingerprint || ""}`;
-  if (!pinned || Date.now() - (wirePassed.get(key) ?? 0) >= WIRE_KEPT_MS) {
-    /** @type {typeof fetch} */
-    const unfollowed = (url, init = {}) => fetch(url, { ...init, redirect: "manual" });
-    // A pinned fetch gives up on the connection itself at `connectMs`, said as that (ETIMEDOUT): its answer is given past it.
-    const timeoutMs = connectMs > 0 ? connectMs + (pinned ? 2_000 : 0) : undefined;
-    const who = await machineAt(row.url, { fetchImpl: pinned ?? unfollowed, ...(timeoutMs ? { timeoutMs } : {}) });
-    if (who.id !== row.machine.id) throw new CliError(`The Filament at ${row.url} is ${who.name} (${who.id}), not ${row.name}: its token is not sent there.`, EXIT.noFilament);
-    if (pinned) wirePassed.set(key, Date.now());
+  /** @param {Way} way */
+  const keyOf = (way) => `${dataDir}\n${row.machine.id}\n${way.url}\n${way.fingerprint || ""}`;
+  const ways = waysOf(row);
+  // Its first way's wire passed of late, pinned: taken, nothing asked.
+  let way = ways[0];
+  if (!way.fingerprint || Date.now() - (wirePassed.get(keyOf(way)) ?? 0) >= WIRE_KEPT_MS) {
+    const paired = row;
+    const found = await firstWay(ways, async (w, stop) => {
+      const pinned = w.fingerprint ? pinnedFetch(w.fingerprint, { connectMs }) : null;
+      /** @type {typeof fetch} */
+      const unfollowed = (url, init = {}) => fetch(url, { ...init, redirect: "manual" });
+      // A pinned fetch gives up on the connection itself at `connectMs`, said as that (ETIMEDOUT): its answer is given past it.
+      const timeoutMs = connectMs > 0 ? connectMs + (pinned ? 2_000 : 0) : undefined;
+      try {
+        await machineAt(w.url, { fetchImpl: pinned ?? unfollowed, ...(timeoutMs ? { timeoutMs } : {}), expect: paired.machine.id, signal: stop });
+      } catch (/** @type {any} */ e) {
+        if (!e?.other) throw e;
+        throw new CliError(`The Filament at ${w.url} is ${e.other.name} (${e.other.id}), not ${paired.name}: its token is not sent there.`, EXIT.noFilament);
+      }
+      if (pinned) wirePassed.set(keyOf(w), Date.now());
+    });
+    if ("failed" in found) throw noWay(found.failed[0], row);
+    way = found.way;
   }
-  return { machine: withoutToken(row), url: row.url, fetch: pinned, headers: { authorization: `Bearer ${row.token}` } };
+  if (way.url !== row.url) row = movedKept(dataDir, row, way);
+  const pinned = way.fingerprint ? pinnedFetch(way.fingerprint, { connectMs }) : null;
+  const key = keyOf(way);
+  // A call through it that does not reach the machine lets its wire's pass go: the next asks anew, its other ways with
+  // it — a machine taken away from home is not waited on at its home address for a minute (the review of s4d).
+  /** @type {typeof fetch | null} */
+  const through = pinned && ((url, init) => pinned(url, init).catch((e) => Promise.reject((wirePassed.delete(key), e))));
+  return { machine: withoutToken(row), url: way.url, fetch: through, headers: { authorization: `Bearer ${row.token}` } };
 }
 
 /**

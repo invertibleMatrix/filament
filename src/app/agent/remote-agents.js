@@ -455,7 +455,8 @@ export function createRemoteAgents({ machines, wait = pause }) {
     any: () => kept().length > 0,
     /**
      * The machines kept for this Filament's agents, as `list_machines` answers, for the agent to choose where a task
-     * runs: each one's name, whether it answers now (asked in parallel, each for ANSWER_MS at most), its system and
+     * runs: each one's name, whether it answers now (asked in parallel, each for ANSWER_MS past its first way's head
+     * start at most — remotes.js `firstWay` —, then ANSWER_MS for its state), its system and
      * architecture, and the grants it gives them there; then what it has to work with now (GET /machine/caps: its CPUs
      * and their load, its memory free, its GPU), the coding agents signed in there, how many models answer there, and its
      * clones of this chat's project, found by `folder`'s git remote — none said where it has none.
