@@ -1,7 +1,8 @@
 // @ts-check
 // Set up a machine over SSH (the remote desk's s3b): the sheet of This computer's page in the desktop app where an SSH
 // host of yours — user@host, or a Host of your SSH config — becomes a machine of this window, Filament installed there,
-// run by systemd, its coding agents connected and memory on, reached over https and paired. The app makes each step
+// run as a service (systemd's; a Windows host's Task Scheduler), its coding agents connected and memory on, reached over
+// https and paired. The app makes each step
 // (desktop/lib/setup-over-ssh.js, through its bridge's `sshSetup`), one after another, the sheet saying each as it goes;
 // a step that failed is tried again alone (Retry), and one the person must answer — a host key ssh does not know — runs
 // ssh in a terminal on the sheet (Filament's own terminal running that program, POST /terminal), the step asked again
@@ -269,7 +270,7 @@ export function openSshSetup(o = {}, io = {}) {
     }
     body.replaceChildren(
       ...[
-        m("p", { class: "tk-lead" }, "On a Linux machine you reach with SSH — a server, a cloud VM: Filament installed in your user's own folder, run by systemd, its coding agents connected and memory on, an https way in (your tailnet's, or its network's), and this window paired with it."),
+        m("p", { class: "tk-lead" }, "On a Linux machine or a Windows host you reach with SSH — a server, a cloud VM: Filament installed in your user's own folder, run as a service (systemd's, or Windows' Task Scheduler), its coding agents connected and memory on, an https way in (your tailnet's, or its network's), and this window paired with it."),
         m("div", { class: "ssh-ask" }, field, btn("default", v.rows.length && !busy ? "Set up again" : "Set up", () => void flow.start(field.value), { disabled: busy })),
         m("p", { class: "tk-note" }, "It runs ssh with your keys and your SSH config. What only you answer — a host key it does not know, a password, sudo — you answer in a terminal here."),
         v.rows.length

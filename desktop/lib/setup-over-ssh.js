@@ -1,7 +1,9 @@
 // @ts-check
-// A Linux machine set up from the desk over SSH (the remote desk's s3b): from user@host — or a Host of your SSH config —
-// to Filament installed there, run by systemd, its coding agents connected and memory on, reached over https, and this
-// window paired with it as a full device. Each step (`STEPS`) is asked on its own, by the setup sheet of This computer's
+// A Linux machine or a Windows host set up from the desk over SSH (the remote desk's s3b, s3f5): from user@host — or a
+// Host of your SSH config — to Filament installed there, run as a service (systemd's; a Windows host's Task Scheduler),
+// its coding agents connected and memory on, reached over https, and this window paired with it as a full device. What
+// runs there is sh's on Linux and PowerShell's on a Windows host (`KITS`), as its probe found it. Each step (`STEPS`)
+// is asked on its own, by the setup sheet of This computer's
 // harness (src/ui/harness/ssh-setup.js), so its progress shows step by step and a failed one is tried again alone; each
 // reads what stands there first and does only what is missing — a machine set up already answers every step with
 // nothing to do. Commands run there in batch mode (ssh-exec.js `runSsh`); what only the person answers — a host key ssh
@@ -14,12 +16,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { FILAMENT_PORT, aliasOf } from "./ssh-route.js";
-import { probeSsh, runSsh, shQuote, sshTerminal } from "./ssh-exec.js";
-import { PAIR_MS, PAIR_SCRIPT } from "./add-machine.js";
+import { probeSsh, psQuote, runSsh, shQuote, sshTerminal } from "./ssh-exec.js";
+import { PAIR_MS, PAIR_PS, PAIR_SCRIPT } from "./add-machine.js";
 import { isNewer, serverFeed } from "../../src/services/updates.js";
 
 /** Where install.sh is downloaded from: the newest release's, which installs any version asked of it. */
 export const INSTALL_URL = "https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh";
+/** Where a Windows host's install.ps1 is downloaded from: the newest release's, as install.sh's. */
+export const INSTALL_PS_URL = "https://github.com/invertibleMatrix/filament/releases/latest/download/install.ps1";
 /**
  * A release's feed for the machine's servers, which install.sh reads first: there, the release is out for it — arm64's
  * its own, which a release may be without. @param {string} version @param {string | null} [target]  the probe's
@@ -38,6 +42,8 @@ const TAILNET_TRIES = 3;
 const TAILNET_GAP_MS = 3_000;
 /** Filament as install.sh installed it there. */
 const FILAMENT = '"$HOME/.local/bin/filament"';
+/** Filament as install.ps1 installed it on a Windows host, in `$f`: its current version's launcher, in the user's own folder. */
+const PS_FILAMENT = "$f = Join-Path $env:LOCALAPPDATA 'filament\\current\\bin\\filament.cmd'";
 /** A release's version, as install.sh takes one. */
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 /** A coding agent's id, as `filament agents connect` takes one. */
@@ -139,6 +145,81 @@ export const installScript = (version) =>
   ].join("\n");
 
 /**
+ * What installs Filament on a Windows host, by its PowerShell: install.ps1 downloaded and run with the version asked —
+ * none, the newest —, as its one-command install runs it (irm | iex); its download failing ends it with code 7.
+ * @param {string | null} version @param {string} [url]  where install.ps1 is
+ */
+export const installPs = (version, url = INSTALL_PS_URL) =>
+  [
+    "try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}",
+    `try { $s = (New-Object Net.WebClient).DownloadString(${psQuote(url)}) } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 7 }`,
+    version ? `$env:FILAMENT_VERSION = ${psQuote(version)}` : "Remove-Item Env:FILAMENT_VERSION -ErrorAction SilentlyContinue",
+    "iex $s",
+    "exit $LASTEXITCODE",
+  ].join("\n");
+
+/**
+ * What each step runs there, by the shell the machine runs commands in (ssh-exec.js `Platform.shell`): sh, where
+ * install.sh installed Filament in ~/.local; a Windows host's PowerShell, where install.ps1 installed it in
+ * %LOCALAPPDATA%\filament. `filament`: Filament there with words (each plain, or quoted by `quote`); `agents`: its
+ * coding agents found and listed as JSON, then a `filament-memory` line and whether memory is on; `ways`: its settings
+ * of the network listener and the tailnet's share, whether Tailscale is there, and the firewall a network listener needs
+ * opened (ufw; Windows Firewall); `read`: a file's text.
+ * @typedef {{ shell: "sh" | "powershell", where: string, quote: (s: string) => string, filament: (words: string) => string,
+ *   install: (version: string | null) => string, agents: string, ways: string, tailnet: string, served: string,
+ *   read: (path: string) => import("./ssh-exec.js").RunWhat, pair: string }} Kit
+ * @type {Record<"sh" | "powershell", Kit>}
+ */
+const KITS = {
+  sh: {
+    shell: "sh",
+    where: "~/.local/share/filament",
+    quote: shQuote,
+    filament: (words) => `exec ${FILAMENT} ${words}`,
+    install: installScript,
+    agents: [`f=${FILAMENT}`, '"$f" agents detect >/dev/null 2>&1', '"$f" agents list --json || exit $?', "echo", "echo filament-memory", '"$f" settings get memory.enabled 2>/dev/null || true'].join("\n"),
+    ways: [
+      `f=${FILAMENT}`,
+      'echo "lan=$("$f" settings get server.lan.enabled 2>/dev/null)"',
+      'echo "serve=$("$f" settings get server.tailscale.serve 2>/dev/null)"',
+      "command -v ufw >/dev/null 2>&1 && echo ufw=1",
+      "command -v tailscale >/dev/null 2>&1 && echo tailscale=1",
+      "true",
+    ].join("\n"),
+    tailnet: "tailscale status --json 2>/dev/null",
+    served: "tailscale serve status --json 2>/dev/null; true",
+    read: (path) => ({ argv: ["cat", path] }),
+    pair: PAIR_SCRIPT,
+  },
+  // A native program's stderr is left to it (a redirected line of one stops Windows PowerShell 5.1's script).
+  powershell: {
+    shell: "powershell",
+    where: "%LOCALAPPDATA%\\filament",
+    quote: psQuote,
+    filament: (words) => `${PS_FILAMENT}\n& $f ${words}\nexit $LASTEXITCODE`,
+    install: (version) => installPs(version),
+    agents: [PS_FILAMENT, "& $f agents detect | Out-Null", "& $f agents list --json", "if ($LASTEXITCODE) { exit $LASTEXITCODE }", "''", "'filament-memory'", "& $f settings get memory.enabled", "exit 0"].join("\n"),
+    ways: [
+      PS_FILAMENT,
+      '"lan=$(& $f settings get server.lan.enabled)"',
+      '"serve=$(& $f settings get server.tailscale.serve)"',
+      "if (Get-Command tailscale -ErrorAction SilentlyContinue) { 'tailscale=1' }",
+      // Windows Firewall on for any of its profiles, or not read: on, as Windows has it.
+      "$on = $true",
+      "try { $on = [bool]@(Get-NetFirewallProfile | Where-Object { [string]$_.Enabled -ne 'False' }).Count } catch {}",
+      "if ($on) { 'firewall=1' }",
+      "exit 0",
+    ].join("\n"),
+    tailnet: "tailscale status --json\nexit 0",
+    served: "tailscale serve status --json\nexit 0",
+    read: (path) => ({ script: `Get-Content -Raw -LiteralPath ${psQuote(path)}`, shell: "powershell" }),
+    pair: PAIR_PS,
+  },
+};
+/** The line that opens Filament's two ports in Windows Firewall, in an administrator's PowerShell. */
+const WINDOWS_FIREWALL = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
+
+/**
  * Whether a release of Filament for servers is out for the machine (`target`), asked of GitHub from here: none where its
  * feed is not found, null where GitHub did not say. @param {string} version @param {string | null} [target]
  * @param {typeof fetch} [fetchImpl]
@@ -178,8 +259,8 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
   };
   /** ssh in a terminal of the desk's, named. @param {string} a @param {RunWhat | null} what @param {string} title @returns {StepTerminal} */
   const term = (a, what, title) => ({ title, ...sshTerminal(a, what, cli ? { cli } : {}) });
-  /** A command there, by sh. @param {string} a @param {string} script @param {number} [timeoutMs] */
-  const sh = (a, script, timeoutMs = LOOK_MS) => ssh(a, { script }, { timeoutMs });
+  /** A command there, by the shell of its kit. @param {string} a @param {Kit} kit @param {string} script @param {number} [timeoutMs] */
+  const sh = (a, kit, script, timeoutMs = LOOK_MS) => ssh(a, kit.shell === "powershell" ? { script, shell: "powershell" } : { script }, { timeoutMs });
 
   /**
    * A run that did not do its part, said: a host key ssh does not know is the person's, in a terminal, and the step
@@ -213,15 +294,21 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     seenOf(a).platform = pl;
     if (pl.refusal) return { step: "reach", state: "failed", words: pl.refusal };
     if (pl.needs) return { step: "reach", state: "failed", words: pl.needs };
-    return { step: "reach", state: "done", words: `${a} answers: ${pl.os} on ${pl.arch}, glibc ${pl.libc}${pl.filament ? `, Filament ${pl.filament} installed there` : ""}.` };
+    return { step: "reach", state: "done", words: `${a} answers: ${pl.os} on ${pl.arch}${pl.libc ? `, glibc ${pl.libc}` : ""}${pl.filament ? `, Filament ${pl.filament} installed there` : ""}.` };
   }
 
-  /** The machine's platform as its last look said it, else looked at now. @param {string} step @param {string} a */
+  /**
+   * The machine's platform as its last look said it, else looked at now, and the kit its steps run there.
+   * @param {string} step @param {string} a @returns {Promise<{ platform: Platform, kit: Kit } | { stop: StepResult }>}
+   */
   const platformOf = async (step, a) => {
-    const had = seen.get(a)?.platform;
-    if (had) return { platform: had };
-    const r = await reach(a);
-    return r.state === "done" ? { platform: /** @type {Platform} */ (seen.get(a)?.platform) } : { stop: { ...r, step } };
+    let pl = seen.get(a)?.platform;
+    if (!pl) {
+      const r = await reach(a);
+      if (r.state !== "done") return { stop: { ...r, step } };
+      pl = /** @type {Platform} */ (seen.get(a)?.platform);
+    }
+    return { platform: pl, kit: KITS[pl.shell === "powershell" ? "powershell" : "sh"] };
   };
 
   /**
@@ -240,51 +327,61 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
         state: "skipped",
         words: want && isNewer(want, had) ? `Filament ${had} is installed there, older than this app's ${want}: once it is in this window, its Update Filament (its ⋯ in the machines menu) takes it to ${want}.` : `Filament ${had} is installed there.`,
       };
+    const kit = got.kit;
+    const installer = kit.shell === "powershell" ? "install.ps1" : "install.sh";
     log(`setup over ssh: installing Filament ${want || "(the newest release)"} on ${a}`);
-    const r = await sh(a, installScript(want), INSTALL_MS);
-    if (r.code === 7 && r.began) return { step: "install", state: "failed", words: `install.sh could not be downloaded there from ${INSTALL_URL}: ${a} reaches no GitHub, or reached it a moment too late.` };
+    const r = await sh(a, kit, kit.install(want), INSTALL_MS);
+    if (r.code === 7 && r.began)
+      return { step: "install", state: "failed", words: `${installer} could not be downloaded there from ${kit.shell === "powershell" ? INSTALL_PS_URL : INSTALL_URL}: ${a} reaches no GitHub, or reached it a moment too late.` };
     if (r.code !== 0 || !r.began) {
-      // install.sh says so of any feed it could not read: its release is none only where it is none from here too — the
-      // feed of the machine's own build (arm64's, which a release may be without; the hunt on s3b).
+      // The installer says so of any feed it could not read: its release is none only where it is none from here too —
+      // the feed of the machine's own build (arm64's, which a release may be without; the hunt on s3b).
       if (want && /gave no .* at /i.test(r.stderr) && (await released(want, got.platform.target)) === false)
         return { step: "install", state: "failed", words: `Filament ${want}, this app's version, has no server build released: this app is a build of its own. The newest release installs instead.`, offer: { label: "Install the newest release", latest: true } };
-      return trouble("install", a, r, "install.sh");
+      return trouble("install", a, r, installer);
     }
     // Its version, as it is there now.
     const again = await probe(a);
     if (again.ok) seenOf(a).platform = again.platform;
     const now = (again.ok ? again.platform.filament : null) || want;
-    return { step: "install", state: "done", words: `${now ? `Filament ${now}` : "Filament"} is installed there, in ~/.local/share/filament.` };
+    return { step: "install", state: "done", words: `${now ? `Filament ${now}` : "Filament"} is installed there, in ${kit.where}.` };
   }
 
-  /** `filament service status --json` there: its state, or the run that did not say it. @param {string} a */
-  const serviceLook = async (a) => {
-    const r = await sh(a, `exec ${FILAMENT} service status --json`);
+  /** `filament service status --json` there: its state, or the run that did not say it. @param {string} a @param {Kit} kit */
+  const serviceLook = async (a, kit) => {
+    const r = await sh(a, kit, kit.filament("service status --json"));
     const st = r.code === 0 ? jsonIn(r.stdout, "{") : null;
     if (st) seenOf(a).service = st;
     return { r, st };
   };
 
   /**
-   * Filament run by systemd there, started at boot: its user unit installed and running; lingering turned on as its user
-   * may, else its sudo line said.
+   * Filament run as a service there, started at boot: on Linux by systemd, its user unit installed and running,
+   * lingering turned on as its user may, else its sudo line said; on a Windows host by Task Scheduler, its task
+   * (\Filament\Filament) installed and its runner running Filament, at boot with no one logged in.
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function service(a) {
     const got = await platformOf("service", a);
     if ("stop" in got) return /** @type {StepResult} */ (got.stop);
+    const kit = got.kit;
+    const windows = kit.shell === "powershell";
     if (!got.platform.filament) return { step: "service", state: "failed", words: `Filament is not installed on ${a} yet: Install Filament first.` };
-    if (!got.platform.has.includes("systemctl"))
+    if (!windows && !got.platform.has.includes("systemctl"))
       return { step: "service", state: "failed", words: `${a} has no systemd: Filament is installed there and runs as you start it (filament start, under tmux or screen), and nothing starts it at boot or after a crash.` };
-    let { r, st } = await serviceLook(a);
+    let { r, st } = await serviceLook(a, kit);
     if (!st) return trouble("service", a, r, "filament service status");
     const stood = st.installed === true && st.active === "active" && st.enabled === "enabled" && !!st.filament;
     if (!stood) {
       log(`setup over ssh: filament service install on ${a}`);
-      const ran = await sh(a, `exec ${FILAMENT} service install`, SERVICE_MS);
+      const ran = await sh(a, kit, kit.filament("service install"), SERVICE_MS);
       if (ran.code !== 0) return trouble("service", a, ran, "filament service install");
-      ({ r, st } = await serviceLook(a));
+      ({ r, st } = await serviceLook(a, kit));
       if (!st) return trouble("service", a, r, "filament service status");
+    }
+    if (windows) {
+      const v = st.filament?.version ? `Filament ${st.filament.version}` : "Filament";
+      return { step: "service", state: stood ? "skipped" : "done", words: `${v} runs there under Task Scheduler (its task \\Filament\\Filament), started at boot with no one logged in, and again after a crash.` };
     }
     let changed = !stood;
     /** @type {StepLine[]} */
@@ -293,8 +390,8 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     // on after, the line with sudo — never "nothing to do" for a machine that may not start Filament at boot (the hunt
     // on s3b).
     if (st.linger !== true) {
-      await sh(a, 'loginctl enable-linger "$(id -un)" >/dev/null 2>&1; true');
-      const after = await serviceLook(a);
+      await sh(a, kit, 'loginctl enable-linger "$(id -un)" >/dev/null 2>&1; true');
+      const after = await serviceLook(a, kit);
       if (after.st) st = after.st;
       if (st.linger === true) changed = true;
       else
@@ -318,7 +415,10 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function setup(a) {
-    const look = await sh(a, [`f=${FILAMENT}`, '"$f" agents detect >/dev/null 2>&1', '"$f" agents list --json || exit $?', "echo", "echo filament-memory", '"$f" settings get memory.enabled 2>/dev/null || true'].join("\n"), CONNECT_MS);
+    const got = await platformOf("setup", a);
+    if ("stop" in got) return /** @type {StepResult} */ (got.stop);
+    const kit = got.kit;
+    const look = await sh(a, kit, kit.agents, CONNECT_MS);
     if (look.code !== 0) return trouble("setup", a, look, "filament agents");
     const [list = "", memory = ""] = String(look.stdout).split(/\n?filament-memory\r?\n/);
     const rows = jsonIn(list.trim(), "[");
@@ -331,13 +431,13 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     const failed = [];
     for (const x of connect) {
       log(`setup over ssh: filament agents connect ${x.id} on ${a}`);
-      const r = await sh(a, `exec ${FILAMENT} agents connect ${shQuote(String(x.id))}`, CONNECT_MS + 60_000);
+      const r = await sh(a, kit, kit.filament(`agents connect ${kit.quote(String(x.id))}`), CONNECT_MS + 60_000);
       if (r.code === 0) connected.push(String(x.name || x.id));
       else failed.push(`${x.name || x.id} (${lastLine(r.stderr) || r.why || `code ${r.code}`})`);
     }
     const wasOn = lastLine(memory) === "true";
     if (!wasOn) {
-      const r = await sh(a, `exec ${FILAMENT} memory on`);
+      const r = await sh(a, kit, kit.filament("memory on"));
       if (r.code !== 0) return trouble("setup", a, r, "filament memory on");
     }
     const names = there.map((x) => String(x.name || x.id));
@@ -359,11 +459,11 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
   /**
    * Its ways in over https as `filament status --json` says them there: its network listener (asked for, the port it
    * listens on, why not) and its tailnet share (asked for, served, why not); null each where it says none.
-   * @param {string} a
+   * @param {string} a @param {Kit} kit
    * @returns {Promise<{ network: { on: boolean, listening: number | null, error: string | null } | null, tailnet: { on: boolean, served: boolean, error: string | null } | null }>}
    */
-  const waysThere = async (a) => {
-    const r = await sh(a, `exec ${FILAMENT} status --json`);
+  const waysThere = async (a, kit) => {
+    const r = await sh(a, kit, kit.filament("status --json"));
     const s = r.code === 0 ? jsonIn(r.stdout, "{") : null;
     return { network: s?.network ?? null, tailnet: s?.tailnet ?? null };
   };
@@ -376,17 +476,11 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function route(a) {
-    const look = await sh(
-      a,
-      [
-        `f=${FILAMENT}`,
-        'echo "lan=$("$f" settings get server.lan.enabled 2>/dev/null)"',
-        'echo "serve=$("$f" settings get server.tailscale.serve 2>/dev/null)"',
-        "command -v ufw >/dev/null 2>&1 && echo ufw=1",
-        "command -v tailscale >/dev/null 2>&1 && echo tailscale=1",
-        "true",
-      ].join("\n"),
-    );
+    const got = await platformOf("route", a);
+    if ("stop" in got) return /** @type {StepResult} */ (got.stop);
+    const kit = got.kit;
+    const windows = kit.shell === "powershell";
+    const look = await sh(a, kit, kit.ways);
     if (look.code !== 0) return trouble("route", a, look, "filament settings");
     /** @type {Record<string, string>} */
     const k = {};
@@ -396,27 +490,31 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     }
     let running = false;
     if (k.tailscale) {
-      const st = await sh(a, "tailscale status --json 2>/dev/null");
+      const st = await sh(a, kit, kit.tailnet);
       running = jsonIn(st.stdout, "{")?.BackendState === "Running";
     }
     seenOf(a).tailnet = running;
     if (running) {
       const was = k.serve === "true";
       if (!was) {
-        const r = await sh(a, `exec ${FILAMENT} settings set server.tailscale.serve true`);
+        const r = await sh(a, kit, kit.filament("settings set server.tailscale.serve true"));
         if (r.code !== 0) return trouble("route", a, r, "filament settings set");
       }
-      // Its user may serve — root, or Tailscale's operator, as its prefs name one —, or Tailscale refuses it its serve:
-      // that operator named once, with sudo. Prefs that do not read say the line all the same.
-      const who = await sh(a, "id -un; tailscale debug prefs 2>/dev/null; true");
-      const user = String(who.stdout).split(/\r?\n/)[0].trim();
-      const prefs = jsonIn(who.stdout, "{");
-      const refused = user !== "root" && (!prefs || String(prefs.OperatorUser || "") !== user);
       /** @type {StepLine[]} */
-      const also = refused ? [{ words: "Tailscale serves for root and its operator alone: let its user serve, once.", line: "sudo tailscale set --operator=$USER", terminal: term(a, { script: 'sudo tailscale set --operator="$(id -un)"' }, `Tailscale's operator on ${a}`) }] : [];
+      const also = [];
+      // On Linux its user may serve — root, or Tailscale's operator, as its prefs name one —, or Tailscale refuses it its
+      // serve: that operator named once, with sudo. Prefs that do not read say the line all the same. Windows' Tailscale
+      // names no operator: what it refuses is said as it stands (`waysThere`).
+      if (!windows) {
+        const who = await sh(a, kit, "id -un; tailscale debug prefs 2>/dev/null; true");
+        const user = String(who.stdout).split(/\r?\n/)[0].trim();
+        const prefs = jsonIn(who.stdout, "{");
+        if (user !== "root" && (!prefs || String(prefs.OperatorUser || "") !== user))
+          also.push({ words: "Tailscale serves for root and its operator alone: let its user serve, once.", line: "sudo tailscale set --operator=$USER", terminal: term(a, { script: 'sudo tailscale set --operator="$(id -un)"' }, `Tailscale's operator on ${a}`) });
+      }
       // Asked for before this run, and not served: said with why. Asked for just now, Tailscale takes its moment, which
       // the pairing waits for.
-      const t = was ? (await waysThere(a)).tailnet : null;
+      const t = was ? (await waysThere(a, kit)).tailnet : null;
       if (t && !t.served)
         return {
           step: "route",
@@ -433,18 +531,21 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     }
     const was = k.lan === "true";
     if (!was) {
-      const r = await sh(a, `exec ${FILAMENT} settings set server.lan.enabled true`);
+      const r = await sh(a, kit, kit.filament("settings set server.lan.enabled true"));
       if (r.code !== 0) return trouble("route", a, r, "filament settings set");
     }
     /** @type {StepLine[]} */
     const also =
-      !was && k.ufw
-        ? [{ words: "Where its firewall (ufw) is on, open Filament's two ports — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
-        : [];
-    const tail = k.tailscale ? " Tailscale is there, not signed in: signed in (sudo tailscale up), a setup again shares Filament on your tailnet." : "";
+      was ? []
+      : windows && k.firewall
+        ? [{ words: "Windows Firewall lets no one in to Filament's two ports until a rule does — and your cloud's security group, where it has one. In an administrator's PowerShell there:", line: WINDOWS_FIREWALL, terminal: term(a, { script: WINDOWS_FIREWALL, shell: "powershell" }, `The firewall on ${a}`) }]
+        : k.ufw
+          ? [{ words: "Where its firewall (ufw) is on, open Filament's two ports — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
+          : [];
+    const tail = k.tailscale ? ` Tailscale is there, not signed in: signed in (${windows ? "its app, or tailscale up" : "sudo tailscale up"}), a setup again shares Filament on your tailnet.` : "";
     // The listener as it stands once the setting is saved: one that could not listen (its port another program's) is
     // said with why, never as listening.
-    const n = (await waysThere(a)).network;
+    const n = (await waysThere(a, kit)).network;
     if (n && !n.listening)
       return {
         step: "route",
@@ -467,9 +568,12 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function pairStep(a) {
+    const got = await platformOf("pair", a);
+    if ("stop" in got) return /** @type {StepResult} */ (got.stop);
+    const kit = got.kit;
     let st = seen.get(a)?.service ?? null;
     if (!st?.dataDir) {
-      const look = await serviceLook(a);
+      const look = await serviceLook(a, kit);
       if (!look.st) return trouble("pair", a, look.r, "filament service status");
       st = look.st;
     }
@@ -486,7 +590,7 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     };
     // Its id, as its data folder keeps it: a machine this window keeps over https already is set.
     if (st?.dataDir) {
-      const r = await ssh(a, { argv: ["cat", `${st.dataDir}/machine.json`] }, { timeoutMs: LOOK_MS });
+      const r = await ssh(a, kit.read(`${st.dataDir}${kit.shell === "powershell" ? "\\" : "/"}machine.json`), { timeoutMs: LOOK_MS });
       const id = String(jsonIn(r.stdout, "{")?.id || "").toLowerCase();
       const kept = id ? machines().find((m) => m.id === id) : null;
       if (kept && kept.routes.some((x) => x.kind === "lan" || (x.kind === "url" && String(x.url).startsWith("https:")))) {
@@ -503,9 +607,9 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     let served = !seen.get(a)?.tailnet;
     for (let i = 0; !served && i < TAILNET_TRIES; i++) {
       if (i) await wait(TAILNET_GAP_MS);
-      served = /127\.0\.0\.1:\d+/.test(String((await sh(a, "tailscale serve status --json 2>/dev/null; true")).stdout));
+      served = /127\.0\.0\.1:\d+/.test(String((await sh(a, kit, kit.served)).stdout));
     }
-    const r0 = await ssh(a, { script: PAIR_SCRIPT }, { timeoutMs: PAIR_MS });
+    const r0 = await sh(a, kit, kit.pair, PAIR_MS);
     const p = r0.code === 0 ? jsonIn(r0.stdout, "{") : null;
     if (typeof p?.code !== "string" || !p.code) return trouble("pair", a, r0, "filament pair");
     const tailnet = Array.isArray(p.links) ? p.links.map(String).filter((/** @type {string} */ l) => /^https:\/\/[^/:]+\.ts\.net[/:#]/i.test(l)) : [];

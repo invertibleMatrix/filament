@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
-import { addressOf, checkMachine, claimOutcome, claimScript, deviceNameHere, pairOverSsh, CLAIM_FROM, PAIR_MS, PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
+import { addressOf, checkMachine, claimOutcome, claimScript, deviceNameHere, pairOverSsh, CLAIM_FROM, PAIR_MS, PAIR_PS, PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
 import { lanIdentity } from "../src/services/lan-tls.js";
 
 const made = /** @type {string[]} */ ([]);
@@ -226,5 +226,13 @@ describe("the claim", () => {
     assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: null, ask: "sign-in" }) })).words, "ssh box asks for a password or a code: run ssh box in a terminal once, then add it again.");
     assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: 255, why: "ssh to box ended: Connection refused" }) })).words, "ssh to box ended: Connection refused");
     assert.equal(/** @type {any} */ (await pairOverSsh("box", box, { ssh: over({ code: 127 }) })).words, "filament pair on box ended with code 127.");
+    // (s3f5) A Windows host: its cmd did not start sh's script — its code 255, its words none of ssh's —, and its
+    // PowerShell makes the code, as install.ps1 installed Filament there.
+    ran.length = 0;
+    const cmd = { code: 255, stdout: "", stderr: "'sh' is not recognized as an internal or external command,\r\n", cut: false, why: "ssh to box ended: 'sh' is not recognized", ask: null, began: false };
+    const win = /** @type {any} */ (async (/** @type {string} */ alias, /** @type {any} */ what, /** @type {any} */ o) => (ran.push([alias, what, o]), what.shell === "powershell" ? { code: 0, stdout: `${paired}\r\n`, stderr: "", cut: false, why: null, ask: null, began: true } : cmd));
+    assert.deepEqual(await pairOverSsh("box", box, { ssh: win }), { code: "WXYZ-2345" });
+    assert.deepEqual(ran.map(([, what]) => what), [{ script: PAIR_SCRIPT }, { script: PAIR_PS, shell: "powershell" }]);
+    assert.match(PAIR_PS, /filament\\current\\bin\\filament\.cmd[\s\S]* pair --json/);
   });
 });

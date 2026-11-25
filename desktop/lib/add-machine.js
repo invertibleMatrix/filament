@@ -18,7 +18,7 @@ import { certificateAt, pinnedFetch } from "../../src/cli/pinned.js";
 import { claimWords } from "../../src/ui/pair.js";
 import { printOf } from "../../src/core/x509.js";
 import { FILAMENT_PORT, sshAsked } from "./ssh-route.js";
-import { runSsh } from "./ssh-exec.js";
+import { runEither, runSsh } from "./ssh-exec.js";
 
 /** The page of a machine the claim is made from: its own address, no script of its own, no policy against a fetch home. */
 export const CLAIM_FROM = "/.well-known/filament";
@@ -142,6 +142,8 @@ export async function checkMachine(input, { fetchImpl = fetch, certificate = cer
  * there that is not a login one reads no profile that puts ~/.local/bin on it.
  */
 export const PAIR_SCRIPT = 'f="$HOME/.local/bin/filament"; [ -x "$f" ] || f=filament; exec "$f" pair --json';
+/** The same on a Windows host, by its PowerShell: `filament pair --json`, as install.ps1 installed it, else its PATH's. */
+export const PAIR_PS = "$f = Join-Path $env:LOCALAPPDATA 'filament\\current\\bin\\filament.cmd'\nif (-not (Test-Path -LiteralPath $f)) { $f = 'filament' }\n& $f pair --json\nexit $LASTEXITCODE";
 /** How long `filament pair` over SSH may take: a login, and one call to the Filament there. */
 export const PAIR_MS = 30_000;
 
@@ -154,7 +156,8 @@ export const PAIR_MS = 30_000;
  * @returns {Promise<{ code: string } | { words: string }>}
  */
 export async function pairOverSsh(alias, machine, { ssh = runSsh } = {}) {
-  const run = await ssh(alias, { script: PAIR_SCRIPT }, { timeoutMs: PAIR_MS });
+  // Its shell not known here: sh's, else a Windows host's PowerShell.
+  const run = await runEither(alias, { sh: PAIR_SCRIPT, powershell: PAIR_PS }, { timeoutMs: PAIR_MS }, ssh);
   /** @type {any} */
   let p = null;
   // From the line its JSON starts at: a shell's start-up files may say words of their own first.

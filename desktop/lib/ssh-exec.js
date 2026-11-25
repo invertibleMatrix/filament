@@ -7,15 +7,17 @@
 // host key to check, a password, a code, sudo — is theirs, in a terminal: `sshTerminal` is that run as a program for
 // one (`ssh -t`, ssh asking the host key with its fingerprint shown), and `runSsh` hands it to its caller's
 // `interactive` where ssh did not know the host key, then runs the command again. A command reaches the shell there as
-// one line every login shell reads alike (sh, bash, zsh, fish, csh): its script encoded, decoded and run by sh there
-// (`commandOf`), saying on its stderr that it began (`BEGAN`) and, ended, its code (`ENDED`), each mark the run's own
+// one line every login shell reads alike (sh, bash, zsh, fish, csh): its script encoded, decoded and run by sh there —
+// on a Windows host, by its PowerShell — (`commandOf`), saying on its stderr that it began (`BEGAN`) and, ended, its
+// code (`ENDED`), each mark the run's own
 // (a nonce no login banner or profile there knows) — so ssh's own 255, before
 // the command began or as the connection dropped under it, is never read as the command's, and something run in its
 // place (a forced command, a login that starts another shell) never as its success. A secret goes to the command on its
 // standard input alone, never in its words, which a process list shows; each stream's output is kept to `OUTPUT_MAX`,
 // and a run that does not end in `timeoutMs` is let go of — its command there may run on, and is said to. `probeSsh`
 // reads what the machine is — its system, processor, C library, word size and the tools setup needs — as
-// scripts/install.sh checks it, by sh, else (a Windows host, whose OpenSSH starts cmd or PowerShell) by PowerShell.
+// scripts/install.sh checks it, by sh, else (a Windows host, whose OpenSSH starts cmd or PowerShell) by PowerShell, as
+// scripts/install.ps1 does; `runEither` runs a command on a machine whose shell is not known, by sh, else by PowerShell.
 // Plain Node; `spawn` and `cli` are seams for its test.
 import { spawn as spawnChild } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -65,6 +67,11 @@ export const batchArgs = (alias, command) => [
 
 /** A word for a POSIX shell, whole: in single quotes, a quote in it closed, escaped and opened again. @param {string} s */
 export const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+/**
+ * A word for PowerShell, whole: in single quotes, each quote in it doubled — the curly ones too, which PowerShell reads
+ * as quotes as well. @param {string} s
+ */
+export const psQuote = (s) => `'${String(s).replace(/['‘’‚‛]/g, "$&$&")}'`;
 
 /**
  * @typedef {{ argv: string[] } | { script: string, shell?: "sh" | "powershell" }} RunWhat  a command there, for a machine
@@ -72,17 +79,35 @@ export const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
  */
 
 /**
+ * What a marked run's script for PowerShell runs around it: its words in UTF-8, no progress drawn, an error stops it
+ * and is said in its own words; its end said with its code (`ENDED`) — `exit` where the script ended PowerShell
+ * itself, whose exit code is then the run's (an `exit` in it leaves no code to read). @param {string} mark @param {string} script
+ */
+const psMarked = (mark, script) =>
+  [
+    `[Console]::Error.WriteLine('${BEGAN}-${mark}')`,
+    "$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop'",
+    "try{[Console]::OutputEncoding=New-Object Text.UTF8Encoding $false}catch{}",
+    "$global:LASTEXITCODE=0;$filamentRan=0",
+    "try{& {",
+    script,
+    `};$filamentRan=1}catch{$filamentRan=2;[Console]::Error.WriteLine($_.Exception.Message)}finally{[Console]::Error.WriteLine('${ENDED}-${mark} '+$(if($filamentRan-eq 2){1}elseif($filamentRan){[int]$global:LASTEXITCODE}else{'exit'}))}`,
+    "exit $(if($filamentRan-eq 2){1}else{[int]$global:LASTEXITCODE})",
+  ].join("\n");
+
+/**
  * What a run asks the shell there to run, as one line every login shell reads alike: for sh, its script — its words,
  * each quoted for sh, or the script given — in base64, decoded and run by sh there, its standard input left to the
  * command; for PowerShell, encoded as Windows' own PowerShell takes one (`-EncodedCommand`), which no shell there reads
- * into. `marked`: it says first on its stderr that it began (`BEGAN`) and, for sh, last that it ended, with its code
- * (`ENDED`), each with `mark` after it — the run's own, inside the encoded script, so nothing printed there before it
- * ran (a login banner, a profile) says it —, the command run in a shell of its own, whose `exit` ends it alone.
+ * into. `marked`: it says first on its stderr that it began (`BEGAN`) and last that it ended, with its code (`ENDED`),
+ * each with `mark` after it — the run's own, inside the encoded script, so nothing printed there before it ran (a login
+ * banner, a profile) says it —, the command run in a shell of its own (for PowerShell, a script block of its own:
+ * `psMarked`), whose `exit` ends it alone.
  * @param {RunWhat} what @param {{ marked?: boolean, mark?: string }} [o]
  */
 export function commandOf(what, { marked = false, mark = "" } = {}) {
   if ("script" in what && what.shell === "powershell") {
-    const ps = `${marked ? `[Console]::Error.WriteLine('${BEGAN}-${mark}')\n` : ""}${String(what.script)}`;
+    const ps = marked ? psMarked(mark, String(what.script)) : String(what.script);
     const line = `powershell -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(ps, "utf16le").toString("base64")}`;
     if (line.length > PS_LINE_MAX) throw new Error(`a command line for PowerShell there is kept to ${PS_LINE_MAX} characters encoded`);
     return line;
@@ -161,16 +186,37 @@ const textOf = (parts, cut) => {
 };
 /**
  * A run's marks as its stderr says them (`commandOf`): `BEGAN`'s line, wherever what the login there printed first with
- * no newline put it; `ENDED`'s and the code in it, after whatever the command said last. Each holds the run's own
- * mark, so a line no run of this one said — a banner's, a profile's, an echo of another run's — is none of them.
+ * no newline put it; `ENDED`'s and the code in it — a Windows one may be below zero, or `exit` (`psMarked`) —, after
+ * whatever the command said last. Each holds the run's own mark, so a line no run of this one said — a banner's, a
+ * profile's, an echo of another run's — is none of them.
  * @param {string} mark
  */
 const marksOf = (mark) => ({
   began: new RegExp(`${BEGAN}-${mark}\\r?\\n`),
-  ended: new RegExp(`${ENDED}-${mark} (\\d+)\\r?\\n`),
+  ended: new RegExp(`${ENDED}-${mark} (-?\\d+|exit)\\r?\\n`),
   /** Every one of its lines, taken out of the words: a trace there (set -x) says them twice. */
-  all: new RegExp(`(?:${BEGAN}-${mark}|${ENDED}-${mark} \\d+)\\r?\\n`, "g"),
+  all: new RegExp(`(?:${BEGAN}-${mark}|${ENDED}-${mark} (?:-?\\d+|exit))\\r?\\n`, "g"),
 });
+/** XML's own escapes, and PowerShell's for a character (`_x000D_`), read back. @param {string} s */
+const xmlText = (s) =>
+  s
+    .replace(/_x([0-9A-Fa-f]{4})_/g, (_, h) => String.fromCharCode(Number.parseInt(h, 16)))
+    .replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" })[/** @type {"lt"} */ (e)]);
+/**
+ * What Windows PowerShell said on its stderr as words: run with `-EncodedCommand`, it says its errors as CLIXML
+ * (`#< CLIXML` and an `<Objs>` of them), read back here to their lines — where the error came from in the script
+ * (`At line:`, `+ ...`) left out —, and its other records (progress) dropped. @param {string} s
+ */
+export const clixmlWords = (s) =>
+  String(s).replace(/#< CLIXML\r?\n(<Objs\b[\s\S]*?<\/Objs>)?/g, (_, objs) =>
+    [...String(objs || "").matchAll(/<S S="Error">([\s\S]*?)<\/S>/g)]
+      .map((m) => xmlText(m[1]))
+      .join("")
+      .split(/\r?\n/)
+      .filter((l) => l.trim() && !/^At line:\d+/.test(l) && !/^\s*\+ /.test(l))
+      .map((l) => `${l.replace(/^\s+:\s+/, "").trimEnd()}\n`)
+      .join(""),
+  );
 /** A stream's last lines in a line, for words: what failed is said last. @param {string} s */
 const lastSaid = (s) => {
   const said = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(" ");
@@ -198,8 +244,7 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
   const mark = randomBytes(8).toString("hex");
   const marks = marksOf(mark);
   const line = commandOf(what, { marked: true, mark });
-  // PowerShell's script says no end: a 255 after it began is its own.
-  const ends = !("script" in what && what.shell === "powershell");
+  const ps = "script" in what && what.shell === "powershell";
   return new Promise((resolve) => {
     /** @type {any} */
     let child;
@@ -270,6 +315,7 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
       const ended = marks.ended.exec(raw) || marks.ended.exec(errTail.toString("utf8"));
       let stdout = textOf(out, cut.out);
       let stderr = raw.replace(marks.all, "");
+      if (ps) stderr = clixmlWords(stderr);
       if (!began && stdin) {
         stdout = unsaid(stdout, stdin);
         stderr = unsaid(stderr, stdin);
@@ -277,8 +323,14 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
       const base = { stdout, stderr, cut: cut.out || cut.err, began };
       if (failed != null) return resolve({ code: null, ...base, ...execWords(failed, alias) });
       // The command's own code, whatever ssh's: the connection may drop once it said it, and the time run out as ssh
-      // was ending — it ended there.
-      if (ended) return resolve({ code: Number(ended[1]), ...base, why: null, ask: null });
+      // was ending — it ended there. One that ended PowerShell by its `exit` says its code by PowerShell's: ssh's.
+      if (ended && ended[1] !== "exit") return resolve({ code: Number(ended[1]), ...base, why: null, ask: null });
+      if (ended)
+        return resolve(
+          code === null
+            ? { code, ...base, why: `the command on ${alias} ended, and ssh was ended before it said its code.`, ask: null }
+            : { code, ...base, why: null, ask: null },
+        );
       if (timedOut)
         return resolve({
           code: null,
@@ -301,7 +353,7 @@ function once(alias, what, { stdin = "", timeoutMs = RUN_MS, spawn = spawnChild,
         return resolve({ code, ...base, why: `${alias} did not start the command${said ? `: ${said}` : "."}`, ask: null });
       }
       // It began and said no end: ssh's own 255 as the connection dropped under it, ended by a signal there.
-      if (ends && code !== 0) {
+      if (code !== 0) {
         const said = lastSaid(stderr.split(/\r?\n/).slice(-3).join("\n"));
         return resolve({ code, ...base, why: `the connection to ${alias} ended while the command ran there${said ? ` (${said})` : ""}: it may still be running there.`, ask: null });
       }
@@ -340,6 +392,27 @@ export async function runSsh(alias, what, o = {}) {
 }
 
 /**
+ * Whether a run that did not begin failed in ssh itself — as ssh says in words of its own (a host key, a sign-in, a
+ * refusal, no such host) —, so another shell's command would fail alike: a Windows host's cmd, which reads no single
+ * quotes, ends sh's command line by its own failure with ssh's 255 too. @param {SshRun} r @param {string} alias
+ */
+const sshFailed = (r, alias) => r.code === null || !!r.ask || (r.code === 255 && !r.began && !execWords(r.stderr, aliasOf(alias) || alias).why.startsWith(`ssh to ${aliasOf(alias) || alias} ended`));
+
+/**
+ * A command on a machine whose shell is not known here: its script for sh, else — a shell there that did not start it
+ * (a Windows host's cmd or PowerShell), or a sh there that found no such command (127: a Windows host's Git sh, where
+ * Filament is no command of its own) — its script for PowerShell. → the PowerShell run where it began, else sh's.
+ * @param {string} alias @param {{ sh: string, powershell: string }} scripts @param {RunOptions} [o] @param {typeof runSsh} [run]  a seam
+ * @returns {Promise<SshRun>}
+ */
+export async function runEither(alias, scripts, o = {}, run = runSsh) {
+  const r = await run(alias, { script: scripts.sh }, o);
+  if (sshFailed(r, alias) || r.code === 0 || (r.began && r.code !== 127)) return r;
+  const ps = await run(alias, { script: scripts.powershell, shell: "powershell" }, { ...o, interactive: null });
+  return ps.began ? ps : r;
+}
+
+/**
  * @typedef {{ os: string, arch: string, bits: number | null, libc: string | null, has: string[], shell: "sh" | "powershell",
  *   filament: string | null, target: string | null, refusal: string | null, missing: string[], needs: string | null }} Platform
  *   `libc`: glibc's version, null where the C library is another; `has`: of the tools setup needs, those there;
@@ -364,12 +437,19 @@ export const PROBE_SH = [
   "true",
 ].join("\n");
 
-/** PowerShell's look at a Windows machine, in sh's words. */
+/**
+ * PowerShell's look at a Windows machine, in sh's words: its processor as the system's (a 32-bit PowerShell says its
+ * own), the folder install.ps1 installs into, Windows' own tar.exe it unpacks with, and the version of Filament it put
+ * there.
+ */
 export const PROBE_PS = [
   '"os=Windows"',
-  '"arch=$env:PROCESSOR_ARCHITECTURE"',
+  '"arch=$(if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE })"',
   '"bits=" + $(if ([Environment]::Is64BitOperatingSystem) { 64 } else { 32 })',
+  '"home=$env:LOCALAPPDATA"',
   "foreach ($c in 'tailscale','curl.exe','winget') { if (Get-Command $c -ErrorAction SilentlyContinue) { \"has=$($c -replace '\\.exe$','')\" } }",
+  "if (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\\tar.exe')) { 'has=tar' }",
+  "if ($env:LOCALAPPDATA) { $f = Join-Path $env:LOCALAPPDATA 'filament\\current\\bin\\filament.cmd'; if (Test-Path -LiteralPath $f) { \"filament=$(& $f --version)\" } }",
 ].join("\n");
 
 /** A version as numbers, for comparing. @param {string} v */
@@ -384,8 +464,8 @@ const older = (a, b) => {
 
 /**
  * What a probe's lines say of the machine, and Filament's server build for it — or why it has none, as
- * scripts/install.sh refuses: Linux on x86_64 or arm64, 64-bit programs, glibc 2.28 or newer —, and what install.sh
- * needs there that is missing (`missing`, `needs`).
+ * scripts/install.sh refuses: Linux on x86_64 or arm64, 64-bit programs, glibc 2.28 or newer; as scripts/install.ps1
+ * does: Windows on x64, read by PowerShell —, and what its installer needs there that is missing (`missing`, `needs`).
  * @param {string} said  the probe's output @param {"sh" | "powershell"} shell @returns {Platform}
  */
 export function platformOf(said, shell) {
@@ -405,9 +485,15 @@ export function platformOf(said, shell) {
   const bits = Number(k.bits) || null;
   const glibc = /^glibc\s+([\d.]+)/i.exec(k.libc || "")?.[1] || (/GLIBC|GNU libc/i.test(k.ldd || "") ? /([\d.]+)\s*$/.exec(k.ldd || "")?.[1] : null) || null;
   const cpu = /^(x86_64|amd64)$/i.test(arch) ? "x64" : /^(aarch64|arm64)$/i.test(arch) ? "arm64" : null;
-  const refusal =
-    os !== "Linux" || !cpu
-      ? `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is ${os} on ${arch}.`
+  const windows = os === "Windows";
+  const refusal = windows
+    ? cpu !== "x64"
+      ? `Filament for Windows hosts is built for x64 (AMD64), and this machine is Windows on ${arch}.`
+      : shell !== "powershell"
+        ? "This Windows host runs commands in a sh of its own (Git's, MSYS2's or Cygwin's), and its PowerShell did not answer: Filament is set up on a Windows host by PowerShell."
+        : null
+    : os !== "Linux" || !cpu
+      ? `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for Windows on x64: this machine is ${os} on ${arch}.`
       : bits === 32
         ? `Filament for servers runs 64-bit programs, and this machine's are 32-bit, on its ${arch} kernel: its system's 64-bit release runs it.`
         : !glibc
@@ -417,22 +503,33 @@ export function platformOf(said, shell) {
             : null;
   const there = (/** @type {string} */ t) => has.includes(t);
   /** @type {string[]} */
-  const missing =
-    shell !== "sh" || refusal
-      ? []
+  const missing = refusal
+    ? []
+    : windows
+      ? there("tar")
+        ? []
+        : ["tar.exe"]
       : [
           ...(there("curl") || there("wget") ? [] : ["curl or wget"]),
           ...["tar", "gzip"].filter((t) => !there(t)),
           ...(there("sha512sum") || there("openssl") ? [] : ["sha512sum or openssl"]),
           ...["base64", "od", "mktemp", "readlink", "ln"].filter((t) => !there(t)),
         ];
-  const needs = missing.length
-    ? `Filament's installer needs ${missing.join(", ")}, which this machine does not have: install them with its package manager.`
-    : shell === "sh" && !refusal && !k.home
-      ? "HOME is not set there: Filament installs into the user's own folder, and there is none to install into."
-      : null;
+  const needs = refusal
+    ? null
+    : windows
+      ? missing.length
+        ? "Filament's installer unpacks with Windows' own tar.exe, which this Windows does not have (Windows 10 1803 and Windows Server 2019 have it, and newer)."
+        : !k.home
+          ? "LOCALAPPDATA is not set there: Filament installs into the user's own folder, and there is none to install into."
+          : null
+      : missing.length
+        ? `Filament's installer needs ${missing.join(", ")}, which this machine does not have: install them with its package manager.`
+        : !k.home
+          ? "HOME is not set there: Filament installs into the user's own folder, and there is none to install into."
+          : null;
   const version = /(\d+\.\d+\.\d+[\w.-]*)/.exec(k.filament || "")?.[1] || null;
-  return { os, arch, bits, libc: glibc, has, shell, filament: version, target: refusal ? null : `linux-${cpu}`, refusal, missing, needs };
+  return { os, arch, bits, libc: glibc, has, shell, filament: version, target: refusal ? null : windows ? "win32-x64" : `linux-${cpu}`, refusal, missing, needs };
 }
 
 /**
@@ -444,12 +541,16 @@ export function platformOf(said, shell) {
  */
 export async function probeSsh(alias, o = {}) {
   const r = await runSsh(alias, { script: PROBE_SH }, { timeoutMs: 30_000, ...o });
-  if (r.began && r.code === 0 && /^os=/m.test(r.stdout)) return { ok: true, platform: platformOf(r.stdout, "sh") };
+  const bySh = r.began && r.code === 0 && /^os=/m.test(r.stdout) ? platformOf(r.stdout, "sh") : null;
+  // A Windows host whose sh is Git's, MSYS2's or Cygwin's: Filament is set up there by its PowerShell.
+  if (bySh && bySh.os !== "Windows") return { ok: true, platform: bySh };
   // Not reached, or let go of: PowerShell has nothing to add. A sh there that began and failed, or said no system — a
-  // Windows host's sh that is no POSIX one —, is asked again as a shell that runs none.
-  if (r.ask || r.code === null || r.code === 255) return { ok: false, run: r };
+  // Windows host's sh that is no POSIX one —, or a shell that did not start it (a Windows host's cmd, with whatever
+  // code), is asked again as a shell that runs none.
+  if (!bySh && sshFailed(r, alias)) return { ok: false, run: r };
   const ps = await runSsh(alias, { script: PROBE_PS, shell: "powershell" }, { timeoutMs: 30_000, ...o, interactive: null });
   if (ps.began && ps.code === 0 && /^os=/m.test(ps.stdout)) return { ok: true, platform: platformOf(ps.stdout, "powershell") };
+  if (bySh) return { ok: true, platform: bySh };
   // A sh there with no base64 to read the probe with: install.sh needs one too.
   if (/base64/.test(r.stderr) && /not found|no such file/i.test(r.stderr)) return { ok: false, run: { ...r, why: `${aliasOf(alias)} has no base64, which Filament's installer needs too: install coreutils with its package manager.` } };
   return { ok: false, run: r };

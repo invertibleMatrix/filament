@@ -334,14 +334,14 @@ over SSH and claims its code through the tunnel ([Filament on a server](server.m
 the window holds it, the tunnel's port on this computer reaches that Filament for every program here, not the window
 alone, as the sheet says.
 
-**Setting a machine up over SSH.** A Linux machine you reach with SSH that has no Filament yet — a server, a cloud
-VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the
+**Setting a machine up over SSH.** A Linux machine or a Windows host (x64, with Windows' own OpenSSH Server) you reach
+with SSH that has no Filament yet — a server, a cloud VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the
 Add sheet's fields, which takes the `ssh://` host typed there). Type `user@host` or a Host of your SSH config and
 **Set up**: the sheet runs each step there over SSH, with your keys and your SSH config, and says each as it goes —
 *Reach it over SSH* (what the machine is, and what Filament's installer needs that it lacks), *Install Filament* (this
 app's version; where that release has no build for the machine — an app that is a build of its own, or an arm64
 machine and a release with x64's alone — the newest release is offered instead), *Run it as a service* (systemd,
-at boot), *Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
+at boot; on a Windows host, Task Scheduler's task, at boot with no one logged in), *Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
 machine's own Settings › Coding agents), *A way in over https* (shared on your tailnet where Tailscale runs there,
 else its network listener on — said as it stands there: one asked for that does not listen, or that Tailscale does not
 serve, is said with why, and the pairing goes through an SSH tunnel until it does), and *Pair this window with it* (a code made there over SSH and claimed here, at the
@@ -355,6 +355,11 @@ terminal**. Where lingering cannot be read there, its line is said all the same.
 there is said, and the setup goes on. A step that failed says why, with **Retry**. Setting up a machine again does
 only what is missing: one set up already, with no line left for you to run, says *Nothing to do*. One
 paired through its SSH tunnel stays so; remove it from the window first for a setup to try its https ways again.
+On a Windows host every step runs in its PowerShell, as Windows' OpenSSH starts it: install.ps1 installs Filament in
+`%LOCALAPPDATA%\filament`, and what only an administrator may do — Windows Firewall's rule for Filament's two ports —
+is said under its step with its line, for an administrator's PowerShell there. Your key must be in place there first
+(an administrator's in `C:\ProgramData\ssh\administrators_authorized_keys`), as the key this computer offers is added on
+a Linux machine alone.
 
 Once another machine is kept, the top bar shows the machine you are looking
 at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of

@@ -3,10 +3,12 @@
 // nothing to do; what only the person answers going to a terminal; and the words of each refusal.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INSTALL_URL, STEPS, createSetupOverSsh, feedUrl, installScript, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
-import { PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
-import { platformOf } from "../desktop/lib/ssh-exec.js";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { INSTALL_PS_URL, INSTALL_URL, STEPS, createSetupOverSsh, feedUrl, installPs, installScript, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
+import { PAIR_PS, PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
+import { commandOf, platformOf, probeSsh, psQuote, runSsh } from "../desktop/lib/ssh-exec.js";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { spawn as spawnChild, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,32 +52,53 @@ function fakeMachine(o = {}) {
     /** An agent whose connect fails there. */
     noConnect: o.noConnect ?? null,
     ufw: o.ufw ?? true,
+    /** A Windows host: its commands PowerShell's, Filament as install.ps1 installs it, run by Task Scheduler. */
+    windows: o.windows ?? false,
     /** @type {string[]} */ codes: [],
     links: o.links ?? null,
     /** @type {string[]} */ ran: [],
   };
   const platform = () =>
-    platformOf(
-      ["os=Linux", `arch=${m.arch}`, "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
-      "sh",
-    );
-  const status = () => ({ ...m.service, linger: m.linger, dataDir: m.service.installed ? "/home/me/.local/share/filament/data" : null, filament: m.service.active === "active" ? { version: m.filament, url: "http://127.0.0.1:20300", supervisor: "systemd" } : null });
+    m.windows
+      ? platformOf(["os=Windows", "arch=AMD64", "bits=64", "home=C:\\Users\\me\\AppData\\Local", "has=winget", "has=tar", ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\r\n"), "powershell")
+      : platformOf(
+          ["os=Linux", `arch=${m.arch}`, "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
+          "sh",
+        );
+  const dataDir = m.windows ? "C:\\Users\\me\\AppData\\Roaming\\filament" : "/home/me/.local/share/filament/data";
+  const status = () => ({
+    ...m.service,
+    linger: m.windows ? (m.service.installed ? true : null) : m.linger,
+    dataDir: m.service.installed ? dataDir : null,
+    filament: m.service.active === "active" ? { version: m.filament, url: "http://127.0.0.1:20300", supervisor: m.windows ? "service" : "systemd" } : null,
+  });
   /** @param {string} alias @param {any} what @param {any} [opt] */
   const ssh = async (alias, what, opt = {}) => {
     assert.equal(alias, ALIAS);
+    // A Windows host's commands are PowerShell's, and each fits the command line its cmd starts.
+    if (m.windows) {
+      assert.equal(what.shell, "powershell", `PowerShell runs ${JSON.stringify(what).slice(0, 80)}`);
+      assert.doesNotThrow(() => commandOf(what, { marked: true, mark: "0123456789abcdef" }));
+    } else assert.equal(what.shell, undefined);
     const s = "argv" in what ? what.argv.join(" ") : String(what.script);
     m.ran.push(s);
     if ("argv" in what && what.argv[0] === "cat") return { ...OK, stdout: JSON.stringify({ version: 1, id: ID, name: "Box" }) };
-    if (s.includes(INSTALL_URL)) {
+    if (s.startsWith("Get-Content -Raw -LiteralPath ")) {
+      assert.equal(s, `Get-Content -Raw -LiteralPath '${dataDir}\\machine.json'`);
+      return { ...OK, stdout: `${JSON.stringify({ version: 1, id: ID, name: "Box" })}\r\n` };
+    }
+    if (s.includes(INSTALL_URL) || s.includes(INSTALL_PS_URL)) {
       assert.ok(opt.timeoutMs >= 600_000, "the install is given its time");
-      const v = /FILAMENT_VERSION='([^']+)'/.exec(s)?.[1] || "0.9.90";
-      if (/FILAMENT_VERSION/.test(s) && !m.release) return { ...OK, code: 1, stderr: `install.sh: Filament's releases gave no latest-server.yml at https://github.com/x/releases/download/v${v}/latest-server.yml (is ${v} a release of Filament for servers?): nothing was installed.\n` };
+      const v = /FILAMENT_VERSION(?: = |=)'([^']+)'/.exec(s)?.[1] || "0.9.90";
+      const feed = m.windows ? "latest-server-win32-x64.yml" : "latest-server.yml";
+      if (/FILAMENT_VERSION = '|FILAMENT_VERSION='/.test(s) && !m.release)
+        return { ...OK, code: 1, stderr: `${m.windows ? "" : "install.sh: "}Filament's releases gave no ${feed} at https://github.com/x/releases/download/v${v}/${feed} (is ${v} a release of Filament for servers?): nothing was installed.\n` };
       m.filament = v;
       return { ...OK, stdout: `Filament ${v} is installed.\n` };
     }
     if (s.includes("service status --json")) return { ...OK, stdout: `${JSON.stringify(status(), null, 2)}\n` };
     // Its ways in over https as they stand: asked for, and listening or served — or why not.
-    if (s.includes('filament" status --json'))
+    if (s.includes('filament" status --json') || s.includes("& $f status --json"))
       return {
         ...OK,
         stdout: `${JSON.stringify({
@@ -86,7 +109,7 @@ function fakeMachine(o = {}) {
       };
     if (s.includes("service install")) {
       m.service = { installed: true, active: "active", enabled: "enabled" };
-      return { ...OK, stdout: "Wrote ~/.config/systemd/user/filament.service.\n" };
+      return { ...OK, stdout: m.windows ? "Wrote C:\\Users\\me\\AppData\\Roaming\\filament\\service\\task.xml.\r\n" : "Wrote ~/.config/systemd/user/filament.service.\n" };
     }
     if (s.includes("loginctl enable-linger") && !s.includes("sudo")) {
       if (m.lingerMay) m.linger = true;
@@ -100,14 +123,15 @@ function fakeMachine(o = {}) {
       return OK;
     }
     if (s.includes("memory on")) return ((m.memory = true), OK);
-    if (s.includes("settings get server.lan.enabled")) return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.ufw ? "ufw=1\n" : ""}${m.tailscale ? "tailscale=1\n" : ""}` };
+    if (s.includes("settings get server.lan.enabled"))
+      return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.ufw ? (m.windows ? "firewall=1\n" : "ufw=1\n") : ""}${m.tailscale ? "tailscale=1\n" : ""}` };
     if (s.includes("tailscale status --json")) return { ...OK, stdout: JSON.stringify({ BackendState: m.tailscale }) };
     // Its prefs read by any user; its serve's config too.
     if (s.includes("tailscale debug prefs")) return { ...OK, stdout: `me\n${JSON.stringify({ OperatorUser: m.operator ? "me" : "" }, null, 2)}\n` };
     if (s.includes("tailscale serve status --json")) return { ...OK, stdout: m.serve && m.served ? JSON.stringify({ Web: { "box.tail1234.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:20345" } } } } }) : "{}" };
     if (s.includes("settings set server.tailscale.serve true")) return ((m.serve = true), OK);
     if (s.includes("settings set server.lan.enabled true")) return ((m.lan = true), OK);
-    if (s === PAIR_SCRIPT) {
+    if (s === (m.windows ? PAIR_PS : PAIR_SCRIPT)) {
       m.codes.push("ABCD-EFGH");
       return { ...OK, stdout: JSON.stringify({ code: "ABCD-EFGH", links: m.links ?? [...(m.serve && m.served ? [TS_LINK] : []), ...(m.lan && m.lanUp ? [LAN_LINK] : [])], fingerprint: FP, machine: { id: ID, name: "Box" } }) };
     }
@@ -237,7 +261,7 @@ test("a machine that asks for a password: this computer's key offered there, add
 test("refused as install.sh refuses: another system, or what its installer needs missing", async () => {
   const mac = { ok: true, platform: platformOf("os=Darwin\narch=arm64\nbits=64", "sh") };
   const r = await rig(fakeMachine(), { probe: async () => mac }).setup.run({ alias: ALIAS, step: "reach" });
-  assert.deepEqual([r.state, r.words], ["failed", "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is Darwin on arm64."]);
+  assert.deepEqual([r.state, r.words], ["failed", "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for Windows on x64: this machine is Darwin on arm64."]);
   const bare = { ok: true, platform: platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.35\nhome=/root\nhas=tar\nhas=gzip", "sh") };
   const r2 = await rig(fakeMachine(), { probe: async () => bare }).setup.run({ alias: ALIAS, step: "reach" });
   assert.equal(r2.state, "failed");
@@ -449,6 +473,146 @@ test("this computer's public key, ed25519's first, read as a line", () => {
     writeFileSync(join(home, ".ssh", "id_ed25519.pub"), "-----BEGIN OPENSSH PRIVATE KEY-----\n");
     assert.equal(publicKeyHere(home), "ssh-rsa AAAAB3Nza me@desk", "a file that holds no public key is none");
   } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+const FIREWALL_LINE = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
+
+test("a fresh Windows host: every command PowerShell's — install.ps1 at this app's version, Task Scheduler's task, its agents and memory, Windows Firewall's line, paired; then nothing to do", async () => {
+  const f = fakeMachine({ windows: true });
+  const t = rig(f);
+  const out = await t.all();
+  assert.deepEqual(out.map((r) => [r.step, r.state]), STEPS.map((s) => [s.id, "done"]));
+  assert.equal(out[0].words, "me@box answers: Windows on AMD64.");
+  assert.ok(f.m.ran.some((s) => s.includes(INSTALL_PS_URL) && s.includes("$env:FILAMENT_VERSION = '0.9.85'")), "this app's version asked of install.ps1");
+  assert.equal(out[1].words, "Filament 0.9.85 is installed there, in %LOCALAPPDATA%\\filament.");
+  assert.equal(out[2].words, "Filament 0.9.85 runs there under Task Scheduler (its task \\Filament\\Filament), started at boot with no one logged in, and again after a crash.");
+  assert.equal(out[2].also, undefined);
+  assert.equal(f.m.ran.some((s) => /loginctl|systemctl/.test(s)), false, "no lingering, no systemd");
+  assert.match(out[3].words, /^Connected Claude Code\..* Memory is on now\.$/);
+  assert.deepEqual(out[4].also?.map((l) => l.line), [FIREWALL_LINE], "Windows Firewall's line said");
+  const line = String(out[4].also?.[0].terminal?.args.at(-1));
+  assert.match(line, /^powershell -NoProfile -NonInteractive -EncodedCommand [A-Za-z0-9+/=]+$/, "and run there by PowerShell in a terminal");
+  assert.equal(Buffer.from(line.split(" ").at(-1) || "", "base64").toString("utf16le"), FIREWALL_LINE);
+  assert.deepEqual(t.paired, [LAN_LINK]);
+  assert.deepEqual(out[5].machine, { id: ID, name: "Box" });
+  const again = await t.all();
+  assert.deepEqual(again.map((r) => [r.step, r.state]), [["reach", "done"], ...STEPS.slice(1).map((s) => [s.id, "skipped"])]);
+  assert.equal(again[0].words, "me@box answers: Windows on AMD64, Filament 0.9.85 installed there.");
+});
+
+test("a Windows host with Tailscale: shared on the tailnet, no operator to name; its release not out for Windows, the newest offered — its own feed asked", async () => {
+  const f = fakeMachine({ windows: true, tailscale: "Running" });
+  const out = await rig(f).all();
+  assert.deepEqual(out.map((r) => r.state), STEPS.map(() => "done"));
+  assert.equal(out[4].also, undefined, "Windows' Tailscale names no operator");
+  assert.equal(f.m.ran.some((s) => s.includes("tailscale debug prefs")), false);
+  /** @type {[string, string | null][]} */
+  const asked = [];
+  const t = rig(fakeMachine({ windows: true, release: false }), { released: async (/** @type {string} */ v, /** @type {string | null} */ target) => (asked.push([v, target]), false) });
+  await t.setup.run({ alias: ALIAS, step: "reach" });
+  const r = await t.setup.run({ alias: ALIAS, step: "install" });
+  assert.deepEqual([r.state, r.offer, asked], ["failed", { label: "Install the newest release", latest: true }, [["0.9.85", "win32-x64"]]]);
+  assert.equal(feedUrl("0.9.85", "win32-x64"), "https://github.com/invertibleMatrix/filament/releases/download/v0.9.85/latest-server-win32-x64.yml");
+  assert.match(installPs(null), /Remove-Item Env:FILAMENT_VERSION/, "no version asked: the newest");
+  assert.match(installPs("1.2.3"), /^\$env:FILAMENT_VERSION = '1\.2\.3'$/m);
+});
+
+// A Windows host set up for real: a Windows PowerShell started by cmd, as a Windows host's OpenSSH starts one, runs
+// each step's script against a Filament that stands in for install.ps1's — a filament.cmd whose fake answers as the real
+// one's words do — in a LOCALAPPDATA of its own, with no sh on its PATH; the install.ps1 it downloads is a server's here.
+const realPs = process.platform === "win32" && spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", "exit 0"], { stdio: "ignore", windowsHide: true }).status === 0;
+test("a Windows host, its scripts run by a real Windows PowerShell: every step done, then every step after the first with nothing to do", { skip: realPs ? false : "no Windows PowerShell on this computer", timeout: 300_000 }, async () => {
+  const home = mkdtempSync(join(tmpdir(), "filament-win-setup-"));
+  const server = createServer();
+  try {
+    const local = join(home, "Local");
+    const kit = join(home, "kit");
+    const data = join(home, "data");
+    const state = join(home, "state.json");
+    mkdirSync(local);
+    mkdirSync(kit);
+    writeFileSync(state, JSON.stringify({ installed: false, codes: 0, agents: [{ id: "claude-code", name: "Claude Code", state: "ready", signedIn: "me" }], settings: { "server.lan.enabled": "false", "server.tailscale.serve": "false", "memory.enabled": "false" } }));
+    writeFileSync(join(kit, "filament.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0fake.cjs" %*\r\nexit /b %ERRORLEVEL%\r\n`);
+    writeFileSync(
+      join(kit, "fake.cjs"),
+      [
+        'const fs = require("node:fs");',
+        'const path = require("node:path");',
+        `const STATE = ${JSON.stringify(state)};`,
+        `const DATA = ${JSON.stringify(data)};`,
+        'const s = JSON.parse(fs.readFileSync(STATE, "utf8"));',
+        "const save = () => fs.writeFileSync(STATE, JSON.stringify(s));",
+        'const version = fs.readFileSync(path.join(__dirname, "version.txt"), "utf8").trim();',
+        "const a = process.argv.slice(2);",
+        'const w = a.join(" ");',
+        'const out = (x) => process.stdout.write(typeof x === "string" ? x : `${JSON.stringify(x, null, 2)}\\n`);',
+        'const lan = () => s.settings["server.lan.enabled"] === "true";',
+        'if (w === "--version") out(`${version}\\n`);',
+        'else if (w === "service status --json") out({ installed: s.installed, active: s.installed ? "active" : "inactive", enabled: s.installed ? "enabled" : "not-found", dataDir: s.installed ? DATA : null, linger: s.installed ? true : null, filament: s.installed ? { version, url: "http://127.0.0.1:20300", supervisor: "service" } : null });',
+        'else if (w === "service install") { s.installed = true; save(); fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(path.join(DATA, "machine.json"), JSON.stringify({ version: 1, id: "m-box", name: "Box" })); out("Wrote its task.\\n"); }',
+        // A program's words on stderr, as a real one says them: no error of the script's.
+        'else if (w === "agents detect") process.stderr.write("looked for coding agents\\n");',
+        'else if (w === "agents list --json") out(s.agents);',
+        'else if (a[0] === "agents" && a[1] === "connect") { s.agents = s.agents.map((x) => (x.id === a[2] ? { ...x, state: "connected" } : x)); save(); }',
+        'else if (a[0] === "settings" && a[1] === "get") out(`${s.settings[a[2]] ?? ""}\\n`);',
+        'else if (a[0] === "settings" && a[1] === "set") { s.settings[a[2]] = a[3]; save(); }',
+        'else if (w === "memory on") { s.settings["memory.enabled"] = "true"; save(); }',
+        'else if (w === "status --json") out({ version, network: { on: lan(), listening: lan() ? 20343 : null, error: null }, tailnet: { on: false, served: false, error: null } });',
+        `else if (w === "pair --json") { s.codes++; save(); out({ code: "ABCD-EFGH", links: lan() ? [${JSON.stringify(LAN_LINK)}] : [], fingerprint: ${JSON.stringify(FP)}, machine: { id: "m-box", name: "Box" } }); }`,
+        'else { process.stderr.write(`fake filament: no ${w}\\n`); process.exit(2); }',
+      ].join("\n"),
+    );
+    // install.ps1's part: the version asked (else the newest) put in place, its words said, its code 0.
+    const installer = [
+      "& {",
+      "  $v = if ($env:FILAMENT_VERSION) { $env:FILAMENT_VERSION } else { '0.9.90' }",
+      "  $bin = Join-Path $env:LOCALAPPDATA 'filament\\current\\bin'",
+      "  New-Item -ItemType Directory -Force -Path $bin | Out-Null",
+      `  Copy-Item -Path (Join-Path ${psQuote(kit)} '*') -Destination $bin`,
+      "  Set-Content -LiteralPath (Join-Path $bin 'version.txt') -Value $v",
+      '  $Host.UI.WriteLine("Filament $v is installed in $bin.")',
+      "  $global:LASTEXITCODE = 0",
+      "}",
+    ].join("\r\n");
+    server.on("request", (req, res) => (req.url === "/install.ps1" ? res.end(installer) : ((res.statusCode = 404), res.end())));
+    await new Promise((r) => server.listen(0, "127.0.0.1", () => r(null)));
+    const url = `http://127.0.0.1:${/** @type {import("node:net").AddressInfo} */ (server.address()).port}/install.ps1`;
+    const root = String(process.env.SystemRoot || "C:\\Windows");
+    /** @type {Record<string, string | undefined>} */
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k)));
+    env.Path = [`${root}\\System32`, root, `${root}\\System32\\Wbem`, `${root}\\System32\\WindowsPowerShell\\v1.0`].join(";");
+    env.LOCALAPPDATA = local;
+    const spawn = (/** @type {string} */ _f, /** @type {string[]} */ args, /** @type {any} */ o) => spawnChild(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", String(args.at(-1))], { ...o, env });
+    /** @type {any[]} */
+    const runs = [];
+    const machine = {
+      /** @param {string} alias @param {any} what @param {any} [opt] */
+      ssh: async (alias, what, opt = {}) => {
+        const r = await runSsh(alias, "script" in what ? { ...what, script: String(what.script).split(INSTALL_PS_URL).join(url) } : what, { ...opt, spawn });
+        runs.push([what, r]);
+        return r;
+      },
+      probe: (/** @type {string} */ a) => probeSsh(a, { spawn }),
+    };
+    const t = rig(machine);
+    const out = await t.all();
+    assert.deepEqual(out.map((r) => [r.step, r.state, r.state === "done" ? "" : r.words]), STEPS.map((s) => [s.id, "done", ""]));
+    assert.equal(out[0].words, "me@box answers: Windows on AMD64.");
+    assert.equal(out[1].words, "Filament 0.9.85 is installed there, in %LOCALAPPDATA%\\filament.");
+    assert.match(out[2].words, /^Filament 0\.9\.85 runs there under Task Scheduler/);
+    assert.equal(out[3].words, "Connected Claude Code. Memory is on now.");
+    assert.deepEqual(out[4].also?.map((l) => l.line) ?? [], runs.some(([w, r]) => String(w.script || "").includes("Get-NetFirewallProfile") && /firewall=1/.test(r.stdout)) ? [FIREWALL_LINE] : []);
+    assert.deepEqual([t.paired, out[5].machine], [[LAN_LINK], { id: ID, name: "Box" }]);
+    const st = JSON.parse(readFileSync(state, "utf8"));
+    assert.deepEqual([st.installed, st.agents[0].state, st.settings["memory.enabled"], st.settings["server.lan.enabled"], st.codes], [true, "connected", "true", "true", 1]);
+    assert.equal(runs.every(([w]) => w.shell === "powershell"), true, "every command PowerShell's");
+    const again = await t.all();
+    assert.deepEqual(again.map((r) => [r.step, r.state]), [["reach", "done"], ...STEPS.slice(1).map((s) => [s.id, "skipped"])]);
+    assert.equal(JSON.parse(readFileSync(state, "utf8")).codes, 1, "no code made again");
+  } finally {
+    server.close();
     rmSync(home, { recursive: true, force: true });
   }
 });
