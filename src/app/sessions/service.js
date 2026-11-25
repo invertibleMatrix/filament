@@ -2651,7 +2651,15 @@ export function createSessions({ memory, config, pipeline, ops, log, forkSession
     // A chat another machine's agents started in a copy here, or the person's own chat in the copy Run on placed for it
     // (or one made from it), holds it while its turn runs (services/copies.js `lease`): one whose copy went to a newer
     // launch, or went, is refused, its folder no longer what its agent worked in.
-    const copyMeta = copyLease ? archive().metaOf(chain.id, ["copy", "agentDevice"]) : null;
+    // A meta that cannot be read takes no lease, said in the log: the turn goes on to its own refusals — a coding agent's
+    // reads that meta as theirs (acp-turn.js) —, never a 500 here.
+    /** @type {{ copy?: unknown, agentDevice?: unknown } | null} */
+    let copyMeta = null;
+    try {
+      copyMeta = copyLease ? archive().metaOf(chain.id, ["copy", "agentDevice"]) : null;
+    } catch (/** @type {any} */ e) {
+      log("warn", `sessions: session ${chain.id}: whether it works in a copy could not be read (${e?.message || e}): its turn holds no copy`);
+    }
     const copy = copyMeta?.copy;
     if (typeof copy === "string" && copy) {
       const person = typeof copyMeta?.agentDevice !== "string";
