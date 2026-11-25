@@ -908,6 +908,11 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       const doc = deps.sessions ? deps.sessions.effectiveOf(chainId) : null;
       return doc?.plugins?.browser === true && doc?.loop?.tools?.browser !== false;
     },
+    // A harness chat's coding agent comes back to its chat later as the loop's does (x50), while the chat's switch is on.
+    comeBackOn: (chainId) => {
+      const doc = deps.sessions ? deps.sessions.effectiveOf(chainId) : null;
+      return !!doc && doc?.loop?.tools?.come_back !== false;
+    },
     // A coding agent's long commands (HarnessV4_Background_Plan E34): an end goes into the running turn through the
     // registry, made further down, so it is read at each end. One on another machine runs as this Filament's agents'
     // device kept there (the remote-agents plan's c-tools) — never from a chat another machine's agents started.

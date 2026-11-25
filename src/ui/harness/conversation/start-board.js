@@ -60,8 +60,8 @@ export const TOOL_GROUPS = Object.freeze([
   { label: "Flows", names: ["flow"] },
   // The main agent's tool that starts a chat of its own linked to this one, briefed by it (app/threads.js).
   { label: "Threads", names: ["thread"] },
-  // The chat's own agent comes back to it later by itself (agent/come-back.js): on unless switched off here (the
-  // Designer's of 10-27).
+  // The chat's own agent comes back to it later by itself (agent/come-back.js), a coding agent too (x50): on unless
+  // switched off here (the Designer's of 10-27).
   { label: "Come back later", names: ["come_back"] },
 ]);
 /**
@@ -76,11 +76,8 @@ export const TOOL_WORDS = Object.freeze(/** @type {Record<string, string>} */ ({
   show_visual: "Pictures", artifact: "Artifacts", space: "Space", team: "Teams", flow: "Flows", thread: "Threads",
   come_back: "Come back later",
 }));
-/**
- * The loop's tools a coding agent never has of its own, so its Tools card lists none of them as its own: Filament's agent
- * tool comes with every chat, and only Filament's own agent comes back to a chat later (agent/come-back.js).
- */
-const NOT_ITS_OWN = Object.freeze(["agent", "come_back"]);
+/** The loop's tools a coding agent never has of its own, so its Tools card lists none of them as its own: Filament's agent tool comes with every chat. */
+const NOT_ITS_OWN = Object.freeze(["agent"]);
 /** The permission modes as the Tools card's control reads them, least free to most (the composer's menu orders them by use). */
 const PERMISSION_SEG = Object.freeze([["read-only", "Read-only"], ["ask", "Ask"], ["edit", "Edit"], ["auto", "Full"]]);
 /** Where sub-agents that change files work (`subagents.workspace`, the owner's plan of 11-09 for big repos): each choice, its label and what it means. Settings › Agent loop's row says it in these words. */
@@ -92,9 +89,10 @@ export const WORKSPACE_SEG = Object.freeze([
 ]);
 /**
  * The loop's switches that reach a coding agent (draft-start.js `AGENT_REACHES`; the owner's look of 10-24): Filament's
- * browser, pictures, artifacts, Space, teams, flows and threads, over its MCP server. Its agent tool comes with every chat.
+ * browser, pictures, artifacts, Space, teams, flows, threads and its come-back, over its MCP server. Its agent tool comes
+ * with every chat.
  */
-const AGENT_REACHES = Object.freeze(["browser", "show_visual", "artifact", "space", "team", "flow", "thread"]);
+const AGENT_REACHES = Object.freeze(["browser", "show_visual", "artifact", "space", "team", "flow", "thread", "come_back"]);
 /** The web tools and the browser ride on the session's say-so (`plugins.web.*`, `plugins.browser`), not only on `loop.tools`. */
 const WEB_KNOB = Object.freeze({ web_fetch: "plugins.web.fetch", web_search: "plugins.web.search", browser: "plugins.browser" });
 
@@ -834,8 +832,7 @@ export function createStartBoard(io, o = {}) {
     const loopTools = groups.map((g) => section(mk, g.label, mk("div", { class: "nt-chips" }, ...named(g.names))));
     if (e.kind === "agent") {
       const reach = kids(reaches.map((n) => chip(n, new Set(t.adds || []))));
-      // Its own to do: the loop's other tools, by family. Its agent tool is Filament's, and comes with every chat; coming
-      // back later is Filament's own agent's alone.
+      // Its own to do: the loop's other tools, by family. Its agent tool is Filament's, and comes with every chat.
       const itsOwn = groups.map((g) => ({ label: g.label, names: g.names.filter((n) => !AGENT_REACHES.includes(n) && !NOT_ITS_OWN.includes(n)) })).filter((g) => g.names.length);
       const hands = t.hands === "native"
         ? `Files and commands: Filament's Read, Write, Edit, Bash, Glob and Grep, in place of ${whoIn()}'s own (its client bridge is native); the web's fetch and search, questions and plans: its own. The loop's switches for these don't reach it.`

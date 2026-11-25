@@ -4540,6 +4540,22 @@ the end as a background shell's row. The call is judged as a `bash` command by t
 `background_command` with the id alone shows the output so far, and with `stop: true` stops it, so that no result comes.
 A command still running when Filament stops is stopped with it.
 
+**Coming back later.** A chat's agent comes back to it by itself with `come_back`: it sets a time, a minute to a day
+out, and a note on what to check or do then (a deploy to settle, a CI run, a usage limit that resets). Once the time
+has passed, Filament starts a turn of the agent's in that chat with its note. Where a turn of the agent's still runs
+then, Filament's own agent gets the note at its next step, and a coding agent in a turn of its own as that turn ends.
+One per chat: a new one replaces the one set before. While it waits, the status capsule says **Comes back** at its
+time, with "tomorrow" after a time on the next day, and its popover has **Cancel**. The time is Filament's clock's: a
+computer that sleeps through it comes back to the chat within a minute of waking. Your Stop drops it, and a restart of
+Filament keeps it: one whose time came meanwhile comes as Filament starts, by the rules of *What a chat was owed comes
+after a restart*. The chat's own agent has it, Claude Code, Codex and Cursor in a harness chat too, while the chat's
+**Come back later** switch is on (the Tools card, `loop.tools.come_back`); a coding agent whose chat switched it off
+after its session opened is told so when it calls. A sub-agent, a team's lead and a chat of another machine's agents
+go without it. Where Filament's tools reach Claude Code as a chat's own agent or a sub-agent, it is opened without its
+own timers: `CronCreate`, `CronDelete`, `CronList` and `ScheduleWakeup` lived only in its process, which Filament
+stops once it has gone 90 minutes unasked, and on a restart, so a wake it set further out never came. A team's lead
+keeps them: no come-back stands in for them there.
+
 **Seeing what runs.** While an agent's background command runs — `bash_background`, `background_command`, a
 sub-agent's — the chat's status capsule says so ("Working · 1 command"), even after the turn ended, and its popover's
 **Commands** lists each: the command, how long it has run, who started it and where where that is not the chat's own

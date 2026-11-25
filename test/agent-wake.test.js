@@ -1,6 +1,6 @@
 // @ts-check
 // A chat's agent comes back to it later by itself (the owner's word of 10-27: "it comes back later in the same chat",
-// as Claude Code's scheduled wakeup does): come_back sets the time, 60 to 3600 seconds out, with a note; one per chat, a
+// as Claude Code's scheduled wakeup does): come_back sets the time, a minute to a day out, with a note; one per chat, a
 // new one replacing it, cancel dropping it. When the time comes the note is told as a shell's exit is — at the agent's
 // next step while a turn of it runs, else in a turn Filament starts by itself, in its own words. Offered to a harness
 // chat's own agent alone; a fork is refused in words; the person's Stop drops it. While it waits the page shows it — the
@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { attendShells, cancelComeBack, comeBackLater, comeBackOf, comeBacksNow, disposeBackgroundShells, onComeBackChange, onShellWake, peekShellExits, takeShellExits, tellLater, wakeDue, wakeKindOf } from "../src/adapters/tools/hands.js";
-import { COME_BACK, COME_BACK_OFF, NO_COME_BACK, cancelByPerson, comeBackCall } from "../src/app/agent/come-back.js";
+import { COME_BACK, COME_BACK_OFF, NO_COME_BACK, calendarDays, cancelByPerson, comeBackCall } from "../src/app/agent/come-back.js";
 import { FORK_REFUSALS, isLoopTool, loopToolArgs } from "../src/app/agent/tools.js";
 import { runAgentTurn } from "../src/app/agent/loop.js";
 import { TIME_WAKE_LINE, isWakeMessage, wakeLineFor } from "../src/app/sessions/wake.js";
@@ -68,7 +68,7 @@ describe("come_back: set, replaced, dropped, and told when its time comes", () =
   });
 
   // (fails before: yes)
-  test("one per chat: a new one replaces it, cancel drops it; outside 60 to 3600 it is held to them, said", () => {
+  test("one per chat: a new one replaces it, cancel drops it; outside 60 to 86400 it is held to them, said", () => {
     const session = "s-wake-2";
     comeBackCall({ seconds: 120, note: "first" }, { session });
     const again = comeBackCall({ seconds: 300, note: "second" }, { session });
@@ -85,8 +85,12 @@ describe("come_back: set, replaced, dropped, and told when its time comes", () =
     assert.deepEqual(peekShellExits({ session, agent: null }), []);
     assert.equal(/** @type {any} */ (comeBackCall({ cancel: true }, { session })).text, "No come-back was set in this chat, so there was nothing to drop.");
 
-    assert.match(/** @type {any} */ (comeBackCall({ seconds: 5, note: "soon" }, { session })).text, /in 1 min \(at \d\d:\d\d\) — 5 s is outside 60 to 3600, with your note/);
-    assert.match(/** @type {any} */ (comeBackCall({ seconds: 99999, note: "late" }, { session })).text, /in 1 h \(at \d\d:\d\d\) — 99999 s is outside 60 to 3600/);
+    assert.match(/** @type {any} */ (comeBackCall({ seconds: 5, note: "soon" }, { session })).text, /in 1 min \(at \d\d:\d\d(?: tomorrow)?\) — 5 s is outside 60 to 86400, with your note/);
+    // (fails before: yes — x50: an hour at most, where a wait for an account's limit to reset is longer)
+    assert.match(/** @type {any} */ (comeBackCall({ seconds: 7200, note: "after the reset" }, { session })).text, /^Set: Filament comes back to this chat in 2 h \(at \d\d:\d\d(?: tomorrow)?\), with your note\./);
+    // A day out lands on tomorrow's date but in the first hour of a day the clock moves back, which keeps it today.
+    const day = calendarDays(Date.now() + 86_400_000, Date.now());
+    assert.match(/** @type {any} */ (comeBackCall({ seconds: 99999, note: "late" }, { session })).text, new RegExp(`in 24 h \\(at \\d\\d:\\d\\d${day === 1 ? " tomorrow" : day > 1 ? " the day after tomorrow" : ""}\\) — 99999 s is outside 60 to 86400`));
     cancelComeBack(session);
   });
 

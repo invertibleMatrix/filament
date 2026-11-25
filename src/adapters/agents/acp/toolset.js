@@ -87,6 +87,13 @@ export const CLAUDE_COMPACT_WINDOWS = { least: 100_000, most: 1_000_000 };
  */
 export const CLAUDE_OWN_AGENTS = Object.freeze(["Agent", "Task"]);
 /**
+ * Claude Code's own timers (x50), which live in its process alone — gone once Filament lets an idle agent's process go
+ * (bridge.js `sweep`), or on a restart, so a wake set for later never came: a session Filament's server serves as a
+ * chat's agent, a team's lead or a sub-agent is opened without them. The chat's own agent comes back with Filament's
+ * come_back instead (agent/come-back.js), kept across both.
+ */
+export const CLAUDE_OWN_WAKES = Object.freeze(["CronCreate", "CronDelete", "CronList", "ScheduleWakeup"]);
+/**
  * The variables that switch Claude Code's own ways off where Filament's tools stand in for them (the owner's list of
  * 11-08; read in claude.exe of claude-agent-sdk 0.3.300, its environment flags): its auto memory, its background tasks
  * and its artifacts.
@@ -492,7 +499,9 @@ export function planToolset({
   // stays. Its adapter takes the tools it blocks as a session opens; a session whose tools flip is opened again.
   // Another machine's agents' chat is opened without its web, skills, ways of coming back and reach of the person's own
   // (`CLAUDE_AGENTS_CHAT_OFF`).
-  const blocked = [...(teamWanted || (launchWanted && wantMcp) ? CLAUDE_OWN_AGENTS : []), ...(fenced ? CLAUDE_AGENTS_CHAT_OFF : [])];
+  // Its own timers go wherever Filament's server serves a chat's agent, which comes back with Filament's come_back, or a
+  // sub-agent, whose run ends with its report (`CLAUDE_OWN_WAKES`). A lead keeps them: no come_back stands in for them.
+  const blocked = [...new Set([...(teamWanted || (launchWanted && wantMcp) ? CLAUDE_OWN_AGENTS : []), ...(((launchWanted && !teamWanted) || subWanted) && wantMcp ? CLAUDE_OWN_WAKES : []), ...(fenced ? CLAUDE_AGENTS_CHAT_OFF : [])])];
   const ownAgents = blocked.length ? { disallowedTools: blocked } : {};
   // Native mode keeps Claude Code's own Skill (HarnessV4_Skills_Plan S1-4): its adapter makes `disableBuiltInTools` an
   // empty tool list, which turns off every built-in, and takes an explicit list first — its file tools stay Filament's.

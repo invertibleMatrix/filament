@@ -75,7 +75,7 @@ import { CHATS_AGENT, createSkillsBack } from "./agent/skills-back.js";
 import { sealedListText } from "./agent/envelopes.js";
 import { livePlan, planIn, reattachBlock, skillLoadOf } from "./sessions/reattach.js";
 import { fileKey } from "../adapters/tools/fs-fence.js";
-import { SIGHTING_AGENTS_LIMIT, comeBackOf, createSightingsKeeper, peekSightings, runningShellsOf, sightFile } from "../adapters/tools/hands.js";
+import { SIGHTING_AGENTS_LIMIT, attendShells, comeBackOf, createSightingsKeeper, peekSightings, runningShellsOf, sightFile } from "../adapters/tools/hands.js";
 import { staleNames } from "./agent/stale.js";
 import { changedSecond, driftChanged, failedAgain, failingLine, newDriftState, outsideLine } from "../core/drift.js";
 import { resolve } from "node:path";
@@ -2756,11 +2756,13 @@ export function createAcpTurn(deps) {
         onTask: graph ? onTaskOnce : null,
       });
       const off = deps.agentTurns?.open(chainId, lt) || null;
+      const leaveShells = attendShells({ session: chainId, agent: null });
       doorTurn = lt;
       doorShut = () => {
         off?.();
         lt.close();
         graph?.detach(chainId, rec.id);
+        leaveShells();
       };
       (rec.priorChanges ||= []).push(`acp: ${agentName} leads team ${t.name} (engine.team): its workers do the work — Filament's agent, worker and wait reach it over MCP — and its own tools ${t.readOnly ? "only read, as its workers do: its team changes no file" : mode ? "only read in this turn, as its workers do: the turn is held to reading" : "work as the chat's permission mode allows, for a piece better done itself"}`);
       rec.priorChanges.push(
@@ -2805,10 +2807,16 @@ export function createAcpTurn(deps) {
         ownWork: graphOn && graphs ? () => graphs.ownWork(chainId, { solo: true }) : null,
       });
       const off = deps.agentTurns?.open(chainId, lt) || null;
+      // What comes for the chat's agent while the turn runs (its come-back's time, a watch's lines, a check-in) waits as
+      // the loop's turn has it wait (hands.js `attendShells`), and as the turn ends it wakes the chat, its door closed
+      // first so the waker finds the chat free (x50: the waker took the open door for a turn that would hear it, and the
+      // note waited for the person's next message).
+      const leaveShells = attendShells({ session: chainId, agent: null });
       doorTurn = lt;
       doorShut = () => {
         off?.();
         lt.close();
+        leaveShells();
       };
       if (!o) return;
       const what = [`sub-agents on the model each launch names, else this chat's and their cards', else ${agentName}'s own`, o.asks.length && `it may ask ${o.asks.map((a) => a.name).join(", ")} (subagents.ask)`].filter(Boolean).join("; ");

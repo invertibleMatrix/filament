@@ -5,21 +5,23 @@
 // per chat, a new one replacing it; its time is told as a background shell's exit is (hands.js `comeBackLater`): at
 // the agent's next step while a turn of it runs, else in a turn the waker sends the chat. The person's Stop drops it,
 // and so does a goal's halt for its time (core/goal-drive.js); Filament's restart keeps it, and one whose time came
-// meanwhile comes late (sessions/owed-wakes.js, the nudge map of 11-10). Offered to a harness chat's own agent alone: a
-// sub-agent's run ends with its report, a lead's chat goes on with its team, and a client's own conversation has no turn
-// Filament could start. While it waits the page shows it, with the person's Cancel (`cancelByPerson`; the Designer's of
-// 10-27).
+// meanwhile comes late (sessions/owed-wakes.js, the nudge map of 11-10). Offered to a harness chat's own agent alone, a
+// coding agent's too (agent-tools.js, x50: its own timers died with its process): a sub-agent's run ends with its
+// report, a lead's chat goes on with its team, and a client's own conversation has no turn Filament could start. While
+// it waits the page shows it, with the person's Cancel (`cancelByPerson`; the Designer's of 10-27).
 import { COME_BACK_MAX_S, COME_BACK_MIN_S, cancelComeBack, comeBackLater, comeBackOf, tellLater } from "../../adapters/tools/hands.js";
 
 export const COME_BACK = "come_back";
 /** A call where the agent has no chat to come back to. */
 export const COME_BACK_OFF = "Not run: only a chat's own agent comes back to it later — carry on with the task.";
+/** A coding agent's call where the chat's switch is off (agent-tools.js, x50): its session keeps the tool listed. */
+export const COME_BACK_SWITCHED_OFF = "Not set: this chat's Come back later switch is off (its Tools card), so nothing comes back to it by itself. Tell the person what to check and when instead.";
 /** The most of a note kept: what the agent reads when it comes back. */
 const NOTE_CHARS = 2000;
 
 export const COME_BACK_TOOL = Object.freeze({
   name: COME_BACK,
-  description: `Come back to this chat later by yourself: once \`seconds\` have passed (${COME_BACK_MIN_S} to ${COME_BACK_MAX_S}), Filament starts a turn of yours here with your \`note\` — what to check or do then. Use it for work that needs time but not you: a deploy to settle, a CI run to finish, a page or a reply to check again. One per chat: a new one replaces the one set before, and \`cancel: true\` drops it. If a turn of yours runs when the time comes, the note reaches you at its next step. Once it is set, end your turn unless other work is left — don't sleep or poll. The person's Stop drops it, as does a goal halted for its time; a restart of Filament keeps it, and one whose time came meanwhile comes once Filament is back.`,
+  description: `Come back to this chat later by yourself: once \`seconds\` have passed (${COME_BACK_MIN_S} to ${COME_BACK_MAX_S}), Filament starts a turn of yours here with your \`note\`: what to check or do then. Use it for work that needs time but not you: a deploy to settle, a CI run to finish, a page or a reply to check again. One per chat: a new one replaces the one set before, and \`cancel: true\` drops it. If a turn of yours still runs when the time comes, the note reaches you in it or as it ends. Once it is set, end your turn unless other work is left; don't sleep or poll. The person's Stop drops it, as does a goal halted for its time; a restart of Filament keeps it, and one whose time came meanwhile comes once Filament is back.`,
   input_schema: Object.freeze({
     type: "object",
     properties: Object.freeze({
@@ -30,8 +32,19 @@ export const COME_BACK_TOOL = Object.freeze({
   }),
 });
 
-/** A time of day on Filament's clock, "14:32". @param {number} t */
-const clockOf = (t) => new Date(t).toTimeString().slice(0, 5);
+/**
+ * A time of day on Filament's clock, "14:32" — "05:01 tomorrow" for one on the next calendar day, and "the day after
+ * tomorrow" past it, which a day's wait across a clock moved forward reaches. @param {number} t @param {number} [now]
+ */
+const clockOf = (t, now = Date.now()) => {
+  const days = t > now ? calendarDays(t, now) : 0;
+  return `${new Date(t).toTimeString().slice(0, 5)}${days === 1 ? " tomorrow" : days > 1 ? " the day after tomorrow" : ""}`;
+};
+/** How many calendar days on `t` falls after `now`'s, by the local date alone. @param {number} t @param {number} now */
+export const calendarDays = (t, now) => {
+  const [a, b] = [new Date(t), new Date(now)];
+  return Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) - Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86_400_000);
+};
 /** How long, in words: "1 min", "20 min", "1 h", "1 h 5 min". @param {number} s */
 const spanWords = (s) => {
   const m = Math.max(1, Math.round(s / 60));

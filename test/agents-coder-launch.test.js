@@ -691,8 +691,9 @@ describe("through the app", () => {
     // the list now marks the two to load whole, in the words that client reads, and no other) — and the background
     // command, whose words say when to use it (HarnessV4_Background_Plan BG-D7); and filament_recall, which a fresh
     // session's words name (the hunt of carry-recall). The owner's tool plan of 11-08: the graph's, the checklist, the
-    // envelope and memory's load whole too, in the plan's order.
-    const loadWhole = ["tasks", "checklist", "filament_recall", "agent", "wait", "envelope", "background_command", "skill", ...["search", "grep", "load", "sessions", "remember", "correct", "confirm", "close", "forget"].map((n) => `filament_memory_${n}`)];
+    // envelope and memory's load whole too, in the plan's order; and come_back, the chat's own agent's way back to it
+    // (x50).
+    const loadWhole = ["tasks", "checklist", "filament_recall", "agent", "wait", "envelope", "background_command", "come_back", "skill", ...["search", "grep", "load", "sessions", "remember", "correct", "confirm", "close", "forget"].map((n) => `filament_memory_${n}`)];
     assert.deepEqual(listed.filter((/** @type {any} */ x) => x._meta).map((/** @type {any} */ x) => [x.name, x._meta]), loadWhole.map((n) => [n, { "anthropic/alwaysLoad": true }]));
     assert.ok(listed.every((/** @type {any} */ x) => !("upfront" in x)), "Filament's own word for it stays inside");
     assert.match((await mcp(first.mcpUrl, "initialize", {})).instructions, /Its `agent` tool launches Filament's own sub-agents, or the saved agents the person named, each as its card says; your client's own sub-agent tool is off in this session\./);

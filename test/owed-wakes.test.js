@@ -132,7 +132,7 @@ describe("a come-back across a restart", () => {
       const told = peekShellExits(main("cb-2"));
       assert.deepEqual(
         told.map((x) => [x.id, x.kind, x.text]),
-        [["wake_late", "wake", "[Filament: the time you set has come — 60 min ago you asked to come back to this chat. It was due 47 min ago, while Filament was not running, so it comes late. Your note: look at CI]"]],
+        [["wake_late", "wake", "[Filament: the time you set has come — 1 h ago you asked to come back to this chat. It was due 47 min ago, while Filament was not running, so it comes late. Your note: look at CI]"]],
       );
       assert.deepEqual(woke, [], "the start's sweep wakes it");
       assert.equal(keepComeBack("cb-2", kept), null, "told already, by its id");

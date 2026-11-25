@@ -37,6 +37,7 @@ import { FLOW_OFF, FLOW_TOOL, flowAtOf, flowCall } from "./agent/flow-tool.js";
 import { BROWSER, BROWSER_READ_ONLY, BROWSER_TOOL, actingSite } from "./agent/browser-tool.js";
 import { BACKGROUND_COMMAND_MACHINE_TOOL, BACKGROUND_COMMAND_TOOL } from "./agent/commands.js";
 import { RUN_CHECK_OFF, RUN_CHECK_TOOL } from "./agent/run-check.js";
+import { COME_BACK_OFF, COME_BACK_SWITCHED_OFF, COME_BACK_TOOL, comeBackCall } from "./agent/come-back.js";
 import { SKILL_TOOL, skillAnswer } from "./agent/skills.js";
 import { CRAFT_OFF, CRAFT_TOOL, craftAtOf, craftCall } from "./agent/craft-tool.js";
 import { dismissAnswer, dismisses, otherThanDismiss, writesLetter } from "./agent/envelopes.js";
@@ -113,6 +114,12 @@ const BACKGROUND_MACHINE_DEF = defOf(BACKGROUND_COMMAND_MACHINE_TOOL, true);
 /** A sub-agent that only reads runs its graph task's check in a copy of the folder (agent/run-check.js, x20): loaded whole. */
 const RUN_CHECK_DEF = defOf(RUN_CHECK_TOOL, true);
 /**
+ * Coming back to the chat later (agent/come-back.js), as the loop's agent does (x50): loaded whole, as it stands in for
+ * the agent's own timers, which end with its process (Claude Code's CronCreate and ScheduleWakeup are off beside it,
+ * acp/toolset.js `CLAUDE_OWN_WAKES`).
+ */
+const COME_BACK_DEF = defOf(COME_BACK_TOOL, true);
+/**
  * The skill tool (HarnessV4_Skills_Plan S1-1), as the loop's is: loaded whole, as the session's words name it — beside
  * an agent's own Skill tool, a name held back would send it to that one.
  */
@@ -148,6 +155,7 @@ export const buildAgentTools = () => [
   BACKGROUND_DEF,
   BACKGROUND_MACHINE_DEF,
   RUN_CHECK_DEF,
+  COME_BACK_DEF,
   SKILL_DEF,
   ...memoryOrdered(memoryToolDefs("anthropic")).map((t) => defOf(t, true)),
   REPORT_DEF,
@@ -184,6 +192,7 @@ const TURN_NAMES = new Set(/** @type {string[]} */ ([TEAM_AGENT_TOOL.name, WORKE
  *   artifacts?: import("../services/artifacts.js").ArtifactStore | null, port?: () => number, maxBytes?: () => number,
  *   space?: SpaceDeps | null, beside?: BesideDeps | null, thread?: ThreadDeps | null, flow?: FlowDeps | null,
  *   browsers?: () => ReturnType<typeof import("./browser/registry.js").createBrowsers> | null, browserOn?: (chainId: string) => boolean,
+ *   comeBackOn?: ((chainId: string) => boolean) | null,
  *   commands?: ReturnType<typeof import("./agent/commands.js").createBackgroundCommands> | null,
  *   skills?: ((chain: string, upstream: string, cwd: string) => { skills: import("./agent/skills.js").Skill[], plugins: import("./agent/skills.js").PluginSet[], library?: import("./agent/skills.js").LibrarySkill[] } | null) | null,
  *   craft?: import("./agent/craft-tool.js").CraftDeps | null,
@@ -203,6 +212,8 @@ const TURN_NAMES = new Set(/** @type {string[]} */ ([TEAM_AGENT_TOOL.name, WORKE
  *   chat's own agent starts (`ctx.thread`, app/threads.js). `browsers`: the chats' browsers, read at
  *   each call (made after the tools), which a chat's agents drive (`ctx.browser`, AT-D7); `browserOn`, whether its
  *   switch is on now — a session given the browser keeps it listed until it opens again, and each call asks.
+ *   `comeBackOn`: whether a chat's come_back switch (`loop.tools.come_back`) is on now, which a harness chat's own
+ *   agent's come_back reads at each call (x50); none where it is not given.
  *   `commands`: the background commands of the sessions given the envelope tool (HarnessV4_Background_Plan E34), and
  *   of sub-agents (h1).
  *   `skills`: a chat's skills for the agent of an upstream — the chat's folders and its plugins on, less the agent's
@@ -212,7 +223,7 @@ const TURN_NAMES = new Set(/** @type {string[]} */ ([TEAM_AGENT_TOOL.name, WORKE
  *   (agent/tool-tail.js): an agent that takes words only once a step ended hears what comes mid-turn there.
  * @returns {import("../core/ports.js").AgentTools}
  */
-export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagents, membersOf, machines = null, artifacts = null, port = () => 0, maxBytes = () => 0, space = null, beside = null, thread = null, flow = null, browsers = () => null, browserOn = () => true, commands = null, skills = null, craft = null, dismiss = null, tails = null }) {
+export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagents, membersOf, machines = null, artifacts = null, port = () => 0, maxBytes = () => 0, space = null, beside = null, thread = null, flow = null, browsers = () => null, browserOn = () => true, comeBackOn = null, commands = null, skills = null, craft = null, dismiss = null, tails = null }) {
   const memoryOn = () => !!memory && memoryToolsOn();
   /**
    * Where a call to the Space stands, or null where the chat has none: a chat of no project (`spaceProjectOf`), or an
@@ -280,6 +291,13 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
    * turn's. @param {AgentToolCtx} ctx
    */
   const writesLead = (ctx) => !!ctx.by && !!ctx.chain && !ctx.team && !ctx.launch;
+  /**
+   * Whether a call's agent comes back to its chat later (x50): a harness chat's own agent — offered the agent tool, no
+   * team's lead, no sub-agent — never in a chat of another machine's agents. Listed so whatever the chat's switch
+   * (`loop.tools.come_back`) says, as the browser is: a session reads its tools once as it opens, so each call asks the
+   * switch instead (`COME_BACK_SWITCHED_OFF`). None where no switch is given to ask. @param {AgentToolCtx} ctx
+   */
+  const comesBack = (ctx) => !!comeBackOn && !!ctx.launch && !ctx.team && !ctx.by && !!ctx.chain && !agentsChat(ctx.chain);
   /** Whether a call's agent is a sub-agent that only reads and holds its graph task's check (x20, run_check). @param {AgentToolCtx} ctx */
   const holdsCheck = (ctx) => !!ctx.by && (subagents()?.checksOf?.(ctx.by.id)?.length ?? 0) > 0;
   /**
@@ -313,6 +331,7 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
         ...(writesLead(ctx) ? [ENVELOPE_SUB_DEF] : []),
         ...(runsCommands(ctx) ? [kept ? BACKGROUND_MACHINE_DEF : BACKGROUND_DEF] : []),
         ...(holdsCheck(ctx) ? [RUN_CHECK_DEF] : []),
+        ...(comesBack(ctx) ? [COME_BACK_DEF] : []),
         ...(hasSkills(skillsAt(ctx)) ? [SKILL_DEF] : []),
         // Memory's, while its tools are on: never for a chat Memory settings leave out (`leftOut`).
         ...(memoryOn() && !ctx.leftOut ? memoryOrdered(agentMemoryMcpTools(memory)).map((t) => ({ ...t, upfront: true })) : []),
@@ -329,7 +348,7 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
       ];
     },
     has: (name) =>
-      isMemoryTool(name) || name === TASKS_DEF.name || name === CHECKLIST_DEF.name || name === REPORT_DEF.name || name === ASK_LEAD_DEF.name || name === VISUAL_GUIDE_DEF.name || name === SHOW_VISUAL_DEF.name || name === ARTIFACT_DEF.name || name === SPACE_DEF.name || name === BESIDE_DEF.name || name === THREAD_DEF.name || name === FLOW_DEF.name || name === BROWSER_DEF.name || name === BACKGROUND_DEF.name || name === RUN_CHECK_DEF.name || name === SKILL_DEF.name || name === CRAFT_DEF.name || TURN_NAMES.has(name),
+      isMemoryTool(name) || name === TASKS_DEF.name || name === CHECKLIST_DEF.name || name === REPORT_DEF.name || name === ASK_LEAD_DEF.name || name === VISUAL_GUIDE_DEF.name || name === SHOW_VISUAL_DEF.name || name === ARTIFACT_DEF.name || name === SPACE_DEF.name || name === BESIDE_DEF.name || name === THREAD_DEF.name || name === FLOW_DEF.name || name === BROWSER_DEF.name || name === BACKGROUND_DEF.name || name === RUN_CHECK_DEF.name || name === COME_BACK_DEF.name || name === SKILL_DEF.name || name === CRAFT_DEF.name || TURN_NAMES.has(name),
     async call(name, args, ctx) {
       if (isRecallTool(name)) {
         if (!ctx.chain || !memory?.archive) return { text: "Not run: recall reads a chat's own record, and this call stands in no chat.", isError: true };
@@ -506,6 +525,14 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
         // read for a call that names one alone.
         const there = args?.machine != null && String(args.machine).trim() !== "";
         return commands.call(args, { chain: ctx.chain, cwd: ctx.cwd, permit: ctx.permit ?? null, judgeNow: ctx.judgeNow ?? null, modeNow: ctx.modeNow ?? null, askPerson: ctx.askPerson ?? null, rulesAsk: ctx.rulesAsk ?? null, signal: ctx.signal ?? null, machines: there && machinesFor(ctx), agent: ctx.by ? `subagent:${ctx.by.id}` : null });
+      }
+      // Coming back to the chat later (x50): its time kept across a restart, its turn started by Filament as a background
+      // command's end starts one.
+      if (name === COME_BACK_DEF.name) {
+        if (!comesBack(ctx) || !ctx.chain) return { text: COME_BACK_OFF, isError: true };
+        if (!comeBackOn?.(ctx.chain)) return { text: COME_BACK_SWITCHED_OFF, isError: true };
+        const r = comeBackCall(args, { session: ctx.chain });
+        return r.ok ? { text: r.text } : { text: r.error, isError: true };
       }
       // The check of the graph task a sub-agent that only reads looks at, in a copy of the folder (x20).
       if (name === RUN_CHECK_DEF.name) {

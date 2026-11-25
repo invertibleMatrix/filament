@@ -18,6 +18,7 @@ import { BESIDE_TEAM } from "../app/agent/beside-tool.js";
 import { FLOW_NAME } from "../app/agent/flow-tool.js";
 import { THREAD } from "../app/agent/thread-tool.js";
 import { BACKGROUND_COMMAND } from "../app/agent/commands.js";
+import { COME_BACK } from "../app/agent/come-back.js";
 
 const VERSION = "0.1";
 const SKIP_DIRS = new Set(["node_modules", ".git", ".hg", ".svn", "dist", "build", ".next", ".cache", "__pycache__", ".venv", "venv", "target"]);
@@ -150,6 +151,8 @@ export const serverInstructions = (ctx) => {
   // Beside it (HarnessV4_Background_Plan BG-D7): a command that can take more than a minute goes there. Named wherever
   // the session's list has it (`background`): a sub-agent's too (h1, the owner's of 11-08).
   const background = ctx.launch === true || ctx.team === true || ctx.background === true ? " Its `background_command` runs any command that can take more than a minute, a test suite or a build, while you keep working; its result comes back to you whole, beside your next tool call or as a message from Filament." : "";
+  // Coming back later (x50): named wherever the list has it, as the agent's own timers are off beside it.
+  const comeBack = ctx.comeBack === true ? " Its `come_back` comes back to this chat by itself at a time you set, with your note: Filament keeps it across a restart, which a timer of your own would not outlive." : "";
   // A harness chat shows the agent's visuals (HarnessV4_Visuals_Plan E16): named, so an agent that holds the server's
   // tools by name knows the picture is there to draw.
   const visuals = ctx.visuals === true ? " Its `show_visual` draws a picture in the person's chat (a diagram, a chart, a screen, a small thing to try) after `visual_guide` gives Filament's rules for it." : "";
@@ -170,7 +173,7 @@ export const serverInstructions = (ctx) => {
   // Its command line, as the loop's Environment section names it (agent/environment.js `cliCommand`): a coding agent
   // has no such section, and Filament's setup skill reads the line from here (the owner's of 11-05).
   const cli = ctx.cli ? ` Its command line: \`${ctx.cli} --help\` (status, models, keys, coding agents, memory, settings).` : "";
-  return `${own}${hands}${launch}${envelope}${background}${visuals}${artifacts}${team}${thread}${flow}${space}${browser}${skills}${cli} The project folder is ${ctx.cwd || "unknown"}.`;
+  return `${own}${hands}${launch}${envelope}${background}${comeBack}${visuals}${artifacts}${team}${thread}${flow}${space}${browser}${skills}${cli} The project folder is ${ctx.cwd || "unknown"}.`;
 };
 
 /**
@@ -279,7 +282,7 @@ export class McpToolServer {
   // has it, a sub-agent's list too (h1).
   #instructions(ctx) {
     const names = new Set((this.tools?.list(toolCtxOf(ctx)) || []).map((t) => t.name));
-    return serverInstructions({ ...ctx, cli: this.cli, space: names.has(SPACE), beside: ctx.beside === true && names.has(BESIDE_TEAM), thread: ctx.thread === true && names.has(THREAD), flow: ctx.flow === true && names.has(FLOW_NAME), teams: this.tools?.teamsOn?.() !== false, background: names.has(BACKGROUND_COMMAND) });
+    return serverInstructions({ ...ctx, cli: this.cli, space: names.has(SPACE), beside: ctx.beside === true && names.has(BESIDE_TEAM), thread: ctx.thread === true && names.has(THREAD), flow: ctx.flow === true && names.has(FLOW_NAME), teams: this.tools?.teamsOn?.() !== false, background: names.has(BACKGROUND_COMMAND), comeBack: names.has(COME_BACK) });
   }
 
   async #dispatch(m, ctx, sink = {}, hungUp = null) {

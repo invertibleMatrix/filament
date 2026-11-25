@@ -2194,9 +2194,13 @@ const comeBacks = new Map();
  * A chat's come-back as Filament says it while it waits: when, on Filament's clock, and the agent's note.
  * @typedef {{ at: number, note: string }} ComeBack
  */
-/** The soonest and the latest a chat's agent may come back, in seconds: Claude Code's own bounds. */
+/**
+ * The soonest and the latest a chat's agent may come back, in seconds: a minute, as Claude Code's own wakeup; a day, as
+ * come_back stands in for its scheduled tasks too in Filament's chats (x50) — a wait for an account's limit to reset
+ * fits.
+ */
 export const COME_BACK_MIN_S = 60;
-export const COME_BACK_MAX_S = 3600;
+export const COME_BACK_MAX_S = 86400;
 let comeBackSeq = 0;
 /** Who hears that a chat's come-back changed: the server, which says it to the page. */
 const comeBackHearers = new Set();
@@ -2232,16 +2236,30 @@ export const comeBackLater = (session, { seconds, note }) => {
   return { at: setAt + s * 1000, seconds: s, replaced: was ? { at: was.at, note: was.note } : null };
 };
 /**
+ * The longest a come-back's timer runs before it looks at the clock again: a timer's time stands still while the
+ * machine sleeps on some systems, so a come-back a day out set before a night's sleep would come hours late; one that
+ * looks each minute comes within a minute of its time on Filament's clock (x50's review).
+ */
+const COME_BACK_LOOK_MS = 60_000;
+/**
  * A chat's come-back waiting for its time, `at`: as it comes, its note is told (`comeBackCame`).
  * @param {string} session @param {{ id: string, at: number, setAt: number, note: string }} c
  */
 const armComeBack = (session, { id, at, setAt, note }) => {
-  const timer = setTimeout(() => {
-    if (comeBacks.get(session)?.id !== id) return;
+  const look = () => {
+    const c = comeBacks.get(session);
+    if (c?.id !== id) return;
+    const left = at - Date.now();
+    if (left > 0) {
+      c.timer = setTimeout(look, Math.min(left, COME_BACK_LOOK_MS));
+      c.timer.unref?.();
+      return;
+    }
     comeBacks.delete(session);
     comeBackCame(session, { id, at, setAt, note });
     comeBackChanged(session);
-  }, Math.max(0, at - Date.now()));
+  };
+  const timer = setTimeout(look, Math.min(Math.max(0, at - Date.now()), COME_BACK_LOOK_MS));
   timer.unref?.();
   comeBacks.set(session, { id, at, setAt, note, timer });
   comeBackChanged(session);
@@ -2253,10 +2271,13 @@ const armComeBack = (session, { id, at, setAt, note }) => {
  *   `down`: told as Filament starts — it wakes nothing now: the start's sweep wakes its chat
  */
 const comeBackCame = (session, { id, at, setAt, note }, { down = false } = {}) => {
-  const ago = Math.max(1, Math.round((Date.now() - setAt) / 60_000));
-  const late = Math.max(1, Math.round((Date.now() - at) / 60_000));
-  const was = down ? ` It was due ${late} min ago, while Filament was not running, so it comes late.` : "";
-  tellLater({ session, agent: null }, { id, command: "", code: null, kind: "wake", text: `[Filament: the time you set has come — ${ago} min ago you asked to come back to this chat.${was} Your note: ${note}]` }, { now: !down });
+  const was = down ? ` It was due ${minutesAgo(Date.now() - at)} ago, while Filament was not running, so it comes late.` : "";
+  tellLater({ session, agent: null }, { id, command: "", code: null, kind: "wake", text: `[Filament: the time you set has come — ${minutesAgo(Date.now() - setAt)} ago you asked to come back to this chat.${was} Your note: ${note}]` }, { now: !down });
+};
+/** A stretch in words, a minute at least: "10 min", "1 h", "24 h", "2 h 5 min". @param {number} ms */
+const minutesAgo = (ms) => {
+  const m = Math.max(1, Math.round(ms / 60_000));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
 };
 /**
  * A chat's come-back as the chat keeps it for a restart (sessions/owed-wakes.js): its id, when, when it was set, and

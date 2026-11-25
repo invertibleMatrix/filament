@@ -33,10 +33,11 @@ import { readsAlong, mcpServerProblem, sessionEngineOf } from "../../services/se
 
 /**
  * The loop's switches that reach a coding agent (acp-turn.js `toolsAt`; the owner's look of 10-24): Filament's browser,
- * pictures, artifacts, Space, teams, flows and threads ride its MCP server on the chat's own switches. The rest of the loop's
- * tools are the agent's own to do — files, commands, the web's fetch and search, questions, plans.
+ * pictures, artifacts, Space, teams, flows, threads and its come-back ride its MCP server on the chat's own switches
+ * (agent-tools.js `comesBack`, x50). The rest of the loop's tools are the agent's own to do — files, commands, the web's
+ * fetch and search, questions, plans.
  */
-export const AGENT_REACHES = Object.freeze(["browser", "show_visual", "artifact", SPACE, "team", "flow", "thread"]);
+export const AGENT_REACHES = Object.freeze(["browser", "show_visual", "artifact", SPACE, "team", "flow", "thread", "come_back"]);
 
 /**
  * Which engine the session's turns will reach (NT-D8): a coding agent's own route, the agent loop (the harness runs a

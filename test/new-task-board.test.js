@@ -316,7 +316,7 @@ test("the cards hold, never write: a tool's chip, memory's switch and the permis
 });
 
 // (fails before: yes — come_back had no chip: the chat's switch for coming back later was out of the person's reach)
-test("Come back later (the Designer's of 10-27): its chip where the turn offers it, on by default; a press switches it off for this chat; never a coding agent's own", () => {
+test("Come back later (the Designer's of 10-27): its chip where the turn offers it, on by default; a press switches it off for this chat; a coding agent's from Filament", () => {
   const { board, calls, card } = boardWith();
   const chip = () => allWith(card("tools"), "nt-chip").find((/** @type {any} */ c) => c.attrs["data-tool"] === "come_back");
   board.paint(answer());
@@ -328,8 +328,16 @@ test("Come back later (the Designer's of 10-27): its chip where the turn offers 
   assert.deepEqual(calls.pop(), ["set", "loop.tools", { come_back: false }]);
   board.paint(answer({ tools: { ...answer().tools, off: ["come_back"] } }));
   assert.equal(chip().attrs["aria-checked"], "false", "switched off, it shows off");
-  board.paint(answer({ engine: { kind: "agent", model: "agent/claude" }, tools: { offered: [], off: [], adds: [], hands: "own", memory: 0, recall: false, mcp: [] } }));
-  assert.doesNotMatch(textOf(card("tools")), /Come back later/, "only Filament's own agent comes back later: no coding agent's own tool");
+  // (fails before: yes — x50: a coding agent's come-back is Filament's, on the chat's own switch, never a tool of its own)
+  const coder = (/** @type {string[]} */ adds, /** @type {string[]} */ off = []) => board.paint(answer({ engine: { kind: "agent", model: "agent/claude" }, tools: { offered: [], off, adds, hands: "own", memory: 0, recall: false, mcp: [] } }));
+  coder(["come_back"]);
+  assert.match(textOf(card("tools")), /From Filament\|Browser\|Come back later\|Filament's agent tool/, "among what Filament adds");
+  assert.equal(chip().attrs["aria-checked"], "true");
+  chip().dispatch("click");
+  assert.deepEqual(calls.pop(), ["set", "loop.tools", { come_back: false }]);
+  coder([], ["come_back"]);
+  assert.equal(chip().attrs["aria-checked"], "false", "switched off for this chat, it shows off");
+  assert.equal(textOf(card("tools")).match(/Come back later/g)?.length, 1, "never a tool of its own beside it");
 });
 
 // (fails before: yes — the card had "A memory brief", a switch that sent sub-agents out without memory's brief; the

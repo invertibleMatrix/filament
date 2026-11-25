@@ -379,11 +379,11 @@ describe("startAnatomy, unit by unit", () => {
   test("a coding agent's draft: what Filament hands it on the chat's own switches, and whose hands do its files", () => {
     const coder = (/** @type {any} */ eff, cfg = cfgOf(), projectId = "p1") => startAnatomy({ cfg, eff: { model: { name: "coder-one" }, ...eff }, cwd, projectId, memory: null }).tools;
     const all = coder({ plugins: { browser: true } });
-    assert.deepEqual([all.adds, all.hands], [["browser", "show_visual", "artifact", "space", "team", "flow", "thread"], "own"]);
-    assert.deepEqual(coder({ plugins: { browser: true } }, cfgOf((c) => { c.experimental.teams = false; })).adds, ["browser", "show_visual", "artifact", "space", "flow", "thread"], "(fails before: yes) no team tool while Settings › Experimental's Teams switch is off");
-    assert.deepEqual(coder({ plugins: { browser: true }, loop: { tools: { show_visual: false, team: false, browser: false } } }).adds, ["artifact", "space", "flow", "thread"], "each on its own switch");
-    assert.deepEqual(coder({}).adds, ["show_visual", "artifact", "space", "team", "flow", "thread"], "the browser on its plugin's switch");
-    assert.deepEqual(coder({}, cfgOf(), "none").adds, ["show_visual", "artifact", "team", "flow", "thread"], "no project, no Space");
+    assert.deepEqual([all.adds, all.hands], [["browser", "show_visual", "artifact", "space", "team", "flow", "thread", "come_back"], "own"]);
+    assert.deepEqual(coder({ plugins: { browser: true } }, cfgOf((c) => { c.experimental.teams = false; })).adds, ["browser", "show_visual", "artifact", "space", "flow", "thread", "come_back"], "(fails before: yes) no team tool while Settings › Experimental's Teams switch is off");
+    assert.deepEqual(coder({ plugins: { browser: true }, loop: { tools: { show_visual: false, team: false, browser: false } } }).adds, ["artifact", "space", "flow", "thread", "come_back"], "each on its own switch");
+    assert.deepEqual(coder({}).adds, ["show_visual", "artifact", "space", "team", "flow", "thread", "come_back"], "the browser on its plugin's switch");
+    assert.deepEqual(coder({}, cfgOf(), "none").adds, ["show_visual", "artifact", "team", "flow", "thread", "come_back"], "no project, no Space");
     const native = cfgOf((c) => { c.upstreams[1] = { ...c.upstreams[1], id: "claude-code", acp: { command: "claude-agent-acp", clientBridge: "native" } }; c.routes[1].upstream = "claude-code"; });
     assert.equal(coder({}, native).hands, "native", "Claude Code switches its own off for Filament's");
     const cannot = cfgOf((c) => { c.upstreams[1] = { ...c.upstreams[1], acp: { clientBridge: "native" } }; });

@@ -41,7 +41,7 @@ test("a sub-agent's session is offered background_command, named as it connects,
   assert.deepEqual([sub.wantMcp, sub.mcpServers.map((s) => s.name)], [true, ["filament"]], "Filament's server carries the tool, whatever else the sub-agent goes without");
   const options = /** @type {any} */ (sub.sessionMeta)._meta?.claudeCode?.options;
   assert.deepEqual(options?.env, { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" });
-  assert.equal(options?.disallowedTools, undefined, "Filament gives a sub-agent no agent tool: Claude's own stays");
+  assert.deepEqual(options?.disallowedTools, ["CronCreate", "CronDelete", "CronList", "ScheduleWakeup"], "Filament gives a sub-agent no agent tool: Claude's own stays; its timers go (x50)");
   assert.equal(/** @type {any} */ (plan({ toolsAt: { chain: "c1" } }).sessionMeta)._meta?.claudeCode?.options?.env, undefined, "a session no sub-agent's keeps them");
 });
 

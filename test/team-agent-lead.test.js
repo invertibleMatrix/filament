@@ -167,7 +167,7 @@ test("a chat's Claude Code offered Filament's agent tool is opened without its o
   /** @param {Record<string, any>} want @param {boolean} [http] */
   const plan = (want, http = true) =>
     planToolset({ relay: false, acp: {}, upstream: { id: "claude" }, proc: { initResult: { agentCapabilities: { mcpCapabilities: { http } } } }, profile: { rawMessages: true }, turn: { bridge: "prompts" }, fullBridge: false, cwd: "/w", mcpBase: "http://127.0.0.1:9", memoryWanted: false, existingToken: null, notes: [], ...want });
-  assert.deepEqual(plan({ launchWanted: "agent" }).sessionMeta._meta?.claudeCode?.options?.disallowedTools, ["Agent", "Task"]);
+  assert.deepEqual(plan({ launchWanted: "agent" }).sessionMeta._meta?.claudeCode?.options?.disallowedTools, ["Agent", "Task", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup"]);
   assert.equal(plan({ launchWanted: "agent" }, false).sessionMeta._meta?.claudeCode?.options?.disallowedTools, undefined, "no Filament agent tool to use instead");
   assert.equal(plan({ memoryWanted: true }).sessionMeta._meta?.claudeCode?.options?.disallowedTools, undefined, "memory alone offers no agent tool");
 });

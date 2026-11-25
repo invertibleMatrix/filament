@@ -15,8 +15,16 @@ import { messageTimeLabel } from "./labels.js";
 /** How much of the note a row shows: its whole on hover. */
 const NOTE_CHARS = 80;
 
-/** Its time on the page's clock, as a reply's time reads: "14:32". @param {ComeBack} c */
-export const comeBackClock = (c) => messageTimeLabel(c.at);
+/**
+ * Its time on the page's clock, as a reply's time reads: "14:32" — "05:01 tomorrow" for one on the next calendar day, a
+ * come-back being set up to a day out, and "the day after tomorrow" past it, which a day's wait across a clock moved
+ * forward reaches. @param {ComeBack} c @param {Date} [now]
+ */
+export const comeBackClock = (c, now = new Date()) => {
+  const at = new Date(c.at);
+  const days = c.at > now.getTime() ? Math.round((Date.UTC(at.getFullYear(), at.getMonth(), at.getDate()) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86_400_000) : 0;
+  return `${messageTimeLabel(c.at, now)}${days === 1 ? " tomorrow" : days > 1 ? " the day after tomorrow" : ""}`;
+};
 
 /** The note on one line, cut to a row's room. @param {string} note */
 export const comeBackNote = (note) => {
