@@ -12,11 +12,13 @@
 // latest-server.yml beside them gives each one's SHA-512 as the desktop app's latest*.yml give theirs
 // (desktop/lib/updates.js's shaIn reads it), the whole one first.
 //
-// Built for the machine it runs on, Linux x64 or Linux arm64, and on no other: the memory engine's bundle is built on
-// the machine it is for, and node-pty has no prebuilt binary there — npm ci builds it, against this machine's glibc,
-// and it loads on none older. arm64's tarballs are named -linux-arm64, and latest-server-arm64.yml lists them, beside
-// x64's latest-server.yml as electron-builder's latest-linux-arm64.yml is beside latest-linux.yml: an x64 install reads
-// latest-server.yml, which names x64's alone, whatever else a release carries. The bundle
+// Built for the machine it runs on, Linux x64, Linux arm64 or Windows x64, and on no other: the memory engine's bundle
+// is built on the machine it is for, and on Linux node-pty has no prebuilt binary — npm ci builds it, against this
+// machine's glibc, and it loads on none older (Windows' comes prebuilt with node-pty). arm64's tarballs are named
+// -linux-arm64, and latest-server-arm64.yml lists them, beside x64's latest-server.yml as electron-builder's
+// latest-linux-arm64.yml is beside latest-linux.yml: an x64 install reads latest-server.yml, which names x64's alone,
+// whatever else a release carries; Windows' are -win32-x64, in latest-server-win32-x64.yml. On Windows its Node is
+// node\node.exe and its launcher bin\filament.cmd, which scripts/install.ps1 puts on the person's PATH. The bundle
 // is checked whole before anything is packed (scripts/check-memory-bundle.mjs); after, each tarball is unpacked into a
 // throwaway folder and smoke-tested there: its build-info.json, its launcher's --version, the bundle inside it whole
 // and the one its Filament finds, a terminal through its node-pty, and its Filament started on a throwaway data folder
@@ -40,7 +42,7 @@ import { releasesRepoOf } from "../desktop/lib/updates.js";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** What a server's build is for, each built on that machine alone. */
-export const SERVER_TARGETS = ["linux-x64", "linux-arm64"];
+export const SERVER_TARGETS = ["linux-x64", "linux-arm64", "win32-x64"];
 /** x64's: the machine a name is for where none is given. */
 export const SERVER_TARGET = "linux-x64";
 /** The update file beside x64's tarballs, which a release carries for servers to check a download by. */
@@ -57,7 +59,7 @@ export const serverDir = (root, version) => join(root, "dist", "server", version
  */
 export const tarballName = (version, engine = true, target = SERVER_TARGET) => `filament-server-${version}-${target}${engine ? "" : "-no-engine"}.tar.gz`;
 
-/** The update file beside `target`'s tarballs: x64's latest-server.yml, latest-server-arm64.yml for arm64's. @param {string} [target] */
+/** The update file beside `target`'s tarballs: x64's latest-server.yml, latest-server-arm64.yml for arm64's, latest-server-win32-x64.yml for Windows'. @param {string} [target] */
 export const feedName = (target = SERVER_TARGET) => (target === SERVER_TARGET ? FEED : `latest-server-${target.replace(/^linux-/, "")}.yml`);
 
 /** The folder the tarball unpacks into: its name without .tar.gz. @param {string} name */
@@ -105,6 +107,22 @@ export const LAUNCHER = `#!/bin/sh
 here=$(dirname "$(readlink -f "$0")")
 exec "$here/../node/bin/node" "$here/filament.js" "$@"
 `;
+
+/** Windows' launcher, bin\filament.cmd: the same, for cmd and PowerShell, its lines ended as cmd reads them. */
+export const LAUNCHER_CMD = [
+  "@echo off",
+  "rem Filament for servers (scripts/dist-server.mjs): its command line, run by the Node that comes with it.",
+  '"%~dp0..\\node\\node.exe" "%~dp0filament.js" %*',
+  "exit /b %ERRORLEVEL%",
+  "",
+].join("\r\n");
+
+/** Whether a machine's build is Windows'. @param {string} target */
+export const isWindows = (target) => target.startsWith("win32-");
+
+/** Where a build's Node and launcher sit under its top folder, for the machine `target`. @param {string} target */
+export const layoutOf = (target) =>
+  isWindows(target) ? { node: "node/node.exe", launcher: "bin/filament.cmd", body: LAUNCHER_CMD } : { node: "node/bin/node", launcher: "bin/filament", body: LAUNCHER };
 
 /**
  * One entry of a tarball, by its path under the tarball's top folder: a folder, a file on disk (`from`) or bytes (`body`).
@@ -475,9 +493,14 @@ export async function smokeTest({ file, version, engine, releases, target = SERV
     } catch {}
     if (marker?.kind !== "server" || marker.version !== version || marker.engine !== engine || marker.releases?.owner !== releases.owner || marker.releases?.repo !== releases.repo)
       return `its ${MARKER} is not this build's: ${JSON.stringify(marker)}`;
-    const v = spawnSync(join(dir, "bin", "filament"), ["--version"], { encoding: "utf8", env: smokeEnv(), timeout: 60_000 });
-    if ((v.stdout || "").trim() !== version) return `bin/filament --version said ${JSON.stringify((v.stdout || "").trim())}, not ${version}: ${v.error?.message || lastOf(v.stderr) || `exit code ${v.status}`}`;
-    const node = join(dir, "node", "bin", "node");
+    const lay = layoutOf(target);
+    const launcher = join(dir, ...lay.launcher.split("/"));
+    // A .cmd runs through cmd alone (Node spawns none by itself): its line as cmd reads it, quoted whole.
+    const v = isWindows(target)
+      ? spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `""${launcher}" --version"`], { encoding: "utf8", env: smokeEnv(), timeout: 60_000, windowsHide: true, windowsVerbatimArguments: true })
+      : spawnSync(launcher, ["--version"], { encoding: "utf8", env: smokeEnv(), timeout: 60_000 });
+    if ((v.stdout || "").trim() !== version) return `${lay.launcher} --version said ${JSON.stringify((v.stdout || "").trim())}, not ${version}: ${v.error?.message || lastOf(v.stderr) || `exit code ${v.status}`}`;
+    const node = join(dir, ...lay.node.split("/"));
     if (engine) {
       const inside = await checkBundle({ root: join(dir, "vendor", "memory-engine"), target, inTarball: true, say: log });
       if (!inside.ok) return inside.why;
@@ -493,7 +516,9 @@ export async function smokeTest({ file, version, engine, releases, target = SERV
     const pty = terminalStarts({ node, pty: join(dir, "node_modules", "node-pty") });
     if (pty) return pty;
     log("Its Filament, started on a throwaway data folder and port…");
-    return await serverAnswers({ command: join(dir, "bin", "filament"), version, dataDir: join(at, "data"), env: serverEnv(at), ...(timeoutMs ? { timeoutMs } : {}) });
+    // On Windows by its Node itself, so stopping it ends Filament, not a cmd that leaves it running.
+    const started = isWindows(target) ? { command: node, args: [join(dir, "bin", "filament.js")] } : { command: launcher };
+    return await serverAnswers({ ...started, version, dataDir: join(at, "data"), env: serverEnv(at), ...(timeoutMs ? { timeoutMs } : {}) });
   } finally {
     try {
       removeAll(at);
@@ -512,7 +537,7 @@ const whyNot = (e) => e?.code || e?.message || String(e);
 /**
  * @param {{ machine?: string, args?: string[], root?: string, vendor?: string, check?: typeof checkBundle,
  *   node?: { path: string, version: string, variables: any }, glibc?: () => string | null, facts?: () => import("../desktop/lib/build-info.js").Build,
- *   ptyHelpers?: (root: string) => string[], smoke?: typeof smokeTest, clear?: (dir: string) => void, remove?: (file: string) => void,
+ *   ptyHelpers?: (root: string, platform: string) => string[], smoke?: typeof smokeTest, clear?: (dir: string) => void, remove?: (file: string) => void,
  *   log?: (line: string) => void, error?: (line: string) => void, now?: () => Date }} [o]
  *   `machine`: this machine's system and arch, the target built for; `node`: the Node the tarballs carry — this one — and its config's
  *   variables; `glibc`: this machine's, which node-pty is built against; `ptyHelpers`: node-pty's helpers made
@@ -528,7 +553,7 @@ export async function distServer({
   node = { path: process.execPath, version: process.version, variables: process.config.variables },
   glibc = glibcOf,
   facts = () => buildFacts({ root }),
-  ptyHelpers = (at) => ptyHelpersRunnable({ root: at, platform: "linux" }),
+  ptyHelpers = (at, platform) => ptyHelpersRunnable({ root: at, platform }),
   smoke = smokeTest,
   clear = removeAll,
   remove = removeAll,
@@ -546,7 +571,7 @@ export async function distServer({
   // The tarballs are this machine's: one machine's are never built on another.
   const target = SERVER_TARGETS.includes(machine) ? machine : "";
   if (!target) {
-    error(`Filament's server build is for ${SERVER_TARGETS.join(" and ")}, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64 (WSL on Windows).`);
+    error(`Filament's server build is for ${SERVER_TARGETS.slice(0, -1).join(", ")} and ${SERVER_TARGETS.at(-1)}, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64, or on Windows x64.`);
     return 1;
   }
   const version = versionOf(root);
@@ -574,7 +599,7 @@ export async function distServer({
   }
   // The tarball packs node-pty as it is here: its helpers runnable, and its binary built for this machine.
   try {
-    for (const f of ptyHelpers(root)) log(`node-pty's helper made runnable: ${f}`);
+    for (const f of ptyHelpers(root, target.split("-")[0])) log(`node-pty's helper made runnable: ${f}`);
   } catch (e) {
     error(`node-pty's helper can't be made runnable (${whyNot(e)}): the server's terminals would not start.`);
     return 1;
@@ -620,14 +645,16 @@ export async function distServer({
   /** What both tarballs hold, before the engine's bundle. @type {Entry[]} */
   const common = [];
   for (const f of ["package.json", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md"]) if (existsSync(join(root, f))) common.push({ name: f, mode: 0o644, from: join(root, f) });
-  common.push({ name: "bin/filament", mode: 0o755, body: Buffer.from(LAUNCHER) }, { name: "bin/filament.js", mode: 0o755, from: join(root, "bin", "filament.js") });
+  const lay = layoutOf(target);
+  common.push({ name: lay.launcher, mode: 0o755, body: Buffer.from(lay.body) }, { name: "bin/filament.js", mode: 0o755, from: join(root, "bin", "filament.js") });
   for (const d of ["src", "docs", "starters"]) if (existsSync(join(root, d))) common.push(...treeOf(join(root, d), d, own));
   common.push(...treeOf(join(root, "sidecar"), "sidecar", (n) => n.endsWith(".py") && own(n)));
   for (const p of packages) common.push(...treeOf(join(root, p.path), p.path, (n) => n !== `${p.path}/node_modules` && ptyKeeps(target)(n)));
   const bundle = whole ? treeOf(join(vendor, target), `vendor/memory-engine/${target}`) : [];
   /** @type {Entry[]} */
-  const nodeEntries = [{ name: "node/bin/node", mode: 0o755, from: node.path }];
-  const nodeLicense = join(dirname(node.path), "..", "LICENSE");
+  const nodeEntries = [{ name: lay.node, mode: 0o755, from: node.path }];
+  // nodejs.org's Windows Node keeps its LICENSE beside node.exe; Linux's, a folder up from bin/node.
+  const nodeLicense = isWindows(target) ? join(dirname(node.path), "LICENSE") : join(dirname(node.path), "..", "LICENSE");
   if (existsSync(nodeLicense)) nodeEntries.push({ name: "node/LICENSE", mode: 0o644, from: nodeLicense });
   const builds = (whole ? [true, false] : [false]).map((engine) => {
     const name = tarballName(version, engine, target);
@@ -685,9 +712,11 @@ export async function distServer({
     return 1;
   }
   for (const m of made)
-    log(`Filament ${version} for servers${m.engine ? "" : ", without its memory engine"}: ${m.file} (${(m.size / 1024 / 1024).toFixed(1)} MB) — tar -xzf it where it is to live, then ${topOf(m.name)}/bin/filament start.`);
+    log(
+      `Filament ${version} for servers${m.engine ? "" : ", without its memory engine"}: ${m.file} (${(m.size / 1024 / 1024).toFixed(1)} MB) — ${isWindows(target) ? `scripts/install.ps1 installs it, or tar.exe -xzf it where it is to live, then ${topOf(m.name)}\\bin\\filament.cmd start` : `tar -xzf it where it is to live, then ${topOf(m.name)}/bin/filament start`}.`,
+    );
   log(`Its update file: ${feed} — a release of ${releases.owner}/${releases.repo} offers ${made.length > 1 ? "them to servers with the tarballs" : "it to servers with the tarball"} beside it.`);
-  log(glibcWords(builtOn));
+  if (!isWindows(target)) log(glibcWords(builtOn));
   return 0;
 }
 

@@ -24,6 +24,7 @@ import {
   FEED,
   feedOf,
   LAUNCHER,
+  LAUNCHER_CMD,
   MARKER,
   productionPackages,
   glibcWords,
@@ -229,6 +230,8 @@ function checkoutAt(root, version = "1.2.3") {
     "node_modules/node-pty/deps/x.c": "a source",
     "node_modules/node-pty/scripts/post-install.js": "a script",
     "node_modules/node-pty/prebuilds/darwin-arm64/pty.node": "a Mac's",
+    "node_modules/node-pty/prebuilds/win32-x64/pty.node": "Windows' prebuilt",
+    "node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe": "Windows' console host",
     "node_modules/node-pty/node_modules/inner/index.js": "inner",
     "node_modules/node-addon-api/package.json": JSON.stringify({ name: "node-addon-api" }),
     "node_modules/electron/package.json": JSON.stringify({ name: "electron" }),
@@ -409,6 +412,57 @@ test("dist:server: dist/server/<version>/ holds the tarball — Node, bin, src, 
   }
 });
 
+// (fails before, s3f: yes — Windows x64 was refused: no server build was made there, so no Windows PC could be a host)
+test("dist:server on Windows x64: its tarballs carry node\\node.exe with its LICENSE and bin\\filament.cmd, node-pty's Windows binaries and the win32-x64 engine; their feed is latest-server-win32-x64.yml; no glibc said", async () => {
+  const at = tmp();
+  try {
+    const root = checkoutAt(join(at, "checkout"));
+    const exe = join(at, "node-v24-win-x64", "node.exe");
+    mkdirSync(dirname(exe), { recursive: true });
+    writeFileSync(exe, "MZ a Node");
+    writeFileSync(join(dirname(exe), "LICENSE"), "Node's license");
+    /** @type {string[]} */
+    const said = [];
+    /** @type {string[]} */
+    const platforms = [];
+    /** @type {string[]} */
+    const smoked = [];
+    const io = {
+      machine: "win32-x64", root, vendor: join(root, "vendor", "memory-engine"), node: { path: exe, version: "v24.11.0", variables: {} }, glibc: () => null, facts: FACTS,
+      ptyHelpers: (/** @type {string} */ _root, /** @type {string} */ platform) => (platforms.push(platform), []),
+      check: async () => WHOLE, smoke: async (/** @type {any} */ o) => (smoked.push(o.target), ""),
+      log: (/** @type {string} */ l) => said.push(l), error: (/** @type {string} */ l) => said.push(`! ${l}`),
+    };
+    assert.equal(await distServer(io), 0, said.join("\n"));
+    assert.deepEqual(platforms, ["win32"], "node-pty's helpers made runnable as Windows' are (none to make)");
+    assert.deepEqual(smoked, ["win32-x64", "win32-x64"]);
+    const out = serverDir(root, "1.2.3");
+    const feed = join(out, "latest-server-win32-x64.yml");
+    assert.deepEqual(readdirSync(out).sort(), ["filament-server-1.2.3-win32-x64-no-engine.tar.gz", "filament-server-1.2.3-win32-x64.tar.gz", "latest-server-win32-x64.yml"]);
+    const file = join(out, "filament-server-1.2.3-win32-x64.tar.gz");
+    assert.equal(shaIn(readFileSync(feed, "utf8"), "filament-server-1.2.3-win32-x64.tar.gz"), sha512Of(file));
+    const into = join(at, "unpacked");
+    mkdirSync(into);
+    assert.equal(untar(file, into), "");
+    const top = join(into, "filament-server-1.2.3-win32-x64");
+    const inside = filesUnder(top);
+    for (const f of ["bin/filament.cmd", "bin/filament.js", "node/node.exe", "node/LICENSE", "node_modules/node-pty/prebuilds/win32-x64/pty.node", "node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe", "vendor/memory-engine/win32-x64/uv.exe"])
+      assert.ok(inside.includes(f), f);
+    for (const f of ["bin/filament", "node/bin/", "node_modules/node-pty/prebuilds/darwin-arm64/", "vendor/memory-engine/linux-x64/"]) assert.ok(!inside.includes(f), `no ${f}`);
+    assert.equal(readFileSync(join(top, "bin", "filament.cmd"), "utf8"), LAUNCHER_CMD);
+    assert.match(LAUNCHER_CMD, /^"%~dp0\.\.\\node\\node\.exe" "%~dp0filament\.js" %\*\r$/m, "the launcher runs the command line by the Node inside");
+    assert.ok(!/[^\r]\n/.test(LAUNCHER_CMD), "each of its lines ended as cmd reads them");
+    assert.equal(readFileSync(join(top, "node", "LICENSE"), "utf8"), "Node's license", "nodejs.org's LICENSE, from beside node.exe");
+    const marker = JSON.parse(readFileSync(join(top, MARKER), "utf8"));
+    assert.deepEqual([marker.target, marker.feed, marker.glibc], ["win32-x64", "latest-server-win32-x64.yml", null]);
+    assert.match(said.at(-3) || "", /— scripts\/install\.ps1 installs it, or tar\.exe -xzf it where it is to live, then filament-server-1\.2\.3-win32-x64\\bin\\filament\.cmd start\.$/);
+    assert.equal(said.at(-1), `Its update file: ${feed} — a release of invertibleMatrix/filament offers them to servers with the tarballs beside it.`);
+    assert.ok(!said.some((l) => /glibc/.test(l)), "no glibc said of a Windows build");
+  } finally {
+    rmSync(at, { recursive: true, force: true });
+  }
+});
+
 test("dist:server packs of a git checkout's src, docs, starters and sidecar only what git tracks — a developer's .env, config.json, logs and screenshots stay out; a .git git can't list, or none, is refused", async () => {
   const at = tmp();
   try {
@@ -468,8 +522,8 @@ test("dist:server refuses, in words and with nothing made: another machine, a fl
       log: () => {}, error: (/** @type {string} */ l) => said.push(l),
     };
     const nothing = () => assert.ok(!existsSync(join(root, "dist")), "nothing made");
-    assert.equal(await distServer({ ...io, machine: "win32-x64" }), 1);
-    assert.equal(said.at(-1), "Filament's server build is for linux-x64 and linux-arm64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is win32-x64; build it on Linux x64 or arm64 (WSL on Windows).");
+    assert.equal(await distServer({ ...io, machine: "darwin-arm64" }), 1);
+    assert.equal(said.at(-1), "Filament's server build is for linux-x64, linux-arm64 and win32-x64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is darwin-arm64; build it on Linux x64 or arm64, or on Windows x64.");
     assert.equal(await distServer({ ...io, args: ["--publish"] }), 2);
     assert.equal(said.at(-1), "npm run dist:server takes --no-engine alone (a tarball without the memory engine), not --publish.");
     assert.equal(await distServer({ ...io, check: async () => ({ ok: false, why: "none here" }) }), 1);
@@ -573,5 +627,5 @@ test("dist:server is the script, run by its real path (source contract)", () => 
   const src = readFileSync(join(ROOT, "scripts", "dist-server.mjs"), "utf8");
   assert.match(src, /^if \(isMain\(import\.meta\.url\)\) process\.exitCode = await distServer\(\{ args: process\.argv\.slice\(2\) \}\);$/m);
   // the smoke test's Filament starts with no bundle to install its engine from (serverEnv), and its own is tried apart
-  assert.match(src, /return await serverAnswers\(\{ command: join\(dir, "bin", "filament"\), [^\n]*env: serverEnv\(at\)/);
+  assert.match(src, /return await serverAnswers\(\{ \.\.\.started, [^\n]*env: serverEnv\(at\)/);
 });

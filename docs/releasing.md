@@ -17,6 +17,7 @@ app it built. What it makes, in `dist/<system>/<version>/`:
 | Linux (x64) | `npm run dist:linux` | `Filament-<v>-linux-x86_64.AppImage`, a single file for any distribution, and `Filament-<v>-linux-amd64.deb` for Debian and Ubuntu | `latest-linux.yml` |
 | Linux servers (x64), no desktop app | `npm run dist:server` | `filament-server-<v>-linux-x64.tar.gz`, and `…-no-engine.tar.gz` without the memory engine, which `install.sh` installs (section 6) | `latest-server.yml` |
 | Linux servers (arm64), no desktop app | `npm run dist:server`, on an arm64 machine | `filament-server-<v>-linux-arm64.tar.gz`, and `…-no-engine.tar.gz` | `latest-server-arm64.yml` |
+| Windows hosts (x64), no desktop app | `npm run dist:server`, on Windows | `filament-server-<v>-win32-x64.tar.gz`, and `…-no-engine.tar.gz` | `latest-server-win32-x64.yml` |
 
 The update file lists each install file with its SHA-512. An installed Filament checks a download against it and
 keeps nothing that doesn't match.
@@ -164,11 +165,15 @@ bundle needed. The Node that runs the build goes into the tarballs, so it must c
 nodejs.org, or nvm's. The build refuses one that uses the system's. It builds from a git checkout alone, and packs only the
 files git tracks: a folder with no `.git` is refused, since nothing there tells a developer's own `.env` from the checkout's.
 
-It builds for the machine it runs on: Linux x64, or Linux arm64 (an arm64 Ubuntu 22.04 machine, after its own
-`npm ci` and `npm run engine:bundle`). There it makes `filament-server-<v>-linux-arm64.tar.gz`, its `-no-engine` one
-and `latest-server-arm64.yml`. It refuses every other machine, and never builds one machine's tarballs on another: the
-memory engine's bundle and node-pty are built for the machine they run on. `latest-server.yml` is x64's alone, which
-every x64 install reads; a release by hand carries both machines' folders' files side by side.
+It builds for the machine it runs on: Linux x64, Linux arm64 (an arm64 Ubuntu 22.04 machine, after its own
+`npm ci` and `npm run engine:bundle`), or Windows x64. On arm64 it makes `filament-server-<v>-linux-arm64.tar.gz`, its
+`-no-engine` one and `latest-server-arm64.yml`; on Windows, after `npm ci` and `npm run engine:bundle` there,
+`filament-server-<v>-win32-x64.tar.gz`, its `-no-engine` one and `latest-server-win32-x64.yml`, with `node\node.exe`
+and `bin\filament.cmd` inside in place of Linux's `node/bin/node` and `bin/filament` (node-pty comes prebuilt for
+Windows; its smoke test runs the launcher through cmd). It refuses every other machine, and never builds one
+machine's tarballs on another: the memory engine's bundle and node-pty are built for the machine they run on.
+`latest-server.yml` is x64's alone, which every x64 install reads; a release by hand carries each machine's folder's
+files side by side.
 
 ## 4. Apple, once
 
@@ -293,6 +298,10 @@ A draft changes nothing for it until it is published. Built on Ubuntu 22.04 (gli
 on servers with that glibc or newer; Filament itself runs on glibc 2.28 and newer. To build it alone: **Actions** ›
 **Build** › **Run workflow**, systems **server**. How a server installs, runs and updates it:
 [Filament on a server](server.md).
+
+**The Windows server build:** the `server-windows` job does the same on `windows-latest`, with the `windows` job's
+memory engine bundle (the same cache), and adds three files to the release: `filament-server-<v>-win32-x64.tar.gz`,
+its `-no-engine` one and `latest-server-win32-x64.yml`. The release checks them, and its notes name them.
 
 **The arm64 server build:** the `server-arm64` job does the same on an arm64 machine, with its own memory engine
 bundle, and adds three files to the release: `filament-server-<v>-linux-arm64.tar.gz`, its `-no-engine` one and

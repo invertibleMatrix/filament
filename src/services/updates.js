@@ -25,7 +25,7 @@ import { pipeline } from "node:stream/promises";
  */
 
 /** What a server's build is for (scripts/dist-server.mjs SERVER_TARGETS). */
-export const SERVER_TARGETS = ["linux-x64", "linux-arm64"];
+export const SERVER_TARGETS = ["linux-x64", "linux-arm64", "win32-x64"];
 /** x64's: the machine a name is for where none is given (scripts/dist-server.mjs SERVER_TARGET). */
 export const SERVER_TARGET = "linux-x64";
 /** The update file a release carries for x64's servers (scripts/dist-server.mjs FEED). */
@@ -37,7 +37,7 @@ export const SERVER_FEED = "latest-server.yml";
  */
 export const serverTarball = (version, engine = true, target = SERVER_TARGET) => `filament-server-${version}-${target}${engine ? "" : "-no-engine"}.tar.gz`;
 
-/** The update file for `target`'s servers (scripts/dist-server.mjs feedName): x64's latest-server.yml, latest-server-arm64.yml for arm64's. @param {string} [target] */
+/** The update file for `target`'s servers (scripts/dist-server.mjs feedName): x64's latest-server.yml, latest-server-arm64.yml for arm64's, latest-server-win32-x64.yml for Windows'. @param {string} [target] */
 export const serverFeed = (target = SERVER_TARGET) => (target === SERVER_TARGET ? SERVER_FEED : `latest-server-${target.replace(/^linux-/, "")}.yml`);
 
 /**

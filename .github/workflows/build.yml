@@ -542,13 +542,79 @@ jobs:
           retention-days: 1
           overwrite: true
 
+  server-windows:
+    name: Server tarballs (Windows x64)
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'server' }}
+    # A Windows PC as a headless host: node-pty comes prebuilt for Windows, and the memory engine's bundle is the
+    # windows job's, under its key.
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/win32-x64
+          key: memory-engine-win32-x64-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the tarballs
+        run: npm run dist:server
+
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          files=(
+            "dist/server/$VERSION/filament-server-$VERSION-win32-x64.tar.gz"
+            "dist/server/$VERSION/filament-server-$VERSION-win32-x64-no-engine.tar.gz"
+            "dist/server/$VERSION/latest-server-win32-x64.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-server-win32-x64
+          path: |
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-win32-x64.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-win32-x64-no-engine.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/latest-server-win32-x64.yml
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   release:
     name: Draft release
     # Where the arm64 job was skipped (SERVER_ARM64 off) the release goes without its files: GitHub skips a job whose
     # need was skipped unless its `if` says otherwise. Any job failed or cancelled, the draft keeps what got up, without
     # its notes, until "Re-run failed jobs" puts in the rest; nothing sees a draft.
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    needs: [version, windows, mac, linux, server, server-arm64]
+    needs: [version, windows, mac, linux, server, server-arm64, server-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -580,7 +646,8 @@ jobs:
             for f in "Filament-$VERSION-setup-x64.exe" latest.yml \
                      "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
                      "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
-                     "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh $arm64; do
+                     "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh \
+                     "filament-server-$VERSION-win32-x64.tar.gz" "filament-server-$VERSION-win32-x64-no-engine.tar.gz" latest-server-win32-x64.yml $arm64; do
               grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in $repo's draft."; missing=1; }
             done
             echo "$repo:"
@@ -610,6 +677,7 @@ jobs:
           - **macOS** (Apple Silicon): \`Filament-$VERSION-mac-arm64.dmg\` — open it and drag Filament to Applications
           - **Linux** (x64): \`Filament-$VERSION-linux-x86_64.AppImage\` (any distribution: \`chmod +x\` it and run it), or \`Filament-$VERSION-linux-amd64.deb\` for Debian and Ubuntu (\`sudo apt install ./Filament-$VERSION-linux-amd64.deb\`)
           - **Linux servers** ($servers, no desktop app): \`curl -fsSL https://github.com/$RELEASES_REPO/releases/latest/download/install.sh | sh\`, or \`filament-server-$VERSION-linux-x64.tar.gz\` by hand
+          - **Windows hosts** (x64, no desktop app): \`filament-server-$VERSION-win32-x64.tar.gz\`
 
           The installed app finds this release itself once it is published.
           EOF

@@ -52,7 +52,7 @@ const TOKENS = /\n {10}OWN_TOKEN: \$\{\{ github\.token \}\}\n {10}MIRROR_TOKEN: 
 const checkStep = (text) => text.slice(text.indexOf("- name: Every system's files are here"), text.indexOf("- name: The release's notes"));
 
 /** The jobs that build something and put it into the draft (on a tag's run) or keep it as an artifact (by hand). */
-const BUILDS = ["windows", "mac", "linux", "server", "server-arm64"];
+const BUILDS = ["windows", "mac", "linux", "server", "server-arm64", "server-windows"];
 
 // (fails before: yes — the release job made the draft from the builds' artifacts, which one release's outgrew the 2 GB of)
 test("a tag's run drafts the release here and in the mirror before any build: one there is left as it is, a published one stops the run, and each build puts its files into both", async () => {
@@ -156,7 +156,7 @@ test("a tag that is not package.json's version stops the run before npm ci", asy
   assert.ok(text.indexOf("- name: The tag names this version") < text.indexOf("run: npm ci"));
   assert.match(job(text, "version"), /- name: The tag names this version/);
   for (const name of BUILDS) assert.match(job(text, name), /\n {4}needs: version\n/, `${name} waits on the version's check`);
-  assert.match(job(text, "release"), /\n {4}needs: \[version, windows, mac, linux, server, server-arm64\]\n/);
+  assert.match(job(text, "release"), /\n {4}needs: \[version, windows, mac, linux, server, server-arm64, server-windows\]\n/);
 });
 
 // (fails before: yes — a tag's run typechecked and ran the suite on Windows, and the release waited on it)
@@ -266,6 +266,26 @@ test("the arm64 server build: on ARM64_RUNNER's runner or ubuntu-22.04-arm, skip
   assert.doesNotMatch(listed.replace(/ \$arm64$/, ""), /linux-arm64|latest-server-arm64/, "and asks for none of them otherwise");
   const notes = text.slice(text.indexOf("- name: The release's notes"));
   assert.match(notes, /\n {10}ARM64: \$\{\{ needs\.server-arm64\.result \}\}\n/, "the notes name arm64 where it was built");
+});
+
+// (fails before, s3f: yes — no Windows server build: a Windows PC could be no host)
+test("the Windows server build: on windows-latest, its memory engine the windows job's under its key, npm run dist:server, its tarballs and feed in both drafts, checked in the release and named in its notes", async () => {
+  const text = await yml();
+  const win = job(text, "server-windows");
+  const W = "win32-x64";
+  assert.match(win, /\n {4}needs: version\n/);
+  assert.match(win, /\n {4}if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.systems == 'all' \|\| inputs\.systems == 'server' \}\}\n/);
+  assert.match(win, /\n {4}runs-on: windows-latest\n/);
+  const cache = (/** @type {string} */ j) => /\n {10}path: (vendor\/memory-engine\/\S+)\n {10}key: (.+)\n/.exec(j)?.slice(1);
+  assert.deepEqual(cache(win), cache(job(text, "windows")), "the windows job's bundle, under its key: either job's is the other's");
+  const order = ["run: npm ci\n", "uses: actions/cache@v6\n", "run: npm run engine:bundle\n", "run: npm run dist:server\n", "- name: Into the draft release\n", "uses: actions/upload-artifact@v7\n"];
+  for (let i = 1; i < order.length; i++) assert.ok(win.indexOf(order[i - 1]) > 0 && win.indexOf(order[i - 1]) < win.indexOf(order[i]), `${order[i - 1].trim()} before ${order[i].trim()}`);
+  const v = "${{ needs.version.outputs.version }}";
+  assert.deepEqual(keeps(win), [tarballName(v, true, W), tarballName(v, false, W), feedName(W)].map((f) => `dist/server/${v}/${f}`));
+  assert.deepEqual(sends(win), keeps(win));
+  const listed = /\n\s+for f in ([\s\S]*?); do\n/.exec(checkStep(text))?.[1] || "";
+  for (const f of [tarballName("$VERSION", true, W), tarballName("$VERSION", false, W), feedName(W)]) assert.ok(listed.includes(`"${f}"`) || listed.includes(` ${f}`), `the release checks ${f}`);
+  assert.match(text.slice(text.indexOf("- name: The release's notes")), /\*\*Windows hosts\*\* \(x64, no desktop app\)/);
 });
 
 // (fails before: yes — the run built Windows alone)

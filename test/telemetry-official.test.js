@@ -185,11 +185,11 @@ test("Filament passes its build's default to the service, and the release CI set
   assert.match(server, /onByDefault: officialBuild\(join\(__dirname, "\.\."\)\) \|\| process\.env\.FILAMENT_TELEMETRY === "1"/);
   assert.match(server, /armed: !!sendsTelemetry,/);
   const yml = readFileSync(new URL("../.github/workflows/build.yml", import.meta.url), "utf8");
-  for (const job of ["windows", "mac", "linux", "server", "server-arm64"]) {
+  for (const job of ["windows", "mac", "linux", "server", "server-arm64", "server-windows"]) {
     const body = yml.split(new RegExp(`^  ${job}:\\r?\\n`, "m"))[1]?.split(/^  [\w-]+:\r?\n/m)[0] || "";
     assert.match(body, /^    env:\r?\n(?:      .*\r?\n)*      FILAMENT_OFFICIAL_BUILD: \$\{\{ github\.repository_owner == 'invertibleMatrix' && '1' \|\| '0' \}\}$/m, job);
   }
-  assert.equal((yml.match(/FILAMENT_OFFICIAL_BUILD/g) || []).length, 5, "set on the five build jobs alone");
+  assert.equal((yml.match(/FILAMENT_OFFICIAL_BUILD/g) || []).length, 6, "set on the six build jobs alone");
 });
 
 // (fails before: the installer asked nothing, and services/telemetry.js had no takeInstallChoice)
