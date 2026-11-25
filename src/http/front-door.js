@@ -19,7 +19,7 @@ import { isHouseCall } from "../services/house.js";
 import { lendModels, modelsLentTo } from "../services/devices.js";
 import { selfAddress } from "../services/config/store.js";
 import { serveStatic, serveDoc } from "./static.js";
-import { artifactNameOfHost, isArtifactOrigin, stillNameOfHost } from "../core/artifacts.js";
+import { artifactNameOfHost, isArtifactOrigin, passHidden, stillNameOfHost } from "../core/artifacts.js";
 import { MACHINE_PROTOCOL, MACHINE_PROTOCOL_LOWEST } from "../services/machine.js";
 import { CONVERSATION_HEADERS } from "../core/conversation.js";
 
@@ -57,15 +57,19 @@ const WATCH_WORDS = "a watcher's address answers on the machine Filament runs on
  * A path as a log line says it: an address whose last part is what opens it — an agent's MCP door (`/mcp/<token>`), a
  * connector's (`/mcp/c/<signed>`), an app's hook (`/hook/<app>/<token>`), a watcher's (`/watch/<token>`) — is said by
  * its door alone. The log is a file an agent can read: one that read its watcher's address there could wake itself,
- * and another chat's MCP token opens that chat's tools. Memory's door (`/mcp/memory`) is a name, and stays.
+ * and another chat's MCP token opens that chat's tools. Memory's door (`/mcp/memory`) is a name, and stays. An
+ * artifact's pass in its path (`/~<pass>/`, http/artifacts.js) is said as `/~…/` (core/artifacts.js `passHidden`): a
+ * pass read there opens that artifact, or every one (the hunt on x41).
  * @param {string} p
  */
 export const pathShown = (p) =>
-  p
-    .replace(/^\/mcp\/c\/.+$/, "/mcp/c/…")
-    .replace(/^\/mcp\/(?!memory(?:\/|$)|c\/)[^/]+.*$/, "/mcp/…")
-    .replace(/^\/hook\/([^/]+)\/.+$/, "/hook/$1/…")
-    .replace(/^\/watch\/.+$/, "/watch/…");
+  passHidden(
+    p
+      .replace(/^\/mcp\/c\/.+$/, "/mcp/c/…")
+      .replace(/^\/mcp\/(?!memory(?:\/|$)|c\/)[^/]+.*$/, "/mcp/…")
+      .replace(/^\/hook\/([^/]+)\/.+$/, "/hook/$1/…")
+      .replace(/^\/watch\/.+$/, "/watch/…"),
+  );
 /**
  * The model endpoints another machine's chats reach at the network's door, by its agents' device with its grant `models`
  * on (the remote-agents plan's m-door): a message, a chat completion, a response, a count of tokens, the model list.
@@ -356,7 +360,7 @@ export function createFrontDoor({
       try {
         return await artifacts(req, res, still ?? art, url, { still: still !== null });
       } catch (/** @type {any} */ e) {
-        log("error", `artifact ${art || "(no name)"}: ${req.method} ${url.pathname}: ${e?.stack || e}`);
+        log("error", `artifact ${art || "(no name)"}: ${req.method} ${passHidden(url.pathname)}: ${e?.stack || e}`);
         if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }).end("The artifact could not be served.\n");
         else res.end();
         return;

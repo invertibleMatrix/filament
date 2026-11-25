@@ -208,6 +208,12 @@ export function artifactsOnNetwork(port, on) {
 }
 
 /**
+ * A path with each artifact's pass in it (`/~<pass>`, http/artifacts.js) said as `/~…`: a log line or an error read by
+ * an agent never carries one, which opens that artifact or every one (the hunt on x41). @param {string} p
+ */
+export const passHidden = (p) => String(p).replace(/\/~[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?=\/|$)/g, "/~…");
+
+/**
  * Whether a request's Origin is an artifact's page: code a model wrote — at its own address on this machine, or on the
  * network's artifacts address, while it listens.
  * @param {unknown} origin  the Origin header

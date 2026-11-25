@@ -19,6 +19,7 @@ import { artifactAddress, hereArtifactOf, passless, useArtifactsAt } from "../sr
 import { viewReads } from "../src/http/admin/remote.js";
 import { saidUrl } from "../src/app/browser/driver.js";
 import { startApp } from "./helpers/app.js";
+import { stubDocument } from "./helpers/dom-stub.js";
 
 const by = { chain: "c1", model: "m", folder: "/p", helper: null, call: null };
 /** @param {Record<string, string>} o */
@@ -306,6 +307,108 @@ describe("this machine's artifacts where its programs need the owner key", () =>
     } finally {
       globalThis.fetch = was;
       useArtifactsAt(undefined);
+    }
+  });
+
+  // (fails before: yes — the hunt on x41: a frame kept the address it was placed at, so after Filament started again its
+  // page asked everything under a pass that was no more, and Back or a version asked after a switch of the owner key
+  // loaded it with the pass, or none, of before; a right-click on a link copied it as written, which no pass opens)
+  test("Filament's page: a restart's new pass reaches the frames it holds, each load takes the address as it stands, and a link's right-click goes under the artifact's own pass", async () => {
+    const dom = stubDocument();
+    const g = /** @type {any} */ (globalThis);
+    const had = { fetch: g.fetch, location: g.location, MutationObserver: g.MutationObserver, open: g.window.open, EventSource: g.EventSource };
+    // The page's own listeners and frames, which nothing here fires.
+    const own = ["addEventListener", "removeEventListener", "requestAnimationFrame"].filter((k) => !(k in g));
+    g.addEventListener ||= () => {};
+    g.removeEventListener ||= () => {};
+    g.requestAnimationFrame ||= (/** @type {() => void} */ fn) => setTimeout(fn, 0);
+    // The events feed a frame's publishes come by: none here.
+    g.EventSource = class {
+      static CLOSED = 2;
+      readyState = 0;
+      addEventListener() {}
+      close() {}
+    };
+    const at = (/** @type {string} */ pass) => ({ artifacts: { page: `http://{name}.art.localhost:20300/~${pass}/`, still: `http://{name}.still.art.localhost:20300/~${pass}/` } });
+    let st = at("one.run");
+    /** @type {string[]} */
+    const asked = [];
+    g.fetch = async (/** @type {string} */ url, /** @type {any} */ init) => {
+      asked.push(`${init?.method || "GET"} ${new URL(url, "http://127.0.0.1:20300").pathname}`);
+      const body = String(url).endsWith("/pass") ? { address: "http://spend-k3f9.art.localhost:20300/~its.own/" } : st;
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    g.location = { hostname: "127.0.0.1", port: "20300", protocol: "http:", origin: "http://127.0.0.1:20300", href: "http://127.0.0.1:20300/ui/harness.html" };
+    g.MutationObserver = class {
+      observe() {}
+    };
+    /** @type {string[]} */
+    const opened = [];
+    g.window.open = (/** @type {string} */ to) => void opened.push(to);
+    try {
+      const { artifactFrame, artifactPreview, artifactsPlaced, artifactsPlacedAgain, passArtifactLinks } = await import(`../src/ui/harness/artifact-frame.js?moved=${1}`);
+      await artifactsPlaced(async () => {});
+      const f = artifactFrame("spend-k3f9", { title: "Spend", onTell() {}, onAsk() {} });
+      dom.document.body.append(f.el);
+      await new Promise((r) => setImmediate(r));
+      const frame = /** @type {any} */ (f.el.querySelector("iframe.artifact-frame"));
+      assert.equal(frame.src, "http://spend-k3f9.art.localhost:20300/~one.run/");
+      // A still preview, as the Artifacts page's grid holds one.
+      const peek = artifactPreview("spend-k3f9", 2, "Spend");
+      dom.document.body.append(peek);
+      await new Promise((r) => setImmediate(r));
+      const still = /** @type {any} */ (peek.querySelector("iframe.artifact-peek-frame"));
+      assert.equal(still.src, "http://spend-k3f9.still.art.localhost:20300/~one.run/_filament/v/2/");
+      // Filament started again: its run's pass is new, and the frames load under it.
+      st = at("two.run");
+      await artifactsPlacedAgain();
+      assert.equal(frame.src, "http://spend-k3f9.art.localhost:20300/~two.run/", "the frame's page loaded again under the new pass");
+      assert.equal(still.src, "http://spend-k3f9.still.art.localhost:20300/~two.run/_filament/v/2/", "the still preview too");
+      // A read that moves nothing loads nothing again.
+      frame.src = "as it was";
+      await artifactsPlacedAgain();
+      assert.equal(frame.src, "as it was");
+      // The addresses moved with no word to the frame: each load takes them as they stand.
+      useArtifactsAt(at("three.run").artifacts);
+      f.showVersion(2);
+      assert.equal(frame.src, "http://spend-k3f9.art.localhost:20300/~three.run/_filament/v/2/");
+      f.showVersion(null);
+      assert.equal(frame.src, "http://spend-k3f9.art.localhost:20300/~three.run/");
+      // A right-click on a link to an artifact here: no menu of the browser's, which would copy the link as written; its
+      // Open in browser goes under the artifact's own pass.
+      /** @type {Record<string, Function>} */
+      const heard = {};
+      passArtifactLinks(/** @type {any} */ ({ addEventListener: (/** @type {string} */ type, /** @type {Function} */ fn) => void (heard[type] = fn) }));
+      const link = dom.document.createElement("a");
+      link.setAttribute("href", "http://spend-k3f9.art.localhost:20300/");
+      /** @type {any} */ (link).href = "http://spend-k3f9.art.localhost:20300/";
+      dom.document.body.append(link);
+      let prevented = false;
+      heard.contextmenu({ type: "contextmenu", target: link, preventDefault: () => void (prevented = true) });
+      assert.equal(prevented, true, "the browser's own menu, the app's among them, never shows");
+      const rows = dom.document.body.querySelectorAll(".zc-menu .zc-menu-item");
+      assert.deepEqual(rows.map((r) => r.textContent.trim()), ["Open in browser", "Copy link"]);
+      rows[0].dispatch("click");
+      for (let i = 0; i < 20 && !opened.length; i++) await new Promise((r) => setImmediate(r));
+      assert.deepEqual(opened, ["http://spend-k3f9.art.localhost:20300/~its.own/"], "its own pass, asked of the server");
+      assert.ok(asked.includes("POST /api/artifacts/spend-k3f9/pass"), asked.join(" | "));
+      // Another link: the browser's own menu, as it is.
+      const other = dom.document.createElement("a");
+      /** @type {any} */ (other).href = "https://example.com/";
+      other.setAttribute("href", "https://example.com/");
+      prevented = false;
+      heard.contextmenu({ type: "contextmenu", target: other, preventDefault: () => void (prevented = true) });
+      assert.equal(prevented, false);
+    } finally {
+      g.fetch = had.fetch;
+      g.location = had.location;
+      g.MutationObserver = had.MutationObserver;
+      g.window.open = had.open;
+      if (had.EventSource) g.EventSource = had.EventSource;
+      else delete g.EventSource;
+      for (const k of own) delete g[k];
+      useArtifactsAt(undefined);
+      dom.restore();
     }
   });
 

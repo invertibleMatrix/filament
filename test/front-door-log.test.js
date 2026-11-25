@@ -70,6 +70,11 @@ describe("the front door's log", () => {
     assert.equal(pathShown(`/mcp/c/abc.def.${TOKEN}`), "/mcp/c/…");
     // Memory's door has no token: it is a name.
     assert.equal(pathShown("/mcp/memory"), "/mcp/memory");
+    // (fails before: yes — the hunt on x41: an artifact's pass stood in the log whole, and it opens that artifact)
+    assert.equal(pathShown("/~abc_1.def-2/index.html"), "/~…/index.html");
+    assert.equal(pathShown("/~abc.def"), "/~…");
+    assert.equal(pathShown("/spend-k3f9/~abc.def/data"), "/spend-k3f9/~…/data", "the network's, after its artifact's name");
+    assert.equal(pathShown("/~home/x"), "/~home/x", "a path with no pass in it, whole");
     for (const p of ["/", "/api/space/p1/routines/r1/address", "/v1/messages", "/hook", "/hook/Deploys", "/watch", "/mcp", "/ui/harness.html", "/watcher/x"]) assert.equal(pathShown(p), p, p);
   });
 

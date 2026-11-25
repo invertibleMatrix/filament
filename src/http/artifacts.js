@@ -28,6 +28,7 @@ import {
   MERMAID_MODULE,
   NETWORK_SANDBOX,
   OWN_PREFIX,
+  passHidden,
   OWN_UI,
   OWN_UI_FILES,
   PAGE_FILE,
@@ -929,7 +930,7 @@ export function artifactsDoor({ answer, server, devices = null, log = () => {}, 
       const pass = passes.give({ name: at.name, still: at.still, writes: !at.still && !view, who: passHolder(who, server()), from });
       return say(302, "", { location: `${prefixOf(at)}/~${pass}${at.rest}${url.search}` });
     } catch (/** @type {any} */ e) {
-      log("error", `artifact ${at?.name || "(no name)"} on the network: ${req.method} ${url.pathname}: ${e?.stack || e}`);
+      log("error", `artifact ${at?.name || "(no name)"} on the network: ${req.method} ${passHidden(url.pathname)}: ${e?.stack || e}`);
       if (!res.headersSent) say(500, "The artifact could not be served.");
       else res.end();
     }

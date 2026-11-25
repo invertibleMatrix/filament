@@ -9741,8 +9741,17 @@ async function boot() {
   // Your defaults live in the configuration: a save may have changed "New chats start in".
   onBus((msg) => { if (msg?.type === "config-changed") void loadNewChatMode(); });
   void loadNewChatMode();
-  // …and where it reads this machine's artifacts: Any program, or the owner key, says whether their addresses carry a pass.
-  onBus((msg) => { if (msg?.type === "config-changed") void artifactsPlacedAgain(); });
+  // …and where it reads this machine's artifacts: Any program, or the owner key, says whether their addresses carry a pass;
+  // a feed that came back may be a Filament started again, its run's pass new (the hunt on x41). Its first hello is
+  // the page's start, which read them already.
+  let artifactsHello = false;
+  onBus((msg) => {
+    if (msg?.type === "config-changed") void artifactsPlacedAgain();
+    else if (msg?.type === "hello") {
+      if (artifactsHello) void artifactsPlacedAgain();
+      artifactsHello = true;
+    }
+  });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") catalogue.refreshIfOlder(30_000); });
   window.setInterval(() => { if (document.visibilityState === "visible") catalogue.refreshIfOlder(5 * 60_000); }, 60_000);
   /** How many models answer as the page started (`answers`, the server's own rule: readiness.js), for the welcome tour: null where the read failed. */

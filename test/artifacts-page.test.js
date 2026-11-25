@@ -75,7 +75,7 @@ describe("where its page is shown (AF-D33, AF-D39, AFC-67)", () => {
   test("the frame hears only its own window from its own origin, is named before it loads, and its tile keeps it across draws and moves (pinned in the source)", () => {
     const frame = read("src/ui/harness/artifact-frame.js");
     assert.match(frame, /const from = framesNow\(\)\.find\(\(f\) => f\.contentWindow === e\.source\);\s+const at = from \? framed\.get\(from\) : null;\s+if \(at && e\.origin === spokenOrigin\(at\.origin\)\) at\.hear\(e\.data\);/);
-    assert.ok(frame.indexOf("frame.name = lookName(look.theme, look.motion);") < frame.lastIndexOf("frame.src = newest;"), "named, then loaded");
+    assert.ok(frame.indexOf("frame.name = lookName(look.theme, look.motion);") < frame.lastIndexOf("else frame.src = targetNow();"), "named, then loaded");
     assert.match(frame, /const motion = at\.still \? "off" : look\.motion;\s+f\.name = lookName\(look\.theme, motion, at\.still\);\s+f\.contentWindow\?\.postMessage\(\{ filament: "look", theme: look\.theme, motion \}, sentTo\(spokenOrigin\(at\.origin\)\)\);/, "the look goes to its origin alone — on the network's artifacts address, its frame's page, an origin of none —; a preview keeps still");
     const host = read("src/ui/harness/panes/pane-host.js");
     // A file's tab drawn already is read again in place (the owner's of 11-01) between the kept frame's guard and the
@@ -91,7 +91,7 @@ describe("where its page is shown (AF-D33, AF-D39, AFC-67)", () => {
     assert.match(frame, /if \(m\.kind === "here"\) \{[\s\S]{0,140}?here = true;\s+failures = \[\];\s+left = false;/, "its page, said as it starts");
     assert.match(frame, /frame\.addEventListener\("load", \(\) => \{[\s\S]{0,160}?left = !here;\s+here = false;\s+if \(left\) failures = \[\];\s+paint\(\);/, "a load with no word from it");
     assert.match(frame, /"The frame left this artifact's page\."\),\s+h\("button", \{[^}]*onclick: \(\) => show\(\) \}, "Back"\)/);
-    assert.match(frame, /const show = \(\) => \{\s+here = false;\s+left = false;\s+failures = \[\];\s+paint\(\);\s+frame\.src = target;/, "Back loads its page from the start, at the version it shows");
+    assert.match(frame, /const show = \(\) => \{\s+here = false;\s+left = false;\s+failures = \[\];\s+paint\(\);\s+frame\.src = targetNow\(\);/, "Back loads its page from the start, at the version it shows, at its address now");
   });
 
   test("a card whose artifact cannot be read says why in words, and opens nothing (AFC-66, pinned in the source)", () => {

@@ -195,6 +195,11 @@ class StubElement {
     this.append(n);
     return n;
   }
+  /** Nodes set first, before its children, as the page's. @param {...unknown} nodes */
+  prepend(...nodes) {
+    this.html = null;
+    this.childNodes.unshift(...nodes.map((n) => this.#adopt(n)));
+  }
   /** @param {StubNode} n @param {StubNode | null} ref */
   insertBefore(n, ref) {
     const node = this.#adopt(n);

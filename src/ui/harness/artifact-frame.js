@@ -18,9 +18,10 @@ import { ICONS } from "./lib/icons.js";
 import { failureLine, failureOf } from "./lib/visuals.js";
 import { askText, clickedIn } from "./lib/frame-ask.js";
 import { whenShown } from "./lib/when-shown.js";
-import { artifactAddress, artifactOrigin, frameableAt, hereArtifactOf, lookName, passless, portOf, sentTo, spokenOrigin, stillAddress, stillOrigin, useArtifactsAt, versionAddress, APP_FRAME_ALLOW, APP_FRAME_SANDBOX, FRAME_ALLOW, FRAME_SANDBOX } from "./lib/artifacts.js";
+import { artifactAddress, artifactOrigin, frameableAt, hereArtifactOf, lookName, passless, portOf, sentTo, spokenOrigin, stillAddress, stillOrigin, titleOfName, useArtifactsAt, versionAddress, APP_FRAME_ALLOW, APP_FRAME_SANDBOX, FRAME_ALLOW, FRAME_SANDBOX } from "./lib/artifacts.js";
 import { onPublished } from "./artifacts-live.js";
-import { openOut } from "./artifact-acts.js";
+import { copyLink, openOut } from "./artifact-acts.js";
+import { menu } from "./lib/ui.js";
 
 /** Where this page reads its artifacts, as /api/state said it, once read. @type {Promise<void> | null} */
 let placing = null;
@@ -51,10 +52,15 @@ export function artifactsPlaced(pause = (ms) => new Promise((r) => setTimeout(r,
   return placing;
 }
 
+/** Where every artifact's page and still preview are, as one artifact's say it: the same before and after a read, nothing moved. */
+const placeNow = () => `${artifactAddress("x", 0)} ${stillAddress("x", 0, 1)}`;
 /**
  * Where this page reads its artifacts, read again once a setting changed — `server.loopbackTrust` among them, which
  * makes this machine's addresses carry a pass or none (the review of x41: a page read under Any program framed every
- * artifact with none after the switch to the owner key). A read that fails leaves the addresses as they were.
+ * artifact with none after the switch to the owner key) — and as the events feed comes back, Filament perhaps started
+ * again under a pass of its new run (the hunt on x41). Where the addresses moved, every frame on the page loads its page
+ * again at its address now: one loaded under a pass that is no more is refused each thing it asks. A read that fails
+ * leaves the addresses as they were.
  * @returns {Promise<void>}
  */
 export function artifactsPlacedAgain() {
@@ -62,7 +68,10 @@ export function artifactsPlacedAgain() {
   placing = placing.then(async () => {
     try {
       const st = await api("/state");
-      if (st && "artifacts" in st) useArtifactsAt(st.artifacts);
+      if (!st || !("artifacts" in st)) return;
+      const was = placeNow();
+      useArtifactsAt(st.artifacts);
+      if (placeNow() !== was) for (const f of framesNow()) framed.get(f)?.moved?.();
     } catch {
       // As they were: the next change reads them again.
     }
@@ -87,6 +96,26 @@ export function passArtifactLinks(doc) {
   };
   doc.addEventListener("click", out, true);
   doc.addEventListener("auxclick", out, true);
+  // Its right-click too: the browser's own menu, the app's among them, would open or copy the link as written, which
+  // no pass opens (the hunt on x41). Open in browser and Copy link go under a pass of the artifact's own.
+  doc.addEventListener(
+    "contextmenu",
+    (e) => {
+      const a = /** @type {any} */ (e.target)?.closest?.("a[href]");
+      const here = a && typeof a.href === "string" && a.href.startsWith("http://") ? hereArtifactOf(a.href) : null;
+      if (!here) return;
+      e.preventDefault();
+      const href = a.href;
+      menu(
+        [
+          { label: "Open in browser", icon: "externalLink", onClick: () => void openOut(href) },
+          { label: "Copy link", icon: "link", onClick: () => void copyLink(/** @type {any} */ ({ title: titleOfName(here.name) }), href) },
+        ],
+        { anchor: a },
+      );
+    },
+    true,
+  );
 }
 
 /**
@@ -114,8 +143,9 @@ const framesNow = () => Array.from(document.querySelectorAll("iframe.artifact-fr
 /**
  * What each frame is: the origin its messages must come from, how its card hears one, how it is drawn again — told
  * the version published, where one was —, and whether it is a still preview, which keeps no motion whatever the
- * harness's Motion (AFC-81).
- * @type {WeakMap<HTMLIFrameElement, { origin: string, hear: (m: any) => void, again: (v?: number) => void, still?: boolean }>}
+ * harness's Motion (AFC-81), and how it loads its page again at its address now, where the addresses moved
+ * (`artifactsPlacedAgain`).
+ * @type {WeakMap<HTMLIFrameElement, { origin: string, hear: (m: any) => void, again: (v?: number) => void, still?: boolean, moved?: () => void }>}
  */
 const framed = new WeakMap();
 let wired = false;
@@ -202,11 +232,11 @@ export function artifactFrame(name, o) {
   let placed = false;
   // Its origin, once placed: what its messages come from.
   let origin = "";
-  // What it shows: the newest, or an old version asked for (`shownV`).
-  let newest = "";
-  let target = "";
+  // What it shows: the newest, or an old version asked for — at its address as it stands at each load, so one drawn
+  // before a switch of the owner key or a restart loads under the pass this page holds now (the hunt on x41).
   /** @type {number | null} */
   let shownV = null;
+  const targetNow = () => (shownV ? versionOf(shownV) : newestOf());
   const look = lookNow();
   const frame = /** @type {HTMLIFrameElement} */ (h("iframe", { class: "artifact-frame", sandbox: o.app ? APP_FRAME_SANDBOX : FRAME_SANDBOX, allow: o.app ? APP_FRAME_ALLOW : FRAME_ALLOW, referrerpolicy: "no-referrer", title: `Artifact: ${title}`, "data-artifact": name }));
   // Named before it loads: its page reads the look from its name as it starts (AF-D33).
@@ -237,7 +267,7 @@ export function artifactFrame(name, o) {
     left = false;
     failures = [];
     paint();
-    frame.src = target;
+    frame.src = targetNow();
   };
   /** @param {any} m */
   const hear = (m) => {
@@ -299,19 +329,24 @@ export function artifactFrame(name, o) {
       return;
     }
     origin = artifactOrigin(name, port);
-    newest = newestOf();
-    target = shownV ? versionOf(shownV) : newest;
-    framed.set(frame, {
+    /** @type {NonNullable<ReturnType<typeof framed.get>>} */
+    const at = {
       origin,
       hear,
       again: (v) => {
         if (v) heardV = Math.max(heardV, v);
         show();
       },
-    });
+      moved: () => {
+        if (!frameableAt(location.hostname, port).ok) return;
+        at.origin = origin = artifactOrigin(name, port);
+        show();
+      },
+    };
+    framed.set(frame, at);
     placed = true;
     if (shownV) show();
-    else frame.src = newest;
+    else frame.src = targetNow();
     el.prepend(frame);
   });
   return {
@@ -326,9 +361,7 @@ export function artifactFrame(name, o) {
     },
     showVersion(v) {
       shownV = v;
-      if (!placed) return;
-      target = v ? versionOf(v) : newest;
-      show();
+      if (placed) show();
     },
     draft(markdown, at) {
       if (placed) frame.contentWindow?.postMessage({ filament: "draft", markdown, at }, sentTo(spokenOrigin(origin)));
@@ -353,7 +386,18 @@ export function artifactPreview(name, v, title) {
       if (!frameableAt(location.hostname, port).ok) return;
       const frame = /** @type {HTMLIFrameElement} */ (h("iframe", { class: "artifact-frame artifact-peek-frame", sandbox: "allow-scripts allow-same-origin", referrerpolicy: "no-referrer", tabindex: "-1", title: `Preview: ${title}`, "data-peek": name }));
       frame.name = lookName(lookNow().theme, "off", true);
-      framed.set(frame, { origin: stillOrigin(name, port), hear: () => {}, again: () => {}, still: true });
+      const at = {
+        origin: stillOrigin(name, port),
+        hear: () => {},
+        again: () => {},
+        still: true,
+        moved: () => {
+          if (!frameableAt(location.hostname, port).ok) return;
+          at.origin = stillOrigin(name, port);
+          frame.src = stillAddress(name, port, v);
+        },
+      };
+      framed.set(frame, at);
       frame.src = stillAddress(name, port, v);
       box.append(frame);
     });

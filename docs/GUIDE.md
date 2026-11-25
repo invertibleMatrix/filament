@@ -5687,11 +5687,12 @@ an artifact's page opens under a pass too. Filament's page is given one for ever
 key, window session or pairing, and the frames it shows carry it — a card, a pane, the Artifacts page —; a page's load
 trades it for a pass of that artifact's alone: the address moves to `<name>.art.localhost:20300/~<pass>/` as it loads,
 and the page reads and writes its own data alone. An address that leaves Filament's page — Open in browser, Copy link,
-a link to one in a chat's words, the Browser pane's Open in your browser — is asked for as it leaves and carries that
-artifact's pass alone (a still preview's leaves as one, writing nothing); the chat's own browser opens one under a pass
-too, and tells the chat its address without it. A switch between **Any program** and the owner key moves the
-addresses Filament's open pages give at once; a page already open in a frame goes on as it loaded until it is opened
-again.
+a link to one in a chat's words and its right-click, the Browser pane's Open in your browser — is asked for as it
+leaves and carries that artifact's pass alone (a still preview's leaves as one, writing nothing); a right-click on such
+a link shows Filament's own Open in browser and Copy link, never the browser's, which would copy it with no pass. The
+chat's own browser opens one under a pass too, and tells the chat its address without it. A switch between **Any
+program** and the owner key, or Filament started again (a pass of its new run), moves the addresses Filament's open
+pages give at once, and the artifacts open in their frames load again at them; Filament's log shows a pass as `~…`.
 Its origin stays its own, so `localStorage`, `sessionStorage` and cookies are a page's own; an address from the top,
 a script's too, reaches its own file. A pass here works on this computer alone: one given by the owner key or a
 window's session ends when Filament restarts, one given to a browser paired here or to a device ends with its revoke,
