@@ -18,7 +18,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, delimiter, join } from "node:path";
-import { FEED, feedName, feedOf, LAUNCHER, MARKER, tarballName, topOf, writeTarGz } from "../scripts/dist-server.mjs";
+import { FEED, feedName, feedOf, LAUNCHER, layoutOf, MARKER, tarballName, topOf, writeTarGz } from "../scripts/dist-server.mjs";
 import { writeListening } from "../src/cli/listening.js";
 import { EXIT } from "../src/cli/client.js";
 import { runCli } from "../src/cli/main.js";
@@ -247,10 +247,12 @@ describe("filament update, on a server installed by install.sh", () => {
           made.push({ name, sha512: sha512Of(body), size: body.length });
           continue;
         }
+        // each machine's own: bin/filament and node/bin/node, or a Windows host's bin/filament.cmd and node/node.exe
+        const lay = layoutOf(target);
         const entries = [
-          { name: "bin/filament", mode: 0o755, body: Buffer.from(LAUNCHER) },
+          { name: lay.launcher, mode: 0o755, body: Buffer.from(lay.body) },
           { name: "bin/filament.js", mode: 0o755, body: Buffer.from("console.log('filament');\n") },
-          { name: "node/bin/node", mode: 0o755, body: Buffer.from(`#!/bin/sh\necho "${version}"\n`) },
+          { name: lay.node, mode: 0o755, body: Buffer.from(`#!/bin/sh\necho "${version}"\n`) },
           { name: MARKER, mode: 0o644, body: Buffer.from(`${JSON.stringify(markerOf(version, engine, glibc, target), null, 2)}\n`) },
           ...(engine ? [{ name: `vendor/memory-engine/${target}/model.bin`, mode: 0o644, body: Buffer.alloc(64 * 1024, 7) }] : []),
         ];
@@ -270,7 +272,7 @@ describe("filament update, on a server installed by install.sh", () => {
     for (const v of versions) {
       mkdirSync(join(base, v, "bin"), { recursive: true });
       writeFileSync(join(base, v, MARKER), `${JSON.stringify(markerOf(v, engine, "2.35", target), null, 2)}\n`);
-      writeFileSync(join(base, v, "bin", "filament"), LAUNCHER);
+      writeFileSync(join(base, v, layoutOf(target).launcher), layoutOf(target).body);
     }
     symlinkSync(WIN ? join(base, at) : at, join(base, "current"), "junction");
     here.root = join(base, at);
@@ -378,6 +380,42 @@ describe("filament update, on a server installed by install.sh", () => {
     assert.equal(back.code, EXIT.ok, back.err);
     assert.deepEqual(hits, []);
     assert.equal(current(), "1.0.0");
+  });
+
+  // (fails before, s3f3: yes — a Windows host's build has bin\filament.cmd, and filament update knew bin/filament alone:
+  // its download was "no Filament for servers to run", and none kept beside was one to go back to)
+  test("a Windows host, as install.ps1 installs it: the win32-x64 tarball of its kind, checked by latest-server-win32-x64.yml, put in place with its filament.cmd; --back goes to the one kept; one installed elsewhere is told install.ps1", async () => {
+    await release("1.1.0", { small: true, targets: ["linux-x64", "win32-x64"] });
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0", { target: "win32-x64" });
+    const r = await run(["update"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.deepEqual(hits, ["/repos/o/r/releases/latest", "/download/v1.1.0/latest-server-win32-x64.yml", "/download/v1.1.0/filament-server-1.1.0-win32-x64.tar.gz"]);
+    assert.equal(current(), "1.1.0");
+    assert.ok(existsSync(join(base, "1.1.0", "bin", "filament.cmd")) && existsSync(join(base, "1.1.0", "node", "node.exe")), "a Windows host's build");
+    assert.equal(JSON.parse(readFileSync(join(base, "1.1.0", MARKER), "utf8")).target, "win32-x64");
+    assert.equal(r.out.split("\n")[1], `Filament 1.1.0 is installed in ${join(base, "1.1.0")}, and current points at it; 1.0.0 is kept beside it — filament update --back goes back to it.`);
+    // the one kept is a build to go back to
+    here.root = join(base, "1.1.0");
+    const back = await run(["update", "--back"]);
+    assert.equal(back.code, EXIT.ok, back.err);
+    assert.equal(current(), "1.0.0");
+    // --version of the one kept: pointed at again, nothing asked of the releases
+    here.root = join(base, "1.0.0");
+    hits.length = 0;
+    const kept = await run(["update", "--version", "1.1.0"]);
+    assert.equal(kept.code, EXIT.ok, kept.err);
+    assert.deepEqual(hits, []);
+    assert.equal(current(), "1.1.0");
+    // a Windows host's build that is not where install.ps1 puts one: told install.ps1, and its command
+    const loose = join(dir, "loose-win");
+    mkdirSync(join(loose, "bin"), { recursive: true });
+    writeFileSync(join(loose, MARKER), JSON.stringify(markerOf("1.0.0", true, "", "win32-x64")));
+    writeFileSync(join(loose, "bin", "filament.cmd"), layoutOf("win32-x64").body);
+    here.root = loose;
+    const elsewhere = await run(["update"]);
+    assert.equal(elsewhere.code, EXIT.failed);
+    assert.equal(elsewhere.err, `filament update: This Filament for servers (${loose}) is not where install.ps1 installs it — a version's folder, with current beside it pointing at it: install.ps1 installs one (irm https://github.com/o/r/releases/latest/download/install.ps1 | iex), which filament update then updates.`);
   });
 
   test("--version: an older release by its tag, and current moved back to it; one kept is pointed at again with nothing downloaded; one not published, or no version, refused", async () => {
@@ -832,16 +870,36 @@ describe("filament update, on a server installed by install.sh", () => {
 
   // (fails before: yes — the removal's error ended the update after current had moved: Filament was not restarted, and
   // the update said it failed)
-  test("a version that cannot be removed: said, left as it is, and the restart still goes", async () => {
+  // (fails before, s3f3: yes — a version was removed where it stood, so one a running Filament held on Windows lost the
+  // files nothing had open, and the rest stayed without its build-info.json, never removed after)
+  test("a version in use is kept whole and said — renamed aside before it goes, which Windows refuses while a Filament runs from it —, and the restart still goes", async () => {
     await release("1.2.0");
     latest = "1.2.0";
     installed(["1.0.0", "1.1.0"], "1.1.0");
     running();
     const held = join(base, "1.0.0");
+    const r = await withRenames((from) => (from === held ? "EBUSY" : null), ["update", "--json"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    const j = JSON.parse(r.out);
+    assert.deepEqual([j.result, j.version, j.removed, j.restart], ["updated", "1.2.0", [], "systemd"]);
+    assert.ok(j.said.includes("Filament 1.0.0 is kept, in use (EBUSY): a Filament still runs from it, or a program has a file in it open. An update to another version removes it."), j.said.join("\n"));
+    assert.deepEqual(folders(), ["1.0.0", "1.1.0", "1.2.0", "current"]);
+    assert.ok(existsSync(join(held, MARKER)) && existsSync(join(held, "bin", "filament")), "whole");
+    assert.equal(current(), "1.2.0");
+    assert.deepEqual(calls(), [MAIN_PID, MAIN_PID, ["systemctl", "--user", "start", "filament"]]);
+    assert.equal(state().ran, "1.2.0");
+  });
+
+  test("a version set aside that cannot be removed: said with where it is, the restart still goes, and the next update takes it away", async () => {
+    await release("1.2.0");
+    await release("1.3.0");
+    latest = "1.2.0";
+    installed(["1.0.0", "1.1.0"], "1.1.0");
+    running();
     const fs = createRequire(import.meta.url)("node:fs");
     const real = fs.rmSync;
     fs.rmSync = (/** @type {string} */ p, /** @type {any} */ o) => {
-      if (String(p) === held) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${p}'`), { code: "EBUSY" });
+      if (/[\\/]\.prune-[0-9a-f]{8}$/.test(String(p))) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${p}'`), { code: "EBUSY" });
       return real(p, o);
     };
     syncBuiltinESMExports();
@@ -855,11 +913,35 @@ describe("filament update, on a server installed by install.sh", () => {
     assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
     const j = JSON.parse(r.out);
     assert.deepEqual([j.result, j.version, j.removed, j.restart], ["updated", "1.2.0", [], "systemd"]);
-    assert.ok(j.said.includes(`Filament 1.0.0 could not be removed (EBUSY): remove ${held} by hand.`), j.said.join("\n"));
-    assert.deepEqual(folders(), ["1.0.0", "1.1.0", "1.2.0", "current"]);
-    assert.equal(current(), "1.2.0");
-    assert.deepEqual(calls(), [MAIN_PID, MAIN_PID, ["systemctl", "--user", "start", "filament"]]);
+    const aside = folders().find((n) => /^\.prune-[0-9a-f]{8}$/.test(n));
+    assert.ok(aside, folders().join(", "));
+    assert.ok(j.said.includes(`Filament 1.0.0 could not be all removed (EBUSY): remove ${join(base, aside)} by hand.`), j.said.join("\n"));
+    assert.deepEqual(folders(), [aside, "1.1.0", "1.2.0", "current"]);
     assert.equal(state().ran, "1.2.0");
+    calls();
+    latest = "1.3.0";
+    here.root = join(base, "1.2.0");
+    const again = await run(["update"]);
+    assert.equal(again.code, EXIT.ok, again.err);
+    assert.deepEqual(folders(), ["1.2.0", "1.3.0", "current"], "the one set aside gone with the next");
+  });
+
+  // A junction in a version's folder (one a person made) goes with it, never what it points at.
+  test("a version removed takes a junction in it away, never what it points at", async () => {
+    await release("1.2.0");
+    latest = "1.2.0";
+    installed(["1.0.0", "1.1.0"], "1.1.0");
+    const outside = mkdtempSync(join(tmpdir(), "filament-update-outside-"));
+    try {
+      writeFileSync(join(outside, "keep.txt"), "the person's own");
+      symlinkSync(outside, join(base, "1.0.0", "linked"), "junction");
+      const r = await run(["update"]);
+      assert.equal(r.code, EXIT.ok, r.err);
+      assert.match(r.out, /^Removed Filament 1\.0\.0, not one of the two kept \(\S+\)\.$/m);
+      assert.equal(readFileSync(join(outside, "keep.txt"), "utf8"), "the person's own");
+    } finally {
+      await removeDirs(outside);
+    }
   });
 
   // (fails before: yes — the swarm's review of 11-10: systemd was asked to start a unit whose process still ran, which it
@@ -919,7 +1001,7 @@ describe("filament update, on a server installed by install.sh", () => {
    * none.
    * @param {(from: string, to: string) => string | null} fails
    */
-  const withRenames = async (fails) => {
+  const withRenames = async (fails, argv = ["update"]) => {
     const fs = createRequire(import.meta.url)("node:fs");
     const real = fs.renameSync;
     fs.renameSync = (/** @type {string} */ from, /** @type {string} */ to) => {
@@ -929,7 +1011,7 @@ describe("filament update, on a server installed by install.sh", () => {
     };
     syncBuiltinESMExports();
     try {
-      return await run(["update"]);
+      return await run(argv);
     } finally {
       fs.renameSync = real;
       syncBuiltinESMExports();

@@ -1,10 +1,11 @@
 // @ts-check
 // `filament update` (the remote plan's sv-update): Filament for servers, as install.sh installed it — each version in a
 // folder of its own under one folder (~/.local/share/filament, or $XDG_DATA_HOME/filament), `current` the link to the
-// one that runs — updated where it is. The newest release of the repository its build-info.json names (or --version's),
-// the tarball of the kind installed — with the memory engine, or without — for the machine its build is for (x64 or
-// arm64), checked by the SHA-512 that machine's latest-server*.yml gives, unpacked beside the version that runs and
-// renamed into place, then `current` moved to it in one rename.
+// one that runs —, or install.ps1 on a Windows host (%LOCALAPPDATA%\filament, `current` a junction, bin\filament.cmd its
+// launcher), updated where it is. The newest release of the repository its build-info.json names (or --version's),
+// the tarball of the kind installed — with the memory engine, or without — for the machine its build is for (Linux x64
+// or arm64, Windows x64), checked by the SHA-512 that machine's latest-server*.yml gives, unpacked beside the version
+// that runs and renamed into place, then `current` moved to it in one rename.
 // systemd's Filament restarts on it once no turn runs (filament restart's own way: --force does not wait, and restarts
 // one that does not answer too; --wait asks again until nothing runs, where it would be refused, and watches a start of
 // systemd's own meanwhile as a restart's); one started by hand is told to start again. The version current points at
@@ -16,6 +17,7 @@
 // another wrote, the update says which stores' files it does not read and what it does with them (`sayUnread`). A
 // checkout updates with git pull; the Filament app updates itself.
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -30,6 +32,21 @@ import { pause } from "./flows.js";
 
 /** The file at a server build's top that says what it is (scripts/dist-server.mjs MARKER). */
 const MARKER = "build-info.json";
+
+/** Whether the build for `target` is a Windows host's. @param {string} [target] */
+const forWindows = (target = "") => target.startsWith("win32-");
+
+/** A build's launcher in its bin folder, by the machine it is for: filament.cmd on Windows (scripts/dist-server.mjs layoutOf). @param {string} [target] */
+const launcherOf = (target) => (forWindows(target) ? "filament.cmd" : "filament");
+
+/**
+ * The installer of the server builds for `windows` or Linux, and the one command that runs it from `repo`'s releases.
+ * @param {boolean} windows @param {string} repo  owner/repo
+ */
+const installerOf = (windows, repo) =>
+  windows
+    ? { name: "install.ps1", run: `irm https://github.com/${repo}/releases/latest/download/install.ps1 | iex` }
+    : { name: "install.sh", run: `curl -fsSL https://github.com/${repo}/releases/latest/download/install.sh | sh` };
 
 /** How long the look at the releases waits on GitHub. */
 const LOOK_MS = 30_000;
@@ -122,7 +139,10 @@ const undone = (step) => {
 };
 
 /** Whether the folder `dir` is the build of the tarball `name`: its build-info.json names that file (install.sh's built_from). @param {string} dir @param {string} name */
-const builtFrom = (dir, name) => !isLink(dir) && buildOf(dir)?.file === name && existsSync(join(dir, "bin", "filament"));
+const builtFrom = (dir, name) => {
+  const build = buildOf(dir);
+  return !isLink(dir) && build?.file === name && existsSync(join(dir, "bin", launcherOf(build.target)));
+};
 
 /**
  * The install this Filament is: its version's folder, the folder of its versions (`base`), its version, its kind, the
@@ -138,7 +158,7 @@ function installOf(root, { moved = false } = {}) {
   if (build?.kind !== "server") {
     if (isCheckout(dir)) throw new CliError(`This Filament runs from a checkout (${dir}): git pull updates it, then filament restart.`, EXIT.failed);
     if (process.versions.electron || existsSync(join(dir, "desktop", "main.js"))) throw new CliError("The Filament app updates itself: Settings › About's Check now, or its tray's Check for updates.", EXIT.failed);
-    throw new CliError(`This Filament (${dir}) is no server build: filament update updates Filament for servers, as install.sh installs it.`, EXIT.failed);
+    throw new CliError(`This Filament (${dir}) is no server build: filament update updates Filament for servers, as ${installerOf(process.platform === "win32", "").name} installs it.`, EXIT.failed);
   }
   const owner = String(build.releases?.owner || ""),
     repo = String(build.releases?.repo || "");
@@ -147,11 +167,10 @@ function installOf(root, { moved = false } = {}) {
     version = basename(dir);
   const at = isLink(join(base, "current")) ? realOf(join(base, "current")) : null;
   const ours = !!at && (at === realOf(dir) || (moved && dirname(at) === realOf(base) && buildOf(at)?.kind === "server"));
-  if (build.version !== version || !ours)
-    throw new CliError(
-      `This Filament for servers (${dir}) is not where install.sh installs it — a version's folder, with current beside it pointing at it: install.sh installs one (curl -fsSL https://github.com/${named ? `${owner}/${repo}` : "invertibleMatrix/filament"}/releases/latest/download/install.sh | sh), which filament update then updates.`,
-      EXIT.failed,
-    );
+  if (build.version !== version || !ours) {
+    const by = installerOf(forWindows(build.target), named ? `${owner}/${repo}` : "invertibleMatrix/filament");
+    throw new CliError(`This Filament for servers (${dir}) is not where ${by.name} installs it — a version's folder, with current beside it pointing at it: ${by.name} installs one (${by.run}), which filament update then updates.`, EXIT.failed);
+  }
   if (!named) throw new CliError(`This build's ${MARKER} names no GitHub repository its releases are published to: there is nowhere to look for an update.`, EXIT.failed);
   return { dir, base, version, pointed: basename(/** @type {string} */ (at)), engine: build.engine !== false, target: String(build.target || ""), owner, repo };
 }
@@ -232,11 +251,16 @@ function sweepLinks(base) {
  */
 const stands = (base, from, e) => (e?.gone ? `current is gone — the link it was could not be made again (${e.gone}): make it with mklink /J "${join(base, "current")}" "${join(base, from)}"` : `it still points at ${from}`);
 
+/** A folder renamed aside in `base` to be removed (install.ps1 names its own alike), which a run cut short may leave. */
+const ASIDE = /^\.prune-[0-9a-f]{8}$/;
+
 /**
  * current moved from `before` to `version`: every other version's folder removed — a folder named as a version that
  * holds a server build's build-info.json, as install.sh's prune — and said, older or newer: `--back` goes to the one
- * before, the one other kept (`keptOf`). One that cannot be removed is said, and
- * the rest goes on: current has moved, and the restart is still to come. → the versions removed.
+ * before, the one other kept (`keptOf`). Each is renamed aside first: Windows renames no folder a running Filament has a
+ * file open in, so one still running there (started by hand, never restarted) is kept whole, said, never half removed.
+ * One that cannot be removed is said, and the rest goes on: current has moved, and the restart is still to come. What
+ * a run cut short left aside goes too. → the versions removed.
  * @param {string} base @param {string} version @param {string} before @param {(s: string) => void} say
  */
 function prune(base, version, before, say) {
@@ -244,11 +268,22 @@ function prune(base, version, before, say) {
   const removed = [];
   for (const n of readdirSync(base).sort()) {
     const d = join(base, n);
+    if (ASIDE.test(n) && !isLink(d)) {
+      undone(() => rmSync(d, { recursive: true, force: true }));
+      continue;
+    }
     if (n === version || n === before || !isVersion(n) || isLink(d) || !existsSync(join(d, MARKER))) continue;
+    const gone = join(base, `.prune-${randomBytes(4).toString("hex")}`);
     try {
-      rmSync(d, { recursive: true, force: true });
+      renameSync(d, gone);
     } catch (e) {
-      say(`Filament ${n} could not be removed (${whyNot(e)}): remove ${d} by hand.`);
+      say(`Filament ${n} is kept, in use (${whyNot(e)}): a Filament still runs from it, or a program has a file in it open. An update to another version removes it.`);
+      continue;
+    }
+    try {
+      rmSync(gone, { recursive: true, force: true });
+    } catch (e) {
+      say(`Filament ${n} could not be all removed (${whyNot(e)}): remove ${gone} by hand.`);
       continue;
     }
     removed.push(n);
@@ -304,7 +339,7 @@ async function putInPlace(r, { base, version: from }, update, say) {
     rmSync(file, { force: true });
     const top = join(unpack, update.name.replace(/\.tar\.gz$/, ""));
     const build = buildOf(top);
-    if (build?.kind !== "server" || build.version !== update.version || !existsSync(join(top, "bin", "filament"))) throw refuse(`${update.name} holds no Filament ${update.version} for servers to run`);
+    if (build?.kind !== "server" || build.version !== update.version || !existsSync(join(top, "bin", launcherOf(build.target)))) throw refuse(`${update.name} holds no Filament ${update.version} for servers to run`);
     // node-pty binds to the glibc it was built on: on an older one Filament starts, and no terminal does. The one that
     // runs here does: it stays.
     const glibc = here.glibc();
@@ -625,7 +660,10 @@ async function cameBack(r, to, old) {
 
 /** The version kept beside `version` to go back to: the newest other version's folder holding a server build. @param {string} base @param {string} version */
 function keptOf(base, version) {
-  const kept = readdirSync(base).filter((n) => n !== version && isVersion(n) && !isLink(join(base, n)) && buildOf(join(base, n))?.kind === "server" && existsSync(join(base, n, "bin", "filament")));
+  const kept = readdirSync(base).filter((n) => {
+    const build = isVersion(n) && n !== version && !isLink(join(base, n)) ? buildOf(join(base, n)) : null;
+    return build?.kind === "server" && existsSync(join(base, n, "bin", launcherOf(build.target)));
+  });
   return kept.sort((a, b) => (isNewer(a, b) ? -1 : isNewer(b, a) ? 1 : 0))[0] || null;
 }
 
