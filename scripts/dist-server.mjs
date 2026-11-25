@@ -322,14 +322,15 @@ export const productionPackages = (lock) =>
     .sort((a, b) => byName(a.path, b.path));
 
 /**
- * What of node-pty a server runs: not its sources, its build's objects or another system's binaries — its lib/ and
- * the binary built here (build/Release) or prebuilt for `target`. Every other package's files go whole.
+ * What of node-pty a server runs: not its sources, its build's objects, its debug symbols (.pdb, Windows' prebuilds
+ * carry them) or another system's binaries — its lib/ and the binary built here (build/Release) or prebuilt for
+ * `target`. Every other package's files go whole.
  * @param {string} target @returns {(name: string) => boolean}
  */
 export const ptyKeeps = (target) => (name) => {
   const r = /^node_modules\/node-pty\/(.+)$/.exec(name)?.[1];
   if (!r) return true;
-  if (/^(deps|third_party|src|scripts)(\/|$)/.test(r)) return false;
+  if (/^(deps|third_party|src|scripts)(\/|$)/.test(r) || /\.pdb$/i.test(r)) return false;
   if (/^build\/Release\/(obj\.target|\.deps)(\/|$)/.test(r)) return false;
   const prebuilt = /^prebuilds\/([^/]+)/.exec(r)?.[1];
   return !prebuilt || prebuilt === target;

@@ -192,6 +192,10 @@ test("the production packages are package-lock.json's not marked dev — this ch
   const keep = ptyKeeps("linux-x64");
   for (const n of ["node_modules/node-pty/lib/index.js", "node_modules/node-pty/build/Release/pty.node", "node_modules/node-pty/prebuilds/linux-x64/pty.node", "node_modules/node-pty/package.json", "node_modules/other/src/x.js"]) assert.ok(keep(n), n);
   for (const n of ["node_modules/node-pty/src/unix/pty.cc", "node_modules/node-pty/deps/winpty", "node_modules/node-pty/third_party/conpty", "node_modules/node-pty/scripts/post-install.js", "node_modules/node-pty/prebuilds/darwin-arm64", "node_modules/node-pty/build/Release/obj.target/pty/src/unix/pty.o"]) assert.ok(!keep(n), n);
+  // A Windows host's: its prebuilt binaries, never their debug symbols (the hunt on s3f1).
+  const win = ptyKeeps("win32-x64");
+  for (const n of ["node_modules/node-pty/prebuilds/win32-x64/pty.node", "node_modules/node-pty/prebuilds/win32-x64/conpty.node", "node_modules/node-pty/prebuilds/win32-x64/conpty/OpenConsole.exe"]) assert.ok(win(n), n);
+  for (const n of ["node_modules/node-pty/prebuilds/win32-x64/pty.pdb", "node_modules/node-pty/prebuilds/win32-x64/conpty.pdb", "node_modules/node-pty/build/Release/pty.PDB", "node_modules/node-pty/prebuilds/win32-arm64/pty.node"]) assert.ok(!win(n), n);
   assert.deepEqual(sharedLibs({ node_shared: true, node_shared_openssl: "true", node_shared_zlib: false, node_use_openssl: true }), ["libnode", "openssl"]);
   assert.deepEqual(sharedLibs(NODEJS_ORG), [], "nodejs.org's Node leans on no library of the machine");
 });
