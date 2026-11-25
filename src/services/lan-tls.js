@@ -123,24 +123,50 @@ export const lanNames = (h = hostname()) => {
  * and that name on the local network (.local) — and its addresses as they are now: a browser that opens it by another
  * address warns of the name too, and a pinning client never reads names. An address that moves makes none anew: every
  * device pinned the certificate's fingerprint (cli/pinned.js), and a browser warns of a self-signed one whatever its names.
+ * A listener that runs passes the key it listens with (`held`): where the key kept is gone or does not read, or did not
+ * sign the certificate kept, that one is kept again (`keyBack`) and signs what is renewed, so no device is cut off
+ * while Filament runs (the hunt on x47); only Filament's own start, or New key, makes a key anew.
  * @param {string} dataDir
- * @param {{ name?: string, now?: number, nets?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>, host?: () => string, newKey?: boolean }} [o]
+ * @param {{ name?: string, now?: number, nets?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>, host?: () => string, newKey?: boolean, held?: string }} [o]
  *   `name`: this machine's, as the certificate says it
- * @returns {{ key: string, cert: string, fingerprint: string, keyPrint: string, notAfter: number, made: boolean, renewed: boolean }}
+ * @returns {{ key: string, cert: string, fingerprint: string, keyPrint: string, notAfter: number, made: boolean, renewed: boolean, keyBack: boolean }}
  */
-export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets, host = hostname, newKey = false } = {}) {
+export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets, host = hostname, newKey = false, held = "" } = {}) {
   const dir = join(dataDir, LAN_DIR);
   const keyFile = join(dir, "key.pem");
   const certFile = join(dir, "cert.pem");
+  /** Each file written whole, this user's alone. @param {string} file @param {string} text */
+  const keep = (file, text) => {
+    mkdirSync(dir, { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, text, { mode: 0o600 });
+    renameSync(tmp, file);
+    try {
+      chmodSync(file, 0o600);
+    } catch {}
+  };
+  const holds = !!held && !newKey;
   /**
    * The key kept, where it signed the certificate kept — or no certificate reads beside it, missing or broken (the
    * review of s4g: a new key cut every device off where the key alone could renew): a certificate renewed is signed by
    * it again.
    */
   let kept = "";
+  /** The key held kept again in place of the file's. */
+  let keyBack = false;
   try {
-    const key = readFileSync(keyFile, "utf8");
-    const own = createPrivateKey(key);
+    let key = "";
+    /** @type {import("node:crypto").KeyObject} */
+    let own;
+    try {
+      key = readFileSync(keyFile, "utf8");
+      own = createPrivateKey(key);
+    } catch (/** @type {any} */ e) {
+      if ((e?.syscall && e.code !== "ENOENT") || !holds) throw e;
+      key = held;
+      own = createPrivateKey(held);
+      keyBack = true;
+    }
     let cert = "";
     /** @type {X509Certificate | null} */
     let x = null;
@@ -150,11 +176,20 @@ export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets
     } catch (/** @type {any} */ e) {
       if (e?.syscall && e.code !== "ENOENT") throw e;
     }
-    if (!x) kept = key;
-    else if (x.checkPrivateKey(own)) {
+    if (!x) {
+      kept = holds ? held : key;
+      keyBack ||= holds && key !== held;
+    } else if (x.checkPrivateKey(own)) {
       const notAfter = Date.parse(x.validTo);
-      if (notAfter - now > RENEW_MS && !newKey) return { key, cert, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(cert), notAfter, made: false, renewed: false };
+      if (notAfter - now > RENEW_MS && !newKey) {
+        if (keyBack) keep(keyFile, key);
+        return { key, cert, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(cert), notAfter, made: false, renewed: false, keyBack };
+      }
       kept = key;
+    } else if (holds) {
+      // Not the pair the listener serves: its key signs the certificate renewed, every device's pin with it.
+      kept = held;
+      keyBack ||= key !== held;
     }
   } catch (/** @type {any} */ e) {
     // Kept, but not read this time (another program holds it, its rights changed): a new pair would change the
@@ -166,17 +201,10 @@ export function lanIdentity(dataDir, { name = hostname(), now = Date.now(), nets
   const publicKey = createPublicKey(privateKey);
   const { pem } = selfSigned({ privateKey, publicKey, name: `Filament on ${name}`, dns: ["localhost", ...lanNames(host())], ips: ["127.0.0.1", ...lanIps(nets)], now });
   const key = renewed ? kept : /** @type {string} */ (privateKey.export({ type: "pkcs8", format: "pem" }));
-  mkdirSync(dir, { recursive: true });
-  for (const [file, text] of [[keyFile, key], [certFile, pem]]) {
-    const tmp = `${file}.${process.pid}.tmp`;
-    writeFileSync(tmp, text, { mode: 0o600 });
-    renameSync(tmp, file);
-    try {
-      chmodSync(file, 0o600);
-    } catch {}
-  }
+  keep(keyFile, key);
+  keep(certFile, pem);
   const x = new X509Certificate(pem);
-  return { key, cert: pem, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(pem), notAfter: Date.parse(x.validTo), made: true, renewed };
+  return { key, cert: pem, fingerprint: x.fingerprint256, keyPrint: keyPrintOf(pem), notAfter: Date.parse(x.validTo), made: true, renewed, keyBack };
 }
 
 /** What a listen that failed says, in words. @param {any} e @param {number} port */
@@ -250,7 +278,9 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
   const start = (port) =>
     new Promise((resolve) => {
       try {
-        identity = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock() });
+        // Started again on another port, or read again (`again`), it keeps the key it listened with.
+        identity = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock(), held: identity?.key || "" });
+        if (identity.keyBack) log("warn", "remote: the key for this machine on the network was gone from its file or did not read: the one it listened with is kept again, and every device paired over it stays paired");
         if (identity.made) log("info", `remote: a certificate for this machine on the network was ${identity.renewed ? "renewed with its key" : "made"} — its fingerprint ${identity.fingerprint}`);
       } catch (/** @type {any} */ e) {
         error = `its certificate could not be read or made: ${e?.message || e}`;
@@ -292,7 +322,10 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
    * Listening, its certificate renewed with its key once it is due (`lanIdentity`), or read again where the other
    * listener on the same files renewed it (the artifacts', http/artifacts.js), and served from the next handshake on: no
    * connection it holds is cut, and every device's pin, which follows the key (services/machines/key-pins.js), holds. A
-   * Filament that runs for months renews as one started again does (the review of s5a).
+   * Filament that runs for months renews as one started again does (the review of s5a). Its key is the one it listens
+   * with, kept again where its file is gone or does not read (`lanIdentity` `held`): never a new one while it runs (the
+   * hunt on x47). A renewal that fails is said in the log and tried at the next look; the listener listens on with the
+   * certificate it has, and says so.
    */
   const renew = async () => {
     const s = server;
@@ -300,15 +333,15 @@ export function createLanListener({ dataDir, handler, upgrade, name = () => host
     /** @type {ReturnType<typeof lanIdentity>} */
     let got;
     try {
-      got = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock() });
+      got = lanIdentity(dataDir, { name: name(), nets: nets(), now: clock(), held: identity?.key || "" });
+      if (got.keyBack) log("warn", "remote: the key for this machine on the network was gone from its file or did not read: the one it listens with is kept again, and every device paired over it stays paired");
+      if (got.cert === identity?.cert) return;
+      // Its context whole: what it leaves out goes back to Node's own (`minVersion` with it).
+      s.setSecureContext({ key: got.key, cert: got.cert, minVersion: MIN_TLS });
     } catch (/** @type {any} */ e) {
-      return log("warn", `remote: the certificate for this machine on the network could not be renewed: ${e?.message || e}`);
+      return log("warn", `remote: the certificate for this machine on the network could not be renewed: ${e?.message || e}; it is tried again at the next look`);
     }
-    if (got.cert === identity?.cert) return;
-    // Its context whole: what it leaves out goes back to Node's own (`minVersion` with it).
-    s.setSecureContext({ key: got.key, cert: got.cert, minVersion: MIN_TLS });
     identity = got;
-    // A key that would not read is made anew with it (`lanIdentity`): every device pinned the old one, and pairs again.
     if (got.made) log(got.renewed ? "info" : "warn", got.renewed ? `remote: the certificate for this machine on the network was renewed with its key — its fingerprint ${got.fingerprint}` : `remote: a new key and certificate for this machine on the network, its key kept no more — its fingerprint ${got.fingerprint}: the machines and command lines paired over it pair again`);
   };
   // Looked at while it listens, through the same line of changes, and holding no Filament open.

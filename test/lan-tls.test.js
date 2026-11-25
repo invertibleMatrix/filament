@@ -10,7 +10,7 @@ import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
 import { X509Certificate, createPrivateKey } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp } from "./helpers/app.js";
@@ -104,6 +104,18 @@ test("the certificate is made the first time and kept: one fingerprint across st
     const keyless = lanIdentity(dir, { nets: NETS });
     assert.deepEqual([keyless.made, keyless.renewed], [true, false], "a key that does not read: made anew, by a new key");
     assert.notEqual(keyless.keyPrint, fresh.keyPrint);
+    // (fails before: yes — the hunt on x47) A listener that runs passes the key it listens with: kept again where the
+    // file's is gone, does not read or signed another certificate, never a new one; New key makes one all the same.
+    rmSync(join(dir, LAN_DIR, "key.pem"));
+    const back = lanIdentity(dir, { nets: NETS, held: keyless.key });
+    assert.deepEqual([back.made, back.keyBack, back.cert, back.keyPrint], [false, true, keyless.cert, keyless.keyPrint]);
+    assert.equal(readFileSync(join(dir, LAN_DIR, "key.pem"), "utf8"), keyless.key);
+    if (process.platform !== "win32") assert.equal(statSync(join(dir, LAN_DIR, "key.pem")).mode & 0o777, 0o600);
+    writeFileSync(join(dir, LAN_DIR, "key.pem"), fresh.key);
+    const other = lanIdentity(dir, { nets: NETS, held: keyless.key });
+    assert.deepEqual([other.made, other.renewed, other.keyBack, other.keyPrint], [true, true, true, keyless.keyPrint], "another key in its file: renewed by the one it listens with");
+    assert.equal(lanIdentity(dir, { nets: NETS }).keyPrint, keyless.keyPrint, "and kept");
+    assert.notEqual(lanIdentity(dir, { nets: NETS, held: keyless.key, newKey: true }).keyPrint, keyless.keyPrint);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -324,11 +336,45 @@ test("a listener that runs renews its certificate once it is due, served from th
     assert.equal(held.destroyed, false, "the connection it held stays");
     assert.equal(held.getPeerCertificate().fingerprint256, first);
     assert.equal(said.filter((m) => /renewed with its key/.test(m)).length, 1, `renewed once, by one listener: ${said.join(" | ")}`);
-    // Its key gone from the folder: the next look makes a new one, said as one, never as a renewal (the review of x47).
-    rmSync(join(dir, LAN_DIR, "key.pem"));
-    await until(() => said.some((m) => /a new key and certificate for this machine on the network, its key kept no more/.test(m)));
-    assert.notEqual(lanIdentity(dir, { now: t }).keyPrint, key);
+    // (fails before: yes — the hunt on x47: a key gone from the folder, or one that did not read, was made anew by the
+    // next look, and every device paired over it was cut off while Filament ran) The key it listens with is kept again.
+    const keyFile = join(dir, LAN_DIR, "key.pem");
+    rmSync(keyFile);
+    await until(() => existsSync(keyFile));
+    assert.equal(lanIdentity(dir, { now: t }).keyPrint, key, "gone: the key it listens with, kept again");
+    writeFileSync(keyFile, "not a key");
+    await until(() => readFileSync(keyFile, "utf8") !== "not a key");
+    assert.equal(lanIdentity(dir, { now: t }).keyPrint, key, "not a key: the same");
+    assert.equal(main.state().fingerprint, now, "the certificate it serves stays");
+    assert.equal((await askTls(port, "/")).fp, now);
+    assert.ok(said.some((m) => /the one it listens with is kept again/.test(m)), said.join(" | "));
+    assert.ok(!said.some((m) => /its key kept no more/.test(m)), said.join(" | "));
     assert.equal(said.filter((m) => /renewed with its key/.test(m)).length, 1);
+    // Due again with its key gone: renewed by the key it listens with.
+    rmSync(keyFile);
+    t = Number(main.state().notAfter) - 29 * 86_400_000;
+    await until(() => main.state().fingerprint !== now && art.state().fingerprint === main.state().fingerprint);
+    assert.equal(lanIdentity(dir, { now: t }).keyPrint, key);
+    assert.equal(keyPrintOf(String(readFileSync(join(dir, LAN_DIR, "cert.pem"), "utf8"))), key);
+    // (fails before: yes — the hunt on x47: a renewal that threw was the listener's error, said in Settings as "It does
+    // not listen" above an address that answered) Said in the log, tried at the next look, and it listens on.
+    const setContext = tls.Server.prototype.setSecureContext;
+    const serving = String(main.state().fingerprint);
+    tls.Server.prototype.setSecureContext = () => {
+      throw new Error("refused by this test");
+    };
+    try {
+      t = Number(main.state().notAfter) - 29 * 86_400_000;
+      await until(() => said.filter((m) => /could not be renewed: refused by this test/.test(m)).length >= 2);
+      assert.equal(main.state().error, null, "no error: it listens");
+      assert.equal(main.state().listening?.port, port);
+      assert.equal(main.state().fingerprint, serving);
+      assert.equal((await askTls(port, "/")).fp, serving);
+    } finally {
+      tls.Server.prototype.setSecureContext = setContext;
+    }
+    await until(() => main.state().fingerprint !== serving);
+    assert.equal((await askTls(port, "/")).fp, main.state().fingerprint, "the next look renews it");
     // Closed: no look makes another.
     await main.close();
     await art.close();

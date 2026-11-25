@@ -204,7 +204,8 @@ the chats, the agents and the terminal run where Filament runs, and the other ma
   Filament's own, made the first time and kept in the data folder's `lan-tls` folder: no authority vouches for it, so
   the other machine's browser warns once. Before you go on past the warning, open the certificate's details there and
   compare its SHA-256 fingerprint with the one Certificate shows here; another fingerprint means something else
-  answered. It is renewed a month before its 825 days run out, with the same key, while Filament runs too: the machines and command lines
+  answered. It is renewed a month before its 825 days run out, with the same key, while Filament runs too (a key file
+  that is deleted while it runs is written again from the key it listens with): the machines and command lines
   paired here learned that key at their connections, and go on (one that never connected while the old certificate
   stood pairs again); a browser warns once more. **Certificate key › New key…** makes a new key (only for
   one that may have been copied): every machine and command line paired over the network then pairs again. On Windows the row says what Windows Firewall lets through, and Allow makes a rule for its ports — on Private
@@ -2186,8 +2187,11 @@ with `lapsed: true` and `days`. Mutating calls from a browser page must come fro
   is taken over plain http from another machine: what plain http carries, anyone on the network reads. The certificate
   renews itself a month before its 825 days run out, with the same key, and the command lines, apps and agents paired
   over it take the renewal. Filament looks once a day while it runs, and serves a renewed certificate from the next
-  connection on, cutting none that is open; **Certificate key › New key…** makes a new key, and every machine and command line paired
-  over the network then pairs again.
+  connection on, cutting none that is open. While it runs it never makes a key of its own accord: a key file that is
+  deleted or no longer reads is written again from the key it listens with, said in the log. A renewal that fails is
+  said in the log and tried again the next day, the listener serving the certificate it has meanwhile.
+  **Certificate key › New key…** makes a new key, and every machine and command line paired over the network then
+  pairs again.
 - **Inbound keys** protect the model endpoints and are compared in constant time. Rotate them from Settings. The model endpoints and MCP answer only to a Host header that names this machine, as the console does (421 in the client's own error shape): a client that calls Filament by another name — a reverse proxy's, a LAN host name, Docker's `host.docker.internal` — needs it in `server.allowedHosts`.
 - **A client keeps to its own conversation**: `x-filament-chain`, which names a Filament session, is Filament's own header, and a client's is dropped (said on the record). **A client keeps to its own project's memory** unless it sends the owner key or the admin token — a client on this
 computer too, where `server.loopbackTrust` is `token`: memory's tools, briefing, related memory, `@mem`, a coding agent's memory tools and `/mcp/memory` reach that project's sessions, the one it stands in and the claims that hold in every project. The project is the folder the request names.
