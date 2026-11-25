@@ -781,9 +781,14 @@ try {
     const said20 = await until(() => failoverSaid.test(appLog(dataA)), 15000, "the failover's alert in the app's log").catch(() => false);
     await sleep(6000);
     const times20 = (appLog(dataA).match(/: Failover —/g) || []).length;
+    // The card hides when another window takes the focus, as a tray's popover does, and a hidden card reads nothing: shown
+    // again (a --card launch shows it, never hides it) before its Today is read.
+    const C20 = launch(dataA, { args: ["--card"], label: "show the card again" });
+    await until(() => C20.exited(), 20000, "end of the second --card launch");
     await evalIn(cardA, `[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Today")?.click(); true`).catch(() => null);
     const onCard20 = await until(() => evalIn(cardA, `(document.querySelector(".tc-alerts")?.textContent || "").includes("served by anthropic")`), 10000, "the alert on the card's Today").catch(() => false);
-    check("20. an alert raised after the app started: one notification, once, written as they are off; on the card too", said20 === true && times20 === 1 && onCard20 === true, `${times20} in the log`);
+    const card20 = onCard20 === true ? "" : `; the card ${await evalIn(cardA, `document.visibilityState + ": " + (document.querySelector(".tc-alerts")?.textContent || "no alerts").slice(0, 120)`).catch((e) => e.message)}`;
+    check("20. an alert raised after the app started: one notification, once, written as they are off; on the card too", said20 === true && times20 === 1 && onCard20 === true, `${times20} in the log${said20 === true ? "" : ", not said"}${card20}`);
 
     // 21. The card's Restart: Filament started again by the app, said as it takes it and once it is back, the card running again.
     const before21 = listener(portA);
@@ -1024,9 +1029,16 @@ try {
     /** @type {() => void} */
     let release29 = () => {};
     const held29 = new Promise((r) => (release29 = () => r(null)));
-    const linked26 = await until(async () => (await (await call(portA, "/api/browser")).json()).available === true, 30000, "the app's browser on Filament's socket").catch(() => false);
-    const made26 = await call(portA, "/api/sessions", { cwd: root, model: "claude-sonnet-5-5", preset: "plain", settings: { plugins: { browser: true } } });
-    const sid26 = String((await made26.json()).id);
+    // The app's own browser, not Chrome's: a Filament with no app linked yet opens a chat's pages in Chrome, and closes
+    // them when the app links (its agent opens them again there at its next call).
+    const linked26 = await until(async () => (await (await call(portA, "/api/browser")).json()).host === "app", 30000, "the app's browser on Filament's socket").catch(() => false);
+    // The chat made from the app's window, as a person's is: its browser switched on lets it do more unasked, which while
+    // the app runs is a press, with the key the app's bridge hands its own page (as check 11's terminal).
+    const harness26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 20000, "the harness's window");
+    const make26 = `(async () => { const r = await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ cwd: root, model: "claude-sonnet-5-5", preset: "plain", settings: { plugins: { browser: true } } }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
+    const made26 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, make26).catch(() => null)) || { status: 0, json: {} });
+    const chat26 = made26.json;
+    const sid26 = String(chat26.id);
     const turn26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "check the shop's sign-in works", stream: false });
     const reply26 = await turn26.text();
     const msgs26 = /** @type {any[]} */ (seen26 || []);
@@ -1035,14 +1047,15 @@ try {
     const picture26 = (resultOf(msgs26, "b5")?.content || []).some((/** @type {any} */ x) => x.type === "image" && /^image\//.test(x.source?.media_type || ""));
     const view26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(shopBase)), 10000, "the agent's page among the app's").catch(() => null);
     const title26 = view26 ? await evalIn(view26, "document.title").catch(() => "") : "";
+    // Where the page is not there: what the app's log says of its browser's link (its pages go with it).
+    const link26 = title26 ? "" : (appLog(dataA).match(/^.*the browser's link to Filament.*$/gm) || []).slice(-3).map((l) => `; ${l.trim()}`).join("");
     check(
       "26. the agent browses a page in the app: navigate, snapshot, type, click, a screenshot — the page signed in, the model given its picture",
       linked26 === true && turn26.status === 200 && reply26.includes("Signed in as ada@example.com") && went26.includes("Drive shop") && after26.includes('heading "Signed in as ada@example.com"') && picture26 && title26 === "Signed in as ada@example.com",
-      `${linked26 ? "linked" : "no link"}; HTTP ${turn26.status}; the page: ${title26 || "not found"}; picture ${picture26 ? "given" : "missing"}`,
+      `${linked26 ? "linked" : "no link"}; ${made26.status === 200 ? "" : `the chat refused: HTTP ${made26.status} ${String(chat26.error || "").slice(0, 160)}; `}HTTP ${turn26.status}${turn26.status === 200 ? "" : ` ${reply26.slice(0, 160)}`}; the page: ${title26 || (view26 ? "not answering" : `not found at ${new Date().toISOString()}`)}; picture ${picture26 ? "given" : "missing"}${link26}`,
     );
 
     // The pane: the chat shown, its Browser pane opened from the panes' ⋯.
-    const harness26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 20000, "the harness's window");
     await evalIn(harness26, `location.hash = ${JSON.stringify(`#/task/${encodeURIComponent(sid26)}`)}; true`);
     await until(() => evalIn(harness26, `!!document.querySelector(".pbtn-more")`), 10000, "the panes' buttons");
     const opened26 = await until(
@@ -1184,10 +1197,17 @@ try {
     const plainMain = join(base, "plain-page.cjs");
     // The address comes in the environment: Electron ends at once with a web address among its arguments.
     writeFileSync(plainMain, `const { app, BrowserWindow } = require("electron");\napp.whenReady().then(() => new BrowserWindow({ x: 40, y: 40, width: 1400, height: 900, webPreferences: { backgroundThrottling: false } }).loadURL(process.env.FILAMENT_PLAIN_URL));\n`);
-    const P = spawn(ELECTRON, [plainMain, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: `${originA}/ui/harness.html#/task/${encodeURIComponent(sid26)}` }, stdio: "ignore", windowsHide: true });
+    // A browser here is let in by its pairing, never by its address: its one-time link made from the app's window, as the
+    // tray's Open in browser makes it (while the app runs, a press), opened in the plain window. Its page moves on to this
+    // Filament's own name under localhost, pairs there, and opens the chat.
+    const pair34 = `(async () => { const r = await fetch("/api/remote/pair", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ scope: "full", here: true }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
+    const code34 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, pair34).catch(() => null)) || { status: 0, json: {} });
+    const name34 = String(code34.json?.pageHost || "").replace(/\.localhost$/i, "");
+    const link34 = `${originA}/ui/pair.html#code=${encodeURIComponent(String(code34.json?.code || ""))}${name34 ? `&name=${encodeURIComponent(name34)}` : ""}&to=${encodeURIComponent(`/ui/harness.html#/task/${encodeURIComponent(sid26)}`)}`;
+    const P = spawn(ELECTRON, [plainMain, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: link34 }, stdio: "ignore", windowsHide: true });
     if (P.pid) mine.push({ pid: P.pid, label: "a plain window over Filament" });
     try {
-      const plain34 = await until(async () => (await pagesOf(plainDebug).catch(() => [])).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 30000, "the plain window's harness").catch(() => null);
+      const plain34 = await until(async () => (await pagesOf(plainDebug).catch(() => [])).find((p) => new URL(p.url).port === String(portA) && p.url.includes("/ui/harness.html#/task/")), 30000, "the plain window's harness").catch(() => null);
       const bridgeless34 = plain34 ? await until(() => evalIn(plain34, `!!document.querySelector(".pbtn-more") && typeof window.filamentApp === "undefined"`), 30000, "its panes' buttons, no bridge").catch(() => false) : false;
       const pane34 = bridgeless34 === true
         ? await until(
@@ -1230,7 +1250,7 @@ try {
       check(
         "34. a window with no app of its own: the page live in its Browser pane by the app's cast; taken over there, a press on the cast lands on the page; given back",
         bridgeless34 === true && !!live34 && live34.w === 1280 && live34.h === 800 && said34.startsWith("The page, live") && yours34 === true && pressed34 === want34 && back34 === true,
-        `${live34 ? `live, ${live34.w}×${live34.h} frames, "${said34.slice(0, 40)}"` : bridgeless34 === true ? `never live (${pane34 === true ? "its pane open" : "no pane"})` : "no plain window"}; ${yours34 === true ? "taken" : "not taken"}; the button ${before34 || "?"} → ${pressed34 || "unchanged"}; ${back34 === true ? "given back" : "not given back"}`,
+        `${live34 ? `live, ${live34.w}×${live34.h} frames, "${said34.slice(0, 40)}"` : bridgeless34 === true ? `never live (${pane34 === true ? "its pane open" : "no pane"})` : code34.status === 200 ? "no plain window" : `its link refused: HTTP ${code34.status} ${String(code34.json?.error || "").slice(0, 120)}`}; ${yours34 === true ? "taken" : "not taken"}; the button ${before34 || "?"} → ${pressed34 || "unchanged"}; ${back34 === true ? "given back" : "not given back"}`,
       );
     } finally {
       if (P.pid) endTree(P.pid);
