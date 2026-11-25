@@ -377,7 +377,8 @@ describe("the line over the composer while your next message overrules", () => {
     const composer = source("composer/composer.js");
     assert.match(composer, /overrule\(o\) \{\s+if \(asking \|\| !cb\.getChat\(\)\) return false;\s+setOverruling\(withOverruled\(overruling\(\), o\)\);\s+ta\.focus\(\);\s+return true;/);
     assert.match(composer, /const takeOverruling = \(text\) => \{\s+const list = overruling\(\);\s+if \(!list\.length \|\| text\.startsWith\("\/"\)\) return \[\];\s+setOverruling\(\[\]\);\s+return list;/, "a command's turn overrules nothing: the line stays for the message after it");
-    assert.match(composer, /Promise\.resolve\(cb\.onSend\(text, files, modifier, \{ overrules, \.\.\.\(via \? \{ via \} : \{\}\) \}\)\)\.then\(\(ok\) => \{\s+(\/\/[^\n]*\n\s*)*if \(ok === false\) backInBox\(text, files, overrules\);/, "a refused send gives the overrule back with the words");
+    assert.match(composer, /Promise\.resolve\(cb\.onSend\(text, files, modifier, \{ overrules, \.\.\.\(via \? \{ via \} : \{\}\) \}\)\)\.then\(\s*\(ok\) => \{\s+(\/\/[^\n]*\n\s*)*if \(ok === false\) backInBox\(text, files, overrules\);/, "a refused send gives the overrule back with the words");
+    assert.match(composer, /\(e\) => \{\n\s+const why = [^\n]*\n\s+if \(cb\.getChat\(\) === sentFrom\) \{\n\s+backInBox\(text, files, overrules\);/, "a send that threw gives them back too, to its own chat's box");
     assert.match(composer, /if \(overrules\.length\) setOverruling\(overrules\.reduce\(\(list, o\) => withOverruled\(list, o\), overruling\(\)\)\);/, "beside any overruled since");
     assert.match(composer, /else if \(ok === "queue"\) \{\s+queue\.push\(asQueued\(text, files, overrules, via\)\);\s+paintQueue\(\);\s+\}/, "queued, the message keeps what it overrules — and its files, pictures and a team's result alike");
     assert.match(composer, /const asQueued = \(text, files, overrules, via = null\) => \(files\.length \|\| overrules\.length \|\| via \? \{ text, files, \.\.\.\(overrules\.length \? \{ overrules \} : \{\}\), \.\.\.\(via \? \{ via \} : \{\}\) \} : text\);/);
@@ -839,7 +840,8 @@ describe("the row under the Sub Agents list", () => {
     assert.deepEqual([0, 1].map((i) => askedWords({ asked: true, origin: "agent" }, i)), ["The main agent asked", "The main agent asked again"]);
     assert.deepEqual([0, 1].map((i) => askedWords({ asked: true, origin: "owner" }, i)), ["You asked", "You asked again"]);
     assert.deepEqual([0, 1].map((i) => askedWords({ origin: "agent" }, i)), ["Task", "Follow-up"], "any other agent was given a task");
-    assert.ok(viewer.includes("label: askedWords(sa, i, ex), onward: { main, send: passOn }, toast, pictures: drawn, at: { chain: chainId, agent: id } });"), "the viewer says it over each question");
+    // Its cards carry the machine a mirrored thread's calls ran on (`there`, x22).
+    assert.ok(viewer.includes("label: askedWords(sa, i, ex), onward: { main, send: passOn }, toast, pictures: drawn, at: { chain: chainId, agent: id, there: thereCards } });"), "the viewer says it over each question");
   });
 
   // (fails before: yes — the row read `engine.active`, true only where the session's engine is set: an ordinary chat,

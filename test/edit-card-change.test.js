@@ -192,8 +192,9 @@ describe("the card's read on the page", () => {
   // (fails before: yes — a card's body was its run's snapshot alone, and a failed edit opened on an empty slot)
   test("the card asks its call's change only for a call that ran; a failed one opens on why", () => {
     const render = readFileSync("src/ui/harness/conversation/tools/render.js", "utf8");
-    assert.match(render, /const call = t\.state === "done" && o\.turnAt && t\.id != null && !t\.idless \? \{ \.\.\.o\.turnAt, id: String\(t\.id\) \} : null;/);
-    assert.match(render, /if \(!running && t\.state !== "done" && t\.preview\) body = previewBody\(t\);\n\s*else if \(!running && \(o\.runId \|\| call\) && \(subj \?\? a\.path\)\) \{/);
+    // Another machine's call (a mirrored thread's, `there`, x22) asks this machine for nothing.
+    assert.match(render, /const there = o\.turnAt\?\.there \|\| null;\n\s+const call = !there && t\.state === "done" && o\.turnAt && t\.id != null && !t\.idless \? \{ chain: o\.turnAt\.chain, n: o\.turnAt\.n, \.\.\.\(o\.turnAt\.agent \? \{ agent: o\.turnAt\.agent \} : \{\}\), id: String\(t\.id\) \} : null;/);
+    assert.match(render, /if \(!running && t\.state !== "done" && t\.preview\) body = previewBody\(t\);\n\s*else if \(!running && there && \(subj \?\? a\.path\)\) body = h\("p", \{ class: "pane-note" \}, `The change is in the file on \$\{there\.name\}: its chat there shows it\.`\);\n\s*else if \(!running && \(o\.runId \|\| call\) && \(subj \?\? a\.path\)\) \{/);
     const timeline = readFileSync("src/ui/harness/conversation/timeline.js", "utf8");
     assert.match(timeline, /archivedRows\(p\.tools, \{ key: `\$\{turn\.turnId \?\? turn\.n\}-\$\{i\}`, turnAt: turnAtOf\(turn\) \}\)/, "a turn read from the archive alone");
     assert.match(timeline, /cardsEl\(cell, \{ live, lead: turn\.engine\?\.kind === "team", runId: turn\.runId, works: live && !waitsForYou\(turn\), turnAt,/, "a turn drawn from its run");

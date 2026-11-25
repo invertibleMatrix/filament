@@ -17,6 +17,8 @@ const PINS = {
   1: "9ae21338d19449a91bc8ab8e2c5291debeea65a50809a4f32231ed461c5b7873",
   2: "95afad937e189de9af8ee9276217732a6f44e6d317fb5693ac2d1e6dfaef35d8",
   3: "847836ca5b0b4a61f3b1441f3473dd37e20fe6e7f6effb8b7e747dc4f3953fae",
+  // A folder that does not answer (an offline share) said as its own error, apart from one that is gone (x31).
+  4: "25ab400c84ad7d11644baa8694c8704f89b748e451dc9755c1db0aab776b14b3",
 };
 
 test("WALK_VERSION moves with the walk's source", () => {

@@ -63,7 +63,9 @@ const listening = async (server) => {
 async function machine({ ports = [], maxStreams } = {}) {
   const devices = createDevices();
   const host = createBrowserHost();
-  const config = { get: () => ({ server: { host: "127.0.0.1", inboundKeys: [KEY], allowedHosts: [], maxBodyBytes: 1 << 20 } }) };
+  // This computer's app's link by the inbound key alone, as under "legacy": the owner key it sends under "token" is
+  // test/browser-remote-host.test.js's.
+  const config = { get: () => ({ server: { host: "127.0.0.1", inboundKeys: [KEY], allowedHosts: [], maxBodyBytes: 1 << 20, loopbackTrust: "legacy" } }) };
   /** @type {number[]} */
   const own = [];
   const upgrade = browserUpgrade({ config, browserHost: host, devices, tunnels: tunnelsFor({ places: () => ({ ports: own }), name: () => "Workstation", ...(maxStreams ? { maxStreams } : {}) }) });

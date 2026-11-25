@@ -195,7 +195,7 @@ export const walkOf = (answer) => walks.get(answer) ?? null;
  * The walk's version, in what an answer kept past the process rests on: moved with any change to how the walk reads
  * git or shapes what it answers (a test pins it to this file's source and to the cuts the routes keep).
  */
-export const WALK_VERSION = 3;
+export const WALK_VERSION = 4;
 
 /**
  * The names of the files that differ between two commits — no counts: what a mark needs.

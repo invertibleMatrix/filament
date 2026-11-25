@@ -24,6 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createApp } from "../src/server.js";
 import { defaultConfig, normalizeConfig, appDataDir } from "../src/services/config/store.js";
 import { loadKey, openConfig, sealConfig } from "../src/services/config/secrets.js";
+import { OWNER_HEADER, ownerKeyOf } from "../src/services/owner.js";
 import { findUpstream, routeMatches } from "../src/core/routing.js";
 import { engineState, EMBEDDING_MODEL } from "../src/adapters/sidecar/install.js";
 import { AGENT_ENV_SCRUB } from "../src/adapters/agents/agent-process.js";
@@ -250,7 +251,8 @@ export async function bootFilament({ dataDir, upstreams, routes, roots, memory =
   const app = createApp(/** @type {any} */ ({ dataDir, overrides: { port: 0, signInOf: async () => ({ signedIn: null, identity: null }), ...(environment ? { environment } : {}) }, onShutdown: () => {} }));
   const { port } = await app.start();
   const url = `http://127.0.0.1:${port}`;
-  const headers = { "content-type": "application/json", "x-api-key": key, authorization: `Bearer ${key}` };
+  // Its admin API answers a program here by the owner key it wrote as it started, as the command line sends it.
+  const headers = { "content-type": "application/json", "x-api-key": key, authorization: `Bearer ${key}`, [OWNER_HEADER]: ownerKeyOf(dataDir) };
   /**
    * One call of the Filament's API, answered whole. Through node:http, not fetch: fetch gives up on a response whose head
    * takes more than 5 minutes (undici's headersTimeout), and a turn answered whole sends its head when it ends — a long

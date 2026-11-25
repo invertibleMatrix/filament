@@ -1459,7 +1459,9 @@ describe("the page's words for a status tile", () => {
     // Its addresses are read once the page has placed its artifacts (`artifactsPlaced`), each told where it stands.
     assert.match(frame, /const newestOf = \(\) => \(o\.within \? `\$\{artifactAddress\(name, port\)\}\?in=\$\{o\.within\}` : artifactAddress\(name, port\)\);/);
     assert.match(frame, /const versionOf = \(v\) => `\$\{versionAddress\(name, port, v\)\}\$\{o\.within \? `\?in=\$\{o\.within\}` : ""\}`;/);
-    assert.match(frame, /target = v \? versionOf\(v\) : newest;/, "Read again's reload keeps it, and an older version's");
+    // Each load asks its address as it stands then (x52): Read again's reload keeps the version shown, and an older one's.
+    assert.match(frame, /const targetNow = \(\) => \(shownV \? versionOf\(shownV\) : newestOf\(\)\);/, "Read again's reload keeps it, and an older version's");
+    assert.match(frame, /showVersion\(v\) \{\n\s+shownV = v;\n\s+if \(placed\) show\(\);/);
     const dash = uiText("artifacts/dashboard.js");
     assert.match(dash, /const inSpace = !kept && new URLSearchParams\(location\.search\)\.get\("in"\) === "space";/);
     assert.match(dash, /fault\.hidden = inSpace \|\| !faults\.size;/);
