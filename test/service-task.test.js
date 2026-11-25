@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SUPERVISOR, TASK, argWord, argWords, askStop, logTail, readTaskXml, runRunner, runnerOf, serviceFiles, taskOf, taskXml, writeTaskXml } from "../src/cli/service-task.js";
+import { SUPERVISOR, TASK, argWord, argWords, askStop, logTail, readTaskXml, runRunner, runnerOf, serviceFiles, taskOf, taskXml, unaskStop, writeTaskXml } from "../src/cli/service-task.js";
 import { removeDirs } from "./helpers/wait.js";
 
 /** Whether a process runs. @param {number} pid */
@@ -112,7 +112,9 @@ test("the runner: Filament started with its supervisor said and its output in se
   try {
     const done = m.run({ port: 20555 });
     const first = await until(() => runnerOf(m.data)?.server, "Filament started");
-    assert.deepEqual(runnerOf(m.data), { pid: process.pid, server: first, starts: 1, task: null });
+    const run = runnerOf(m.data);
+    assert.ok(run && run.since > 0 && run.since <= Date.now(), "when it started");
+    assert.deepEqual({ ...run, since: 0 }, { pid: process.pid, server: first, starts: 1, task: null, since: 0, parked: false });
     await until(() => logTail(m.data, 5).some((l) => l.startsWith(`filament ${first} `)), "its output in the log");
     assert.ok(logTail(m.data, 5).includes(`filament ${first} ${SUPERVISOR} start --data-dir ${m.data} --port 20555`), logTail(m.data, 5).join("\n"));
     process.kill(first);
@@ -171,6 +173,33 @@ test("the runner: a stop asked before it starts stands no more (a start is asked
   } finally {
     other.kill();
     await until(() => !alive(/** @type {number} */ (other.pid)), "the other gone");
+    await m.close();
+  }
+});
+
+// (fails before: yes — a runner asked to stop ended: under launchd, which starts again a job that ends, nothing would
+// have kept it stopped, nor started it at filament start)
+test("the runner, parked (a Mac's, under launchd): a stop asked ends Filament and parks it, as runner.json says; the stop taken back, it starts Filament again; its signal (launchd's SIGTERM) asks Filament to end, and it ends after", async () => {
+  const m = machine();
+  try {
+    const done = m.run({ park: true });
+    const first = await until(() => runnerOf(m.data)?.server, "Filament started");
+    askStop(m.data);
+    process.kill(first);
+    await until(() => runnerOf(m.data)?.parked, "parked");
+    assert.deepEqual({ ...runnerOf(m.data), since: 0 }, { pid: process.pid, server: 0, starts: 1, task: null, since: 0, parked: true });
+    assert.ok(existsSync(m.f.stop), "the stop stands while it is parked");
+    assert.match(logTail(m.data, 1)[0], /Filament stays stopped, as asked, until filament start$/);
+    unaskStop(m.data);
+    const second = await until(() => runnerOf(m.data)?.server, "started again");
+    assert.notEqual(second, first);
+    assert.equal(runnerOf(m.data)?.parked, false);
+    assert.equal(runnerOf(m.data)?.starts, 2);
+    m.ac.abort();
+    await done;
+    await until(() => !alive(second), "its Filament asked to end, and ended");
+    assert.ok(!existsSync(m.f.runner), "the runner ended after it");
+  } finally {
     await m.close();
   }
 });

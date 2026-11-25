@@ -22,11 +22,11 @@ import { pageLabelOf } from "../services/machine.js";
 /** The answer as JSON, where `--json` asks it. @param {Run} r @param {any} value */
 const json = (r, value) => (r.flags.json === true ? (r.out(JSON.stringify(value, null, 2)), true) : false);
 
-/** What a Filament's state says started it where its service runs it: systemd's unit, or a Windows host's scheduled task's runner. */
+/** What a Filament's state says started it where its service runs it: systemd's unit, or the runner of a Windows host's scheduled task or a Mac's launchd. */
 const SERVICES = ["systemd", "service"];
 
-/** The service a supervisor names, in words. @param {unknown} by */
-const serviceName = (by) => (by === "service" ? "its scheduled task" : "systemd");
+/** The service a supervisor names, in words: the runner's by the system its state says it runs on. @param {unknown} by @param {any} [state] */
+const serviceName = (by, state) => (by !== "service" ? "systemd" : /^mac/i.test(String(state?.system?.os || "")) ? "launchd" : "its scheduled task");
 
 /**
  * The folder a chat sent to another machine with no --folder works in: its newest chat's there — this computer's own
@@ -693,10 +693,10 @@ export const COMMANDS = [
         r.out("Asked the Filament app to quit: it asks you first where a turn runs.");
         return;
       }
-      // systemd, or a Windows host's scheduled task, starts its Filament again 3 s after it ends by itself (filament
-      // service install): stopped through systemctl or the task's runner, on its own machine.
+      // systemd, or a Windows host's scheduled task or a Mac's launchd, starts its Filament again 3 s after it ends by
+      // itself (filament service install): stopped through systemctl or the runner, on its own machine.
       if (SERVICES.includes(client.state?.supervisor)) {
-        if (client.remote) throw new CliError(`${serviceName(client.state?.supervisor)} runs the Filament on ${client.remote.name}, and starts it again when it stops: run filament stop there (or filament service uninstall).`, EXIT.failed);
+        if (client.remote) throw new CliError(`${serviceName(client.state?.supervisor, client.state)} runs the Filament on ${client.remote.name}, and starts it again when it stops: run filament stop there (or filament service uninstall).`, EXIT.failed);
         return underSystemd(r, client, "stop");
       }
       /** @type {any} */
@@ -722,17 +722,17 @@ export const COMMANDS = [
       const by = client.state?.supervisor;
       if (SERVICES.includes(by) && !client.remote) return underSystemd(r, client, "restart");
       if (by !== "desktop" && !SERVICES.includes(by))
-        throw new CliError("Nothing starts this Filament again once it stops — it was started by hand: filament stop, then filament start (filament service install runs it as a service, which does: under systemd on a Linux server, a scheduled task on a Windows host).", EXIT.failed);
+        throw new CliError("Nothing starts this Filament again once it stops — it was started by hand: filament stop, then filament start (filament service install runs it as a service, which does: under systemd on a Linux server, a scheduled task on a Windows host, launchd on a Mac).", EXIT.failed);
       // The app, or another machine's service, starts it again once it ends: asked to stop, as Settings › About's Restart.
       /** @type {any} */
       const done = await client.post("/shutdown", r.flags.force === true ? {} : { ifIdle: true });
-      r.out(`Filament is restarting: ${by === "desktop" ? "the Filament app" : serviceName(by)} starts it again in a few seconds${done?.inflight ? ` (${done.note})` : ""}.`);
+      r.out(`Filament is restarting: ${by === "desktop" ? "the Filament app" : serviceName(by, client.state)} starts it again in a few seconds${done?.inflight ? ` (${done.note})` : ""}.`);
     },
   },
   {
     name: "service",
     usage: "service [status | install | uninstall | logs]",
-    summary: "Run Filament as a service on a Linux server or a Windows host: started at boot, and again after a crash",
+    summary: "Run Filament as a service on a Linux server, a Windows host or a Mac: started at boot, and again after a crash",
     more: [
       "On a Linux server:",
       "filament service install    write Filament's systemd user unit (~/.config/systemd/user/filament.service) and start it:",
@@ -749,7 +749,12 @@ export const COMMANDS = [
       "runner starting Filament again 3 s after it ends by itself. Registering and removing it takes an administrator",
       "(a PowerShell opened as administrator, or SSH as one). Its log is <data folder>\\service\\server.log, which",
       "filament service logs follows. With its task installed, filament start, stop and restart go through its runner.",
-      "On a Mac, and on a Windows PC with the app, the Filament app runs Filament, and starts it at logon.",
+      "On a Mac (install.sh's Filament), the same commands run launchd's LaunchAgent (~/Library/LaunchAgents/",
+      "com.filamentdev.server.plist): started as you log in, its runner starting Filament again 3 s after it ends by",
+      "itself. To start it at boot with no one logged in, install says the one sudo line that installs its LaunchDaemon.",
+      "Its log is <data folder>/service/server.log, which filament service logs follows. With it installed, filament",
+      "start, stop and restart go through its runner.",
+      "On a Mac or a Windows PC with the app, the Filament app runs Filament, and starts it at logon.",
     ].join("\n"),
     run: (r) => runService(r),
   },

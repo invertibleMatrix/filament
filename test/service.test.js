@@ -13,14 +13,14 @@ import { spawn } from "node:child_process";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { writeListening } from "../src/cli/listening.js";
 import { EXIT } from "../src/cli/client.js";
 import { runCli } from "../src/cli/main.js";
-import { launcherOf, runService, startUnit, tools, unitText, unitWords } from "../src/cli/service.js";
+import { LABEL, launcherOf, plistArgs, runService, startUnit, tools, unitText, unitWords } from "../src/cli/service.js";
 import { TASK, argWord, readTaskXml, runnerOf, serviceFiles, taskOf, taskXml } from "../src/cli/service-task.js";
 import { restartWords } from "../src/ui/harness/settings/about.js";
 import { removeDirs } from "./helpers/wait.js";
@@ -420,18 +420,18 @@ describe("filament service, on a Linux server with systemd's user manager", () =
     assert.match(hand.err, /^filament restart: Nothing starts this Filament again once it stops — it was started by hand: filament stop, then filament start/);
   });
 
-  test("refused in words: on macOS (the app runs Filament there), with no systemctl, where the user manager does not answer, for another machine; filament service run, a Windows host's alone", async () => {
+  test("refused in words: on a Mac with no launchctl, with no systemctl, where the user manager does not answer, for another machine; filament service run, a Windows host's or a Mac's alone", async () => {
     try {
       Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
       const mac = await m.run(["service", "install"]);
       assert.equal(mac.code, EXIT.failed);
-      assert.match(mac.err, /on a Mac the Filament app runs it, and starts it at logon/);
+      assert.match(mac.err, /There is no launchctl here \(macOS's own, in \/bin\) to load Filament's LaunchAgent with\./);
     } finally {
       Object.defineProperty(process, "platform", { ...platform, value: "linux" });
     }
     const run = await m.run(["service", "run"]);
     assert.equal(run.code, EXIT.usage);
-    assert.match(run.err, /filament service run is what Filament's scheduled task runs on a Windows host: on Linux, systemd runs filament start/);
+    assert.match(run.err, /filament service run is what Filament's service runs on a Windows host or a Mac: on Linux, systemd runs filament start/);
     assert.deepEqual(m.calls(), [], "systemd is not asked");
     process.env.PATH = m.home;
     const bare = await m.run(["service", "install"]);
@@ -961,6 +961,397 @@ describe("filament service, on a Windows host with Task Scheduler", () => {
   });
 });
 
+/**
+ * launchd, as launchctl answers: print (a domain, the job in it), print-disabled, enable, disable, bootstrap, bootout and
+ * kickstart. Each call is noted in FAKE_LAUNCHD_CALLS's file; its state — whether the user is logged in at the Mac
+ * (gui), the domain the job is loaded in and the plist it was loaded from, whether it is disabled — in FAKE_LAUNCHD's.
+ * Loading the job, or kickstarting it, runs the runner (FAKE_RUNNER) apart, as RunAtLoad does; booting it out ends the
+ * runner and the Filament it runs, as launchd ends a job's process group.
+ * @param {any} require
+ */
+function fakeLaunchctl(require) {
+  const fs = require("fs");
+  const path = require("path");
+  const { spawn } = require("child_process");
+  const [tool, ...args] = process.argv.slice(2);
+  const file = String(process.env.FAKE_LAUNCHD);
+  fs.appendFileSync(String(process.env.FAKE_LAUNCHD_CALLS), `${JSON.stringify([tool, ...args])}\n`);
+  const s = JSON.parse(fs.readFileSync(file, "utf8"));
+  const save = () => fs.writeFileSync(file, JSON.stringify(s));
+  /** @param {string} [out] @param {number} [code] @param {string} [err] */
+  const end = (out = "", code = 0, err = "") => {
+    if (out) process.stdout.write(`${out}\n`);
+    if (err) process.stderr.write(`${err}\n`);
+    process.exitCode = code;
+  };
+  const LABEL = "com.filamentdev.server";
+  /** A job's target, split: its domain and label. @param {string} t */
+  const job = (t) => ({ dom: t.slice(0, t.lastIndexOf("/")), label: t.slice(t.lastIndexOf("/") + 1) });
+  const run = () => spawn(process.execPath, [String(process.env.FAKE_RUNNER)], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  const NONE = (/** @type {string} */ label) => `Could not find service "${label}" in domain for port`;
+  const [verb, ...rest] = args;
+  if (verb === "print") {
+    const t = String(rest[0]);
+    if (/^(gui|user)\/\d+$/.test(t)) return t.startsWith("gui/") && !s.gui ? end("", 113, `Bad request.\nCould not find domain for port identifier: ${t}`) : end(`${t} = {\n\ttype = Login\n}`);
+    const j = job(t);
+    return j.label === LABEL && s.loaded === j.dom ? end(`${t} = {\n\tactive count = 1\n\tstate = running\n}`) : end("", 113, NONE(j.label));
+  }
+  if (verb === "print-disabled") return end(`disabled services = {\n\t"com.apple.ftpd" => disabled\n\t"${LABEL}" => ${s.disabled ? "disabled" : "enabled"}\n}`);
+  if (verb === "enable" || verb === "disable") return (s.disabled = verb === "disable"), save(), end();
+  if (verb === "bootstrap") {
+    if (String(rest[0]).startsWith("gui/") && !s.gui) return end("", 125, "Bootstrap failed: 125: Domain does not support specified action");
+    if (s.disabled || s.loaded) return end("", 5, "Bootstrap failed: 5: Input/output error");
+    Object.assign(s, { loaded: rest[0], plist: fs.readFileSync(rest[1], "utf8") });
+    return save(), run(), end();
+  }
+  if (verb === "bootout") {
+    if (s.loaded !== job(String(rest[0])).dom) return end("", 3, "Boot-out failed: 3: No such process");
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(String(process.env.FAKE_LAUNCHD_DATA), "service", "runner.json"), "utf8"));
+      for (const pid of [r.server, r.pid])
+        if (pid)
+          try {
+            process.kill(pid);
+          } catch {}
+    } catch {}
+    return (s.loaded = null), save(), end();
+  }
+  if (verb === "kickstart") {
+    const j = job(String(rest.at(-1)));
+    return s.loaded === j.dom ? (run(), end()) : end("", 113, NONE(j.label));
+  }
+  return end("", 1, `Unrecognized subcommand: ${verb}`);
+}
+
+/**
+ * A Mac host of the test's own: a HOME (its ~/Library/LaunchAgents), a data folder whose config names a free port,
+ * launchctl's stand-in on a PATH of its own, a LaunchDaemons folder, launchd's state, and the runner launchd runs —
+ * service-task.js's own, parked when stopped, run apart as launchd runs it from the plist it loaded, starting the
+ * Filament stand-in (which reads its busy and crashes from launchd's state).
+ */
+const macHost = async () => {
+  const dir = mkdtempSync(join(tmpdir(), "filament-service-mac-"));
+  const home = join(dir, "home");
+  const data = join(dir, "data");
+  const bin = join(dir, "bin");
+  const daemons = join(dir, "LaunchDaemons");
+  for (const d of [home, data, bin, daemons]) mkdirSync(d, { recursive: true });
+  const port = await freePort();
+  writeFileSync(join(data, "config.json"), JSON.stringify({ server: { port } }));
+  const fake = join(dir, "fake-launchctl.cjs");
+  writeFileSync(fake, `(${fakeLaunchctl})(require);\n`);
+  writeFileSync(join(bin, "launchctl"), "");
+  if (!WIN) chmodSync(join(bin, "launchctl"), 0o755);
+  const filament = join(dir, "fake-filament.cjs");
+  writeFileSync(filament, `(${fakeFilament})(require);\n`);
+  const runner = join(dir, "runner.mjs");
+  writeFileSync(
+    runner,
+    [
+      'import { readFileSync } from "node:fs";',
+      `import { runRunner } from ${JSON.stringify(new URL("../src/cli/service-task.js", import.meta.url).href)};`,
+      `import { plistArgs } from ${JSON.stringify(new URL("../src/cli/service.js", import.meta.url).href)};`,
+      'const a = plistArgs(JSON.parse(readFileSync(String(process.env.FAKE_LAUNCHD), "utf8")).plist);',
+      "const at = (n) => (a.includes(n) ? a[a.indexOf(n) + 1] : null);",
+      "const stop = new AbortController();",
+      'process.on("SIGTERM", () => stop.abort());',
+      `await runRunner({ dataDir: String(at("--data-dir")), port: at("--port") ? Number(at("--port")) : null, againMs: 100, park: true, signal: stop.signal, task: a, launch: () => ({ command: process.execPath, args: [${JSON.stringify(filament)}] }) });`,
+      "",
+    ].join("\n"),
+  );
+  const stateFile = join(dir, "launchd.json");
+  const callsFile = join(dir, "calls.jsonl");
+  const cameFile = join(dir, "came.jsonl");
+  writeFileSync(stateFile, JSON.stringify({ gui: true, loaded: null, plist: null, disabled: false, busy: false, crashes: false }));
+  for (const f of [callsFile, cameFile]) writeFileSync(f, "");
+  const read = () => JSON.parse(readFileSync(stateFile, "utf8"));
+  /** @param {string} f */
+  const lines = (f) => readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  return {
+    dir,
+    home,
+    data,
+    bin,
+    daemons,
+    fake,
+    port,
+    env: { HOME: home, FAKE_LAUNCHD: stateFile, FAKE_LAUNCHD_CALLS: callsFile, FAKE_LAUNCHD_DATA: data, FAKE_TASKS: stateFile, FAKE_TASKS_CAME: cameFile, FAKE_RUNNER: runner },
+    read,
+    /** @param {Record<string, any>} change */
+    set: (change) => writeFileSync(stateFile, JSON.stringify({ ...read(), ...change })),
+    /** launchctl's calls, in order, each noted from here on. */
+    calls: () => {
+      const all = lines(callsFile);
+      writeFileSync(callsFile, "");
+      return /** @type {string[][]} */ (all);
+    },
+    /** What the Filament stand-ins were asked to stop with: each /api/shutdown's body. */
+    stops: () => lines(cameFile).filter((c) => c.path === "/api/shutdown").map((c) => c.body),
+    /** Until the data folder's runner has ended (launchd's job booted out, or its process ended). */
+    async ended() {
+      for (const end = Date.now() + 5000; Date.now() < end && runnerOf(data); ) await new Promise((res) => setTimeout(res, 50));
+      return runnerOf(data) === null;
+    },
+    /** @param {string[]} argv */
+    async run(argv) {
+      /** @type {{ out: string[], err: string[], wrote: string }} */
+      const said = { out: [], err: [], wrote: "" };
+      const term = /** @type {any} */ ({ input: Readable.from([]), output: new PassThrough(), tty: false });
+      const code = await runCli(argv, { dataDir: data, term, out: (s) => said.out.push(s), err: (s) => said.err.push(s), write: (s) => (said.wrote += s) });
+      return { code, out: said.out.join("\n"), err: said.err.join("\n"), wrote: said.wrote };
+    },
+    async close() {
+      const r = runnerOf(data);
+      for (const pid of [r?.server, r?.pid])
+        if (pid)
+          try {
+            process.kill(pid);
+          } catch {}
+      for (const end = Date.now() + 5000; Date.now() < end && runnerOf(data); ) await new Promise((res) => setTimeout(res, 50));
+      await removeDirs(dir);
+    },
+  };
+};
+
+// (fails before: yes — filament service on a Mac was refused in words, the app said to run Filament there: no
+// LaunchAgent, and no runner that parks)
+const LAUNCHCTL = (/** @type {string[]} */ ...args) => ["launchctl", ...args];
+const PRINT_GUI = LAUNCHCTL("print", "gui/501");
+const BOOTOUTS = [LAUNCHCTL("bootout", `gui/501/${LABEL}`), LAUNCHCTL("bootout", `user/501/${LABEL}`)];
+/** A word as a POSIX shell reads it back, as service.js says the sudo line. @param {string} s */
+const shWord = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+
+describe("filament service, on a Mac host with launchd", () => {
+  /** @type {PropertyDescriptor | undefined} */
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const NAMES = ["PATH", "HOME", "FAKE_LAUNCHD", "FAKE_LAUNCHD_CALLS", "FAKE_LAUNCHD_DATA", "FAKE_TASKS", "FAKE_TASKS_CAME", "FAKE_RUNNER", "FILAMENT_MACHINE"];
+  /** @type {Record<string, string | undefined>} */
+  const was = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]));
+  const own = { spawn: tools.spawn, system: tools.system, stopMs: tools.stopMs, upMs: tools.upMs, uid: tools.uid, daemons: tools.daemons };
+  const user = userInfo().username;
+  /** @type {Awaited<ReturnType<typeof macHost>>} */
+  let m;
+  /** The LaunchAgent's plist, and where the LaunchDaemon's goes. */
+  let agent = "";
+  let daemon = "";
+
+  before(() => {
+    Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+    // launchctl's stand-in through Node, on any platform; a Mac's own /bin never asked.
+    tools.spawn = /** @type {any} */ ((/** @type {string} */ file, /** @type {string[]} */ args, /** @type {any} */ o) => spawn(process.execPath, [m.fake, basename(file), ...args], o));
+    Object.assign(tools, { system: [], stopMs: 10_000, upMs: 15_000, uid: () => 501 });
+  });
+  after(() => {
+    if (platform) Object.defineProperty(process, "platform", platform);
+    Object.assign(tools, own);
+    for (const n of NAMES) {
+      if (was[n] === undefined) delete process.env[n];
+      else process.env[n] = was[n];
+    }
+  });
+  beforeEach(async () => {
+    m = await macHost();
+    tools.daemons = m.daemons;
+    agent = join(m.home, "Library", "LaunchAgents", `${LABEL}.plist`);
+    daemon = join(m.daemons, `${LABEL}.plist`);
+    delete process.env.FILAMENT_MACHINE;
+    Object.assign(process.env, { PATH: m.bin, ...m.env });
+  });
+  afterEach(async () => {
+    await m.close();
+  });
+
+  test("install: the LaunchAgent written — this checkout's Node and bin/filament.js running `service run` on its data folder, run at load and again after a failure — and loaded in the login session's domain; its runner starts Filament, which answers under launchd; the LaunchDaemon's sudo line said; installed again as it was, nothing restarted", async () => {
+    const r = await m.run(["service", "install"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.deepEqual(m.calls(), [PRINT_GUI, ...BOOTOUTS, LAUNCHCTL("enable", `gui/501/${LABEL}`), LAUNCHCTL("bootstrap", "gui/501", agent)]);
+    const text = readFileSync(agent, "utf8");
+    assert.equal(m.read().plist, text, "loaded as written");
+    assert.deepEqual(plistArgs(text), [process.execPath, join(ROOT, "bin", "filament.js"), "--data-dir", m.data, "service", "run"]);
+    assert.match(text, /<key>RunAtLoad<\/key>\n {2}<true\/>/);
+    assert.match(text, /<key>KeepAlive<\/key>\n {2}<dict>\n {4}<key>SuccessfulExit<\/key>\n {4}<false\/>/, "started again where it fails, never where it ends as asked");
+    assert.match(text, /<key>ExitTimeOut<\/key>\n {2}<integer>90<\/integer>/);
+    assert.match(text, /<key>PATH<\/key>\n {4}<string>[^<]*:\/opt\/homebrew\/bin:\/opt\/homebrew\/sbin:/);
+    assert.ok(text.includes(`<key>StandardOutPath</key>\n  <string>${serviceFiles(m.data).runnerLog}</string>`));
+    assert.doesNotMatch(text, /UserName/);
+    const copy = serviceFiles(m.data).daemon;
+    assert.ok(readFileSync(copy, "utf8").includes(`<key>UserName</key>\n  <string>${user}</string>\n  <key>GroupName</key>\n  <string>staff</string>`), "the LaunchDaemon's runs as the user");
+    const url = `http://127.0.0.1:${m.port}`;
+    assert.match(r.out, /It runs this checkout, with this Node/);
+    assert.ok(r.out.includes(`Filament 9.9.9 runs at ${url} under launchd (its LaunchAgent, ${LABEL}): started as ${user} logs in, and again 3 s after it ends by itself.`), r.out);
+    assert.ok(
+      r.out.includes(
+        `Filament starts as ${user} logs in at this Mac, not at boot. To start it at boot with no one logged in, run: sudo launchctl bootout system/${LABEL} 2>/dev/null; sudo install -m 644 -o root -g wheel ${shWord(copy)} ${shWord(daemon)} && sudo launchctl bootstrap system ${shWord(daemon)} (its LaunchDaemon, which runs as ${user}).`,
+      ),
+      r.out,
+    );
+    const first = runnerOf(m.data);
+    assert.ok(first?.server);
+    const same = await m.run(["service", "install"]);
+    assert.equal(same.code, EXIT.ok, `${same.out}\n${same.err}`);
+    assert.match(same.out, /\.plist \(as it was\)\./);
+    assert.deepEqual(m.calls(), [PRINT_GUI], "its runner runs: launchd loads nothing again");
+    assert.deepEqual(runnerOf(m.data), first);
+    assert.deepEqual(m.stops(), []);
+  });
+
+  test("install over SSH with no one logged in at the Mac: loaded in the user's own domain; again with --port, refused while a turn runs and its runner left as it was; once idle, its Filament ended, its runner parked and the LaunchAgent loaded again on the new one", async () => {
+    m.set({ gui: false });
+    assert.equal((await m.run(["service", "install"])).code, EXIT.ok);
+    assert.deepEqual(m.calls(), [PRINT_GUI, ...BOOTOUTS, LAUNCHCTL("enable", `user/501/${LABEL}`), LAUNCHCTL("bootstrap", "user/501", agent)]);
+    assert.equal(m.read().loaded, "user/501");
+    const port = await freePort();
+    m.set({ busy: true });
+    const busy = await m.run(["service", "install", "--port", String(port)]);
+    assert.equal(busy.code, EXIT.busy, `${busy.out}\n${busy.err}`);
+    assert.match(busy.err, /The LaunchAgent is written; the Filament launchd runs goes on with the one before, as 1 turn running in “Fix the build” \(HTTP 409\) — filament service install, once it ends, starts it on the new one\./);
+    assert.ok(!existsSync(serviceFiles(m.data).stop), "the stop asked is taken back: its runner goes on");
+    assert.ok(runnerOf(m.data)?.server);
+    m.set({ busy: false });
+    m.calls();
+    const r = await m.run(["service", "install", "--port", String(port)]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.match(r.out, /\(as it was\)\. It runs .*, its port \d+\./, "the plist the refused install wrote stands, and the runner that started before it is the one loaded again");
+    assert.deepEqual(m.calls(), [PRINT_GUI, ...BOOTOUTS, LAUNCHCTL("enable", `user/501/${LABEL}`), LAUNCHCTL("bootstrap", "user/501", agent)]);
+    assert.deepEqual(plistArgs(m.read().plist).slice(-2), ["--port", String(port)]);
+    assert.ok(r.out.includes(`runs at http://127.0.0.1:${port} under launchd`), r.out);
+    assert.deepEqual(m.stops(), [{ ifIdle: true }, { ifIdle: true }]);
+  });
+
+  test("status: active and enabled, what it runs, whether it starts at boot, and its log's last lines — in words and as JSON with Linux's keys; not installed, said; disabled; its LaunchDaemon installed: lingering, and install says it starts at boot", async () => {
+    const none = await m.run(["service", "status", "--json"]);
+    assert.equal(none.code, EXIT.ok, none.err);
+    assert.equal(JSON.parse(none.out).installed, false);
+    assert.equal((await m.run(["service"])).out, `No Filament service is installed here (no ${agent}): filament service install runs Filament under launchd — started as you log in, or at boot with its LaunchDaemon, and again after a crash.`);
+    assert.equal((await m.run(["service", "install"])).code, EXIT.ok);
+    const j = JSON.parse((await m.run(["service", "status", "--json"])).out);
+    const exec = [process.execPath, join(ROOT, "bin", "filament.js"), "--data-dir", m.data, "service", "run"].map(shWord).join(" ");
+    assert.deepEqual(
+      { ...j, journal: j.journal.length > 0 },
+      { installed: true, unit: agent, active: "active", enabled: "enabled", execStart: exec, dataDir: m.data, linger: false, filament: { version: "9.9.9", url: `http://127.0.0.1:${m.port}`, supervisor: "service" }, journal: true, journalError: null },
+    );
+    const words = await m.run(["service", "status"]);
+    assert.equal(words.code, EXIT.ok, words.err);
+    assert.match(words.out, /^Filament's service: active, enabled\n {2}agent {4}: .+, in gui\/501\n {2}runs {5}: .+\n {2}filament : 9\.9\.9 answers at http:\/\/127\.0\.0\.1:\d+\n {2}at boot {2}: no — it starts as .+ logs in \(filament service install says the sudo line for its LaunchDaemon\)\nIts log's last lines \(.*server\.log\):\n {2}\[service\] /);
+    m.set({ disabled: true });
+    assert.equal(JSON.parse((await m.run(["service", "status", "--json"])).out).enabled, "disabled");
+    m.set({ disabled: false });
+    // its LaunchDaemon, as the sudo line installs it
+    writeFileSync(daemon, readFileSync(serviceFiles(m.data).daemon));
+    assert.equal(JSON.parse((await m.run(["service", "status", "--json"])).out).linger, true);
+    assert.match((await m.run(["service", "status"])).out, /\n {2}at boot {2}: yes — its LaunchDaemon \(/);
+    const again = await m.run(["service", "install"]);
+    assert.equal(again.code, EXIT.ok, `${again.out}\n${again.err}`);
+    assert.ok(again.out.includes(`under launchd (its LaunchAgent, ${LABEL}): started at boot, and again 3 s after it ends by itself.\nIts LaunchDaemon (${daemon}) starts Filament at boot, with no one logged in.`), again.out);
+    // one another install wrote: the line that replaces it
+    writeFileSync(daemon, "<plist>another</plist>\n");
+    assert.match((await m.run(["service", "install"])).out, /Its LaunchDaemon \(.+\) is not the one written now: to start this one at boot, run: sudo launchctl bootout system\/com\.filamentdev\.server 2>\/dev\/null; sudo install /);
+  });
+
+  test("filament stop, start and restart under launchd: stop refused while a turn runs, its stop taken back; else asked once idle, and its runner parks — launchd asked nothing; start takes the stop back and the same runner starts Filament; restart's Filament started again by it; with no runner, start kickstarts the LaunchAgent", async () => {
+    assert.equal((await m.run(["service", "install"])).code, EXIT.ok);
+    m.calls();
+    m.set({ busy: true });
+    const busy = await m.run(["stop"]);
+    assert.equal(busy.code, EXIT.busy, `${busy.out}\n${busy.err}`);
+    assert.ok(!existsSync(serviceFiles(m.data).stop), "the stop asked is taken back");
+    assert.ok(runnerOf(m.data)?.server, "it goes on");
+    m.set({ busy: false });
+    const r = await m.run(["stop"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.equal(r.out, "Filament is stopped, and its launchd service with it: it starts again at the next boot or login, or now with filament start.");
+    const parked = runnerOf(m.data);
+    assert.equal(parked?.parked, true, "its runner parks: launchd would start one that ended again");
+    assert.equal(parked?.server, 0);
+    assert.deepEqual(m.calls(), [], "launchd is not asked: the runner's stop file does it");
+    assert.equal(JSON.parse((await m.run(["service", "status", "--json"])).out).active, "inactive");
+    m.calls();
+    const said = /** @type {string[]} */ ([]);
+    assert.equal(await startUnit({ dataDir: m.data, flags: {}, out: (s) => said.push(s) }), true);
+    assert.deepEqual(m.calls(), [PRINT_GUI, LAUNCHCTL("print-disabled", "gui/501")], "its LaunchAgent read, and nothing asked of launchd: the parked runner starts it");
+    assert.equal(said.join("\n"), `Filament 9.9.9 runs at http://127.0.0.1:${m.port}, under launchd: filament stop stops it, filament service status says how it runs.`);
+    const before = runnerOf(m.data);
+    assert.equal(before?.pid, parked?.pid, "the same runner");
+    assert.equal(before?.parked, false);
+    const again = await m.run(["restart"]);
+    assert.equal(again.code, EXIT.ok, `${again.out}\n${again.err}`);
+    assert.equal(again.out, `Filament 9.9.9 runs again at http://127.0.0.1:${m.port}, under launchd.`);
+    const after_ = runnerOf(m.data);
+    assert.equal(after_?.pid, before?.pid, "the same runner started it again");
+    assert.ok(after_?.server && after_.server !== before?.server);
+    assert.deepEqual(m.calls(), [], "its runner started it: launchd is not asked");
+    const forced = await m.run(["restart", "--force"]);
+    assert.equal(forced.code, EXIT.ok, `${forced.out}\n${forced.err}`);
+    assert.ok(runnerOf(m.data)?.server !== after_?.server);
+    assert.deepEqual(m.stops().slice(-2), [{ ifIdle: true }, {}], "--force asks it to stop now");
+    // the runner gone, as a job ends where nothing loads it again: start kickstarts the LaunchAgent
+    const gone = runnerOf(m.data);
+    for (const pid of [gone?.server, gone?.pid]) if (pid) process.kill(pid);
+    assert.ok(await m.ended());
+    m.calls();
+    assert.equal(await startUnit({ dataDir: m.data, flags: {}, out: () => {} }), true);
+    assert.deepEqual(m.calls(), [PRINT_GUI, LAUNCHCTL("print-disabled", "gui/501"), PRINT_GUI, LAUNCHCTL("print", `gui/501/${LABEL}`), LAUNCHCTL("kickstart", `gui/501/${LABEL}`)]);
+    assert.ok(runnerOf(m.data)?.server);
+  });
+
+  test("uninstall: stopped once idle, the LaunchAgent booted out of the user's domains and its plist removed, with the LaunchDaemon's copy; an installed LaunchDaemon said, with how sudo removes it; again, nothing installed is said", async () => {
+    assert.equal((await m.run(["service", "install"])).code, EXIT.ok);
+    writeFileSync(daemon, readFileSync(serviceFiles(m.data).daemon));
+    m.calls();
+    const r = await m.run(["service", "uninstall"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.deepEqual(m.calls(), BOOTOUTS);
+    assert.deepEqual(m.stops(), [{ ifIdle: true }]);
+    assert.ok(await m.ended(), "its runner ended with its job");
+    assert.equal(m.read().loaded, null);
+    assert.ok(!existsSync(agent));
+    assert.ok(!existsSync(serviceFiles(m.data).daemon));
+    assert.equal(
+      r.out,
+      `Removed ${agent}: Filament is stopped, and starts no more at login or after a crash. filament start runs it by hand.\nIts LaunchDaemon (${daemon}) still starts Filament at boot: sudo launchctl bootout system/${LABEL}; sudo rm ${shWord(daemon)} removes it.`,
+    );
+    const again = await m.run(["service", "uninstall"]);
+    assert.equal(again.out, `No Filament service is installed here: there is no ${agent}.`);
+    assert.equal(await startUnit({ dataDir: m.data, flags: {}, out: () => {} }), false, "no LaunchAgent: filament start runs Filament itself");
+  });
+
+  test("install whose Filament ends as it starts: stopped, booted out and disabled — no start again and again —, its plist kept and its log said; filament start then runs Filament itself", async () => {
+    m.set({ crashes: true });
+    const r = await m.run(["service", "install"]);
+    assert.equal(r.code, EXIT.failed, `${r.out}\n${r.err}`);
+    assert.deepEqual(m.calls(), [PRINT_GUI, ...BOOTOUTS, LAUNCHCTL("enable", `gui/501/${LABEL}`), LAUNCHCTL("bootstrap", "gui/501", agent), ...BOOTOUTS, LAUNCHCTL("disable", `gui/501/${LABEL}`)]);
+    assert.equal(m.read().disabled, true);
+    assert.equal(m.read().loaded, null);
+    assert.ok(await m.ended(), "its runner ended");
+    assert.ok(existsSync(agent));
+    assert.ok(
+      r.err.startsWith(`filament service: launchd started Filament, and it ended as it started — so it is stopped and disabled, and nothing starts it again and again; its plist stays (${agent}). Once its cause is fixed, filament service install starts it again.\nIts log's last lines (${serviceFiles(m.data).log}):\n`),
+      r.err,
+    );
+    assert.match(r.err, /Filament failed to start: the port is taken/);
+    assert.equal(await startUnit({ dataDir: m.data, flags: {}, out: () => {} }), false, "a disabled LaunchAgent: filament start runs Filament itself, its errors in sight");
+  });
+
+  test("refused in words: no launchctl, the Filament app's command line, another machine", async () => {
+    process.env.PATH = m.home;
+    const bare = await m.run(["service", "install"]);
+    assert.equal(bare.code, EXIT.failed);
+    assert.equal(bare.err, "filament service: There is no launchctl here (macOS's own, in /bin) to load Filament's LaunchAgent with.");
+    process.env.PATH = m.bin;
+    assert.equal((await m.run(["service", "install", "--machine", "srv"])).code, EXIT.usage);
+    const electron = Object.getOwnPropertyDescriptor(process.versions, "electron");
+    Object.defineProperty(process.versions, "electron", { value: "99.0.0", configurable: true, enumerable: true });
+    try {
+      assert.match((await m.run(["service", "status"])).err, /The Filament app runs Filament on this Mac, and starts it at logon/);
+    } finally {
+      if (electron) Object.defineProperty(process.versions, "electron", electron);
+      else delete (/** @type {any} */ (process.versions).electron);
+    }
+    assert.deepEqual(m.calls(), [], "launchd is not asked");
+    assert.ok(!existsSync(agent));
+  });
+});
+
 test("the unit's words as systemd reads them: quoted where a space is, % and $ doubled — and read back whole", () => {
   const unit = unitText({ argv: ["/opt/my filament/bin/filament"], nodeBin: "/opt/my filament/node/bin", dataDir: "/srv/100%/$HOME", port: 20555 });
   const exec = /^ExecStart=(.*)$/m.exec(unit)?.[1] || "";
@@ -1050,9 +1441,11 @@ test("what a Windows host's task runs: the build's own Node and bin\\filament.js
   }
 });
 
-test("Settings › About: systemd starts Filament again after a stop, as the app does and a Windows host's scheduled task — its row restarts", () => {
+test("Settings › About: systemd starts Filament again after a stop, as the app does, a Windows host's scheduled task and a Mac's launchd — its row restarts", () => {
   assert.deepEqual(restartWords("systemd"), { label: "Restart Filament", button: "Restart Filament", desc: "Filament stops and systemd starts it again, in a few seconds. Refused while a turn runs, so nothing is cut." });
   assert.equal(restartWords("service").desc, "Filament stops and its scheduled task starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.");
+  assert.equal(restartWords("service", "Windows 11 Pro").desc, "Filament stops and its scheduled task starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.");
+  assert.equal(restartWords("service", "macOS 15.1").desc, "Filament stops and launchd starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.");
   assert.equal(restartWords("desktop").desc, "Filament stops and the Filament app starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.");
   assert.equal(restartWords(null).label, "Stop Filament");
 });

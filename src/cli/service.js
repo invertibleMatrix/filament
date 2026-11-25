@@ -5,8 +5,10 @@
 // go through systemctl while it runs Filament, so systemd never starts again what was stopped; with its unit installed,
 // `filament start` (and `filament restart`, nothing running) starts it through systemctl too. On a Windows host
 // (s3f4) Task Scheduler's task does it instead: at boot with no one logged in, its runner starting Filament again as
-// systemd does (service-task.js), stop and restart through the runner's stop file. On macOS the Filament app runs
-// Filament, and starts it at logon.
+// systemd does (service-task.js), stop and restart through the runner's stop file. On a Mac host (s3e3) launchd runs the
+// same runner, from the user's LaunchAgent (com.filamentdev.server): as they log in, or at boot with no one logged in
+// once its LaunchDaemon is installed (one sudo line, said); stopped, the runner stays parked, so start, stop and
+// restart go through its stop file alone, the LaunchDaemon's too, with no root.
 import { spawn } from "node:child_process";
 import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
@@ -19,6 +21,9 @@ import { listeningUrl } from "./listening.js";
 import { ownerHeaders } from "../services/owner.js";
 import { pause } from "./flows.js";
 import { AGAIN_MS, SUPERVISOR as TASK_SUPERVISOR, TASK, argWord, askStop, logTail, readTaskXml, runRunner, runnerOf, serviceFiles, taskOf, taskXml, unaskStop, writeTaskXml } from "./service-task.js";
+
+/** launchd's label for Filament's job on a Mac: its LaunchAgent's, and its LaunchDaemon's. */
+export const LABEL = "com.filamentdev.server";
 
 /** The unit's name, as `systemctl --user … filament` names it. */
 export const UNIT = "filament";
@@ -35,6 +40,9 @@ const STOP_SEC = 60;
 /** The folders a PATH holds at least: systemd's own for a user's service. */
 const SYSTEM_PATH = ["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"];
 
+/** Homebrew's folders on a Mac with Apple silicon, which launchd's own PATH leaves out: where coding agents often are. */
+const HOMEBREW_PATH = "/opt/homebrew/bin:/opt/homebrew/sbin";
+
 /**
  * How a systemd tool runs: Node's spawn — a test runs its stand-ins through its own, where the OS runs no script by its
  * name —, and the system's own folders it is looked for in after the PATH (`system`; Windows' `windows`, where
@@ -42,7 +50,8 @@ const SYSTEM_PATH = ["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin
  * Filament asked to stop is waited for to end — its stop's limit (STOP_SEC), and a little more. `upMs`: how long one
  * systemd started is waited for to answer — the minute its words say. `againMs`: how long the Windows task's runner
  * waits to start Filament again (systemd's RestartSec). `platform`: the platform whose service runs Filament, where it
- * is not this one's — filament update's tests play Linux's systemd on Windows, whose links stay Windows' own.
+ * is not this one's — filament update's tests play Linux's systemd on Windows, whose links stay Windows' own. `uid`:
+ * the user's id, which a Mac's launchd domains are named by. `daemons`: where a Mac keeps its LaunchDaemons.
  */
 export const tools = {
   spawn,
@@ -52,6 +61,8 @@ export const tools = {
   upMs: 60_000,
   againMs: AGAIN_MS,
   platform: /** @type {NodeJS.Platform | ""} */ (""),
+  uid: () => (typeof process.getuid === "function" ? process.getuid() : 0),
+  daemons: "/Library/LaunchDaemons",
 };
 
 /** The platform whose service runs Filament here (read at each call: a test plays another). */
@@ -60,11 +71,23 @@ const platform = () => tools.platform || process.platform;
 /** Whether this is a Windows host, whose service is Task Scheduler's task. */
 export const onWindows = () => platform() === "win32";
 
-/** What Filament's state says started it where its service runs it here: systemd, or the Windows task's runner. */
-export const serviceSupervisor = () => (onWindows() ? TASK_SUPERVISOR : "systemd");
+/** Whether this is a Mac host, whose service is launchd's LaunchAgent. */
+export const onMac = () => platform() === "darwin";
 
-/** Where its service runs Filament, in words: "under systemd", or under the Windows task. */
-const underWords = () => (onWindows() ? "under its scheduled task" : "under systemd");
+/** Whether the runner (service-task.js) runs Filament here, as Windows' task and a Mac's launchd run it, not systemd. */
+const byRunner = () => onWindows() || onMac();
+
+/** What Filament's state says started it where its service runs it here: systemd, or the runner of Windows' task or a Mac's launchd. */
+export const serviceSupervisor = () => (byRunner() ? TASK_SUPERVISOR : "systemd");
+
+/** Where its service runs Filament, in words: "under systemd", under the Windows task, or under launchd. */
+const underWords = () => (onWindows() ? "under its scheduled task" : onMac() ? "under launchd" : "under systemd");
+
+/** What starts Filament where its service runs it, named: systemd, Windows' scheduled task, or launchd. */
+const serviceWho = () => (onWindows() ? "Filament's scheduled task" : onMac() ? "launchd" : "systemd");
+
+/** What the service is installed as, named: systemd's unit, Windows' task, or the Mac's LaunchAgent. */
+const serviceKind = () => (onWindows() ? "task" : onMac() ? "LaunchAgent" : "unit");
 
 /** The user's home folder, as HOME says. */
 const home = () => process.env.HOME || homedir();
@@ -130,14 +153,14 @@ async function systemctl(args, signal) {
 
 /**
  * systemd's user manager, where it answers here: its environment (`systemctl --user show-environment`), which the unit's
- * folder is found by. Refused in words elsewhere: macOS and Windows, the Filament app's own command line, no systemctl,
- * and a manager that does not answer — WSL without systemd, a container, a login with no user session.
+ * folder is found by. Refused in words elsewhere: another system than Linux (Windows and a Mac have services of their
+ * own), the Filament app's own command line, no systemctl, and a manager that does not answer — WSL without systemd, a
+ * container, a login with no user session.
  * @param {import("./commands.js").Run} r
  * @returns {Promise<Record<string, string>>}
  */
 async function manager(r) {
   if (r.flags.machine || r.flags.url) throw new CliError("service runs on the machine Filament runs on: run it there (ssh <machine> filament service …)", EXIT.usage);
-  if (platform() === "darwin") throw new CliError("systemd runs Filament on a Linux server: on a Mac the Filament app runs it, and starts it at logon (Start at logon, in its tray's menu).", EXIT.failed);
   if (platform() !== "linux") throw new CliError("systemd runs Filament on a Linux server: here, run `filament start` under a supervisor of your own.", EXIT.failed);
   if (process.versions.electron) throw new CliError("The Filament app runs Filament on this computer, and starts it again itself: a systemd service runs Filament for servers, which install.sh installs.", EXIT.failed);
   if (!onPath("systemctl")) throw new CliError("There is no systemctl here, so no systemd to run Filament: run `filament start` under a supervisor of your own (a container's restart policy, tmux).", EXIT.failed);
@@ -173,6 +196,164 @@ async function taskNow(signal) {
   const q = await runTool("schtasks.exe", ["/Query", "/TN", TASK, "/XML"], signal);
   return q.code === 0 ? taskOf(q.out) : null;
 }
+
+/**
+ * launchd, where it runs Filament's service on a Mac host: refused in words for another machine, the Filament app's own
+ * command line (the app starts its Filament at logon), and a Mac with no launchctl.
+ * @param {import("./commands.js").Run} r
+ */
+function launchdHere(r) {
+  if (r.flags.machine || r.flags.url) throw new CliError("service runs on the machine Filament runs on: run it there (ssh <machine> filament service …)", EXIT.usage);
+  if (process.versions.electron) throw new CliError("The Filament app runs Filament on this Mac, and starts it at logon (Start at logon, in its tray's menu): a service runs Filament for servers, which install.sh installs.", EXIT.failed);
+  if (!onPath("launchctl")) throw new CliError("There is no launchctl here (macOS's own, in /bin) to load Filament's LaunchAgent with.", EXIT.failed);
+}
+
+/** `launchctl <args>`: its answer, or a CliError in its own words where it fails. @param {string[]} args @param {AbortSignal} [signal] */
+async function launchctl(args, signal) {
+  const done = await runTool("launchctl", args, signal);
+  if (done.code !== 0) throw new CliError(`launchctl ${args.join(" ")} failed: ${firstLine(done.err || done.out) || `exit ${done.code}`}`, EXIT.failed);
+  return done;
+}
+
+/** The LaunchAgent's plist: the user's own, which launchd loads as they log in. */
+export const agentFile = () => join(home(), "Library", "LaunchAgents", `${LABEL}.plist`);
+
+/** The LaunchDaemon's plist, which sudo installs: launchd loads it at boot, and runs the runner as the user. */
+export const daemonFile = () => join(tools.daemons, `${LABEL}.plist`);
+
+/**
+ * The launchd domain the LaunchAgent loads in: the user's login session's (gui/<uid>) while they are logged in at the
+ * Mac, else their own (user/<uid>) — over SSH with no one logged in at it.
+ * @param {AbortSignal} [signal]
+ */
+async function domainOf(signal) {
+  const uid = tools.uid();
+  return (await runTool("launchctl", ["print", `gui/${uid}`], signal)).code === 0 ? `gui/${uid}` : `user/${uid}`;
+}
+
+/** Whether launchd keeps Filament's job disabled in `dom` (launchctl disable): one it loads no more. @param {string} dom @param {AbortSignal} [signal] */
+async function disabledIn(dom, signal) {
+  const p = await runTool("launchctl", ["print-disabled", dom], signal);
+  return p.code === 0 && new RegExp(`"${LABEL.replace(/\./g, "\\.")}" => (?:true|disabled)`).test(p.out);
+}
+
+/** The user's two domains, with Filament's job named in each: the job is booted out of both. */
+const agentTargets = () => [`gui/${tools.uid()}/${LABEL}`, `user/${tools.uid()}/${LABEL}`];
+
+/**
+ * The LaunchAgent loaded in `dom` as its plist is now: what launchd had loaded, in either of the user's domains, booted
+ * out first — its runner ends with it, its Filament asked to end and waited for —, then enabled and bootstrapped, which
+ * starts its runner (RunAtLoad). A runner that runs on is the LaunchDaemon's, which sudo alone boots out: it goes on,
+ * its stop taken back. → whether the LaunchAgent was loaded.
+ * @param {string} dom @param {string} dataDir @param {AbortSignal} [signal]
+ */
+async function loadAgent(dom, dataDir, signal) {
+  for (const t of agentTargets()) await runTool("launchctl", ["bootout", t], signal);
+  // A parked runner ends at once: one that still runs a few seconds on, parked, is not the LaunchAgent's.
+  for (const from = Date.now(); runnerOf(dataDir) && Date.now() - from < tools.stopMs; await pause(100, signal)) {
+    if (Date.now() - from > 3000 && runnerOf(dataDir)?.parked) break;
+  }
+  if (runnerOf(dataDir)) return (unaskStop(dataDir), false);
+  await launchctl(["enable", `${dom}/${LABEL}`], signal);
+  await launchctl(["bootstrap", dom, agentFile()], signal);
+  return true;
+}
+
+/** Text as a plist's string. @param {string} s */
+const plistString = (s) => `<string>${s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</string>`;
+
+/**
+ * The LaunchAgent's plist, or with `user` the LaunchDaemon's, which runs as them at boot: launchd runs the runner —
+ * `filament service run` on the data folder, with the port where one was given — as it loads it, and again where it
+ * ends in failure; never after it ends as asked (another runner runs the data folder already: the LaunchAgent's at a
+ * login, where the LaunchDaemon's runs). Its PATH is the unit's on Linux, with Homebrew's; its own output goes to
+ * runner.log, Filament's to server.log (the runner's). A stop's SIGTERM gives Filament its stop's limit, and a little
+ * more, to end.
+ * @param {{ argv: string[], nodeBin: string, dataDir: string, port?: number | null, user?: string }} o
+ */
+export function plistText({ argv, nodeBin, dataDir, port = null, user = "" }) {
+  const args = [...argv, "--data-dir", dataDir, "service", "run", ...(port != null ? ["--port", String(port)] : [])];
+  const h = home();
+  const log = serviceFiles(dataDir).runnerLog;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    `<!-- Filament, run by launchd${user ? " at boot" : ""}: written by filament service install, removed by filament service uninstall. -->`,
+    '<plist version="1.0">',
+    "<dict>",
+    "  <key>Label</key>",
+    `  ${plistString(LABEL)}`,
+    "  <key>ProgramArguments</key>",
+    "  <array>",
+    ...args.map((a) => `    ${plistString(a)}`),
+    "  </array>",
+    ...(user ? ["  <key>UserName</key>", `  ${plistString(user)}`, "  <key>GroupName</key>", "  <string>staff</string>", "  <key>InitGroups</key>", "  <true/>"] : []),
+    "  <key>EnvironmentVariables</key>",
+    "  <dict>",
+    "    <key>HOME</key>",
+    `    ${plistString(h)}`,
+    "    <key>PATH</key>",
+    `    ${plistString(pathFor(nodeBin, { HOME: h, PATH: HOMEBREW_PATH }))}`,
+    "  </dict>",
+    "  <key>WorkingDirectory</key>",
+    `  ${plistString(h)}`,
+    "  <key>RunAtLoad</key>",
+    "  <true/>",
+    "  <key>KeepAlive</key>",
+    "  <dict>",
+    "    <key>SuccessfulExit</key>",
+    "    <false/>",
+    "  </dict>",
+    "  <key>ProcessType</key>",
+    "  <string>Standard</string>",
+    "  <key>ExitTimeOut</key>",
+    `  <integer>${STOP_SEC + 30}</integer>`,
+    "  <key>StandardOutPath</key>",
+    `  ${plistString(log)}`,
+    "  <key>StandardErrorPath</key>",
+    `  ${plistString(log)}`,
+    "</dict>",
+    "</plist>",
+    "",
+  ].join("\n");
+}
+
+/** The words a plist's ProgramArguments holds; [] where it holds none. @param {string | null} text */
+export function plistArgs(text) {
+  const array = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(String(text || ""))?.[1] || "";
+  return [...array.matchAll(/<string>([\s\S]*?)<\/string>/g)].map((m) => m[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+}
+
+/** The data folder a plist's ProgramArguments names; null where it names none. @param {string | null} text */
+const plistDataDir = (text) => {
+  const words = plistArgs(text);
+  const i = words.indexOf("--data-dir");
+  return i >= 0 && words[i + 1] ? words[i + 1] : null;
+};
+
+/** A word as a POSIX shell reads it back: in single quotes where it holds anything but a path's plain characters. @param {string} s */
+const shWord = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+
+/** The one sudo line that installs the LaunchDaemon written beside the data folder's runner, as launchd takes it (root's, 644), and loads it in place of one there. @param {string} copy */
+const daemonLine = (copy) => `sudo launchctl bootout system/${LABEL} 2>/dev/null; sudo install -m 644 -o root -g wheel ${shWord(copy)} ${shWord(daemonFile())} && sudo launchctl bootstrap system ${shWord(daemonFile())}`;
+
+/** A file's text; null where it cannot be read. @param {string} file */
+const textOf = (file) => {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+/** When a file was last written; 0 where there is none. @param {string} file */
+const writtenAt = (file) => {
+  try {
+    return statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+};
 
 /** The user the task runs as: DOMAIN\name, as Windows says the one logged in here. */
 const taskUser = () => {
@@ -374,26 +555,23 @@ const ownClient = (url, state, dataDir) => clientAt(url, state, fetch, undefined
 
 /**
  * The service's Filament now: its pid, 0 where none runs, null where systemd cannot say — systemd's unit's main process,
- * or on Windows the one the task's runner for `dataDir` runs (0 while it waits to start it again, or runs none).
+ * or on Windows and a Mac the one the runner for `dataDir` runs (0 while it waits to start it again, or runs none).
  * @param {AbortSignal} [signal] @param {string} [dataDir]
  */
 export const mainPid = async (signal, dataDir = "") => {
-  if (onWindows()) return runnerOf(dataDir)?.server ?? 0;
+  if (byRunner()) return runnerOf(dataDir)?.server ?? 0;
   const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "--value"], signal);
   return p.code === 0 && /^\d+$/.test(p.out) ? Number(p.out) : null;
 };
 
 /**
  * The service's Filament and its state, as systemd's ActiveState says it: active, activating while it starts again
- * after one ended, failed once it ended too often, inactive once stopped; "" where systemd cannot say. On Windows: the
- * runner runs one (active), waits to start it again (activating), or runs none (inactive).
+ * after one ended, failed once it ended too often, inactive once stopped; "" where systemd cannot say. On Windows and a
+ * Mac: the runner runs one (active), waits to start it again (activating), or runs none (inactive) — a Mac's parked.
  * @param {AbortSignal} [signal] @param {string} [dataDir] @returns {Promise<{ pid: number, active: string }>}
  */
 export async function serviceNow(signal, dataDir = "") {
-  if (onWindows()) {
-    const run = runnerOf(dataDir);
-    return { pid: run?.server || 0, active: !run ? "inactive" : run.server ? "active" : "activating" };
-  }
+  if (byRunner()) return { pid: runnerOf(dataDir)?.server || 0, active: runnerActive(runnerOf(dataDir)) };
   if (!onPath("systemctl")) return { pid: 0, active: "" };
   const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "-p", "ActiveState"], signal);
   if (p.code !== 0) return { pid: 0, active: "" };
@@ -401,12 +579,16 @@ export async function serviceNow(signal, dataDir = "") {
   return { pid: Number(v.MainPID) || 0, active: String(v.ActiveState || "") };
 }
 
+/** What a runner's Filament is doing, as systemd's ActiveState says it: runs (active), waits to start again (activating), or none, or a Mac's parked (inactive). @param {ReturnType<typeof runnerOf>} run */
+const runnerActive = (run) => (!run ? "inactive" : run.server ? "active" : run.parked ? "inactive" : "activating");
+
 /**
- * The Windows task's runner told to `verb` the data folder's Filament, as systemctl is told on Linux. start: the task
- * run where no runner runs. stop: the stop file left, the Filament that still runs asked to stop (its turns get what a
- * stop gives them), and the runner waited for to end; what is left after the stop's limit is ended. restart: the stop
- * file taken back, the Filament that runs asked to stop, and the runner starts it again. Each start waited for until
- * the runner runs a Filament other than `old`, so a look that follows sees it start or end.
+ * The runner (Windows' task's, or a Mac's LaunchAgent's) told to `verb` the data folder's Filament, as systemctl is told
+ * on Linux. start: the task run where no runner runs — on a Mac, the LaunchAgent kickstarted, or loaded where launchd
+ * has it not. stop: the stop file left, the Filament that still runs asked to stop (its turns get what a stop gives
+ * them), and the runner waited for to end (a Mac's to park); what is left after the stop's limit is ended. restart: the
+ * stop file taken back, the Filament that runs asked to stop, and the runner starts it again. Each start waited for
+ * until the runner runs a Filament other than `old`, so a look that follows sees it start or end.
  * @param {"start" | "stop" | "restart"} verb @param {string} dataDir @param {AbortSignal} [signal] @param {number | null} [old]
  */
 async function taskAct(verb, dataDir, signal, old = null) {
@@ -428,7 +610,10 @@ async function taskAct(verb, dataDir, signal, old = null) {
     const run = runnerOf(dataDir);
     if (!run) return;
     if (run.server) await end(run.server);
-    for (const until = Date.now() + tools.stopMs; Date.now() < until && runnerOf(dataDir); ) await pause(250, signal);
+    // A Mac's runner parks: launchd would start one that ended again.
+    const going = () => (onMac() ? runnerOf(dataDir)?.parked === false : !!runnerOf(dataDir));
+    for (const until = Date.now() + tools.stopMs; Date.now() < until && going(); ) await pause(250, signal);
+    if (onMac()) return;
     const left = runnerOf(dataDir);
     if (left) {
       try {
@@ -446,20 +631,36 @@ async function taskAct(verb, dataDir, signal, old = null) {
     old = run.server;
     await end(run.server);
   }
-  if (!runnerOf(dataDir)) await schtasks(["/Run", "/TN", TASK], signal);
-  // Its runner up, and the Filament it starts: within its wait to start again, and the moment Node takes to start.
+  if (!runnerOf(dataDir)) {
+    if (!onMac()) await schtasks(["/Run", "/TN", TASK], signal);
+    else {
+      const dom = await domainOf(signal);
+      if ((await runTool("launchctl", ["print", `${dom}/${LABEL}`], signal)).code === 0) await launchctl(["kickstart", `${dom}/${LABEL}`], signal);
+      else await loadAgent(dom, dataDir, signal);
+    }
+  }
+  await startOf(dataDir, from, old, signal);
+}
+
+/**
+ * A runner's next start of Filament, waited for: within its wait to start again, and the moment Node takes to start —
+ * one more of `from`'s starts, or a new runner's first, whether its Filament runs on or ended at once (which upOf then
+ * says), or a Filament other than `old` running.
+ * @param {string} dataDir @param {{ pid: number, starts: number }} from @param {number | null} old @param {AbortSignal} [signal]
+ */
+async function startOf(dataDir, from, old, signal) {
   for (const until = Date.now() + tools.againMs + 15_000; Date.now() < until; await pause(100, signal)) {
-    run = runnerOf(dataDir);
+    const run = runnerOf(dataDir);
     if (run?.server && run.server !== old) return;
     if (run && (run.pid !== from.pid ? run.starts > 0 : run.starts > from.starts)) return;
   }
 }
 
 /**
- * The service told to `verb` the data folder's Filament: systemctl, or the Windows task's runner (`taskAct`).
+ * The service told to `verb` the data folder's Filament: systemctl, or the runner of Windows' task or a Mac's launchd (`taskAct`).
  * @param {"start" | "stop" | "restart"} verb @param {string} dataDir @param {AbortSignal} [signal] @param {number | null} [old]  the Filament that ran before
  */
-const act = (verb, dataDir, signal, old = null) => (onWindows() ? taskAct(verb, dataDir, signal, old) : systemctl([verb, UNIT], signal));
+const act = (verb, dataDir, signal, old = null) => (byRunner() ? taskAct(verb, dataDir, signal, old) : systemctl([verb, UNIT], signal));
 
 /**
  * Whether something takes a connection at `url`'s address within 1.5 s — a program of any kind, HTTP or not.
@@ -520,8 +721,8 @@ async function upOf(r, dataDir) {
   return { client: null, ended: false };
 }
 
-/** What a Filament systemd (or the Windows task) started did, where it did not come up: ended as it started, or no answer in a minute. @param {boolean} ended */
-export const upWords = (ended) => `${onWindows() ? "Filament's scheduled task" : "systemd"} started Filament, and it ${ended ? "ended as it started" : "did not answer within a minute"}`;
+/** What a Filament systemd (or the Windows task, or launchd) started did, where it did not come up: ended as it started, or no answer in a minute. @param {boolean} ended */
+export const upWords = (ended) => `${serviceWho()} started Filament, and it ${ended ? "ended as it started" : "did not answer within a minute"}`;
 
 /**
  * A start or restart whose Filament did not come up, refused in words; the unit stays as it is — systemd starts one that
@@ -533,7 +734,7 @@ export const upWords = (ended) => `${onWindows() ? "Filament's scheduled task" :
 const notUp = (ended) =>
   Object.assign(
     new CliError(
-      `${upWords(ended)}: ${ended ? (onWindows() ? "it starts it again, less and less often — filament service status shows its log, filament stop stops it" : `systemd starts it again every 3 s — filament service status shows its log, systemctl --user stop ${UNIT} stops it`) : "filament service status shows its log"}; after an update, filament update --back goes back to the version before.`,
+      `${upWords(ended)}: ${ended ? (byRunner() ? "it starts it again, less and less often — filament service status shows its log, filament stop stops it" : `systemd starts it again every 3 s — filament service status shows its log, systemctl --user stop ${UNIT} stops it`) : "filament service status shows its log"}; after an update, filament update --back goes back to the version before.`,
       EXIT.failed,
     ),
     { notUp: upWords(ended) },
@@ -550,11 +751,11 @@ const notUp = (ended) =>
  * @param {string} [version]
  */
 export async function underSystemd(r, client, verb, version) {
-  const win = onWindows();
-  if (!onPath(win ? "schtasks.exe" : "systemctl"))
-    throw new CliError(win ? `Filament's scheduled task runs this Filament, and there is no schtasks.exe here to ${verb} it with.` : `systemd runs this Filament, and there is no systemctl here to ${verb} it with.`, EXIT.failed);
+  const win = byRunner();
+  const tool = onWindows() ? "schtasks.exe" : onMac() ? "launchctl" : "systemctl";
+  if (!onPath(tool)) throw new CliError(`${serviceWho()} runs this Filament, and there is no ${tool} here to ${verb} it with.`, EXIT.failed);
   const dataDir = String(client.state?.dataDir || r.dataDir);
-  // The Windows runner's Filament before: its start after this one is the one waited for (systemctl waits by itself).
+  // The runner's Filament before: its start after this one is the one waited for (systemctl waits by itself).
   const before = win ? await mainPid(r.signal, dataDir) : null;
   if (r.flags.force === true) await act(verb, dataDir, r.signal, before);
   else {
@@ -572,13 +773,17 @@ export async function underSystemd(r, client, verb, version) {
     await act(verb === "stop" ? "stop" : ended ? "start" : "restart", dataDir, r.signal, before);
   }
   if (verb === "stop")
-    return void r.out(win ? "Filament is stopped, and its scheduled task with it: it starts again at the next boot, or now with filament start." : "Filament is stopped, and its systemd service with it: it starts again at the next boot or login, or now with filament start.");
+    return void r.out(
+      onWindows()
+        ? "Filament is stopped, and its scheduled task with it: it starts again at the next boot, or now with filament start."
+        : `Filament is stopped, and its ${onMac() ? "launchd" : "systemd"} service with it: it starts again at the next boot or login, or now with filament start.`,
+    );
   const again = await upOf(r, dataDir);
   if (!again.client) throw notUp(again.ended);
   if (version && again.client.version && again.client.version !== version)
     throw Object.assign(
       new CliError(
-        `${win ? "Filament's scheduled task" : "systemd"} started Filament again, and Filament ${again.client.version} answers at ${again.client.url}, not ${version}: its ${win ? "task" : "unit"} starts another than current leads to — filament service install writes it again, and starts ${version}.`,
+        `${serviceWho()} started Filament again, and Filament ${again.client.version} answers at ${again.client.url}, not ${version}: its ${serviceKind()} starts another than current leads to — filament service install writes it again, and starts ${version}.`,
         EXIT.failed,
       ),
       { another: again.client.version },
@@ -588,8 +793,9 @@ export async function underSystemd(r, client, verb, version) {
 
 /**
  * The unit `filament service install` wrote for the data folder `dataDir`, where systemd's user manager runs here and
- * has it enabled; null elsewhere — not Linux, the app's command line, no systemctl or no manager, no unit, another data
- * folder's, or one disabled (an install whose Filament did not come up leaves it so).
+ * has it enabled (Windows' task, a Mac's LaunchAgent, where those run it); null elsewhere — the app's command line, no
+ * systemctl or no manager, no unit, another data folder's, or one disabled (an install whose Filament did not come up
+ * leaves it so).
  * @param {string} dataDir @param {AbortSignal} [signal]
  */
 async function unitFor(dataDir, signal) {
@@ -597,6 +803,13 @@ async function unitFor(dataDir, signal) {
     if (process.versions.electron || !onPath("schtasks.exe")) return null;
     const task = await taskNow(signal);
     return task?.enabled && task.dataDir && pathKey(task.dataDir) === pathKey(dataDir) ? { file: TASK, dataDir: task.dataDir } : null;
+  }
+  if (onMac()) {
+    if (process.versions.electron || !onPath("launchctl")) return null;
+    const file = agentFile();
+    const dir = plistDataDir(textOf(file));
+    if (!dir || pathKey(dir) !== pathKey(dataDir)) return null;
+    return (await disabledIn(await domainOf(signal), signal)) ? null : { file, dataDir: dir };
   }
   if (platform() !== "linux" || process.versions.electron || !onPath("systemctl")) return null;
   const env = await runTool("systemctl", ["--user", "show-environment"], signal);
@@ -622,7 +835,7 @@ export async function startUnit(r) {
   const up = await upOf(r, unit.dataDir);
   if (!up.client) throw notUp(up.ended);
   r.out(`Filament ${up.client.version} runs at ${up.client.url}, ${underWords()}: filament stop stops it, filament service status says how it runs.`);
-  if (r.flags.port !== undefined || r.flags.host !== undefined) r.out(`Its port and host are its ${onWindows() ? "task" : "unit"}'s (${unit.file}): filament service install --port <n> writes it again with another.`);
+  if (r.flags.port !== undefined || r.flags.host !== undefined) r.out(`Its port and host are its ${serviceKind()}'s (${unit.file}): filament service install --port <n> writes it again with another.`);
   return true;
 }
 
@@ -662,7 +875,7 @@ async function clearWay(r, dataDir, port) {
     await ownClient(url, state, dataDir).post("/shutdown", { ifIdle: true });
     for (const end = Date.now() + (STOP_SEC + 30) * 1000; Date.now() < end && (await stateAt(url, dataDir)); ) await pause(500, r.signal);
     if (await stateAt(url, dataDir)) throw new CliError(`The Filament at ${url} was asked to stop, and still answers: stop it (filament stop --force), then run this again.`, EXIT.failed);
-    r.out(`Stopped the Filament that ran at ${url}, started by hand: ${onWindows() ? "its scheduled task" : "systemd"} runs it from now on.`);
+    r.out(`Stopped the Filament that ran at ${url}, started by hand: ${onWindows() ? "its scheduled task" : onMac() ? "launchd" : "systemd"} runs it from now on.`);
   }
   return systemd;
 }
@@ -951,11 +1164,166 @@ async function statusTask(r) {
   r.out(s.journal.length ? `Its log's last lines (${serviceFiles(dataDir).log}):\n${s.journal.map((l) => `  ${l}`).join("\n")}` : "Its log holds nothing yet.");
 }
 
-/** `filament service logs` on a Windows host: server.log's last lines, then what comes, until Ctrl+C. @param {import("./commands.js").Run} r */
+/**
+ * What a Mac's LaunchDaemon does for the plist `copy` holds (the LaunchAgent's, with the user to run as): its words,
+ * and whether it starts Filament at boot — the one installed is it. Not installed, or another: the sudo line that
+ * installs it.
+ * @param {string} copy @param {string} user
+ */
+function daemonWords(copy, user) {
+  const there = textOf(daemonFile());
+  if (there !== null && there === textOf(copy)) return { boot: true, words: `Its LaunchDaemon (${daemonFile()}) starts Filament at boot, with no one logged in.` };
+  if (there !== null) return { boot: true, words: `Its LaunchDaemon (${daemonFile()}) is not the one written now: to start this one at boot, run: ${daemonLine(copy)}` };
+  return {
+    boot: false,
+    words: `Filament starts as ${user} logs in at this Mac, not at boot. To start it at boot with no one logged in, run: ${daemonLine(copy)} (its LaunchDaemon, which runs as ${user}).`,
+  };
+}
+
+/**
+ * `filament service install` on a Mac host: the LaunchAgent written to ~/Library/LaunchAgents — launchd's runner on its
+ * data folder — and loaded in the user's domain, its runner starting Filament; the LaunchDaemon's plist written beside
+ * the runner's files, and the one sudo line that installs it said. The way is cleared as on Linux (`clearWay`). A
+ * runner that started before the plist was written runs the job as launchd loaded it before: ended once no turn runs,
+ * and the LaunchAgent loaded again. One whose Filament does not come up is stopped, booted out and disabled, its log said.
+ * @param {import("./commands.js").Run} r
+ */
+async function installAgent(r) {
+  launchdHere(r);
+  const port = portOf(r);
+  const dataDir = resolve(r.dataDir);
+  const f = serviceFiles(dataDir);
+  const file = agentFile();
+  const launcher = launcherOf(ROOT);
+  const text = plistText({ ...launcher, dataDir, port });
+  const was = textOf(file);
+  const running = await clearWay(r, dataDir, port);
+  const dom = await domainOf(r.signal);
+  // Written where it changed alone: when it was written says which runners run it as it is.
+  if (was !== text) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, text);
+  }
+  const user = userOf({});
+  mkdirSync(f.dir, { recursive: true });
+  writeFileSync(f.daemon, plistText({ ...launcher, dataDir, port, user }));
+  r.out(`Wrote ${file}${was === null ? "" : was === text ? " (as it was)" : " (in place of the one there)"}. It runs ${launcher.words}; its data folder is ${dataDir}${port != null ? `, its port ${port}` : ""}.`);
+  const ran = runnerOf(dataDir);
+  const stale = !!ran && ran.since < writtenAt(file);
+  if (stale) {
+    askStop(dataDir);
+    try {
+      if (running) await endWhenIdle(r, running);
+    } catch (/** @type {any} */ e) {
+      unaskStop(dataDir);
+      if (e?.code !== EXIT.busy) throw e;
+      throw new CliError(`The LaunchAgent is written; the Filament launchd runs goes on with the one before, as ${e.message.replace(/^not stopped: /, "")} — filament service install, once it ends, starts it on the new one.`, EXIT.busy);
+    }
+    await taskAct("stop", dataDir, r.signal);
+  }
+  if (stale || !ran) {
+    const parked = runnerOf(dataDir);
+    await loadAgent(dom, dataDir, r.signal);
+    await startOf(dataDir, { pid: parked?.pid ?? 0, starts: parked?.starts ?? 0 }, null, r.signal);
+  } else await taskAct("start", dataDir, r.signal);
+  const { client, ended } = await upOf(r, dataDir);
+  if (!client) {
+    // Left loaded, its runner would start it again and again, and at each login: stopped, booted out and disabled, its
+    // plist kept for status to show, and its log said.
+    await taskAct("stop", dataDir, r.signal);
+    for (const t of agentTargets()) await runTool("launchctl", ["bootout", t], r.signal);
+    await launchctl(["disable", `${dom}/${LABEL}`], r.signal);
+    const tail = logTail(dataDir, 10);
+    const log = tail.length ? `\nIts log's last lines (${f.log}):\n${tail.map((l) => `  ${l}`).join("\n")}` : `\nIts log holds nothing: its runner did not start, and ${f.runnerLog} says why.`;
+    throw new CliError(`${upWords(ended)} — so it is stopped and disabled, and nothing starts it again and again; its plist stays (${file}). Once its cause is fixed, filament service install starts it again.${log}`, EXIT.failed);
+  }
+  const daemon = daemonWords(f.daemon, user);
+  r.out(`Filament ${client.version} runs at ${client.url} under launchd (its LaunchAgent, ${LABEL}): started ${daemon.boot ? "at boot" : `as ${user} logs in`}, and again 3 s after it ends by itself.`);
+  r.out(daemon.words);
+  r.out("filament service status says how it runs, filament service logs follows its log, filament service uninstall removes it.");
+}
+
+/**
+ * `filament service uninstall` on a Mac host: stopped as `filament stop` stops it, then the LaunchAgent booted out of
+ * the user's domains and its plist removed, with the LaunchDaemon's copy. An installed LaunchDaemon, which sudo alone
+ * removes, is said with its line; so is a Filament of its data folder's that still answers.
+ * @param {import("./commands.js").Run} r
+ */
+async function uninstallAgent(r) {
+  launchdHere(r);
+  const file = agentFile();
+  const text = textOf(file);
+  if (text === null) return void r.out(`No Filament service is installed here: there is no ${file}.`);
+  const dataDir = plistDataDir(text) || resolve(r.dataDir);
+  const url = whereFilament(dataDir).url;
+  const state = r.flags.force === true ? null : await stateAt(url, dataDir);
+  if (state?.supervisor === TASK_SUPERVISOR) {
+    askStop(dataDir);
+    try {
+      await endWhenIdle(r, ownClient(url, state, dataDir));
+    } catch (e) {
+      unaskStop(dataDir);
+      throw e;
+    }
+  }
+  await taskAct("stop", dataDir, r.signal);
+  for (const t of agentTargets()) await runTool("launchctl", ["bootout", t], r.signal);
+  rmSync(file, { force: true });
+  rmSync(serviceFiles(dataDir).daemon, { force: true });
+  const still = await stateAt(whereFilament(dataDir).url, dataDir);
+  const by = !still || (typeof still.dataDir === "string" && pathKey(still.dataDir) !== pathKey(dataDir)) ? "" : still.supervisor === "desktop" ? "run by the Filament app: quit the app (its tray's Quit) to stop it" : "started by hand: filament stop stops it";
+  r.out(by ? `Removed ${file}: launchd starts Filament no more, at login or after a crash. A Filament of its data folder still runs at ${whereFilament(dataDir).url}, ${by}.` : `Removed ${file}: Filament is stopped, and starts no more at login or after a crash. filament start runs it by hand.`);
+  if (existsSync(daemonFile())) r.out(`Its LaunchDaemon (${daemonFile()}) still starts Filament at boot: sudo launchctl bootout system/${LABEL}; sudo rm ${shWord(daemonFile())} removes it.`);
+}
+
+/** `filament service status` on a Mac host: the keys Linux's --json has, each the LaunchAgent's. @param {import("./commands.js").Run} r */
+async function statusAgent(r) {
+  launchdHere(r);
+  const file = agentFile();
+  const text = textOf(file);
+  const dataDir = plistDataDir(text) || r.dataDir;
+  const dom = await domainOf(r.signal);
+  const disabled = text !== null && (await disabledIn(dom, r.signal));
+  const answers = text !== null ? await connect(dataDir, { timeoutMs: 1500 }).catch(() => null) : null;
+  const boot = existsSync(daemonFile());
+  const s = {
+    installed: text !== null,
+    unit: file,
+    active: runnerActive(text !== null ? runnerOf(dataDir) : null),
+    enabled: text === null ? "not-found" : disabled ? "disabled" : "enabled",
+    execStart: text !== null ? plistArgs(text).map(shWord).join(" ") : null,
+    dataDir: text !== null ? dataDir : null,
+    // Its LaunchDaemon starts it at boot, with no one logged in: what lingering is on Linux.
+    linger: text !== null ? boot : null,
+    filament: answers ? { version: answers.version, url: answers.url, supervisor: answers.state?.supervisor ?? null } : null,
+    journal: text !== null ? logTail(dataDir, 20) : [],
+    journalError: null,
+  };
+  if (r.flags.json === true) return void r.out(JSON.stringify(s, null, 2));
+  if (!s.installed) return void r.out(`No Filament service is installed here (no ${file}): filament service install runs Filament under launchd — started as you log in, or at boot with its LaunchDaemon, and again after a crash.`);
+  const user = userOf({});
+  r.out(
+    [
+      `Filament's service: ${s.active}, ${s.enabled}`,
+      `  agent    : ${file}, in ${dom}`,
+      `  runs     : ${s.execStart}`,
+      `  filament : ${s.filament ? `${s.filament.version} answers at ${s.filament.url}${s.filament.supervisor === TASK_SUPERVISOR ? "" : `, started by ${s.filament.supervisor || "hand"}, not by launchd`}` : "does not answer"}`,
+      `  at boot  : ${boot ? `yes — its LaunchDaemon (${daemonFile()})` : `no — it starts as ${user} logs in (filament service install says the sudo line for its LaunchDaemon)`}`,
+    ].join("\n"),
+  );
+  r.out(s.journal.length ? `Its log's last lines (${serviceFiles(dataDir).log}):\n${s.journal.map((l) => `  ${l}`).join("\n")}` : "Its log holds nothing yet.");
+}
+
+/** `filament service logs` on a Windows host or a Mac: server.log's last lines, then what comes, until Ctrl+C. @param {import("./commands.js").Run} r */
 async function logsTask(r) {
-  scheduler(r);
-  const task = await taskNow(r.signal);
-  const dataDir = task?.dataDir || r.dataDir;
+  let dataDir = r.dataDir;
+  if (onMac()) {
+    launchdHere(r);
+    dataDir = plistDataDir(textOf(agentFile())) || dataDir;
+  } else {
+    scheduler(r);
+    dataDir = (await taskNow(r.signal))?.dataDir || dataDir;
+  }
   const file = serviceFiles(dataDir).log;
   for (const l of logTail(dataDir, 20)) r.write(`${l}\n`);
   const look = () => {
@@ -992,34 +1360,44 @@ async function logsTask(r) {
 }
 
 /**
- * `filament service run`: what Filament's task runs on a Windows host (service-task.js `runRunner`), the installed
- * Filament started by `current` at each start. Not a command a person types: filament service install registers it.
+ * `filament service run`: what Filament's task runs on a Windows host, and launchd on a Mac (service-task.js
+ * `runRunner`), the installed Filament started by `current` at each start. On a Mac it parks when stopped, and
+ * launchd's SIGTERM (a boot-out, the Mac shutting down) asks its Filament to end and waits for it. Not a command a
+ * person types: filament service install registers it.
  * @param {import("./commands.js").Run} r
  */
 async function runTask(r) {
-  if (!onWindows()) throw new CliError("filament service run is what Filament's scheduled task runs on a Windows host: on Linux, systemd runs filament start (filament service install).", EXIT.usage);
+  if (!byRunner()) throw new CliError("filament service run is what Filament's service runs on a Windows host or a Mac: on Linux, systemd runs filament start (filament service install).", EXIT.usage);
   const port = portOf(r);
-  await runRunner({
-    dataDir: resolve(r.dataDir),
-    port,
-    againMs: tools.againMs,
-    signal: r.signal,
-    // The task's command line, as Task Scheduler ran it: an install of another starts this runner again.
-    task: [process.execPath, ...process.argv.slice(1)],
-    launch: () => {
-      const { argv } = launcherOf(ROOT, { moved: true });
-      return { command: argv[0], args: argv.slice(1) };
-    },
-  });
+  const term = new AbortController();
+  const onTerm = () => term.abort();
+  if (onMac()) process.on("SIGTERM", onTerm);
+  try {
+    await runRunner({
+      dataDir: resolve(r.dataDir),
+      port,
+      againMs: tools.againMs,
+      signal: r.signal ? AbortSignal.any([r.signal, term.signal]) : term.signal,
+      park: onMac(),
+      // The task's command line, as Task Scheduler ran it: an install of another starts this runner again.
+      task: [process.execPath, ...process.argv.slice(1)],
+      launch: () => {
+        const { argv } = launcherOf(ROOT, { moved: true });
+        return { command: argv[0], args: argv.slice(1) };
+      },
+    });
+  } finally {
+    process.off("SIGTERM", onTerm);
+  }
 }
 
 /** `filament service <install | uninstall | status | logs>`. @param {import("./commands.js").Run} r @returns {Promise<number | void>} */
 export async function runService(r) {
   const [sub = "status"] = r.words;
-  if (sub === "install") return install(r);
-  if (sub === "uninstall") return onWindows() ? uninstallTask(r) : uninstall(r);
-  if (sub === "status") return onWindows() ? statusTask(r) : status(r);
-  if (sub === "logs") return onWindows() ? logsTask(r) : logs(r);
+  if (sub === "install") return onMac() ? installAgent(r) : install(r);
+  if (sub === "uninstall") return onWindows() ? uninstallTask(r) : onMac() ? uninstallAgent(r) : uninstall(r);
+  if (sub === "status") return onWindows() ? statusTask(r) : onMac() ? statusAgent(r) : status(r);
+  if (sub === "logs") return byRunner() ? logsTask(r) : logs(r);
   if (sub === "run") return runTask(r);
   throw new CliError(`no service command "${sub}" — filament help service`, EXIT.usage);
 }
