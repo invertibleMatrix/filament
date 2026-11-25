@@ -8,6 +8,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import net from "node:net";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runDoctor } from "../src/cli/doctor.js";
 import { startApp } from "./helpers/app.js";
 
@@ -77,5 +80,72 @@ test("[::1] at Filament's port held by another program: no browser here is paire
   } finally {
     await shim?.stop();
     await new Promise((r) => squatter.close(() => r(undefined)));
+  }
+});
+
+/**
+ * A POST at an address and port, with the Host and Origin given. @param {number} port @param {string} path @param {string} at @param {any} body
+ * @returns {Promise<{ status: number, body: string }>}
+ */
+const postAt = (port, path, at, body) =>
+  new Promise((resolve, reject) => {
+    const text = JSON.stringify(body);
+    const req = http.request({ host: "127.0.0.1", port, path, method: "POST", agent: false, headers: { host: at, origin: `http://${at}`, "content-type": "application/json", "content-length": Buffer.byteLength(text) } }, (res) => {
+      let b = "";
+      res.setEncoding("utf8");
+      res.on("data", (d) => (b += d));
+      res.on("end", () => resolve({ status: Number(res.statusCode), body: b }));
+    });
+    req.on("error", reject);
+    req.end(text);
+  });
+
+// (fails before: yes — x51, the hunt on x40: a browser here paired before another program took [::1] at Filament's port
+// kept its pairing, and its cookie, sent to that program at Filament's name, opened Filament)
+test("a browser here paired before another program takes [::1] at Filament's port is let go as Filament starts", { skip: !v6 && "this system has no IPv6 loopback" }, async () => {
+  let shim = await startApp({ keep: true });
+  const { port, dataDir } = shim;
+  /** @type {net.Server | null} */
+  let squatter = null;
+  try {
+    const own = `${JSON.parse(readFileSync(join(dataDir, "machine.json"), "utf8")).page}.localhost`;
+    const made = /** @type {any} */ (await (await shim.api("/api/remote/pair", { method: "POST", body: { scope: "full", here: true } })).json());
+    const claimed = await postAt(port, "/api/remote/claim", `${own}:${port}`, { code: made.code, name: "Browser here" });
+    assert.equal(claimed.status, 200, claimed.body);
+    const id = String(JSON.parse(claimed.body).device.id);
+    await shim.stop();
+    const taker = net.createServer((s) => s.end("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nno"));
+    squatter = taker;
+    await new Promise((resolve) => taker.listen(port, "::1", () => resolve(undefined)));
+    shim = await startApp({ dataDir, keep: true, configure: (c) => void (c.server.port = port), overrides: { port } });
+    // A connection of its own: fetch's pool still holds one to the Filament stopped above, at the same port.
+    const { devices } = JSON.parse((await get("127.0.0.1", port, "/api/remote/devices")).body);
+    const was = devices.find((/** @type {any} */ d) => d.id === id);
+    assert.ok(was?.revokedAt, `its pairing let go: ${JSON.stringify(was)}`);
+  } finally {
+    await shim.stop();
+    if (squatter) {
+      const s = squatter;
+      await new Promise((r) => s.close(() => r(undefined)));
+    }
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+// (fails before: yes — x51: a code for a browser here was decided as soon as it was asked, and the desktop app asks once
+// /api/state answers, before Filament knows whether [::1] at its port is another program's)
+test("a code for a browser here waits until Filament knows whose [::1] at its port is; doctor names a loopback host it cannot hold", async () => {
+  const remote = readFileSync(new URL("../src/http/admin/remote.js", import.meta.url), "utf8");
+  assert.match(remote, /if \(here\) await a\.loopbackSettled\?\.\(\);\n\s+const taken = here \? String\(a\.loopbackTaken\?\.\(\) \|\| ""\) : "";/);
+  assert.match(readFileSync(new URL("../src/server.js", import.meta.url), "utf8"), /const twinUp = holdTwin\(boundAt\.address, port\);\n\s+twinSettled = twinUp;/);
+  const dataDir = mkdtempSync(join(tmpdir(), "filament-twin-doctor-"));
+  try {
+    writeFileSync(join(dataDir, "config.json"), JSON.stringify({ server: { host: "127.0.0.2", port: 1 } }));
+    const report = /** @type {any} */ (await runDoctor({ dataDir, agentFilter: "no-such-agent" }));
+    const line = report.sections.flatMap((/** @type {any} */ s) => s.items).find((/** @type {any} */ i) => /server\.host is 127\.0\.0\.2/.test(i.what));
+    assert.ok(line, "doctor says it");
+    assert.equal(line.level, "warn");
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
   }
 });

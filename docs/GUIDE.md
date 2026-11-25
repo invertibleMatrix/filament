@@ -250,7 +250,10 @@ taking the code of any later link off the address as well. `machine.json` is mad
 time Filament reads it (not on Windows). Filament holds its port at both of this computer's loopback addresses,
 127.0.0.1 and [::1], since a browser may reach the name over either; where another program holds the other one at that
 port, no browser here is paired until it lets go — the app's Open in browser and `filament open` say so, and
-`filament doctor` names it. Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
+`filament doctor` names it — and a browser here paired before is let go as Filament starts, since its cookie may reach
+that program: pair it again once the address is free. A code asked for while Filament starts waits until it knows
+whose that address is. A `server.host` of another `127.x` address holds neither, and `filament doctor` says so.
+Filament's pages and artifacts answer at that name as at 127.0.0.1. There, and there alone, the
 browser is this computer's owner: it does what this computer does, but press while the Filament app runs (answer an
 ask, Always allow — those come from the app's window). Its code is refused at 127.0.0.1, and its cookie or token
 anywhere but that name is no one's. A pairing made at 127.0.0.1 lets nothing in, and goes for good once that browser
@@ -2516,7 +2519,7 @@ longer kept is "Filament (its own calls)".
 | 403 or 415 on an admin call from a script that sends the owner key | Mutating admin calls need `application/json` and, from a browser, the console's own origin. | Send JSON; run scripts without an `Origin` header. |
 | "This browser cannot open <machine>'s own name for Filament" | The browser cannot open a name under `.localhost` (Safari cannot). | Open the link in Chrome, Firefox or Edge, or use the Filament app. |
 | "The Filament at … did not take the owner key in …" | The `filament` command line reads another data folder than the one that Filament runs from. | `--data-dir` names the folder it runs from. |
-| `filament doctor` says another program holds Filament's port at this computer's other loopback address | A program answers Filament's port at `[::1]` or `127.0.0.1`, whichever Filament could not take; no browser here pairs while it does. | Stop that program, or set `server.port` to a free port and restart Filament. |
+| `filament doctor` says another program holds Filament's port at this computer's other loopback address | A program answers Filament's port at `[::1]` or `127.0.0.1`, whichever Filament could not take; no browser here pairs while it does, and one paired before was let go as Filament started (Settings › Remote access lists it revoked). | Stop that program, or set `server.port` to a free port and restart Filament. |
 | "no route matches" | No route's pattern fits the model name. | Check the Routes page's "Try a model name" box; add or reorder a route. |
 | The agent replies, but a note says "… is not a model X offers" | The name after the prefix is not one of the agent's ids. | Use a name from the cheat sheet or `/v1/models`. |
 | Your tool loses the connection and reconnects a few seconds later, repeatedly | Filament was restarted while the chat was flowing through it (a code update, or the app's Restart); the app brings it back within seconds. | Restart when nothing is in flight; a restart waits for in-flight turns (up to 20 s). |

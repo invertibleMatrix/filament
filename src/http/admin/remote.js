@@ -667,7 +667,9 @@ export function remoteRoutes(a) {
         // kept as they are (devices.js `pressless`).
         const here = b?.here === true;
         // (x40) Filament's port at the other loopback address held by another program: a browser here may reach this
-        // Filament's own name there, which would read the page's code and take its cookie — no code is made for one.
+        // Filament's own name there, which would read the page's code and take its cookie — no code is made for one. Asked
+        // as Filament starts, before it knows, the answer waits until it does (x51).
+        if (here) await a.loopbackSettled?.();
         const taken = here ? String(a.loopbackTaken?.() || "") : "";
         if (taken) return sendJson(r.res, 409, { error: `No browser on this computer is paired now: ${taken}`, loopbackTaken: true });
         const open = devices.startPairing({ scope: b.scope, here });

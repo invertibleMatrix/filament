@@ -437,6 +437,8 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
     },
     /** The browsers here, unrevoked, paired at no name this Filament has now: no one's, gone as one is paired here (http/admin/remote.js). */
     strays: () => devices.filter((d) => d.here && !d.revokedAt && (!d.at || d.at !== String(pageHost() || ""))).map((d) => d.id),
+    /** Every browser here, unrevoked, by id: what goes where another program holds Filament's port at the other loopback address (server.js `holdTwin`, x51). */
+    browsersHere: () => devices.filter((d) => d.here && !d.revokedAt).map((d) => d.id),
     /** @param {string} id @returns {Device | null} */
     get: (id) => {
       const d = devices.find((x) => x.id === id);

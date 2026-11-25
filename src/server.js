@@ -3446,6 +3446,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     // Why Filament's port at the other loopback address is another program's (`holdTwin`), which keeps a browser here
     // from pairing: "" where it is Filament's.
     loopbackTaken: () => twinTaken,
+    // Settled once that is known (`twinSettled`): a code for a browser here is decided after it.
+    loopbackSettled: () => twinSettled,
     // Filament on the tailnet (services/tailscale.js `createTailnetShare`), made below with the servers.
     tailnet: () => tailnet,
     // Anonymous telemetry (services/telemetry.js), made below with the alerts' timer.
@@ -3574,6 +3576,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const twin = http.createServer({ connectionsCheckingInterval: Math.min(30_000, requestMs) }, door);
   /** Why the other loopback address at Filament's port is not Filament's, in words: "" where it is, or the system has none. */
   let twinTaken = "";
+  /** Settled once the other loopback address is held or found taken (`holdTwin`): a code for a browser here waits for it. */
+  let twinSettled = Promise.resolve();
   // Three WebSockets: a desktop app's browser host (HarnessV4_Browser_Plan BR-D2; a viewer's app, b-remote), a page's
   // run follows (one socket a page, so its followed runs hold none of the browser's six connections to this host — and
   // the chats' browsers cast live to a page with no app of its own to show them, another machine's), and the terminal's
@@ -3610,6 +3614,8 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
       if (!other) return resolve();
       const held = () => {
         twin.off("error", failed);
+        // Held, it may still fail later on a socket of its own: said in the log, never thrown (x51, the hunt on x40).
+        twin.on("error", (/** @type {any} */ e) => log("warn", `Filament's listener at ${hostAndPort(other, port)}: ${e?.message || e}`));
         resolve();
       };
       const failed = (/** @type {any} */ e) => {
@@ -3617,6 +3623,11 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
         if (e?.code === "EADDRINUSE" || e?.code === "EACCES") {
           twinTaken = `${hostAndPort(other, port)} is another program's, where a browser on this computer may reach Filament's own name: no browser here is paired until that program lets go of it, or Filament listens at another port (server.port).`;
           log("warn", twinTaken);
+          // A browser here paired before that program took the address may send it its cookie at Filament's name: each
+          // is let go, so what it may have handed that program opens nothing here (x51, the hunt on x40).
+          const gone = devices.browsersHere();
+          for (const id of gone) devices.revoke(id);
+          if (gone.length) log("warn", `Filament let go of ${gone.length === 1 ? "the browser" : `${gone.length} browsers`} paired on this computer: ${gone.length === 1 ? "its cookie" : "their cookie"} may reach that program. Pair again once it lets go of the address.`);
         }
         resolve();
       };
@@ -3858,8 +3869,10 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
           const port = boundAt.port;
           config.get().server.port = port;
           listening = { host: config.get().server.host, port };
-          // Its port at the other loopback address too, before the start is done: a browser here is paired after it.
+          // Its port at the other loopback address too, before the start is done: a browser here is paired after it, the
+          // desktop app's Open in browser too, which may ask as soon as /api/state answers (x51).
           const twinUp = holdTwin(boundAt.address, port);
+          twinSettled = twinUp;
           // This start's owner key, in its file before the command line finds Filament by the next.
           owner.listen(port);
           // Where the command line finds it (cli/listening.js): its address, its process, its version.
