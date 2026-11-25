@@ -1,10 +1,11 @@
 #!/bin/sh
 # Filament for servers, in one command — no root, everything the user's (a release's asset beside the tarball):
 #   curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
-# It reads the newest release's latest-server.yml (latest-server-arm64.yml on arm64), downloads the tarball it names for
-# this machine (scripts/dist-server.mjs makes both, on each machine), checks the download's SHA-512 against it, and
-# unpacks it to ~/.local/share/filament/<version> ($XDG_DATA_HOME/filament
-# where that is set): `current` there points at the version that runs, and ~/.local/bin/filament is its command line.
+# It reads the newest release's latest-server.yml (latest-server-arm64.yml on arm64, latest-server-darwin-arm64.yml on a
+# Mac with Apple silicon), downloads the tarball it names for this machine (scripts/dist-server.mjs makes both, on each
+# machine), checks the download's SHA-512 against it, and unpacks it to ~/.local/share/filament/<version>
+# ($XDG_DATA_HOME/filament where that is set): `current` there points at the version that runs, and ~/.local/bin/filament
+# is its command line. A Mac's goes in the same folders, and its desktop app, where it has one, is said.
 # Run again, it installs a newer release beside, keeps the one before for a roll back and removes older ones; the same
 # version changes nothing. A pipe takes no flags, so it reads its options from the environment:
 #   FILAMENT_VERSION=1.2.3   that release, not the newest — one installed already is pointed at again, not downloaded
@@ -149,9 +150,11 @@ hex_of_file() {
   fi
 }
 
-# A base64 SHA-512, as the yml gives it, in hex.
+# A base64 SHA-512, as the yml gives it, in hex. A base64 that decodes with -D alone (macOS's before 13) gives nothing
+# to -d: it is asked again so.
 hex_of_base64() {
-  out=$(printf '%s' "$1" | base64 -d | od -An -v -tx1)
+  out=$(printf '%s' "$1" | base64 -d 2>/dev/null | od -An -v -tx1) || out=""
+  [ -n "$out" ] || out=$(printf '%s' "$1" | base64 -D | od -An -v -tx1)
   hex=""
   for byte in $out; do hex=$hex$byte; done
   printf '%s' "$hex"
@@ -175,7 +178,7 @@ glibc_here() {
   case $v in [0-9]*.[0-9]*) printf '%s' "$v" ;; esac
 }
 
-# Whether the glibc `$1` is older than `$2`, each major.minor.
+# Whether the version `$1` (a glibc's, or macOS's) is older than `$2`, each major.minor (a third part is left out).
 older() {
   a=${1%%.*} b=${1#*.} c=${2%%.*} d=${2#*.}
   b=${b%%.*} d=${d%%.*}
@@ -204,12 +207,13 @@ built_from() {
   return 1
 }
 
-# The link `$2` made to point at `$1` in one rename, where mv -T is there; busybox's without it, removed and made again.
-# A new link that cannot be made leaves the one there as it is, cleanup's put_back too.
+# The link `$2` made to point at `$1` in one rename, where mv -T is there (a Mac's mv says it -h, which GNU's refuses);
+# busybox's without either, removed and made again. A new link that cannot be made leaves the one there as it is,
+# cleanup's put_back too.
 point() {
   rm -f "$2.new-$$"
   ln -s "$1" "$2.new-$$" || return 1
-  if ! mv -T "$2.new-$$" "$2" 2>/dev/null; then
+  if ! mv -T "$2.new-$$" "$2" 2>/dev/null && ! mv -h "$2.new-$$" "$2" 2>/dev/null; then
     rm -f "$2"
     mv "$2.new-$$" "$2"
   fi
@@ -261,29 +265,51 @@ swap() {
   swapping=""
 }
 
-# The version, where it is, and what to run next.
+# The version, where it is, and what to run next. ~/.local/bin is put on the PATH by the file the login shell reads:
+# zsh's (a Mac's own), bash's where the person has one (bash reads no ~/.profile then), else ~/.profile.
 done_with() {
   if [ "$runs_as" = "$bindir/filament" ]; then
     case ":${PATH:-}:" in
       *":$bindir:"* | *":$bindir/:"*) runs_as=filament ;;
-      *) say "$bindir is not on your PATH: add it to run Filament as filament - echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile, then open a new shell." ;;
+      *)
+        rc='~/.profile'
+        case ${SHELL:-} in
+          */zsh) rc='~/.zprofile' ;;
+          */bash) [ ! -f "$home/.bash_profile" ] || rc='~/.bash_profile' ;;
+        esac
+        say "$bindir is not on your PATH: add it to run Filament as filament - echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> $rc, then open a new shell."
+        ;;
     esac
   fi
   say "$1"
+  # The app and Filament for servers keep one data folder (~/.config/filament) and one port: one of them runs at a time.
+  if [ -n "$app" ]; then say "Filament's desktop app is on this Mac too ($app): it and Filament for servers share one data folder and port, so one of them runs at a time."; fi
   say "Next: $runs_as setup"
 }
 
 main() {
   os=$(uname -s 2>/dev/null || echo unknown)
   arch=$(uname -m 2>/dev/null || echo unknown)
-  # Each machine's tarballs and their update file: x64's latest-server.yml, and arm64's beside it.
-  case $arch in
-    x86_64) target=linux-x64 FEED=latest-server.yml ;;
-    aarch64 | arm64) target=linux-arm64 FEED=latest-server-arm64.yml ;;
-    *) target="" ;;
+  # Each machine's tarballs and their update file: x64's latest-server.yml, arm64's and a Mac's beside it.
+  target=""
+  case $os in
+    Linux)
+      case $arch in
+        x86_64) target=linux-x64 FEED=latest-server.yml ;;
+        aarch64 | arm64) target=linux-arm64 FEED=latest-server-arm64.yml ;;
+      esac
+      ;;
+    Darwin)
+      # A terminal under Rosetta says x86_64 on Apple silicon: the Mac's own chip is asked.
+      if [ "$arch" = arm64 ] || [ "$(sysctl -n hw.optional.arm64 2>/dev/null </dev/null)" = 1 ]; then
+        target=darwin-arm64 FEED=latest-server-darwin-arm64.yml
+      else
+        refuse "Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's ($arch): nothing was installed."
+      fi
+      ;;
   esac
-  if [ "$os" != Linux ] || [ -z "$target" ]; then
-    refuse "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is $os on $arch: nothing was installed. On a Mac, install the desktop app from $RELEASES/latest. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm $RELEASES/latest/download/install.ps1 | iex"
+  if [ -z "$target" ]; then
+    refuse "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for a Mac with Apple silicon, and this machine is $os on $arch: nothing was installed. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm $RELEASES/latest/download/install.ps1 | iex"
   fi
   # A 64-bit kernel can run 32-bit programs alone (Raspberry Pi OS's 32-bit release on a Pi's arm64 kernel): Filament's
   # Node would not start there.
@@ -296,10 +322,23 @@ main() {
   for t in base64 od mktemp readlink ln; do has "$t" || missing="$missing, $t"; done
   [ -z "$missing" ] || refuse "Filament's installer needs ${missing#, }, which this machine does not have: install them with its package manager and run it again. Nothing was installed."
   [ -n "${HOME:-}" ] || refuse "HOME is not set: Filament installs into the user's own folder, and there is none to install into."
-  # Node's own Linux builds need glibc 2.28 or newer.
-  glibc=$(glibc_here)
-  [ -n "$glibc" ] || refuse "Filament for servers runs on glibc, and this machine's C library is another (Alpine's musl?): nothing was installed. A Debian, Ubuntu, Fedora or RHEL server runs it."
-  if older "$glibc" 2.28; then refuse "Filament for servers needs glibc 2.28 or newer, and this machine has $glibc: nothing was installed."; fi
+  app=""
+  if [ "$os" = Darwin ]; then
+    # Node's own Mac builds need macOS 13.5 or newer.
+    mac=$(sw_vers -productVersion 2>/dev/null </dev/null) || mac=""
+    case $mac in
+      *.*) ;;
+      [0-9]*) mac=$mac.0 ;;
+    esac
+    case $mac in
+      [0-9]*.[0-9]*) if older "$mac" 13.5; then refuse "Filament for servers needs macOS 13.5 or newer, and this Mac runs $mac: nothing was installed."; fi ;;
+    esac
+  else
+    # Node's own Linux builds need glibc 2.28 or newer.
+    glibc=$(glibc_here)
+    [ -n "$glibc" ] || refuse "Filament for servers runs on glibc, and this machine's C library is another (Alpine's musl?): nothing was installed. A Debian, Ubuntu, Fedora or RHEL server runs it."
+    if older "$glibc" 2.28; then refuse "Filament for servers needs glibc 2.28 or newer, and this machine has $glibc: nothing was installed."; fi
+  fi
 
   # HOME however many slashes it ends in: ~/.local/bin is the folder the PATH names, the command's link the same each run.
   home=$(unslashed "$HOME")
@@ -308,6 +347,12 @@ main() {
     *) base=$home/.local/share/filament ;;
   esac
   bindir=$home/.local/bin
+  # A Mac's desktop app, in either Applications folder, is said with what was installed.
+  if [ "$os" = Darwin ]; then
+    for a in /Applications/Filament.app "$home/Applications/Filament.app"; do
+      if [ -z "$app" ] && [ -d "$a" ]; then app=$a; fi
+    done
+  fi
   case ${FILAMENT_NO_ENGINE:-} in
     '' | 0) engine=1 ;;
     *) engine=0 ;;
@@ -409,11 +454,13 @@ EOF
   [ -x "$work/unpack/$top/bin/filament" ] || refuse "$name holds no $top/bin/filament to run: nothing was installed."
   # Its build-info.json is how a run knows a version installed and one to remove, and `filament update` the build.
   [ -f "$work/unpack/$top/$MARKER" ] || refuse "$name holds no $top/$MARKER, so it is no build of Filament for servers: nothing was installed."
-  # node-pty binds to the glibc it was built on: Filament runs on an older one, its terminals don't.
-  built=$(glibc_built "$work/unpack/$top")
-  case $built in
-    [0-9]*.[0-9]*) if older "$glibc" "$built"; then say "This machine has glibc $glibc, older than the $built Filament $version was built on: Filament runs, but its terminals don't open here."; fi ;;
-  esac
+  # node-pty binds to the glibc it was built on: Filament runs on an older one, its terminals don't. A Mac has none.
+  if [ "$os" = Linux ]; then
+    built=$(glibc_built "$work/unpack/$top")
+    case $built in
+      [0-9]*.[0-9]*) if older "$glibc" "$built"; then say "This machine has glibc $glibc, older than the $built Filament $version was built on: Filament runs, but its terminals don't open here."; fi ;;
+    esac
+  fi
   # The version's folder comes in by one rename, from beside it: a half one is never at its path. One there that is
   # not this build (the other tarball of the version, or one damaged) goes back if the run fails before current is
   # swapped, as does all it changed (cleanup); the versions but the two kept are removed after.

@@ -15,7 +15,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FEED, feedOf, LAUNCHER, MARKER, tarballName, topOf, writeTarGz } from "../scripts/dist-server.mjs";
+import { feedName, feedOf, LAUNCHER, MARKER, tarballName, topOf, writeTarGz } from "../scripts/dist-server.mjs";
 import { findGitBash } from "../src/adapters/tools/shell.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -63,6 +63,43 @@ exit 1
 const LDD = `#!/bin/sh
 if [ "\${GLIBC:-2.35}" = musl ]; then echo "musl libc (x86_64)" >&2; exit 1; fi
 echo "ldd (GNU libc) \${GLIBC:-2.35}"
+`;
+
+/** A Mac's `sw_vers` saying SW_VERS, 14.5 by default; `sysctl` saying SYSCTL_ARM64 of hw.optional.arm64 (1 on Apple
+ * silicon, under Rosetta too), else no such key, as an Intel Mac's does. */
+const SW_VERS = `#!/bin/sh
+[ "$1" = -productVersion ] && echo "\${SW_VERS:-14.5}"
+`;
+const SYSCTL = `#!/bin/sh
+for k; do :; done
+if [ "$k" = hw.optional.arm64 ] && [ -n "\${SYSCTL_ARM64:-}" ]; then echo "$SYSCTL_ARM64"; exit 0; fi
+echo "sysctl: unknown oid '$k'" >&2
+exit 1
+`;
+
+/**
+ * A Mac's tools where they are not GNU's (first on the PATH, the system's next): `base64` decoding with -D alone, as
+ * macOS's before 13; `mv` with no -T but -h, which renames over a link to a folder as GNU's -T does. Each mv is
+ * written to MV_LOG.
+ */
+const MAC_BASE64 = `#!/bin/sh
+PATH=\${PATH#*:}
+export PATH
+case $1 in
+  -d) echo "base64: invalid option -- d" >&2; exit 64 ;;
+  -D) shift; exec base64 -d "$@" ;;
+esac
+exec base64 "$@"
+`;
+const MAC_MV = `#!/bin/sh
+PATH=\${PATH#*:}
+export PATH
+echo "$*" >>"$MV_LOG"
+case $1 in
+  -T) echo "mv: illegal option -- T" >&2; exit 64 ;;
+  -h) shift; exec mv -T "$@" ;;
+esac
+exec mv "$@"
 `;
 
 /**
@@ -171,30 +208,31 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
 
   /**
    * A release of `version`: the whole tarball (with an engine's file in it) and, with `small`, the one without the
-   * engine; their latest-server.yml. Each holds dist-server.mjs's launcher, a Node that says its version and engine,
+   * engine; their update file. Each holds dist-server.mjs's launcher, a Node that says its version and engine,
    * and build-info.json as the build writes it. `damaged`: the yml gives the tarball another file's SHA-512; `glibc`:
-   * the one the build says it was built on; `marker` false, a tarball without build-info.json.
-   * @param {string} version @param {{ small?: boolean, damaged?: boolean, glibc?: string, marker?: boolean }} [o]
+   * the one the build says it was built on (a Mac's says none); `marker` false, a tarball without build-info.json;
+   * `target`, the machine it is for, whose feed it is in (latest-server.yml's linux-x64 by default).
+   * @param {string} version @param {{ small?: boolean, damaged?: boolean, glibc?: string, marker?: boolean, target?: string }} [o]
    */
-  async function release(version, { small = false, damaged = false, glibc = "2.35", marker: withMarker = true } = {}) {
+  async function release(version, { small = false, damaged = false, glibc = "2.35", marker: withMarker = true, target = "linux-x64" } = {}) {
     const at = join(rel, "download", `v${version}`);
     mkdirSync(at, { recursive: true });
     const made = [];
     for (const engine of small ? [true, false] : [true]) {
-      const name = tarballName(version, engine);
-      const marker = { kind: "server", version, target: "linux-x64", file: name, feed: FEED, engine, node: "v24.11.0", glibc, releases: { provider: "github", owner: "invertibleMatrix", repo: "filament" } };
+      const name = tarballName(version, engine, target);
+      const marker = { kind: "server", version, target, file: name, feed: feedName(target), engine, node: "v24.11.0", glibc: target.startsWith("linux-") ? glibc : null, releases: { provider: "github", owner: "invertibleMatrix", repo: "filament" } };
       const entries = [
         { name: "bin/filament", mode: 0o755, body: Buffer.from(LAUNCHER) },
         { name: "bin/filament.js", mode: 0o755, body: Buffer.from("console.log('filament');\n") },
         { name: "node/bin/node", mode: 0o755, body: Buffer.from(`#!/bin/sh\necho "${version}${engine ? "" : " no-engine"}"\n`) },
         ...(withMarker ? [{ name: MARKER, mode: 0o644, body: Buffer.from(`${JSON.stringify(marker, null, 2)}\n`) }] : []),
-        ...(engine ? [{ name: "vendor/memory-engine/linux-x64/model.bin", mode: 0o644, body: Buffer.alloc(64 * 1024, 7) }] : []),
+        ...(engine ? [{ name: `vendor/memory-engine/${target}/model.bin`, mode: 0o644, body: Buffer.alloc(64 * 1024, 7) }] : []),
       ];
       const { sha512, size } = await writeTarGz(entries, join(at, name), { top: topOf(name), mtime: 1_762_560_000 });
       made.push({ name, sha512: damaged ? sha512Of("another file") : sha512, size });
     }
     // dist-server.mjs's own feed: each tarball a `files` entry, the first the older path/sha512 pair too.
-    writeFileSync(join(at, FEED), feedOf({ version, files: made, at: "2026-11-08T00:00:00.000Z" }));
+    writeFileSync(join(at, feedName(target)), feedOf({ version, files: made, at: "2026-11-08T00:00:00.000Z" }));
   }
 
   /** A server's HOME, empty, and the environment a run there gets. @param {Record<string, string>} [more] */
@@ -202,7 +240,7 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
     const at = tmp("home-");
     const fake = join(at, "fake-bin");
     mkdirSync(fake);
-    for (const [n, body] of [["uname", UNAME], ["getconf", GETCONF], ["ldd", LDD]]) {
+    for (const [n, body] of [["uname", UNAME], ["getconf", GETCONF], ["ldd", LDD], ["sw_vers", SW_VERS], ["sysctl", SYSCTL]]) {
       writeFileSync(join(fake, n), body);
       chmodSync(join(fake, n), 0o755);
     }
@@ -219,13 +257,13 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
     return r.out.trim();
   };
 
-  test("refuses in words on anything but Linux x86_64 or arm64, and names what it needs where the machine lacks it — nothing made", async () => {
+  test("refuses in words on anything but Linux x86_64 or arm64 or a Mac with Apple silicon, and names what it needs where the machine lacks it — nothing made", async () => {
     const h = home();
     try {
-      for (const [os, arch] of [["Darwin", "arm64"], ["Linux", "riscv64"], ["FreeBSD", "x86_64"]]) {
+      for (const [os, arch] of [["Linux", "riscv64"], ["FreeBSD", "x86_64"], ["SunOS", "arm64"]]) {
         const r = await sh({ ...h.env, UNAME_S: os, UNAME_M: arch });
         assert.equal(r.code, 1, `${os} ${arch}: ${r.out}`);
-        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and this machine is ${os} on ${arch}: nothing was installed\\. On a Mac, install the desktop app from https://github\\.com/invertibleMatrix/filament/releases/latest\\. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm https://github\\.com/invertibleMatrix/filament/releases/latest/download/install\\.ps1 \\| iex\\n$`));
+        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and for a Mac with Apple silicon, and this machine is ${os} on ${arch}: nothing was installed\\. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm https://github\\.com/invertibleMatrix/filament/releases/latest/download/install\\.ps1 \\| iex\\n$`));
       }
       // another C library than glibc, or a glibc older than Node's own builds need
       const musl = await sh({ ...h.env, GLIBC: "musl" });
@@ -559,6 +597,89 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
       assert.ok(existsSync(join(dir, "vendor", "memory-engine", "linux-x64", "model.bin")));
       assert.deepEqual(readdirSync(join(xdg, "filament")).sort(), ["2.0.0", "current"]);
       assert.equal(await runs(env), "2.0.0");
+    } finally {
+      rmSync(h.at, { recursive: true, force: true });
+    }
+  });
+
+  // (fails before: yes — a Mac was refused, told to install the desktop app)
+  test("a Mac: Apple silicon's tarball by its own feed, under Rosetta too, with no glibc asked; an Intel Mac and a macOS older than 13.5 refused in words, nothing asked of the releases", async () => {
+    await release("7.0.0", { target: "darwin-arm64", damaged: true });
+    latest = "7.0.0";
+    const h = home({ UNAME_S: "Darwin", GLIBC: "musl" });
+    try {
+      hits.length = 0;
+      // an Intel Mac: hw.optional.arm64 0, or no such key
+      for (const more of /** @type {Record<string, string>[]} */ ([{ UNAME_M: "x86_64", SYSCTL_ARM64: "0" }, { UNAME_M: "x86_64" }])) {
+        const r = await sh({ ...h.env, ...more });
+        assert.equal(r.code, 1, r.out);
+        assert.equal(r.err, "Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's (x86_64): nothing was installed.\n");
+      }
+      for (const [v, says] of [["13.4.1", "13.4.1"], ["12.7", "12.7"], ["11", "11.0"]]) {
+        const r = await sh({ ...h.env, UNAME_M: "arm64", SW_VERS: v });
+        assert.equal(r.code, 1, r.out);
+        assert.equal(r.err, `Filament for servers needs macOS 13.5 or newer, and this Mac runs ${says}: nothing was installed.\n`);
+      }
+      assert.deepEqual(hits, [], "nothing asked");
+      // Apple silicon natively, under Rosetta (its terminal's uname says x86_64), and on a newer macOS: the Mac's feed
+      // and tarball, refused after the download for its SHA-512 alone
+      for (const more of /** @type {Record<string, string>[]} */ ([{ UNAME_M: "arm64", SW_VERS: "13.5" }, { UNAME_M: "x86_64", SYSCTL_ARM64: "1" }, { UNAME_M: "arm64", SW_VERS: "26.1" }])) {
+        hits.length = 0;
+        const r = await sh({ ...h.env, ...more });
+        assert.equal(r.code, 1, r.out);
+        assert.equal(r.out, "Downloading Filament 7.0.0 (filament-server-7.0.0-darwin-arm64.tar.gz)...\n");
+        assert.match(r.err, /^The download of filament-server-7\.0\.0-darwin-arm64\.tar\.gz is not the file latest-server-darwin-arm64\.yml describes: its SHA-512 differs\./m);
+        assert.deepEqual(hits, ["/latest/download/latest-server-darwin-arm64.yml", "/download/v7.0.0/filament-server-7.0.0-darwin-arm64.tar.gz"]);
+      }
+      assert.deepEqual(treeAt(h.home), [], "nothing under HOME");
+    } finally {
+      rmSync(h.at, { recursive: true, force: true });
+    }
+  });
+
+  // (fails before: yes — a Mac was refused; on one let through, base64 -d and mv -T would have been asked alone, and
+  // the PATH advice named ~/.profile, which zsh does not read)
+  test("installs on a Mac with Apple silicon as on Linux, with a Mac's base64 and mv: links swapped by mv -h in one rename; the PATH advice names zsh's file, or bash's where the person has one; the desktop app, where there is one, said", async (t) => {
+    if (!links) return t.skip("this sh makes no real links (Git for Windows without developer mode): the install's current and ~/.local/bin/filament are links");
+    await release("7.1.0", { target: "darwin-arm64" });
+    await release("7.2.0", { target: "darwin-arm64" });
+    const h = home();
+    const mac = join(h.at, "mac-bin");
+    mkdirSync(mac);
+    for (const [n, body] of [["base64", MAC_BASE64], ["mv", MAC_MV]]) {
+      writeFileSync(join(mac, n), body);
+      chmodSync(join(mac, n), 0o755);
+    }
+    const log = join(h.at, "mv.log");
+    const env = { ...h.env, PATH: [mac, h.env.PATH].join(delimiter), UNAME_S: "Darwin", UNAME_M: "arm64", GLIBC: "musl", SHELL: "/bin/zsh", MV_LOG: shPath(log) };
+    try {
+      latest = "7.1.0";
+      let r = await sh(env);
+      assert.equal(r.code, 0, r.err);
+      const lines = r.out.trim().split("\n");
+      assert.equal(lines[0], "Downloading Filament 7.1.0 (filament-server-7.1.0-darwin-arm64.tar.gz)...");
+      assert.match(lines[1], /^\S+\/\.local\/bin is not on your PATH: add it to run Filament as filament - echo 'export PATH="\$HOME\/\.local\/bin:\$PATH"' >> ~\/\.zprofile, then open a new shell\.$/);
+      assert.match(lines[2], /^Filament 7\.1\.0 is installed in \S+\/\.local\/share\/filament\/7\.1\.0, and current points at it\.$/);
+      assert.match(lines[3], /^Next: \S+\/\.local\/bin\/filament setup$/);
+      assert.equal(lines.length, 4, "no app said where there is none");
+      assert.equal(JSON.parse(readFileSync(join(h.data, "7.1.0", MARKER), "utf8")).target, "darwin-arm64");
+      assert.ok(existsSync(join(h.data, "7.1.0", "vendor", "memory-engine", "darwin-arm64", "model.bin")));
+      assert.equal(await runs(env), "7.1.0");
+
+      // the desktop app in ~/Applications, bash with a ~/.bash_profile of the person's, and a newer release
+      mkdirSync(join(h.home, "Applications", "Filament.app"), { recursive: true });
+      writeFileSync(join(h.home, ".bash_profile"), "");
+      writeFileSync(log, "");
+      latest = "7.2.0";
+      r = await sh({ ...env, SHELL: "/bin/bash" });
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, />> ~\/\.bash_profile, then open a new shell\.$/m);
+      assert.match(r.out, /^Filament 7\.2\.0 is installed in \S+, and current points at it; 7\.1\.0 is kept beside it for a roll back\.\nFilament's desktop app is on this Mac too \(\S+\/Applications\/Filament\.app\): it and Filament for servers share one data folder and port, so one of them runs at a time\.\nNext: \S+ setup\n$/m);
+      assert.equal(realpathSync(join(h.data, "current")), realpathSync(join(h.data, "7.2.0")));
+      assert.equal(await runs(env), "7.2.0");
+      const mvs = readFileSync(log, "utf8").trim().split("\n");
+      assert.ok(mvs.some((l) => /^-h \S+\/current\.new-\d+ \S+\/current$/.test(l)), `current swapped by mv -h:\n${mvs.join("\n")}`);
+      assert.deepEqual(mvs.filter((l) => l.includes(".new-") && !/^-[Th] /.test(l)), [], "no link removed and made again");
     } finally {
       rmSync(h.at, { recursive: true, force: true });
     }
