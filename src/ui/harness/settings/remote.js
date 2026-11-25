@@ -30,7 +30,7 @@ import { openSshSetup } from "../ssh-setup.js";
 export const SEARCH_ROWS = Object.freeze([
   { label: "This machine", words: "name hostname remote access" },
   { label: "This device", words: "sign out remote" },
-  { path: "server.loopbackTrust", label: "Programs on this computer", words: "loopback trust owner key token legacy local programs scripts other accounts security" },
+  { label: "Programs on this computer", words: "server.loopbackTrust loopback trust owner key token legacy local programs scripts other accounts security" },
   { label: "Calls without the owner key", words: "owner key token programs scripts curl command line api security local this computer" },
   { path: "server.lan.enabled", label: "Reach this machine on my network", words: "lan local network https tls wifi remote access listen" },
   { path: "server.lan.port", label: "Port", words: "network lan https port" },

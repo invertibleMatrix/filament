@@ -60,7 +60,7 @@ const machine = () => {
     /** @param {string} mode */
     mode: (mode) => writeFileSync(control, mode),
     ac,
-    /** The runner, with a short wait between starts. @param {{ port?: number | null }} [o] */
+    /** The runner, with a short wait between starts. @param {{ port?: number | null, park?: boolean }} [o] */
     run: (o = {}) => runRunner({ dataDir: data, launch: () => ({ command: process.execPath, args: [script] }), againMs: 50, signal: ac.signal, ...o }),
     async close() {
       ac.abort();

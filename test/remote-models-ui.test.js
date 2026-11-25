@@ -121,7 +121,8 @@ const flowOver = (t, there, kept) => {
 test("main's models switch with fakes: on PATCHes the agents' device's grant models there with the window's sign-in, off PATCHes it false; the list carries models; the agents' grant is left as it is", async (t) => {
   const there = scripted([device("d-agents", { agents: true })]);
   const { flow } = flowOver(t, there, "d-agents");
-  assert.deepEqual(await flow.list(), [{ id: "m-mac", name: "Mac mini", on: true, models: false, full: false, kept: true, ready: true, words: null }]);
+  // `agents`: the sign-ins there, null where they were not read (this fake answers no such read).
+  assert.deepEqual(await flow.list(), [{ id: "m-mac", name: "Mac mini", on: true, models: false, full: false, kept: true, ready: true, words: null, agents: null }]);
 
   const on = await flow.models("m-mac", true);
   assert.deepEqual([on.on, on.models, on.kept, on.ready, on.said], [true, true, true, true, undefined]);
