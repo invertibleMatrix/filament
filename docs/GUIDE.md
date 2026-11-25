@@ -2376,24 +2376,27 @@ computer too, where `server.loopbackTrust` is `token`: memory's tools, briefing,
   started in a terminal. Nothing is sent until that notice has been shown, and nothing is sent, counted or kept while
   they are off. On Windows the installer asks first, on a first install: its **No** turns them off before Filament
   ever starts (an update asks nothing again).
+  - **Never sent**: prompts, replies, code, file or folder names, paths, chat titles, the names you gave upstreams or
+    agents, addresses, keys, account names, or your IP address. Requests to models go straight from your machine to
+    the provider or coding agent, never through filamentdev.com; what is sent is a handful of totals, added up on your
+    machine.
   - **Turn them off or on** at Settings › Data and privacy › Anonymous usage statistics, with
     `filament settings set telemetry.enabled false`, or in the environment with `DO_NOT_TRACK=1` or
     `FILAMENT_TELEMETRY=0`. **Show what's sent** on the same page shows the last batch exactly as it went.
   - **What is sent**: at each start, Filament's version, the system and its architecture, how it was installed (the
-    desktop app, a server, a checkout), your locale's language and region, and your time zone. Once a day, for the day
-    before, the same plus: requests, errors and stopped requests; tokens (input, cache, output, thinking); speed (tokens
-    a second, time to the first byte); what the day cost in dollars; requests in each hour of your day; those per
-    provider kind (Anthropic, OpenAI, OpenRouter, …, or "custom"), coding agent and model; runs by what ran them
-    (Filament's own loop or a coding agent) and how many were sub-agents'; how many upstreams of each kind and coding
-    agents are switched on; and whether memory, network access and Tailscale are on, with how many task-graph chats,
-    artifacts, Spaces, machines and devices there are.
+    desktop app, a server, a checkout), your locale's language and region, and your time zone. Once a day, totals for
+    the day before, added up on your machine (numbers only, never a request or its tokens): the same plus how many
+    requests there were and how many failed or were stopped; how many tokens they came to (input, cache, output,
+    thinking); the average speed (tokens a second, time to the first byte); the day's estimated cost; how many requests
+    there were in each hour of your day; those totals per provider kind (Anthropic, OpenAI, OpenRouter, …, or
+    "custom"), coding agent and model; how many runs Filament's own loop and each coding agent started, and how many
+    were sub-agents'; how many upstreams of each kind and coding agents are switched on; and whether memory, network
+    access and Tailscale are on, with how many task-graph chats, artifacts, Spaces, machines and devices there are.
   - **Every value comes from a fixed list or a strict form.** A model is named only when it is a model of the built-in
     price table, or a public model of a known family (GPT, Gemini, Claude, Grok, Kimi, DeepSeek, Qwen, GLM, Mistral,
     Llama, …) that ran on a catalogue provider or a coding agent Filament knows. Every other model is "custom": a local
     one, a fine-tune, a custom address's, another machine's. An upstream is its provider's kind, never its name, id or
     address. An agent Filament does not know is "other-agent".
-  - **Never sent**: prompts, replies, code, file or folder names, paths, chat titles, the names you gave upstreams or
-    agents, addresses, keys, account names, or your IP address.
   - **Where it goes**: `https://t.filamentdev.com/e`, a relay that drops the address the request came from, adds the
     country it came from, and passes the events on to PostHog's EU cloud without a person profile. Each Filament is known
     there by a random id of its own, kept in `telemetry.json` in its data folder. That id is not the one pairing shows
