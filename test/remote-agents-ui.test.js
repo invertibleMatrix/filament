@@ -761,7 +761,7 @@ const flowOver = (t, there, o = {}) => {
 test("main's switch with fakes: on mints the agents' device with the window's sign-in, keeps its token here, switches its grant there; off keeps the token; on again mints nothing; two presses mint once; Forget revokes there and lets the token go", async (t) => {
   const there = scripted();
   const { flow, store } = flowOver(t, there);
-  assert.deepEqual(await flow.list(), [{ id: "m-mac", name: "Mac mini", on: false, models: false, full: false, kept: false, ready: true, words: null }]);
+  assert.deepEqual(await flow.list(), [{ id: "m-mac", name: "Mac mini", on: false, models: false, full: false, kept: false, ready: true, words: null, agents: null }]);
 
   const [a, b] = await Promise.all([flow.set("m-mac", true), flow.set("M-MAC", true)]);
   assert.equal(there.minted(), 1, "two presses at once mint one device");
@@ -967,7 +967,7 @@ test("main's switch says what stands in the way, and moves nothing: no answer, t
   // (fails before: yes — s0b: an SSH tunnel was never taken, whether Add paired a device there over SSH or not)
   const TUNNEL = { kind: "ssh", url: "http://127.0.0.1:41000", alias: "mac", port: 20300 };
   const ssh = flowOver(t, scripted(), { machine: { routes: [TUNNEL] } });
-  assert.deepEqual((await ssh.flow.list())[0], { id: "m-mac", name: "Mac mini", on: false, models: false, full: false, kept: false, ready: true, words: null }, "its device there, through the tunnel");
+  assert.deepEqual((await ssh.flow.list())[0], { id: "m-mac", name: "Mac mini", on: false, models: false, full: false, kept: false, ready: true, words: null, agents: null }, "its device there, through the tunnel");
   assert.deepEqual(ssh.picked, ["http://127.0.0.1:41000"]);
   assert.equal((await ssh.flow.set("m-mac", true)).on, true);
   assert.deepEqual(ssh.store.list().map((r) => [r.url, r.fingerprint ?? null, r.device.scope]), [["http://127.0.0.1:41000", null, "agent"]], "its agents reach it at the tunnel's address");
@@ -1240,6 +1240,21 @@ test("main's card: a machine's coding agents' sign-ins as it lists them; Copy ke
     ["PATCH", "/upstreams/groq-empty", { apiKey: KEYS.groq.apiKey, keyFrom: "Desk on 2026-11-24" }],
   ]);
   assert.equal(k.said, 'Copied to Mac mini: OpenRouter, Groq. Not copied: Anthropic (Mac mini\'s provider "claude" at that address has a key of its own: it is left as it is.)');
+  // (the hunt on s3c) Two keys ticked at one address: the first takes the provider there — the one it has, or the one
+  // the copy adds —, the second is said, never written over it.
+  const work = { ...KEYS.anthropic, id: "claude-work", name: "Claude work", apiKey: "sk-ant-COPIED-wwwwwwwwwwww" };
+  const one = scripted({ upstreams: [{ id: "claude", name: "Claude", baseUrl: "https://api.anthropic.com" }] });
+  const twice = await flowOver(t, one, { ownName: () => "Desk", keysOut: async () => [structuredClone(KEYS.anthropic), work], now: () => Date.UTC(2026, 10, 24, 9) }).flow.copyKeys("m-mac", ["anthropic", "claude-work"]);
+  assert.deepEqual(one.sent, [["PATCH", "/upstreams/claude", { apiKey: KEYS.anthropic.apiKey, keyFrom: "Desk on 2026-11-24" }]]);
+  assert.equal(twice.said, 'Copied to Mac mini: Anthropic. Not copied: Claude work (Mac mini\'s provider "claude" at that address took Anthropic\'s key in this copy: set the key of the one you mean in its Settings › Providers.)');
+  const empty = scripted({ upstreams: [] });
+  const added = await flowOver(t, empty, { ownName: () => "Desk", keysOut: async () => [structuredClone(KEYS.anthropic), work], now: () => Date.UTC(2026, 10, 24, 9) }).flow.copyKeys("m-mac", ["anthropic", "claude-work"]);
+  assert.deepEqual(
+    empty.sent.map(([method, path]) => [method, path]),
+    [["POST", "/upstreams"]],
+    "the one added takes the address",
+  );
+  assert.match(String(added.said), /^Copied to Mac mini: Anthropic\. Not copied: Claude work \(Mac mini's provider "\w+" at that address took Anthropic's key in this copy/);
 });
 
 // (fails before: yes — s3c)
@@ -1249,11 +1264,12 @@ test("the page's card: its coding agents' line, an email masked; Sign in there o
   const agents = [{ name: "Claude Code", state: "in", who: "me@example.com" }, { name: "Codex", state: "out", who: null }];
   /** Whether the machine's coding agents were read as the app answers. */
   let read = true;
-  const b = bridge([{ id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null, agents }]);
+  // The Agents switch's answer, as the app gives it (machine-agents.js `granted`): its sign-ins never read.
+  const b = bridge([{ id: "m-mac", name: "Mac mini", on: false, kept: false, ready: true, words: null, agents }], { on: (id, on) => ({ id, name: "Mac mini", on, kept: true, ready: true, words: null }) });
   const app = {
     ...b.app,
     openOn: async (/** @type {string} */ id, /** @type {string} */ route) => (did.push(["open", id, route]), true),
-    copyKeys: async (/** @type {string} */ id, /** @type {string[]} */ ids) => (did.push(["copy", id, ids]), { id, name: "Mac mini", on: false, kept: false, ready: true, words: null, ...(read ? { agents } : {}), said: "Copied to Mac mini: Anthropic" }),
+    copyKeys: async (/** @type {string} */ id, /** @type {string[]} */ ids) => (did.push(["copy", id, ids]), { id, name: "Mac mini", on: false, kept: false, ready: true, words: null, agents: read ? agents : null, said: "Copied to Mac mini: Anthropic" }),
   };
   const upstreams = [
     { id: "anthropic", name: "Anthropic", type: "anthropic", key: { stored: true, masked: "sk-a…aa" } },
@@ -1268,9 +1284,15 @@ test("the page's card: its coding agents' line, an email masked; Sign in there o
   /** @type {(string[] | null)[]} */
   const picks = [["anthropic"], [], null];
   const p = await open({ app, upstreams, pickKeys: async (o) => (sheets.push(o), picks.shift() ?? null) });
+  const signIns = "Coding agents there: Claude Code signed in as m••@example.com · Codex nobody signed in";
+  assert.ok(lines(itemOf(p.body, "What this machine may do on Mac mini")).some((l) => textOf(l) === signIns));
+  // (the hunt on s3c) A switch's answer, which never read the sign-ins, leaves their line and Sign in there standing.
+  pillOf(itemOf(p.body, "What this machine may do on Mac mini"), "Let this Filament's agents work on Mac mini").attrs.onclick();
+  await settle();
+  assert.deepEqual(b.calls.filter((c) => c[0] === "on"), [["on", "m-mac", true]]);
   const mac = itemOf(p.body, "What this machine may do on Mac mini");
   const said = lines(mac).map((l) => textOf(l));
-  assert.ok(said.includes("Coding agents there: Claude Code signed in as m••@example.com · Codex nobody signed in"), said.join(" | "));
+  assert.ok(said.includes(signIns), said.join(" | "));
   const btns = buttonsOf(mac);
   btns.find((x) => textOf(x) === "Sign in there…").attrs.onclick();
   btns.find((x) => textOf(x) === "Copy keys…").attrs.onclick();

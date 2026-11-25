@@ -33,7 +33,7 @@ import { NAME_MAX } from "../../src/services/machine.js";
  * on a wire this app does not speak, `words` saying which side to update; `said`, an outcome to tell once — `failed`
  * where it went wrong.
  * `agents`: its coding agents' accounts, as it lists them (GET /agent-accounts) — read where the switches move, none else.
- * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", update?: true, said?: string, failed?: true, agents?: AccountLine[] }} AgentsRow
+ * @typedef {{ id: string, name: string, on: boolean, models: boolean, full: boolean, kept: boolean, ready: boolean, words: string | null, away?: "off" | "quiet", update?: true, said?: string, failed?: true, agents?: AccountLine[] | null }} AgentsRow
  * One coding agent's account there: its name, and whether someone is signed in to it (`in`, as `who` where it said
  * whom), nobody is (`out`), it is turned off there (`off`), or it has not said yet (`unknown`).
  * @typedef {{ name: string, state: "in" | "out" | "off" | "unknown", who: string | null }} AccountLine
@@ -215,7 +215,8 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     if (r.status !== 200) return rowOf(m, { kept: !!kept, words: `${m.name}'s devices could not be read: ${refusal(r)}.` });
     const there = kept ? (Array.isArray(r.json?.devices) ? r.json.devices : []).find((/** @type {any} */ d) => d?.id === kept.device.id && d.revokedAt == null) : null;
     if (there) follow(m, reached, kept);
-    // Its coding agents' sign-ins, as it lists them: none said where they could not be read.
+    // Its coding agents' sign-ins, as it lists them: null where they could not be read, so the page keeps no line from
+    // before; an answer that never asked (a switch's, a browser's) carries no `agents`, and the page's line stands.
     const agents = accounts.status === 200 && Array.isArray(accounts.json?.agents) ? accounts.json.agents.slice(0, ACCOUNTS_MAX).map(accountLine) : null;
     return rowOf(m, {
       on: there?.grants?.agents === true,
@@ -224,7 +225,7 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
       kept: !!kept,
       ready: true,
       words: kept && !there ? `Its agents' device on ${m.name} was revoked there: switched on, ${m.name} makes a new one.` : null,
-      ...(agents ? { agents } : {}),
+      agents,
     });
   }
 
@@ -252,8 +253,10 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     } catch (/** @type {any} */ e) {
       return { ...(await standing(m, r)), said: `No key copied: ${e?.message || e}`, failed: true };
     }
-    // The day said whole within a machine's name's length, which is all the machine keeps of it (app/providers.js).
-    const day = ` on ${new Date(now()).toISOString().slice(0, 10)}`;
+    // The day said whole within a machine's name's length, which is all the machine keeps of it (app/providers.js): this
+    // computer's own day, as its person reads a date.
+    const d = new Date(now());
+    const day = ` on ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const keyFrom = `${(String(ownName() || "").trim() || "another machine").slice(0, NAME_MAX - day.length).trim()}${day}`;
     /** A provider's address, as two of them are compared. @param {any} u */
     const addressOf = (u) => String(u?.baseUrl || "").replace(/\/+$/, "");
@@ -261,6 +264,8 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
     const aProvider = (u) => !u?.agent && !u?.machine;
     /** @type {Copied[]} */
     const copied = [];
+    /** The providers there this copy has set a key on, by id (lower case): the name of the key each took. @type {Map<string, string>} */
+    const took = new Map();
     for (const k of keys) {
       const { id, apiKey, ...rest } = k;
       /** @param {string} words */
@@ -286,12 +291,25 @@ export function createMachineAgents({ machines, cookieOf, keepSignIn, store, pic
         no(`${m.name}'s provider "${at[0].id}" at that address has a key of its own: it is left as it is.`);
         continue;
       }
+      // Two keys ticked for one provider there: the first takes it, the second is said, never written over it (the hunt
+      // on s3c).
+      const first = at.length ? took.get(String(at[0].id).toLowerCase()) : undefined;
+      if (first !== undefined) {
+        no(`${m.name}'s provider "${at[0].id}" at that address took ${first}'s key in this copy: set the key of the one you mean in its Settings › Providers.`);
+        continue;
+      }
       const sent = await (at.length
         ? r.send(`/upstreams/${encodeURIComponent(String(at[0].id))}`, { method: "PATCH", body: { apiKey, keyFrom } })
         : r.send("/upstreams", { method: "POST", body: { ...rest, apiKey, prefix: id, keyFrom } })
       ).catch((/** @type {any} */ e) => ({ status: 0, json: { error: String(e?.message || e) } }));
-      if (sent.status === 200) copied.push({ id, name: String(k.name || id), ok: true, words: null });
-      else no(capped(refusal(sent)));
+      if (sent.status === 200) {
+        const name = String(k.name || id);
+        copied.push({ id, name, ok: true, words: null });
+        // What it has there now: the provider that took the key, or the one added, as the next key looks for one.
+        const to = at.length ? String(at[0].id) : String(sent.json?.upstream?.id || id);
+        took.set(to.toLowerCase(), name);
+        if (!at.length) had.push({ id: to, baseUrl: k.baseUrl, key: { stored: true, from: keyFrom } });
+      } else no(capped(refusal(sent)));
     }
     const ok = copied.filter((c) => c.ok).map((c) => c.name);
     const not = copied.filter((c) => !c.ok);

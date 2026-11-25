@@ -763,8 +763,9 @@ export function renderRemote(body, cb = {}, io = {}) {
    * A machine's row as the app answered it, in its place: what the answer does not carry — its browser switch and its
    * link, beside Agents', Models' and Forget's answers — kept as it stood. @param {any} got
    */
-  // Its coding agents' line is the answer's alone: one that could not read them leaves none standing from before.
-  const tookThere = (got) => void (got?.id && (there = (there || []).map((y) => (y.id === got.id ? { ...y, ...got, agents: got.agents } : y))));
+  // Its coding agents' line is the answer's where it read them: one that could not (`agents` null) leaves none standing
+  // from before; one that never asked (a switch's, a browser's) leaves the line as it stood (the hunt on s3c).
+  const tookThere = (got) => void (got?.id && (there = (there || []).map((y) => (y.id === got.id ? { ...y, ...got, agents: "agents" in got ? got.agents : y.agents } : y))));
   /**
    * This Filament's upstream of a machine's models removed here, where there is one: null where none is left, else why
    * it stays, in words (a route of the person's that names it). @param {any} x
