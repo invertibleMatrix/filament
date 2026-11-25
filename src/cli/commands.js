@@ -150,11 +150,14 @@ export async function statusOf(client, { shown = false } = {}) {
   const device = client.state?.device || null;
   /** @param {string} path */
   const read = (path) => (device?.scope === "view" ? client.get(path).catch(() => null) : client.get(path));
-  const [start, ups, agents, accounts] = await Promise.all([
+  const [start, ups, agents, accounts, lan, tail] = await Promise.all([
     read("/start"),
     read("/upstreams"),
     client.get("/coding-agents").catch(() => null),
     client.get("/agent-accounts").catch(() => null),
+    // Its ways in over https, a full device's to read: the network listener (its firewall not read) and the tailnet's share.
+    client.get("/remote/lan?firewall=0").catch(() => null),
+    client.get("/remote/tailscale").catch(() => null),
   ]);
   /** @type {any[]} */
   const keys = (ups?.upstreams || []).filter((/** @type {any} */ u) => !u.agent);
@@ -177,6 +180,9 @@ export async function statusOf(client, { shown = false } = {}) {
     // The model it works with where no chat is named, never the setting ("" is no model): none, with why.
     memory: { on: !!start?.memory?.enabled, installed: !!start?.memory?.installed, model: start?.memory?.learnsWith || null, chosen: !!start?.memory?.chosen, whyNone: start?.memory?.whyNone || null },
     firstRun: start?.connected?.ok === false,
+    // Asked for, and as it stands: the port the network listener listens on, whether Tailscale serves it, or why not.
+    network: lan ? { on: lan.on === true, listening: Number(lan.listening?.port) || null, error: lan.error || null } : null,
+    tailnet: tail ? { on: tail.on === true, served: !!tail.listening, error: tail.error || tail.enable || null } : null,
     // What a view-only device does not read: the models, keys and memory lines say nothing then.
     unread: device?.scope === "view" && !start,
   };

@@ -122,7 +122,8 @@ export function setupFlow(io, paint) {
       i++;
     }
     v.running = false;
-    if (v.rows.every((r) => r.state === "done" || r.state === "skipped")) v.ended = v.rows.slice(1).every((r) => r.state === "skipped") ? "nothing" : "set";
+    // Nothing to do where no step did a thing, nor left a line only the person may run (sudo's lingering, say).
+    if (v.rows.every((r) => r.state === "done" || r.state === "skipped")) v.ended = v.rows.slice(1).every((r) => r.state === "skipped" && !r.also.length) ? "nothing" : "set";
     show();
   }
 

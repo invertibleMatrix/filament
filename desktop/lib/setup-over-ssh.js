@@ -16,12 +16,15 @@ import { join } from "node:path";
 import { FILAMENT_PORT, aliasOf } from "./ssh-route.js";
 import { probeSsh, runSsh, shQuote, sshTerminal } from "./ssh-exec.js";
 import { PAIR_MS, PAIR_SCRIPT } from "./add-machine.js";
-import { isNewer } from "../../src/services/updates.js";
+import { isNewer, serverFeed } from "../../src/services/updates.js";
 
 /** Where install.sh is downloaded from: the newest release's, which installs any version asked of it. */
 export const INSTALL_URL = "https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh";
-/** A release's feed for servers, which install.sh reads first: there, the release is out. @param {string} version */
-export const feedUrl = (version) => `https://github.com/invertibleMatrix/filament/releases/download/v${version}/latest-server.yml`;
+/**
+ * A release's feed for the machine's servers, which install.sh reads first: there, the release is out for it — arm64's
+ * its own, which a release may be without. @param {string} version @param {string | null} [target]  the probe's
+ */
+export const feedUrl = (version, target) => `https://github.com/invertibleMatrix/filament/releases/download/v${version}/${serverFeed(target || undefined)}`;
 /** How long the install may take: a release downloaded, checked and unpacked. */
 export const INSTALL_MS = 10 * 60_000;
 /** How long `filament service install` may take: a Filament started by hand stopped once no turn runs, then systemd's started. */
@@ -136,12 +139,13 @@ export const installScript = (version) =>
   ].join("\n");
 
 /**
- * Whether a release of Filament for servers is out, asked of GitHub from here: none where its feed is not found, null
- * where GitHub did not say. @param {string} version @param {typeof fetch} [fetchImpl]
+ * Whether a release of Filament for servers is out for the machine (`target`), asked of GitHub from here: none where its
+ * feed is not found, null where GitHub did not say. @param {string} version @param {string | null} [target]
+ * @param {typeof fetch} [fetchImpl]
  */
-export async function releasedAt(version, fetchImpl = fetch) {
+export async function releasedAt(version, target, fetchImpl = fetch) {
   try {
-    const r = await fetchImpl(feedUrl(version), { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(10_000) });
+    const r = await fetchImpl(feedUrl(version, target), { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(10_000) });
     return r.status === 404 ? false : r.status < 400 ? true : null;
   } catch {
     return null;
@@ -153,13 +157,13 @@ export async function releasedAt(version, fetchImpl = fetch) {
  * @param {{ ssh?: typeof runSsh, probe?: (alias: string) => ReturnType<typeof probeSsh>, cli?: () => string, version: string,
  *   pair: (link: string, code?: string) => Promise<{ ok: true, id?: string, name: string, note?: string } | { ok: false, words: string }>,
  *   machines: () => Machine[], addWay: (id: string, route: Route) => unknown, routeFor: (alias: string, port: number) => Promise<Route>,
- *   publicKey?: () => string | null, released?: (version: string) => Promise<boolean | null>, wait?: (ms: number) => Promise<void>,
+ *   publicKey?: () => string | null, released?: (version: string, target: string | null) => Promise<boolean | null>, wait?: (ms: number) => Promise<void>,
  *   log?: (line: string) => void }} o
  *   `version`: this app's, which it installs there where that release is out; `pair`: a link paired as the Add sheet
  *   pairs it, the window left where it is (lib/rail.js `add`); `machines`: those this window keeps; `addWay`: a way to a
  *   machine kept, put after its others; `routeFor`: the SSH way to a Filament there (ssh-route.js `createTunnels`)
  */
-export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), cli, version, pair, machines, addWay, routeFor, publicKey = () => publicKeyHere(), released = (v) => releasedAt(v), wait =(ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} }) {
+export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), cli, version, pair, machines, addWay, routeFor, publicKey = () => publicKeyHere(), released = (v, t) => releasedAt(v, t), wait = (ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} }) {
   /**
    * What each machine's last look said, by its alias: its platform, its service's state, whether it is shared on the
    * tailnet. @type {Map<string, { platform?: Platform, service?: any, tailnet?: boolean }>}
@@ -240,8 +244,9 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     const r = await sh(a, installScript(want), INSTALL_MS);
     if (r.code === 7 && r.began) return { step: "install", state: "failed", words: `install.sh could not be downloaded there from ${INSTALL_URL}: ${a} reaches no GitHub, or reached it a moment too late.` };
     if (r.code !== 0 || !r.began) {
-      // install.sh says so of any feed it could not read: its release is none only where it is none from here too.
-      if (want && /gave no .* at /i.test(r.stderr) && (await released(want)) === false)
+      // install.sh says so of any feed it could not read: its release is none only where it is none from here too — the
+      // feed of the machine's own build (arm64's, which a release may be without; the hunt on s3b).
+      if (want && /gave no .* at /i.test(r.stderr) && (await released(want, got.platform.target)) === false)
         return { step: "install", state: "failed", words: `Filament ${want}, this app's version, has no server build released: this app is a build of its own. The newest release installs instead.`, offer: { label: "Install the newest release", latest: true } };
       return trouble("install", a, r, "install.sh");
     }
@@ -284,21 +289,26 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     let changed = !stood;
     /** @type {StepLine[]} */
     const also = [];
-    if (st.linger === false) {
-      // Its own lingering, as its user may on most systems; where they may not, the line with sudo.
+    // Lingering off, or not read (loginctl could not say): turned on as its user may on most systems; where it is not
+    // on after, the line with sudo — never "nothing to do" for a machine that may not start Filament at boot (the hunt
+    // on s3b).
+    if (st.linger !== true) {
       await sh(a, 'loginctl enable-linger "$(id -un)" >/dev/null 2>&1; true');
       const after = await serviceLook(a);
       if (after.st) st = after.st;
-      if (st.linger !== false) changed = true;
+      if (st.linger === true) changed = true;
       else
         also.push({
-          words: "Lingering is off for its user: Filament starts as they log in, and stops as their last session ends. To start it at boot:",
+          words:
+            st.linger === false
+              ? "Lingering is off for its user: Filament starts as they log in, and stops as their last session ends. To start it at boot:"
+              : "Whether lingering is on for its user could not be read there (loginctl): off, Filament starts as they log in, and stops as their last session ends. To be sure it starts at boot:",
           line: "sudo loginctl enable-linger $USER",
           terminal: term(a, { script: 'sudo loginctl enable-linger "$(id -un)"' }, `Lingering on ${a}`),
         });
     }
     const v = st.filament?.version ? `Filament ${st.filament.version}` : "Filament";
-    const when = st.linger === true ? "at boot" : "as its user logs in";
+    const when = st.linger === true ? "at boot" : st.linger === false ? "as its user logs in" : "at boot where lingering is on, else as its user logs in";
     return { step: "service", state: changed ? "done" : "skipped", words:`${v} runs there under systemd, started ${when}, and again after a crash.`, ...(also.length ? { also } : {}) };
   }
 
@@ -347,8 +357,22 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
   }
 
   /**
+   * Its ways in over https as `filament status --json` says them there: its network listener (asked for, the port it
+   * listens on, why not) and its tailnet share (asked for, served, why not); null each where it says none.
+   * @param {string} a
+   * @returns {Promise<{ network: { on: boolean, listening: number | null, error: string | null } | null, tailnet: { on: boolean, served: boolean, error: string | null } | null }>}
+   */
+  const waysThere = async (a) => {
+    const r = await sh(a, `exec ${FILAMENT} status --json`);
+    const s = r.code === 0 ? jsonIn(r.stdout, "{") : null;
+    return { network: s?.network ?? null, tailnet: s?.tailnet ?? null };
+  };
+
+  /**
    * A way in over https: shared on the tailnet where Tailscale runs there, else its network listener on — the lines only
-   * the person may run said with it: Tailscale's operator, the firewall's.
+   * the person may run said with it: Tailscale's operator, the firewall's. What was asked for is said as it stands
+   * there — listening, served, or why not (the hunt on s3b) —; one that does not come up stops nothing, as the pairing
+   * goes through an SSH tunnel then.
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function route(a) {
@@ -390,6 +414,16 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       const refused = user !== "root" && (!prefs || String(prefs.OperatorUser || "") !== user);
       /** @type {StepLine[]} */
       const also = refused ? [{ words: "Tailscale serves for root and its operator alone: let its user serve, once.", line: "sudo tailscale set --operator=$USER", terminal: term(a, { script: 'sudo tailscale set --operator="$(id -un)"' }, `Tailscale's operator on ${a}`) }] : [];
+      // Asked for before this run, and not served: said with why. Asked for just now, Tailscale takes its moment, which
+      // the pairing waits for.
+      const t = was ? (await waysThere(a)).tailnet : null;
+      if (t && !t.served)
+        return {
+          step: "route",
+          state: "done",
+          words: `Filament is asked to share itself on your tailnet there, and Tailscale does not serve it${t.error ? `: ${t.error.replace(/[.\s]+$/, "")}` : ""}. Until it does, the pairing goes through an SSH tunnel.`,
+          ...(also.length ? { also } : {}),
+        };
       return {
         step: "route",
         state: was ? "skipped" : "done",
@@ -407,10 +441,21 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       !was && k.ufw
         ? [{ words: "Where its firewall (ufw) is on, open Filament's two ports — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
         : [];
+    const tail = k.tailscale ? " Tailscale is there, not signed in: signed in (sudo tailscale up), a setup again shares Filament on your tailnet." : "";
+    // The listener as it stands once the setting is saved: one that could not listen (its port another program's) is
+    // said with why, never as listening.
+    const n = (await waysThere(a)).network;
+    if (n && !n.listening)
+      return {
+        step: "route",
+        state: "done",
+        words: `Filament is asked to listen on ${a}'s network addresses over https, and does not${n.error ? `: ${n.error.replace(/[.\s]+$/, "")}` : ""}. Until it does, the pairing goes through an SSH tunnel.${tail}`,
+        ...(also.length ? { also } : {}),
+      };
     return {
       step: "route",
       state: was ? "skipped" : "done",
-      words: `Filament listens on ${a}'s network addresses over https, at port 20343, with a certificate of its own.${k.tailscale ? " Tailscale is there, not signed in: signed in (sudo tailscale up), a setup again shares Filament on your tailnet." : ""}`,
+      words: `Filament listens on ${a}'s network addresses over https, at port ${n?.listening || 20343}, with a certificate of its own.${tail}`,
       ...(also.length ? { also } : {}),
     };
   }

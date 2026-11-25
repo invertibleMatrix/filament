@@ -138,7 +138,7 @@ did not type.
 |---|---|
 | `filament` or `npm start` | Run the server (default command `start`). |
 | `filament setup` | Set Filament up at a terminal, a step at a time, each one skippable: start Filament if none runs; connect and sign in the coding agents you have (Claude Code, Codex…); add a provider's API key, typed as stars; memory on or off and the cheap side model it learns with — and why it wants one; then where it stands, and the harness opened, paired as `filament open` pairs it. |
-| `filament status` | Whether Filament runs, where and since when, how many models can answer, the keys (masked at a terminal; to an agent's shell or a script only `set`), the coding agents and who each is signed in as, and memory. |
+| `filament status` | Whether Filament runs, where and since when, how many models can answer, the keys (masked at a terminal; to an agent's shell or a script only `set`), the coding agents and who each is signed in as, and memory. `--json` also says its ways in over https as they stand: `network` (asked for, the port it listens on, why not) and `tailnet` (asked for, served, why not). |
 | `filament keys` · `keys add [provider]` · `keys test <id>` · `keys remove <id>` | Your providers' keys. `add` asks which provider (or takes its id: `anthropic`, `openai`, `openrouter`…), its plan where it has several (`--plan`), and the key, typed as stars — or reads it from stdin with `--key-stdin`; a key is never taken from the command line, which a shell's history keeps. It then asks the provider whether the key works (`--no-test` skips that). `remove` asks first (`--yes` does not). |
 | `filament agents` · `agents connect <id>` · `agents sign-in <id>` · `agents check <id>` · `agents sign-out <id>` · `agents install <id>` · `agents off <id>` · `agents detect` | Your coding agents. `sign-in` opens the agent's page in your browser and waits for it (a code to type there, where it has one), or gives you the line to run in a terminal and checks once you press Enter; `--way` picks a sign-in where it has several, and a key's way (`--way api-key`) asks for the key, typed as stars, or takes it piped in with `--key-stdin`; `--no-open` only prints the page's address. Over SSH, or on a server with no display, it opens nothing and prints the page: for Codex pick ChatGPT on another device (`--way chatgpt-code`) and type its code in any browser; Claude Code's line runs in another SSH terminal. |
 | `filament models` | The models a chat can run on, each as the message box takes it. |
@@ -339,18 +339,21 @@ VM — is set up from the app: Settings › Remote access › **Set up over SSH�
 Add sheet's fields, which takes the `ssh://` host typed there). Type `user@host` or a Host of your SSH config and
 **Set up**: the sheet runs each step there over SSH, with your keys and your SSH config, and says each as it goes —
 *Reach it over SSH* (what the machine is, and what Filament's installer needs that it lacks), *Install Filament* (this
-app's version; an app that is a build of its own offers the newest release instead), *Run it as a service* (systemd,
+app's version; where that release has no build for the machine — an app that is a build of its own, or an arm64
+machine and a release with x64's alone — the newest release is offered instead), *Run it as a service* (systemd,
 at boot), *Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
 machine's own Settings › Coding agents), *A way in over https* (shared on your tailnet where Tailscale runs there,
-else its network listener on), and *Pair this window with it* (a code made there over SSH and claimed here, at the
+else its network listener on — said as it stands there: one asked for that does not listen, or that Tailscale does not
+serve, is said with why, and the pairing goes through an SSH tunnel until it does), and *Pair this window with it* (a code made there over SSH and claimed here, at the
 tailnet's address, then the network's, else through an SSH tunnel; its SSH way is kept after its https one). A host
 key ssh does not know is yours to check: ssh asks in a terminal on the sheet, with its fingerprint, and the step goes
 on once you answer. A host key that is not the one your known_hosts holds is refused, and nothing is sent: where the
 machine was set up anew, check its key, then remove the old one (`ssh-keygen -R <host>`). A machine that asks for a password gets this computer's key instead — **Run in a terminal** adds
 it there, the password typed once. What only `sudo` may do — lingering, so Filament starts at boot with no one logged
 in; Tailscale's operator; the firewall's ports — is said under its step with its line to copy and **Run in a
-terminal**. A coding agent that does not connect there is said, and the setup goes on. A step that failed says why,
-with **Retry**. Setting up a machine again does only what is missing: one set up already says *Nothing to do*. One
+terminal**. Where lingering cannot be read there, its line is said all the same. A coding agent that does not connect
+there is said, and the setup goes on. A step that failed says why, with **Retry**. Setting up a machine again does
+only what is missing: one set up already, with no line left for you to run, says *Nothing to do*. One
 paired through its SSH tunnel stays so; remove it from the window first for a setup to try its https ways again.
 
 Once another machine is kept, the top bar shows the machine you are looking

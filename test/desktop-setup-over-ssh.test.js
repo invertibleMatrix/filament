@@ -3,7 +3,7 @@
 // nothing to do; what only the person answers going to a terminal; and the words of each refusal.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INSTALL_URL, STEPS, createSetupOverSsh, installScript, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
+import { INSTALL_URL, STEPS, createSetupOverSsh, feedUrl, installScript, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
 import { PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
 import { platformOf } from "../desktop/lib/ssh-exec.js";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -29,8 +29,13 @@ function fakeMachine(o = {}) {
     release: o.release ?? true,
     systemd: o.systemd ?? true,
     service: o.service ?? { installed: false, active: "inactive", enabled: "disabled" },
-    linger: o.linger ?? false,
+    /** Lingering: on, off, or null where loginctl cannot say. */
+    linger: "linger" in o ? o.linger : false,
     lingerMay: o.lingerMay ?? true,
+    /** Its CPU, as uname says it. */
+    arch: o.arch ?? "x86_64",
+    /** The network listener comes up once asked: its port is free. */
+    lanUp: o.lanUp ?? true,
     agents: o.agents ?? [
       { id: "claude-code", name: "Claude Code", state: "ready", signedIn: "" },
       { id: "codex", name: "Codex", state: "missing", signedIn: "" },
@@ -51,7 +56,7 @@ function fakeMachine(o = {}) {
   };
   const platform = () =>
     platformOf(
-      ["os=Linux", "arch=x86_64", "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
+      ["os=Linux", `arch=${m.arch}`, "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
       "sh",
     );
   const status = () => ({ ...m.service, linger: m.linger, dataDir: m.service.installed ? "/home/me/.local/share/filament/data" : null, filament: m.service.active === "active" ? { version: m.filament, url: "http://127.0.0.1:20300", supervisor: "systemd" } : null });
@@ -69,6 +74,16 @@ function fakeMachine(o = {}) {
       return { ...OK, stdout: `Filament ${v} is installed.\n` };
     }
     if (s.includes("service status --json")) return { ...OK, stdout: `${JSON.stringify(status(), null, 2)}\n` };
+    // Its ways in over https as they stand: asked for, and listening or served — or why not.
+    if (s.includes('filament" status --json'))
+      return {
+        ...OK,
+        stdout: `${JSON.stringify({
+          version: m.filament,
+          network: { on: m.lan, listening: m.lan && m.lanUp ? 20343 : null, error: m.lan && !m.lanUp ? "port 20343 is in use by another program: choose another port" : null },
+          tailnet: { on: m.serve, served: m.serve && m.served, error: m.serve && !m.served ? "Tailscale's HTTPS is off for this tailnet." : null },
+        })}\n`,
+      };
     if (s.includes("service install")) {
       m.service = { installed: true, active: "active", enabled: "enabled" };
       return { ...OK, stdout: "Wrote ~/.config/systemd/user/filament.service.\n" };
@@ -94,7 +109,7 @@ function fakeMachine(o = {}) {
     if (s.includes("settings set server.lan.enabled true")) return ((m.lan = true), OK);
     if (s === PAIR_SCRIPT) {
       m.codes.push("ABCD-EFGH");
-      return { ...OK, stdout: JSON.stringify({ code: "ABCD-EFGH", links: m.links ?? [...(m.serve && m.served ? [TS_LINK] : []), ...(m.lan ? [LAN_LINK] : [])], fingerprint: FP, machine: { id: ID, name: "Box" } }) };
+      return { ...OK, stdout: JSON.stringify({ code: "ABCD-EFGH", links: m.links ?? [...(m.serve && m.served ? [TS_LINK] : []), ...(m.lan && m.lanUp ? [LAN_LINK] : [])], fingerprint: FP, machine: { id: ID, name: "Box" } }) };
     }
     throw new Error(`the fake machine runs no ${s.slice(0, 80)}`);
   };
@@ -351,6 +366,56 @@ test("install.sh not reading this app's release's feed: the newest offered only 
     assert.equal(!!r.offer, offered, `released ${released}`);
     if (!offered) assert.match(r.words, /^install\.sh: Filament's releases gave no latest-server\.yml at /, "install.sh's own words: GitHub not reached there");
   }
+  // (the hunt on s3b) An arm64 machine: its own feed asked, which a release with x64's alone is without — the newest
+  // offered there too.
+  /** @type {[string, string | null][]} */
+  const asked = [];
+  const arm = rig(fakeMachine({ release: false, arch: "aarch64" }), { released: async (/** @type {string} */ v, /** @type {string | null} */ target) => (asked.push([v, target]), target !== "linux-arm64") });
+  await arm.setup.run({ alias: ALIAS, step: "reach" });
+  const r = await arm.setup.run({ alias: ALIAS, step: "install" });
+  assert.deepEqual([r.state, !!r.offer, asked], ["failed", true, [["0.9.85", "linux-arm64"]]]);
+  assert.equal(feedUrl("0.9.85", "linux-arm64"), "https://github.com/invertibleMatrix/filament/releases/download/v0.9.85/latest-server-arm64.yml");
+  assert.equal(feedUrl("0.9.85", "linux-x64"), "https://github.com/invertibleMatrix/filament/releases/download/v0.9.85/latest-server.yml");
+  assert.equal(feedUrl("0.9.85", null), feedUrl("0.9.85", "linux-x64"));
+});
+
+test("lingering loginctl cannot say: turned on as its user may, else the sudo line said — never nothing to do for a machine that may not start it at boot", async () => {
+  const f = fakeMachine({ filament: "0.9.85", linger: null, lingerMay: false });
+  const t = rig(f);
+  await t.setup.run({ alias: ALIAS, step: "reach" });
+  const r = await t.setup.run({ alias: ALIAS, step: "service" });
+  assert.equal(r.state, "done");
+  assert.ok(f.m.ran.some((s) => s.startsWith("loginctl enable-linger")), "asked as its user may");
+  assert.match(r.words, /started at boot where lingering is on, else as its user logs in/);
+  assert.equal(r.also?.[0].line, "sudo loginctl enable-linger $USER");
+  assert.match(r.also?.[0].words || "", /^Whether lingering is on for its user could not be read there \(loginctl\)/);
+  const again = await t.setup.run({ alias: ALIAS, step: "service" });
+  assert.deepEqual([again.state, again.also?.length], ["skipped", 1], "the line said still");
+  // One its user may turn on: on, and said at boot.
+  const may = rig(fakeMachine({ filament: "0.9.85", linger: null }));
+  await may.setup.run({ alias: ALIAS, step: "reach" });
+  const on = await may.setup.run({ alias: ALIAS, step: "service" });
+  assert.deepEqual([on.state, on.also], ["done", undefined]);
+  assert.match(on.words, /started at boot, and again after a crash\.$/);
+});
+
+test("a way in asked for that does not come up: said with why — never as listening or served, nor nothing to do —, and the pairing goes through the tunnel", async () => {
+  const f = fakeMachine({ lanUp: false });
+  const t = rig(f);
+  const out = await t.all();
+  assert.equal(out[4].state, "done");
+  assert.equal(out[4].words, "Filament is asked to listen on me@box's network addresses over https, and does not: port 20343 is in use by another program: choose another port. Until it does, the pairing goes through an SSH tunnel.");
+  assert.deepEqual(t.paired, ["ssh://me@box:20300"]);
+  const again = await t.all();
+  assert.equal(again[4].state, "done", "a second run says it again, never nothing to do");
+  assert.match(again[4].words, /^Filament is asked to listen on .* and does not: port 20343 is in use/);
+  // Tailscale's share asked for by a run before, and not served.
+  const g = fakeMachine({ tailscale: "Running", served: false });
+  const ts = rig(g, { answers: (/** @type {string} */ link) => link.startsWith("ssh:") });
+  await ts.all();
+  const twice = await ts.all();
+  assert.equal(twice[4].state, "done");
+  assert.equal(twice[4].words, "Filament is asked to share itself on your tailnet there, and Tailscale does not serve it: Tailscale's HTTPS is off for this tailnet. Until it does, the pairing goes through an SSH tunnel.");
 });
 
 test("a machine you disconnected gets no way added: it stays disconnected", async () => {

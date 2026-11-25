@@ -225,6 +225,10 @@ describe("the commands, against a running Filament", () => {
     assert.equal(s.url, shim.url, "found by the listening.json it wrote as it started");
     assert.ok(s.models.answering >= 1, JSON.stringify(s.models));
     assert.deepEqual(s.keys.map((/** @type {any} */ k) => k.id), ["m"]);
+    // Its ways in over https as they stand (the hunt on s3b: a setup over SSH reads what listens, not what was asked).
+    assert.deepEqual(s.network, { on: false, listening: null, error: null });
+    assert.equal(s.tailnet?.on, false);
+    assert.equal(s.tailnet?.served, false);
     const w = (await run(["status"])).out.join("\n");
     assert.ok(w.startsWith(`Filament ${s.version} at ${shim.url} — up `), w);
     assert.match(w, /\n {2}keys {4}: m \(/);

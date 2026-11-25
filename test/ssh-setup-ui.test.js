@@ -58,6 +58,11 @@ test("run again on a machine set up already: every step after the first had noth
   const t = rig(skipped);
   await t.flow.start("me@box");
   assert.equal(t.last().ended, "nothing");
+  // (the hunt on s3b) One that left a line only the person may run is not nothing to do.
+  const line = { words: "Lingering is off for its user", line: "sudo loginctl enable-linger $USER", terminal: null };
+  const left = rig({ ...skipped, service: [{ step: "service", state: "skipped", words: "as it was", also: [line] }] });
+  await left.flow.start("me@box");
+  assert.equal(left.last().ended, "set");
 });
 
 test("a step that failed stops the rest; Retry asks it again, then those after it", async () => {
