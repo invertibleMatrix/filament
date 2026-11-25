@@ -15,6 +15,7 @@
 //   npm run test:desktop -- --desk           the desk's checks (35) alone, over two Filaments of their own
 //   npm run test:desktop -- --owner          the windows' owner session's check (36) alone
 //   npm run test:desktop -- --artifacts      an artifact's own pass's check (37) alone
+//   npm run test:desktop -- --browser        the agent's browser's checks (26–30, 34) alone
 import { spawn, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, request } from "node:http";
@@ -48,6 +49,7 @@ if (BUILT) console.log(`the packaged app: ${BUILT}`);
 const DESK_ONLY = process.argv.includes("--desk");
 const OWNER_ONLY = process.argv.includes("--owner");
 const ARTIFACTS_ONLY = process.argv.includes("--artifacts");
+const BROWSER_ONLY = process.argv.includes("--browser");
 if (process.platform !== "win32") {
   console.log("the desktop drive reads Windows' process list; on this platform it does not run yet");
   process.exit(0);
@@ -691,8 +693,329 @@ async function driveArtifacts() {
   await until(() => R.exited(), 30000, "the app's end");
 }
 
-// `--desk`: the desk's checks alone; `--owner`, the windows' owner session's; `--artifacts`, an artifact's own pass.
-const ONLY = DESK_ONLY ? driveDesk : OWNER_ONLY ? driveOwner : ARTIFACTS_ONLY ? driveArtifacts : null;
+/**
+ * The agent's browser (26–30) and its page where no app of its own shows it (34), over the app this drive runs at
+ * `portA` (its DevTools at `debugA`, its data folder `dataA`): in the full drive after check 14, alone with --browser.
+ * @param {number} portA @param {string} originA @param {number} debugA @param {string} dataA
+ */
+async function driveBrowser(portA, originA, debugA, dataA) {
+  // 26. The agent's browser (HarnessV4_Browser_Plan BR5): a chat with the browser switched on, a model that browses a
+  // page of this drive's own (a sign-in form on 127.0.0.1) — navigate, snapshot, type, click, a screenshot — in the
+  // app's Chromium, which holds the page over Filament's socket. Then the chat in the harness's window, its Browser pane
+  // opened from the panes' ⋯ as a person would: the page placed over the pane's stage, parked while a menu covers it
+  // (its picture standing in), placed again. Then Take over: the agent's next call answered at once, in words. Then
+  // HarnessV4_BrowserSize_Plan's proof (BS5): the page keeps its own size over the pane (27) and the agent's click lands
+  // on it scaled; the agent's resize and the size chip (28); the veil while it drives, its Take over, the page back by
+  // itself 5 s after the pointer is off it (29); the Browser popped out into a window of its own and brought back (30).
+  const SHOP = `<!doctype html><title>Sign in · Drive shop</title><h1 id="h">Sign in</h1><label>Email <input id="e" aria-label="Email"></label><button id="b" onclick="document.title = 'Signed in as ' + document.getElementById('e').value; document.getElementById('h').textContent = document.title">Sign in</button><p><button id="c" onclick="window.n = (window.n || 0) + 1; this.textContent = 'Count ' + window.n">Count</button></p>`;
+  const shop = createServer((_req, res) => (res.writeHead(200, { "content-type": "text/html; charset=utf-8" }), res.end(SHOP)));
+  await new Promise((r) => shop.listen(0, "127.0.0.1", () => r(null)));
+  const shopBase = `http://127.0.0.1:${/** @type {any} */ (shop.address()).port}`;
+  try {
+    /** A message's words, its tool results' too ([image] for a picture). @param {any} m */
+    const wordsOf = (m) =>
+      typeof m?.content === "string"
+        ? m.content
+        : (m?.content || []).map((/** @type {any} */ b) => (b.type === "text" ? b.text : b.type === "tool_result" ? (typeof b.content === "string" ? b.content : (b.content || []).map((/** @type {any} */ x) => (x.type === "text" ? x.text : `[${x.type}]`)).join("\n")) : "")).join("\n");
+    /** The result the model was given for one call. @param {any[]} msgs @param {string} id */
+    const resultOf = (msgs, id) => msgs.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.type === "tool_result" && b.tool_use_id === id);
+    const use = (/** @type {string} */ id, /** @type {any} */ input) => anthropicReply("", { model: "claude-sonnet-5-5", stop: "tool_use", blocks: [{ type: "tool_use", id, name: "browser", input }] });
+    /** @type {any[] | null} */
+    let seen26 = null;
+    brain = (c) => {
+      if (c.kind !== "anthropic" || !Array.isArray(c.body?.tools) || !c.body.tools.some((/** @type {any} */ t) => t.name === "browser")) return undefined;
+      const msgs = /** @type {any[]} */ (c.body.messages || []);
+      // Where this turn's prompt stands: the newest user message that is words, not a tool's result.
+      const at = msgs.findLastIndex((m) => m.role === "user" && !(Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b.type === "tool_result")));
+      const asked = wordsOf(msgs[at]);
+      const n = msgs.slice(at).filter((m) => m.role === "assistant").length;
+      const all = msgs.map(wordsOf).join("\n");
+      if (asked.includes("check the shop's sign-in")) {
+        if (n === 0) return use("b1", { action: "navigate", url: `${shopBase}/login` });
+        if (n === 1) return use("b2", { action: "snapshot" });
+        if (n === 2) return use("b3", { action: "type", ref: /textbox "Email" \[(e\d+)\]/.exec(all)?.[1] || "e0", text: "ada@example.com" });
+        if (n === 3) return use("b4", { action: "click", ref: /button "Sign in" \[(e\d+)\]/.exec(all)?.[1] || "e0" });
+        if (n === 4) return use("b5", { action: "screenshot" });
+        seen26 = msgs;
+        return anthropicReply("Signed in as ada@example.com: the page says so.", { model: "claude-sonnet-5-5" });
+      }
+      if (asked.includes("look at the page again")) return n === 0 ? use("t1", { action: "snapshot" }) : anthropicReply("You have the browser; I wait.", { model: "claude-sonnet-5-5" });
+      // The newest snapshot's handle for the Count button.
+      const count = [...all.matchAll(/button "Count(?: \d+)?" \[(e\d+)\]/g)].at(-1)?.[1] || "e0";
+      if (asked.includes("press the shop's count button")) {
+        if (n === 0) return use("c1", { action: "snapshot" });
+        if (n === 1) return use("c2", { action: "click", ref: count });
+        return anthropicReply("Pressed it.", { model: "claude-sonnet-5-5" });
+      }
+      if (asked.includes("make the page a phone")) return n === 0 ? use("r1", { action: "resize", size: "phone" }) : anthropicReply("It is a phone now.", { model: "claude-sonnet-5-5" });
+      if (asked.includes("press it while I watch")) {
+        if (n === 0) return use("w1", { action: "click", ref: count });
+        // The turn stays at work here while the drive takes the page by hand and it goes back by itself.
+        if (n === 1) return held29.then(() => use("w2", { action: "snapshot" }));
+        return anthropicReply("Seen.", { model: "claude-sonnet-5-5" });
+      }
+      return undefined;
+    };
+    /** @type {() => void} */
+    let release29 = () => {};
+    const held29 = new Promise((r) => (release29 = () => r(null)));
+    // The app's own browser, not Chrome's: a Filament with no app linked yet opens a chat's pages in Chrome, and closes
+    // them when the app links (its agent opens them again there at its next call).
+    const linked26 = await until(async () => (await (await call(portA, "/api/browser")).json()).host === "app", 30000, "the app's browser on Filament's socket").catch(() => false);
+    // The chat made from the app's window, as a person's is: its browser switched on lets it do more unasked, which while
+    // the app runs is a press, with the key the app's bridge hands its own page (as check 11's terminal).
+    const harness26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 20000, "the harness's window");
+    const make26 = `(async () => { const r = await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ cwd: root, model: "claude-sonnet-5-5", preset: "plain", settings: { plugins: { browser: true } } }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
+    const made26 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, make26).catch(() => null)) || { status: 0, json: {} });
+    const chat26 = made26.json;
+    const sid26 = String(chat26.id);
+    const turn26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "check the shop's sign-in works", stream: false });
+    const reply26 = await turn26.text();
+    const msgs26 = /** @type {any[]} */ (seen26 || []);
+    const went26 = wordsOf({ content: [resultOf(msgs26, "b1")].filter(Boolean) });
+    const after26 = wordsOf({ content: [resultOf(msgs26, "b4")].filter(Boolean) });
+    const picture26 = (resultOf(msgs26, "b5")?.content || []).some((/** @type {any} */ x) => x.type === "image" && /^image\//.test(x.source?.media_type || ""));
+    const view26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(shopBase)), 10000, "the agent's page among the app's").catch(() => null);
+    const title26 = view26 ? await evalIn(view26, "document.title").catch(() => "") : "";
+    // Where the page is not there: what the app's log says of its browser's link (its pages go with it).
+    const link26 = title26 ? "" : (appLog(dataA).match(/^.*the browser's link to Filament.*$/gm) || []).slice(-3).map((l) => `; ${l.trim()}`).join("");
+    check(
+      "26. the agent browses a page in the app: navigate, snapshot, type, click, a screenshot — the page signed in, the model given its picture",
+      linked26 === true && turn26.status === 200 && reply26.includes("Signed in as ada@example.com") && went26.includes("Drive shop") && after26.includes('heading "Signed in as ada@example.com"') && picture26 && title26 === "Signed in as ada@example.com",
+      `${linked26 ? "linked" : "no link"}; ${made26.status === 200 ? "" : `the chat refused: HTTP ${made26.status} ${String(chat26.error || "").slice(0, 160)}; `}HTTP ${turn26.status}${turn26.status === 200 ? "" : ` ${reply26.slice(0, 160)}`}; the page: ${title26 || (view26 ? "not answering" : `not found at ${new Date().toISOString()}`)}; picture ${picture26 ? "given" : "missing"}${link26}`,
+    );
+
+    // The pane: the chat shown, its Browser pane opened from the panes' ⋯.
+    await evalIn(harness26, `location.hash = ${JSON.stringify(`#/task/${encodeURIComponent(sid26)}`)}; true`);
+    await until(() => evalIn(harness26, `!!document.querySelector(".pbtn-more")`), 10000, "the panes' buttons");
+    const opened26 = await until(
+      () =>
+        evalIn(
+          harness26,
+          `(async () => { if (document.querySelector(".brw-stage")) return true; document.querySelector(".pbtn-more").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => r.textContent.trim() === "Browser"); if (row) row.click(); await new Promise((r) => setTimeout(r, 300)); return !!document.querySelector(".brw-stage"); })()`,
+        ),
+      15000,
+      "the Browser pane",
+    ).catch(() => false);
+    const stageOf = () => evalIn(harness26, `(() => { const s = document.querySelector(".brw-stage"); if (!s) return null; const r = s.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), address: document.querySelector(".brw-address")?.value || "", picture: !document.querySelector(".brw-picture")?.classList.contains("hidden"), chip: document.querySelector(".brw-size .zc-btn-label")?.textContent || "", line: document.querySelector(".brw-line")?.textContent || "" }; })()`);
+    const sizeOf = async () => (view26 ? String(await evalIn(view26, "innerWidth + 'x' + innerHeight").catch(() => "")) : "");
+    // Placed over a pane, the page is in a window that shows: its document visible; parked, in the hidden one.
+    const shownOf = async () => (view26 ? String(await evalIn(view26, "document.visibilityState").catch(() => "")) : "");
+    // (HarnessV4_BrowserSize_Plan BS1: the page keeps its own 1280 × 800 over the pane, whatever the stage's shape —
+    // before it, it took the stage's size.)
+    const placedAt = async () => (await sizeOf()) === "1280x800" && (await shownOf()) === "visible" && (await stageOf())?.picture === false;
+    const placed26 = opened26 === true ? await until(placedAt, 10000, "the page over the pane's stage").catch(() => false) : false;
+    const stage26 = await stageOf().catch(() => null);
+    await picture(harness26, "26-harness-pane");
+    await picture(view26, "26-the-page-own-size");
+    // A menu of the harness's own over the stage (the panes' ⋯ again, at the window's right, where the pane is): the
+    // page parks and its picture stands in; the menu closed, the page comes back.
+    await evalIn(harness26, `document.querySelector(".pbtn-more").click(); true`).catch(() => null);
+    const covered26 = await evalIn(harness26, `(() => { const m = document.querySelector(".zc-menu")?.getBoundingClientRect(); const s = document.querySelector(".brw-stage")?.getBoundingClientRect(); return !!m && !!s && m.left < s.right && s.left < m.right && m.top < s.bottom && s.top < m.bottom; })()`).catch(() => false);
+    const parked26 = covered26 === true ? await until(async () => (await sizeOf()) === "1280x800" && (await stageOf())?.picture === true, 10000, "the page parked under the menu").catch(() => false) : null;
+    await evalIn(harness26, `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`).catch(() => null);
+    await until(() => evalIn(harness26, `!document.querySelector(".zc-menu")`), 5000, "the menu closed").catch(() => null);
+    const back26 = await until(placedAt, 10000, "the page over the stage again").catch(() => false);
+    check(
+      "26. its Browser pane: the page placed over the stage at its own 1280 × 800, parked while a menu covers it (its picture standing in), placed again",
+      placed26 === true && parked26 !== false && back26 === true && stage26?.address === `${shopBase}/login` && stage26?.chip === "1280 × 800",
+      `stage ${stage26 ? `${stage26.w}×${stage26.h}` : "none"}, the page ${await sizeOf()} (${await shownOf()}); ${parked26 === null ? "the menu missed the stage, parking not seen" : parked26 ? "parked under the menu" : "not parked under the menu"}`,
+    );
+
+    // Take over: the agent's next call is answered at once, in words; the pane says who has it. Given back after.
+    const take26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "take" });
+    const t26 = Date.now();
+    const turnB26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "look at the page again", stream: false });
+    await turnB26.text();
+    const tookMs26 = Date.now() - t26;
+    const refusedWords26 = /** @type {any[]} */ (up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "t1")) || []);
+    const refused26 = wordsOf({ content: [resultOf(refusedWords26, "t1")].filter(Boolean) });
+    const line26 = await until(() => evalIn(harness26, `(document.querySelector(".brw-line")?.textContent || "").startsWith("You have the browser") && document.querySelector(".brw-take .zc-btn-label")?.textContent === "Give back"`), 10000, "the pane saying you have it").catch(() => false);
+    const give26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "give" });
+    check(
+      "26. Take over: the agent's next call answered at once that you have the browser; the pane says so; given back",
+      take26.status === 200 && turnB26.status === 200 && /^Error: The developer has taken over the browser \(for \d+ min\)/.test(refused26) && line26 === true && give26.status === 200,
+      `the turn took ${(tookMs26 / 1000).toFixed(1)} s; ${refused26.slice(0, 80) || "no answer to the call"}`,
+    );
+
+    // 27. The agent's click on the page drawn small in the pane: its own point times the scale (BS1), and it lands.
+    const countOf = async () => (view26 ? String(await evalIn(view26, "document.getElementById('c')?.textContent || ''").catch(() => "")) : "");
+    const stage27 = await stageOf().catch(() => null);
+    const turn27 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "press the shop's count button", stream: false });
+    await turn27.text();
+    const count27 = await countOf();
+    check(
+      "27. the page keeps its own size over the pane, and the agent's click on it, drawn small, lands where it aimed",
+      turn27.status === 200 && count27 === "Count 1" && (await sizeOf()) === "1280x800" && !!stage27 && stage27.w < 1280,
+      `the pane's stage ${stage27 ? `${stage27.w}×${stage27.h}` : "none"} (scale ${stage27 ? (stage27.w / 1280).toFixed(2) : "?"}), the page ${await sizeOf()}; the button: ${count27 || "not found"}`,
+    );
+
+    // 28. The agent's resize, then the developer's size chip: the page lays itself out at each, the chip says it.
+    const turn28 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "make the page a phone", stream: false });
+    await turn28.text();
+    const resized28 = wordsOf({ content: [resultOf(up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "r1")) || [], "r1")].filter(Boolean) });
+    const phone28 = await until(async () => (await sizeOf()) === "390x844" && (await stageOf())?.chip === "390 × 844", 10000, "the page at a phone's size").catch(() => false);
+    await picture(view26, "28-the-page-a-phone");
+    await picture(harness26, "28-harness-phone");
+    // The chip's menu, as a person: Laptop.
+    const chose28 = await evalIn(
+      harness26,
+      `(async () => { document.querySelector(".brw-size").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => (r.querySelector(".zc-menu-label-line") || r).textContent.trim().startsWith("Laptop")); if (!row) return false; row.click(); return true; })()`,
+    ).catch(() => false);
+    const laptop28 = chose28 === true ? await until(async () => (await sizeOf()) === "1280x800" && (await stageOf())?.chip === "1280 × 800", 10000, "the page at a laptop's size again").catch(() => false) : false;
+    check(
+      "28. the agent's resize makes the page a phone, said in its result; the size chip's Laptop makes it a laptop again",
+      turn28.status === 200 && /^The page is 390 × 844 now \(phone\)/.test(resized28) && phone28 === true && laptop28 === true,
+      `${resized28.split("\n")[0].slice(0, 90) || "no result"}; the chip's menu ${chose28 === true ? "chosen" : "not found"}; the page ${await sizeOf()}`,
+    );
+
+    // 29. While the agent drives, the veil lies over its page; its Take over gives the page to the developer by hand;
+    // with the pointer off the page 5 s, it goes back by itself, and the agent's next result says so. The drive never
+    // moves the pointer: wherever yours is, it is off this window's page unless you hold it there.
+    const browserOf = async () => /** @type {any} */ (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json());
+    const turn29 = call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "press it while I watch", stream: false });
+    const pressed29 = await until(async () => (await countOf()) === "Count 2", 20000, "the agent's second press").catch(() => false);
+    const veil29 = pressed29 ? await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith("data:text/html")), 10000, "the veil over the page").catch(() => null) : null;
+    const veilSize29 = veil29 ? String(await evalIn(veil29, "innerWidth + 'x' + innerHeight").catch(() => "")) : "";
+    const took29 = veil29 ? await evalIn(veil29, `(() => { const b = document.getElementById("take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
+    const hand29 = took29 === true ? await until(async () => ((await browserOf()).hand === true ? await stageOf() : null), 10000, "the page in the developer's hand").catch(() => null) : null;
+    await picture(harness26, "29-harness-by-hand");
+    const t29 = Date.now();
+    const back29 = hand29 ? await until(async () => (await browserOf()).taken === false, 40000, "the page back with the agent").catch(() => false) : false;
+    const after29 = (Date.now() - t29) / 1000;
+    release29();
+    const reply29 = await turn29;
+    await reply29.text();
+    const note29 = wordsOf({ content: [resultOf(up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "w2")) || [], "w2")].filter(Boolean) });
+    check(
+      "29. while the agent drives, a veil over its page; its Take over gives it to you by hand, and it goes back by itself 5 s after the pointer leaves",
+      !!veil29 && took29 === true && !!hand29 && /^You have the browser — it goes back to the agent/.test(hand29.line) && back29 === true && /^The developer used the page for \d+ s: the page may have moved/.test(note29),
+      `${veil29 ? `the veil ${veilSize29}` : "no veil"}; ${hand29 ? `"${hand29.line}"` : "not taken by hand"}; back after ${after29.toFixed(1)} s; the agent read: ${note29.split("\n")[0].slice(0, 80) || "nothing"}`,
+    );
+
+    // 30. Pop out: the Browser in a window of its own — the page drawn there, the tile it left saying so; Bring back.
+    // Pop out puts the pane in a tab on top (UX10); that tab's Own window puts it in a window of its own.
+    const popped30 = await evalIn(
+      harness26,
+      `(async () => { const b = document.querySelector(".brw-stage")?.closest(".tile")?.querySelector(".tile-btn[aria-label='Pop out']"); if (!b) return false; b.click(); let own = null; for (let i = 0; i < 30 && !own; i++) { await new Promise((r) => setTimeout(r, 100)); own = document.querySelector(".tile-btn[aria-label='Own window']:not(.is-off)"); } if (!own) return false; own.click(); return true; })()`,
+    ).catch(() => false);
+    const win30 = popped30 === true ? await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html?pane=browser`)), 20000, "the popped window").catch(() => null) : null;
+    const drawn30 = win30 ? await until(() => evalIn(win30, `!!document.querySelector(".app-shell.pane-window .brw-stage") && !document.querySelector(".conv-frame")?.offsetWidth`), 20000, "the Browser alone in it").catch(() => false) : false;
+    const away30 = await until(() => evalIn(harness26, `document.querySelector(".tile-away .tile-away-words")?.textContent || ""`), 10000, "the tile saying where it is").catch(() => "");
+    const there30 = win30 && drawn30 ? await until(async () => (await sizeOf()) === "1280x800" && (await shownOf()) === "visible" && (await evalIn(win30, `document.querySelector(".brw-picture")?.classList.contains("hidden")`)) === true, 15000, "the page over the popped window's stage").catch(() => false) : false;
+    const stage30 = win30 ? await evalIn(win30, `(() => { const r = document.querySelector(".brw-stage")?.getBoundingClientRect(); return r ? Math.round(r.width) + "×" + Math.round(r.height) : ""; })()`).catch(() => "") : "";
+    if (win30) await picture(win30, "30-popped-window");
+    await picture(harness26, "30-harness-tile-away");
+    const brought30 = win30 ? await evalIn(win30, `(() => { const b = document.querySelector(".tile-btn[aria-label='Bring back']"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
+    const gone30 = brought30 === true ? await until(async () => !(await pagesOf(debugA)).some((p) => p.url.includes("?pane=")), 15000, "the popped window closed").catch(() => false) : false;
+    const home30 = gone30 ? await until(async () => (await evalIn(harness26, `!document.querySelector(".tile-away") && !!document.querySelector(".brw-stage")`)) === true && (await placedAt()), 15000, "the page over the main window's pane again").catch(() => false) : false;
+    const kept30 = /** @type {any} */ (JSON.parse(existsSync(join(dataA, "desktop", "windows.json")) ? readFileSync(join(dataA, "desktop", "windows.json"), "utf8") : "{}"))["pop:browser"];
+    check(
+      "30. Pop out: the Browser alone in a window of its own, its page drawn there; the tile it left says so; Bring back puts it back, its place kept",
+      !!win30 && drawn30 === true && away30 === "Browser is in a window of its own" && there30 === true && gone30 === true && home30 === true && !!kept30?.width,
+      `${win30 ? `a window, its stage ${stage30}` : "no window"}; the tile: ${away30 || "nothing"}; the page ${there30 ? "drawn there" : "not drawn there"}; ${home30 ? "back in the main window" : "not back"}; kept ${kept30 ? `${kept30.width}×${kept30.height}` : "nothing"}`,
+    );
+
+    // ---- 34: the page live where no app of its own shows it (the owner's remote Filament of 11-06, Part 4): the same
+    // chat's harness in a plain window — no bridge of the app's, as a browser's tab or another machine's page is — opens
+    // its Browser pane, where the app's cast of the page comes live on the run socket; Take over there, and a press on
+    // the cast's Count lands on the page itself, at its own point; Give back.
+    // The browser the agent's again, whatever check 29 left it as (its take-over by hand waits on your pointer).
+    await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "give" }).catch(() => null);
+    await until(async () => (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json())?.taken === false, 10000, "the browser the agent's").catch(() => null);
+    const plainDebug = await freePort();
+    const plainMain = join(base, "plain-page.cjs");
+    // The address comes in the environment: Electron ends at once with a web address among its arguments.
+    writeFileSync(plainMain, `const { app, BrowserWindow } = require("electron");\napp.whenReady().then(() => new BrowserWindow({ x: 40, y: 40, width: 1400, height: 900, webPreferences: { backgroundThrottling: false } }).loadURL(process.env.FILAMENT_PLAIN_URL));\n`);
+    // A browser here is let in by its pairing, never by its address: its one-time link made from the app's window, as the
+    // tray's Open in browser makes it (while the app runs, a press), opened in the plain window. Its page moves on to this
+    // Filament's own name under localhost, pairs there, and opens the chat.
+    const pair34 = `(async () => { const r = await fetch("/api/remote/pair", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ scope: "full", here: true }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
+    const code34 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, pair34).catch(() => null)) || { status: 0, json: {} });
+    const name34 = String(code34.json?.pageHost || "").replace(/\.localhost$/i, "");
+    const link34 = `${originA}/ui/pair.html#code=${encodeURIComponent(String(code34.json?.code || ""))}${name34 ? `&name=${encodeURIComponent(name34)}` : ""}&to=${encodeURIComponent(`/ui/harness.html#/task/${encodeURIComponent(sid26)}`)}`;
+    const P = spawn(ELECTRON, [plainMain, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: link34 }, stdio: "ignore", windowsHide: true });
+    if (P.pid) mine.push({ pid: P.pid, label: "a plain window over Filament" });
+    try {
+      const plain34 = await until(async () => (await pagesOf(plainDebug).catch(() => [])).find((p) => new URL(p.url).port === String(portA) && p.url.includes("/ui/harness.html#/task/")), 30000, "the plain window's harness").catch(() => null);
+      const bridgeless34 = plain34 ? await until(() => evalIn(plain34, `!!document.querySelector(".pbtn-more") && typeof window.filamentApp === "undefined"`), 30000, "its panes' buttons, no bridge").catch(() => false) : false;
+      const pane34 = bridgeless34 === true
+        ? await until(
+            () =>
+              evalIn(
+                /** @type {any} */ (plain34),
+                `(async () => { if (document.querySelector(".brw-stage")) return true; document.querySelector(".pbtn-more").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => r.textContent.trim() === "Browser"); if (row) row.click(); await new Promise((r) => setTimeout(r, 300)); return !!document.querySelector(".brw-stage"); })()`,
+              ),
+            15000,
+            "its Browser pane",
+          ).catch(() => false)
+        : false;
+      /** The cast as the plain page draws it: its line, and the picture's box and source. */
+      const liveOf = () => evalIn(/** @type {any} */ (plain34), `(() => { const p = document.querySelector(".brw-picture"); const r = p?.getBoundingClientRect(); return { line: document.querySelector(".brw-line")?.textContent || "", jpeg: !!p && !p.classList.contains("hidden") && (p.src || "").startsWith("data:image/jpeg"), w: p?.naturalWidth || 0, h: p?.naturalHeight || 0, box: r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null }; })()`);
+      // A cast's frame is drawn from its data; the 2 s picture is read from its address.
+      const live34 = pane34 === true ? await until(async () => { const l = await liveOf(); return l?.jpeg && l.w > 0 ? l : null; }, 20000, "the page live in the plain window").catch(() => null) : null;
+      const said34 = live34 ? String((await liveOf())?.line || "") : "";
+      await picture(plain34, "34-plain-window-live");
+      // Take over, as a person: the pane's button. The Count button's point on the cast, as the page lays it out.
+      const before34 = await countOf();
+      const took34 = live34 ? await evalIn(/** @type {any} */ (plain34), `(() => { const b = document.querySelector(".brw-take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
+      // Taken, and the pane's input the page's (its stage `brw-yours`: a frame of the tab cast now drawn), as a person
+      // sees it: a press before then is the pane's, never the page's.
+      const yours34 =
+        took34 === true
+          ? await until(async () => ((await liveOf())?.line || "").startsWith("You have the browser: click and type on the page") && (await evalIn(/** @type {any} */ (plain34), `!!document.querySelector(".brw-stage.brw-yours")`)) === true, 10000, "the plain window's take-over").catch(() => false)
+          : false;
+      const at34 = /** @type {any} */ (view26 ? await evalIn(view26, `(() => { const r = document.getElementById("c").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, W: innerWidth, H: innerHeight }; })()`).catch(() => null) : null);
+      const box34 = /** @type {any} */ (await liveOf().catch(() => null));
+      let pressed34 = "";
+      if (yours34 === true && at34 && box34?.box?.width) {
+        // The picture is drawn whole and centred in its box (pagePoint's inverse).
+        const k = Math.min(box34.box.width / at34.W, box34.box.height / at34.H);
+        const cx = box34.box.x + (box34.box.width - at34.W * k) / 2 + at34.x * k;
+        const cy = box34.box.y + (box34.box.height - at34.H * k) / 2 + at34.y * k;
+        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mouseMoved", x: cx, y: cy }).catch(() => null);
+        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mousePressed", x: cx, y: cy, button: "left", buttons: 1, clickCount: 1 }).catch(() => null);
+        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mouseReleased", x: cx, y: cy, button: "left", buttons: 0, clickCount: 1 }).catch(() => null);
+        pressed34 = String(await until(async () => { const c = await countOf(); return c !== before34 ? c : null; }, 10000, "the press on the cast landing on the page").catch(() => ""));
+      }
+      await picture(plain34, "34-plain-window-pressed");
+      const gave34 = took34 === true ? await evalIn(/** @type {any} */ (plain34), `(() => { const b = document.querySelector(".brw-take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
+      const back34 = gave34 === true ? await until(async () => (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json())?.taken === false, 10000, "the browser given back").catch(() => false) : false;
+      const want34 = `Count ${Number(String(before34).replace(/\D/g, "") || 0) + 1}`;
+      check(
+        "34. a window with no app of its own: the page live in its Browser pane by the app's cast; taken over there, a press on the cast lands on the page; given back",
+        bridgeless34 === true && !!live34 && live34.w === 1280 && live34.h === 800 && said34.startsWith("The page, live") && yours34 === true && pressed34 === want34 && back34 === true,
+        `${live34 ? `live, ${live34.w}×${live34.h} frames, "${said34.slice(0, 40)}"` : bridgeless34 === true ? `never live (${pane34 === true ? "its pane open" : "no pane"})` : code34.status === 200 ? "no plain window" : `its link refused: HTTP ${code34.status} ${String(code34.json?.error || "").slice(0, 120)}`}; ${yours34 === true ? "taken" : "not taken"}; the button ${before34 || "?"} → ${pressed34 || "unchanged"}; ${back34 === true ? "given back" : "not given back"}`,
+      );
+    } finally {
+      if (P.pid) endTree(P.pid);
+    }
+  } finally {
+    brain = null;
+    shop.close();
+  }
+}
+
+/** `--browser`: the agent's browser's checks alone, over an app and a Filament of their own. */
+async function driveBrowserAlone() {
+  const dataB = join(base, "b26");
+  const portB = await freePort();
+  const debugB = await freePort();
+  writeConfig(dataB, portB, up.url, root);
+  const B = launch(dataB, { debug: debugB, label: "the app (browser)" });
+  await until(() => stateAt(portB), 60000, "answer from the app's Filament");
+  const originB = `http://127.0.0.1:${portB}`;
+  const page = await until(async () => (await pagesOf(debugB)).find((p) => p.url.startsWith(`${originB}/ui/harness.html`)), 30000, "harness window");
+  await until(() => evalIn(page, `!!document.querySelector(".app-shell")`), 30000, "harness drawn");
+  await driveBrowser(portB, originB, debugB, dataB);
+  const QB = launch(dataB, { args: ["--quit"], label: "quit the app (browser)" });
+  await until(() => QB.exited(), 20000, "end of its quitting launch");
+  await until(() => B.exited(), 30000, "the app's end");
+}
+
+// `--desk`: the desk's checks alone; `--owner`, the windows' owner session's; `--artifacts`, an artifact's own pass;
+// `--browser`, the agent's browser's.
+const ONLY = DESK_ONLY ? driveDesk : OWNER_ONLY ? driveOwner : ARTIFACTS_ONLY ? driveArtifacts : BROWSER_ONLY ? driveBrowserAlone : null;
 if (ONLY) {
   try {
     await ONLY();
@@ -969,296 +1292,7 @@ try {
     check("14. a port changed in Settings: after Restart Filament listens there, the app's window with it", movedBody.restartNeeded === true && !!server13 && treeOf(A.pid).some((p) => p.pid === server13) && !!harness13, `port ${portA2}, ${harness13?.url || "no window there"}`);
   }
 
-  // 26. The agent's browser (HarnessV4_Browser_Plan BR5): a chat with the browser switched on, a model that browses a
-  // page of this drive's own (a sign-in form on 127.0.0.1) — navigate, snapshot, type, click, a screenshot — in the
-  // app's Chromium, which holds the page over Filament's socket. Then the chat in the harness's window, its Browser pane
-  // opened from the panes' ⋯ as a person would: the page placed over the pane's stage, parked while a menu covers it
-  // (its picture standing in), placed again. Then Take over: the agent's next call answered at once, in words. Then
-  // HarnessV4_BrowserSize_Plan's proof (BS5): the page keeps its own size over the pane (27) and the agent's click lands
-  // on it scaled; the agent's resize and the size chip (28); the veil while it drives, its Take over, the page back by
-  // itself 5 s after the pointer is off it (29); the Browser popped out into a window of its own and brought back (30).
-  const SHOP = `<!doctype html><title>Sign in · Drive shop</title><h1 id="h">Sign in</h1><label>Email <input id="e" aria-label="Email"></label><button id="b" onclick="document.title = 'Signed in as ' + document.getElementById('e').value; document.getElementById('h').textContent = document.title">Sign in</button><p><button id="c" onclick="window.n = (window.n || 0) + 1; this.textContent = 'Count ' + window.n">Count</button></p>`;
-  const shop = createServer((_req, res) => (res.writeHead(200, { "content-type": "text/html; charset=utf-8" }), res.end(SHOP)));
-  await new Promise((r) => shop.listen(0, "127.0.0.1", () => r(null)));
-  const shopBase = `http://127.0.0.1:${/** @type {any} */ (shop.address()).port}`;
-  try {
-    /** A message's words, its tool results' too ([image] for a picture). @param {any} m */
-    const wordsOf = (m) =>
-      typeof m?.content === "string"
-        ? m.content
-        : (m?.content || []).map((/** @type {any} */ b) => (b.type === "text" ? b.text : b.type === "tool_result" ? (typeof b.content === "string" ? b.content : (b.content || []).map((/** @type {any} */ x) => (x.type === "text" ? x.text : `[${x.type}]`)).join("\n")) : "")).join("\n");
-    /** The result the model was given for one call. @param {any[]} msgs @param {string} id */
-    const resultOf = (msgs, id) => msgs.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.type === "tool_result" && b.tool_use_id === id);
-    const use = (/** @type {string} */ id, /** @type {any} */ input) => anthropicReply("", { model: "claude-sonnet-5-5", stop: "tool_use", blocks: [{ type: "tool_use", id, name: "browser", input }] });
-    /** @type {any[] | null} */
-    let seen26 = null;
-    brain = (c) => {
-      if (c.kind !== "anthropic" || !Array.isArray(c.body?.tools) || !c.body.tools.some((/** @type {any} */ t) => t.name === "browser")) return undefined;
-      const msgs = /** @type {any[]} */ (c.body.messages || []);
-      // Where this turn's prompt stands: the newest user message that is words, not a tool's result.
-      const at = msgs.findLastIndex((m) => m.role === "user" && !(Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b.type === "tool_result")));
-      const asked = wordsOf(msgs[at]);
-      const n = msgs.slice(at).filter((m) => m.role === "assistant").length;
-      const all = msgs.map(wordsOf).join("\n");
-      if (asked.includes("check the shop's sign-in")) {
-        if (n === 0) return use("b1", { action: "navigate", url: `${shopBase}/login` });
-        if (n === 1) return use("b2", { action: "snapshot" });
-        if (n === 2) return use("b3", { action: "type", ref: /textbox "Email" \[(e\d+)\]/.exec(all)?.[1] || "e0", text: "ada@example.com" });
-        if (n === 3) return use("b4", { action: "click", ref: /button "Sign in" \[(e\d+)\]/.exec(all)?.[1] || "e0" });
-        if (n === 4) return use("b5", { action: "screenshot" });
-        seen26 = msgs;
-        return anthropicReply("Signed in as ada@example.com: the page says so.", { model: "claude-sonnet-5-5" });
-      }
-      if (asked.includes("look at the page again")) return n === 0 ? use("t1", { action: "snapshot" }) : anthropicReply("You have the browser; I wait.", { model: "claude-sonnet-5-5" });
-      // The newest snapshot's handle for the Count button.
-      const count = [...all.matchAll(/button "Count(?: \d+)?" \[(e\d+)\]/g)].at(-1)?.[1] || "e0";
-      if (asked.includes("press the shop's count button")) {
-        if (n === 0) return use("c1", { action: "snapshot" });
-        if (n === 1) return use("c2", { action: "click", ref: count });
-        return anthropicReply("Pressed it.", { model: "claude-sonnet-5-5" });
-      }
-      if (asked.includes("make the page a phone")) return n === 0 ? use("r1", { action: "resize", size: "phone" }) : anthropicReply("It is a phone now.", { model: "claude-sonnet-5-5" });
-      if (asked.includes("press it while I watch")) {
-        if (n === 0) return use("w1", { action: "click", ref: count });
-        // The turn stays at work here while the drive takes the page by hand and it goes back by itself.
-        if (n === 1) return held29.then(() => use("w2", { action: "snapshot" }));
-        return anthropicReply("Seen.", { model: "claude-sonnet-5-5" });
-      }
-      return undefined;
-    };
-    /** @type {() => void} */
-    let release29 = () => {};
-    const held29 = new Promise((r) => (release29 = () => r(null)));
-    // The app's own browser, not Chrome's: a Filament with no app linked yet opens a chat's pages in Chrome, and closes
-    // them when the app links (its agent opens them again there at its next call).
-    const linked26 = await until(async () => (await (await call(portA, "/api/browser")).json()).host === "app", 30000, "the app's browser on Filament's socket").catch(() => false);
-    // The chat made from the app's window, as a person's is: its browser switched on lets it do more unasked, which while
-    // the app runs is a press, with the key the app's bridge hands its own page (as check 11's terminal).
-    const harness26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html`)), 20000, "the harness's window");
-    const make26 = `(async () => { const r = await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ cwd: root, model: "claude-sonnet-5-5", preset: "plain", settings: { plugins: { browser: true } } }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
-    const made26 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, make26).catch(() => null)) || { status: 0, json: {} });
-    const chat26 = made26.json;
-    const sid26 = String(chat26.id);
-    const turn26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "check the shop's sign-in works", stream: false });
-    const reply26 = await turn26.text();
-    const msgs26 = /** @type {any[]} */ (seen26 || []);
-    const went26 = wordsOf({ content: [resultOf(msgs26, "b1")].filter(Boolean) });
-    const after26 = wordsOf({ content: [resultOf(msgs26, "b4")].filter(Boolean) });
-    const picture26 = (resultOf(msgs26, "b5")?.content || []).some((/** @type {any} */ x) => x.type === "image" && /^image\//.test(x.source?.media_type || ""));
-    const view26 = await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(shopBase)), 10000, "the agent's page among the app's").catch(() => null);
-    const title26 = view26 ? await evalIn(view26, "document.title").catch(() => "") : "";
-    // Where the page is not there: what the app's log says of its browser's link (its pages go with it).
-    const link26 = title26 ? "" : (appLog(dataA).match(/^.*the browser's link to Filament.*$/gm) || []).slice(-3).map((l) => `; ${l.trim()}`).join("");
-    check(
-      "26. the agent browses a page in the app: navigate, snapshot, type, click, a screenshot — the page signed in, the model given its picture",
-      linked26 === true && turn26.status === 200 && reply26.includes("Signed in as ada@example.com") && went26.includes("Drive shop") && after26.includes('heading "Signed in as ada@example.com"') && picture26 && title26 === "Signed in as ada@example.com",
-      `${linked26 ? "linked" : "no link"}; ${made26.status === 200 ? "" : `the chat refused: HTTP ${made26.status} ${String(chat26.error || "").slice(0, 160)}; `}HTTP ${turn26.status}${turn26.status === 200 ? "" : ` ${reply26.slice(0, 160)}`}; the page: ${title26 || (view26 ? "not answering" : `not found at ${new Date().toISOString()}`)}; picture ${picture26 ? "given" : "missing"}${link26}`,
-    );
-
-    // The pane: the chat shown, its Browser pane opened from the panes' ⋯.
-    await evalIn(harness26, `location.hash = ${JSON.stringify(`#/task/${encodeURIComponent(sid26)}`)}; true`);
-    await until(() => evalIn(harness26, `!!document.querySelector(".pbtn-more")`), 10000, "the panes' buttons");
-    const opened26 = await until(
-      () =>
-        evalIn(
-          harness26,
-          `(async () => { if (document.querySelector(".brw-stage")) return true; document.querySelector(".pbtn-more").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => r.textContent.trim() === "Browser"); if (row) row.click(); await new Promise((r) => setTimeout(r, 300)); return !!document.querySelector(".brw-stage"); })()`,
-        ),
-      15000,
-      "the Browser pane",
-    ).catch(() => false);
-    const stageOf = () => evalIn(harness26, `(() => { const s = document.querySelector(".brw-stage"); if (!s) return null; const r = s.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), address: document.querySelector(".brw-address")?.value || "", picture: !document.querySelector(".brw-picture")?.classList.contains("hidden"), chip: document.querySelector(".brw-size .zc-btn-label")?.textContent || "", line: document.querySelector(".brw-line")?.textContent || "" }; })()`);
-    const sizeOf = async () => (view26 ? String(await evalIn(view26, "innerWidth + 'x' + innerHeight").catch(() => "")) : "");
-    // Placed over a pane, the page is in a window that shows: its document visible; parked, in the hidden one.
-    const shownOf = async () => (view26 ? String(await evalIn(view26, "document.visibilityState").catch(() => "")) : "");
-    // (HarnessV4_BrowserSize_Plan BS1: the page keeps its own 1280 × 800 over the pane, whatever the stage's shape —
-    // before it, it took the stage's size.)
-    const placedAt = async () => (await sizeOf()) === "1280x800" && (await shownOf()) === "visible" && (await stageOf())?.picture === false;
-    const placed26 = opened26 === true ? await until(placedAt, 10000, "the page over the pane's stage").catch(() => false) : false;
-    const stage26 = await stageOf().catch(() => null);
-    await picture(harness26, "26-harness-pane");
-    await picture(view26, "26-the-page-own-size");
-    // A menu of the harness's own over the stage (the panes' ⋯ again, at the window's right, where the pane is): the
-    // page parks and its picture stands in; the menu closed, the page comes back.
-    await evalIn(harness26, `document.querySelector(".pbtn-more").click(); true`).catch(() => null);
-    const covered26 = await evalIn(harness26, `(() => { const m = document.querySelector(".zc-menu")?.getBoundingClientRect(); const s = document.querySelector(".brw-stage")?.getBoundingClientRect(); return !!m && !!s && m.left < s.right && s.left < m.right && m.top < s.bottom && s.top < m.bottom; })()`).catch(() => false);
-    const parked26 = covered26 === true ? await until(async () => (await sizeOf()) === "1280x800" && (await stageOf())?.picture === true, 10000, "the page parked under the menu").catch(() => false) : null;
-    await evalIn(harness26, `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`).catch(() => null);
-    await until(() => evalIn(harness26, `!document.querySelector(".zc-menu")`), 5000, "the menu closed").catch(() => null);
-    const back26 = await until(placedAt, 10000, "the page over the stage again").catch(() => false);
-    check(
-      "26. its Browser pane: the page placed over the stage at its own 1280 × 800, parked while a menu covers it (its picture standing in), placed again",
-      placed26 === true && parked26 !== false && back26 === true && stage26?.address === `${shopBase}/login` && stage26?.chip === "1280 × 800",
-      `stage ${stage26 ? `${stage26.w}×${stage26.h}` : "none"}, the page ${await sizeOf()} (${await shownOf()}); ${parked26 === null ? "the menu missed the stage, parking not seen" : parked26 ? "parked under the menu" : "not parked under the menu"}`,
-    );
-
-    // Take over: the agent's next call is answered at once, in words; the pane says who has it. Given back after.
-    const take26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "take" });
-    const t26 = Date.now();
-    const turnB26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "look at the page again", stream: false });
-    await turnB26.text();
-    const tookMs26 = Date.now() - t26;
-    const refusedWords26 = /** @type {any[]} */ (up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "t1")) || []);
-    const refused26 = wordsOf({ content: [resultOf(refusedWords26, "t1")].filter(Boolean) });
-    const line26 = await until(() => evalIn(harness26, `(document.querySelector(".brw-line")?.textContent || "").startsWith("You have the browser") && document.querySelector(".brw-take .zc-btn-label")?.textContent === "Give back"`), 10000, "the pane saying you have it").catch(() => false);
-    const give26 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "give" });
-    check(
-      "26. Take over: the agent's next call answered at once that you have the browser; the pane says so; given back",
-      take26.status === 200 && turnB26.status === 200 && /^Error: The developer has taken over the browser \(for \d+ min\)/.test(refused26) && line26 === true && give26.status === 200,
-      `the turn took ${(tookMs26 / 1000).toFixed(1)} s; ${refused26.slice(0, 80) || "no answer to the call"}`,
-    );
-
-    // 27. The agent's click on the page drawn small in the pane: its own point times the scale (BS1), and it lands.
-    const countOf = async () => (view26 ? String(await evalIn(view26, "document.getElementById('c')?.textContent || ''").catch(() => "")) : "");
-    const stage27 = await stageOf().catch(() => null);
-    const turn27 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "press the shop's count button", stream: false });
-    await turn27.text();
-    const count27 = await countOf();
-    check(
-      "27. the page keeps its own size over the pane, and the agent's click on it, drawn small, lands where it aimed",
-      turn27.status === 200 && count27 === "Count 1" && (await sizeOf()) === "1280x800" && !!stage27 && stage27.w < 1280,
-      `the pane's stage ${stage27 ? `${stage27.w}×${stage27.h}` : "none"} (scale ${stage27 ? (stage27.w / 1280).toFixed(2) : "?"}), the page ${await sizeOf()}; the button: ${count27 || "not found"}`,
-    );
-
-    // 28. The agent's resize, then the developer's size chip: the page lays itself out at each, the chip says it.
-    const turn28 = await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "make the page a phone", stream: false });
-    await turn28.text();
-    const resized28 = wordsOf({ content: [resultOf(up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "r1")) || [], "r1")].filter(Boolean) });
-    const phone28 = await until(async () => (await sizeOf()) === "390x844" && (await stageOf())?.chip === "390 × 844", 10000, "the page at a phone's size").catch(() => false);
-    await picture(view26, "28-the-page-a-phone");
-    await picture(harness26, "28-harness-phone");
-    // The chip's menu, as a person: Laptop.
-    const chose28 = await evalIn(
-      harness26,
-      `(async () => { document.querySelector(".brw-size").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => (r.querySelector(".zc-menu-label-line") || r).textContent.trim().startsWith("Laptop")); if (!row) return false; row.click(); return true; })()`,
-    ).catch(() => false);
-    const laptop28 = chose28 === true ? await until(async () => (await sizeOf()) === "1280x800" && (await stageOf())?.chip === "1280 × 800", 10000, "the page at a laptop's size again").catch(() => false) : false;
-    check(
-      "28. the agent's resize makes the page a phone, said in its result; the size chip's Laptop makes it a laptop again",
-      turn28.status === 200 && /^The page is 390 × 844 now \(phone\)/.test(resized28) && phone28 === true && laptop28 === true,
-      `${resized28.split("\n")[0].slice(0, 90) || "no result"}; the chip's menu ${chose28 === true ? "chosen" : "not found"}; the page ${await sizeOf()}`,
-    );
-
-    // 29. While the agent drives, the veil lies over its page; its Take over gives the page to the developer by hand;
-    // with the pointer off the page 5 s, it goes back by itself, and the agent's next result says so. The drive never
-    // moves the pointer: wherever yours is, it is off this window's page unless you hold it there.
-    const browserOf = async () => /** @type {any} */ (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json());
-    const turn29 = call(portA, `/api/sessions/${encodeURIComponent(sid26)}/turns`, { content: "press it while I watch", stream: false });
-    const pressed29 = await until(async () => (await countOf()) === "Count 2", 20000, "the agent's second press").catch(() => false);
-    const veil29 = pressed29 ? await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith("data:text/html")), 10000, "the veil over the page").catch(() => null) : null;
-    const veilSize29 = veil29 ? String(await evalIn(veil29, "innerWidth + 'x' + innerHeight").catch(() => "")) : "";
-    const took29 = veil29 ? await evalIn(veil29, `(() => { const b = document.getElementById("take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
-    const hand29 = took29 === true ? await until(async () => ((await browserOf()).hand === true ? await stageOf() : null), 10000, "the page in the developer's hand").catch(() => null) : null;
-    await picture(harness26, "29-harness-by-hand");
-    const t29 = Date.now();
-    const back29 = hand29 ? await until(async () => (await browserOf()).taken === false, 40000, "the page back with the agent").catch(() => false) : false;
-    const after29 = (Date.now() - t29) / 1000;
-    release29();
-    const reply29 = await turn29;
-    await reply29.text();
-    const note29 = wordsOf({ content: [resultOf(up.received.filter((c) => c.kind === "anthropic").map((c) => c.body?.messages || []).reverse().find((m) => resultOf(m, "w2")) || [], "w2")].filter(Boolean) });
-    check(
-      "29. while the agent drives, a veil over its page; its Take over gives it to you by hand, and it goes back by itself 5 s after the pointer leaves",
-      !!veil29 && took29 === true && !!hand29 && /^You have the browser — it goes back to the agent/.test(hand29.line) && back29 === true && /^The developer used the page for \d+ s: the page may have moved/.test(note29),
-      `${veil29 ? `the veil ${veilSize29}` : "no veil"}; ${hand29 ? `"${hand29.line}"` : "not taken by hand"}; back after ${after29.toFixed(1)} s; the agent read: ${note29.split("\n")[0].slice(0, 80) || "nothing"}`,
-    );
-
-    // 30. Pop out: the Browser in a window of its own — the page drawn there, the tile it left saying so; Bring back.
-    // Pop out puts the pane in a tab on top (UX10); that tab's Own window puts it in a window of its own.
-    const popped30 = await evalIn(
-      harness26,
-      `(async () => { const b = document.querySelector(".brw-stage")?.closest(".tile")?.querySelector(".tile-btn[aria-label='Pop out']"); if (!b) return false; b.click(); let own = null; for (let i = 0; i < 30 && !own; i++) { await new Promise((r) => setTimeout(r, 100)); own = document.querySelector(".tile-btn[aria-label='Own window']:not(.is-off)"); } if (!own) return false; own.click(); return true; })()`,
-    ).catch(() => false);
-    const win30 = popped30 === true ? await until(async () => (await pagesOf(debugA)).find((p) => p.url.startsWith(`${originA}/ui/harness.html?pane=browser`)), 20000, "the popped window").catch(() => null) : null;
-    const drawn30 = win30 ? await until(() => evalIn(win30, `!!document.querySelector(".app-shell.pane-window .brw-stage") && !document.querySelector(".conv-frame")?.offsetWidth`), 20000, "the Browser alone in it").catch(() => false) : false;
-    const away30 = await until(() => evalIn(harness26, `document.querySelector(".tile-away .tile-away-words")?.textContent || ""`), 10000, "the tile saying where it is").catch(() => "");
-    const there30 = win30 && drawn30 ? await until(async () => (await sizeOf()) === "1280x800" && (await shownOf()) === "visible" && (await evalIn(win30, `document.querySelector(".brw-picture")?.classList.contains("hidden")`)) === true, 15000, "the page over the popped window's stage").catch(() => false) : false;
-    const stage30 = win30 ? await evalIn(win30, `(() => { const r = document.querySelector(".brw-stage")?.getBoundingClientRect(); return r ? Math.round(r.width) + "×" + Math.round(r.height) : ""; })()`).catch(() => "") : "";
-    if (win30) await picture(win30, "30-popped-window");
-    await picture(harness26, "30-harness-tile-away");
-    const brought30 = win30 ? await evalIn(win30, `(() => { const b = document.querySelector(".tile-btn[aria-label='Bring back']"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
-    const gone30 = brought30 === true ? await until(async () => !(await pagesOf(debugA)).some((p) => p.url.includes("?pane=")), 15000, "the popped window closed").catch(() => false) : false;
-    const home30 = gone30 ? await until(async () => (await evalIn(harness26, `!document.querySelector(".tile-away") && !!document.querySelector(".brw-stage")`)) === true && (await placedAt()), 15000, "the page over the main window's pane again").catch(() => false) : false;
-    const kept30 = /** @type {any} */ (JSON.parse(existsSync(join(dataA, "desktop", "windows.json")) ? readFileSync(join(dataA, "desktop", "windows.json"), "utf8") : "{}"))["pop:browser"];
-    check(
-      "30. Pop out: the Browser alone in a window of its own, its page drawn there; the tile it left says so; Bring back puts it back, its place kept",
-      !!win30 && drawn30 === true && away30 === "Browser is in a window of its own" && there30 === true && gone30 === true && home30 === true && !!kept30?.width,
-      `${win30 ? `a window, its stage ${stage30}` : "no window"}; the tile: ${away30 || "nothing"}; the page ${there30 ? "drawn there" : "not drawn there"}; ${home30 ? "back in the main window" : "not back"}; kept ${kept30 ? `${kept30.width}×${kept30.height}` : "nothing"}`,
-    );
-
-    // ---- 34: the page live where no app of its own shows it (the owner's remote Filament of 11-06, Part 4): the same
-    // chat's harness in a plain window — no bridge of the app's, as a browser's tab or another machine's page is — opens
-    // its Browser pane, where the app's cast of the page comes live on the run socket; Take over there, and a press on
-    // the cast's Count lands on the page itself, at its own point; Give back.
-    // The browser the agent's again, whatever check 29 left it as (its take-over by hand waits on your pointer).
-    await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`, { act: "give" }).catch(() => null);
-    await until(async () => (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json())?.taken === false, 10000, "the browser the agent's").catch(() => null);
-    const plainDebug = await freePort();
-    const plainMain = join(base, "plain-page.cjs");
-    // The address comes in the environment: Electron ends at once with a web address among its arguments.
-    writeFileSync(plainMain, `const { app, BrowserWindow } = require("electron");\napp.whenReady().then(() => new BrowserWindow({ x: 40, y: 40, width: 1400, height: 900, webPreferences: { backgroundThrottling: false } }).loadURL(process.env.FILAMENT_PLAIN_URL));\n`);
-    // A browser here is let in by its pairing, never by its address: its one-time link made from the app's window, as the
-    // tray's Open in browser makes it (while the app runs, a press), opened in the plain window. Its page moves on to this
-    // Filament's own name under localhost, pairs there, and opens the chat.
-    const pair34 = `(async () => { const r = await fetch("/api/remote/pair", { method: "POST", headers: { "content-type": "application/json", "x-filament-ui": "1", "x-filament-press": await filamentApp.pressKey() }, body: ${JSON.stringify(JSON.stringify({ scope: "full", here: true }))} }); return { status: r.status, json: await r.json().catch(() => ({})) }; })()`;
-    const code34 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, pair34).catch(() => null)) || { status: 0, json: {} });
-    const name34 = String(code34.json?.pageHost || "").replace(/\.localhost$/i, "");
-    const link34 = `${originA}/ui/pair.html#code=${encodeURIComponent(String(code34.json?.code || ""))}${name34 ? `&name=${encodeURIComponent(name34)}` : ""}&to=${encodeURIComponent(`/ui/harness.html#/task/${encodeURIComponent(sid26)}`)}`;
-    const P = spawn(ELECTRON, [plainMain, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: link34 }, stdio: "ignore", windowsHide: true });
-    if (P.pid) mine.push({ pid: P.pid, label: "a plain window over Filament" });
-    try {
-      const plain34 = await until(async () => (await pagesOf(plainDebug).catch(() => [])).find((p) => new URL(p.url).port === String(portA) && p.url.includes("/ui/harness.html#/task/")), 30000, "the plain window's harness").catch(() => null);
-      const bridgeless34 = plain34 ? await until(() => evalIn(plain34, `!!document.querySelector(".pbtn-more") && typeof window.filamentApp === "undefined"`), 30000, "its panes' buttons, no bridge").catch(() => false) : false;
-      const pane34 = bridgeless34 === true
-        ? await until(
-            () =>
-              evalIn(
-                /** @type {any} */ (plain34),
-                `(async () => { if (document.querySelector(".brw-stage")) return true; document.querySelector(".pbtn-more").click(); await new Promise((r) => setTimeout(r, 300)); const row = [...document.querySelectorAll(".zc-menu-item")].find((r) => r.textContent.trim() === "Browser"); if (row) row.click(); await new Promise((r) => setTimeout(r, 300)); return !!document.querySelector(".brw-stage"); })()`,
-              ),
-            15000,
-            "its Browser pane",
-          ).catch(() => false)
-        : false;
-      /** The cast as the plain page draws it: its line, and the picture's box and source. */
-      const liveOf = () => evalIn(/** @type {any} */ (plain34), `(() => { const p = document.querySelector(".brw-picture"); const r = p?.getBoundingClientRect(); return { line: document.querySelector(".brw-line")?.textContent || "", jpeg: !!p && !p.classList.contains("hidden") && (p.src || "").startsWith("data:image/jpeg"), w: p?.naturalWidth || 0, h: p?.naturalHeight || 0, box: r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null }; })()`);
-      // A cast's frame is drawn from its data; the 2 s picture is read from its address.
-      const live34 = pane34 === true ? await until(async () => { const l = await liveOf(); return l?.jpeg && l.w > 0 ? l : null; }, 20000, "the page live in the plain window").catch(() => null) : null;
-      const said34 = live34 ? String((await liveOf())?.line || "") : "";
-      await picture(plain34, "34-plain-window-live");
-      // Take over, as a person: the pane's button. The Count button's point on the cast, as the page lays it out.
-      const before34 = await countOf();
-      const took34 = live34 ? await evalIn(/** @type {any} */ (plain34), `(() => { const b = document.querySelector(".brw-take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
-      const yours34 = took34 === true ? await until(async () => ((await liveOf())?.line || "").startsWith("You have the browser: click and type on the page"), 10000, "the plain window's take-over").catch(() => false) : false;
-      const at34 = /** @type {any} */ (view26 ? await evalIn(view26, `(() => { const r = document.getElementById("c").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, W: innerWidth, H: innerHeight }; })()`).catch(() => null) : null);
-      const box34 = /** @type {any} */ (await liveOf().catch(() => null));
-      let pressed34 = "";
-      if (yours34 === true && at34 && box34?.box?.width) {
-        // The picture is drawn whole and centred in its box (pagePoint's inverse).
-        const k = Math.min(box34.box.width / at34.W, box34.box.height / at34.H);
-        const cx = box34.box.x + (box34.box.width - at34.W * k) / 2 + at34.x * k;
-        const cy = box34.box.y + (box34.box.height - at34.H * k) / 2 + at34.y * k;
-        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mouseMoved", x: cx, y: cy }).catch(() => null);
-        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mousePressed", x: cx, y: cy, button: "left", buttons: 1, clickCount: 1 }).catch(() => null);
-        await sendIn(/** @type {any} */ (plain34), "Input.dispatchMouseEvent", { type: "mouseReleased", x: cx, y: cy, button: "left", buttons: 0, clickCount: 1 }).catch(() => null);
-        pressed34 = String(await until(async () => { const c = await countOf(); return c !== before34 ? c : null; }, 10000, "the press on the cast landing on the page").catch(() => ""));
-      }
-      await picture(plain34, "34-plain-window-pressed");
-      const gave34 = took34 === true ? await evalIn(/** @type {any} */ (plain34), `(() => { const b = document.querySelector(".brw-take"); if (!b) return false; b.click(); return true; })()`).catch(() => false) : false;
-      const back34 = gave34 === true ? await until(async () => (await (await call(portA, `/api/sessions/${encodeURIComponent(sid26)}/browser`)).json())?.taken === false, 10000, "the browser given back").catch(() => false) : false;
-      const want34 = `Count ${Number(String(before34).replace(/\D/g, "") || 0) + 1}`;
-      check(
-        "34. a window with no app of its own: the page live in its Browser pane by the app's cast; taken over there, a press on the cast lands on the page; given back",
-        bridgeless34 === true && !!live34 && live34.w === 1280 && live34.h === 800 && said34.startsWith("The page, live") && yours34 === true && pressed34 === want34 && back34 === true,
-        `${live34 ? `live, ${live34.w}×${live34.h} frames, "${said34.slice(0, 40)}"` : bridgeless34 === true ? `never live (${pane34 === true ? "its pane open" : "no pane"})` : code34.status === 200 ? "no plain window" : `its link refused: HTTP ${code34.status} ${String(code34.json?.error || "").slice(0, 120)}`}; ${yours34 === true ? "taken" : "not taken"}; the button ${before34 || "?"} → ${pressed34 || "unchanged"}; ${back34 === true ? "given back" : "not given back"}`,
-      );
-    } finally {
-      if (P.pid) endTree(P.pid);
-    }
-  } finally {
-    brain = null;
-    shop.close();
-  }
+  await driveBrowser(portA, originA, debugA, dataA);
 
   // 9. Quit (a launch with --quit): Filament stops, the app ends, nothing it started is left — memory's engine neither.
   const tree9 = treeOf(A.pid);
