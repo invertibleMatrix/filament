@@ -661,17 +661,23 @@ async function artifactPassCheck(port, debug, page) {
   const inView = await evalIn(page, `!!document.querySelector('.artifact-view iframe.artifact-frame[data-artifact="${name}"]')`).catch(() => false);
   // Its address with no pass, as a program here asks it.
   const bare = await loadAt(port, host, "/");
+  // Each frame's pass is this artifact's: its page, at its own address, under it (the hunt on x43: differing from the
+  // page's pass alone said nothing of whose it was).
+  /** @param {string} at @param {{ pass: string } | null} f */
+  const itsOwn = async (at, f) => own(f?.pass || "") && (await loadAt(port, at, `/~${f?.pass}/`)).body.includes(WORDS);
+  const [paneOwn, peekOwn, fullOwn] = [await itsOwn(host, pane), await itsOwn(stillHost, peek), await itsOwn(host, full)];
   await evalIn(page, `location.hash = ${JSON.stringify(was || "#/")}; true`).catch(() => null);
   check(
     "37. an artifact opens under a pass of its own: its chat's card in the side pane, the Artifacts page's preview and full view, Copy link; with no pass, refused",
-    !!holder && own(pane?.pass || "") && own(peek?.pass || "") && own(full?.pass || "") && inView === true && own(copiedPass) && tab.status === 200 && tab.body.includes(WORDS) && bare.status === 403,
-    `side pane: ${opened ? said(pane) : "its card never opened"}; preview: ${said(peek)}; full view: ${inView ? said(full) : "not shown"}; Copy link: ${own(copiedPass) ? `its own pass, a tab's load ${tab.status}` : copied ? "the page's pass or none" : "nothing copied"}; no pass: ${bare.status}${holder ? "" : "; /api/state handed the page no pass"}`,
+    !!holder && paneOwn && peekOwn && fullOwn && inView === true && own(copiedPass) && tab.status === 200 && tab.body.includes(WORDS) && bare.status === 403,
+    `side pane: ${opened ? said(pane) : "its card never opened"}${pane && !paneOwn ? " (its page not drawn under it)" : ""}; preview: ${said(peek)}${peek && !peekOwn ? " (its page not drawn under it)" : ""}; full view: ${inView ? said(full) : "not shown"}${full && !fullOwn ? " (its page not drawn under it)" : ""}; Copy link: ${own(copiedPass) ? `its own pass, a tab's load ${tab.status}` : copied ? "the page's pass or none" : "nothing copied"}; no pass: ${bare.status}${holder ? "" : "; /api/state handed the page no pass"}`,
   );
 }
 
 /** `--artifacts`: check 37 alone, over an app of its own. */
 async function driveArtifacts() {
-  const dataR = join(base, "r");
+  // A folder of its own: check 32 runs a Filament of legacy trust in "r", whose key and listening.json this would read.
+  const dataR = join(base, "a37");
   const portR = await freePort();
   const debugR = await freePort();
   writeConfig(dataR, portR, up.url, root);
