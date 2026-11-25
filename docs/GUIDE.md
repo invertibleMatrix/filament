@@ -5161,7 +5161,10 @@ but its screenshots are files in the temp folder, outside the project, which the
   a line at its head and still sets the chat's own mode — the one your agent has again after **Back to your agent** —,
   and Overview's *What it may do* says *only reads while BugHunters is in charge* under its title. In every
   mode a command that only reads runs without asking, such as `ls`, `grep` or `wc` on the project's files, after a `cd` into
-  one of its folders too — and so do a toolchain asked its version (`node -v`, `python --version`, `gcc --version`) and
+  one of its folders too, piped through `cut`, `sort`, `uniq` or `tr` as well (never `sort -o`, nor `uniq` with a second
+  file or an option after its file, either of which it writes), and with a glob in an option's value
+  (`grep -rn --include=*.js`) — a `$` variable still asks,
+  as one you pass to commands may hold a secret — and so do a toolchain asked its version (`node -v`, `python --version`, `gcc --version`) and
   git's reading forms (`git status`, `log`, `diff`, `show`, `rev-parse`, `branch --list`) with the options that only
   read, run in the project's folder itself when it holds its own `.git`. A PowerShell script that only reads runs
   without asking too — `Get-Content`, `Get-ChildItem`, `Select-String` and the cmdlets that shape what a pipeline
@@ -7333,6 +7336,17 @@ as the Team view does. A done task's card ends with **Hunt for bugs**: pick a mo
 rows for the Reviewer, the Reviewer's own, this chat's list, or the main agent's model) and press **Hunt bugs**, and a Reviewer — the saved agent that reads and
 changes nothing — reads what that task did, briefed on its goal, what was done, its acceptance, its files and its
 check, with the files it changed (else those it named) read from git at the head of its brief, as a hunt's range is.
+It runs that check with its `run_check` tool, without asking, the way Filament runs a check: in a copy of the folder
+as it stands, your uncommitted work in it, so what the check writes (an updated snapshot, a build's output) stays in
+the copy, apart from dependency folders such as `node_modules`, which the copy shares with your folder. It gets each
+command's result and the end of its output; a command that fails runs once more, and both runs are reported. It runs
+the check as the task names it at that moment, and none once that graph is closed. So does a Reviewer exploring a task
+of the graph, and one a coding agent sends with `task` naming a task that has a check; a Reviewer of a change waiting
+in a worker's copy does not, since your folder does not hold that change yet, nor does one whose card has no shell.
+One reviewer's check runs at a time; another waits for it to end. The tool only runs where Filament would run that
+check itself in this chat: never in a *read-only* chat, nor where a rule of the chat's covers one of its commands.
+Each run checks again, so switching to *read-only* stops the next one. Its shell still runs no check: in a *read-only*
+chat a command that is not only a read stays refused.
 Its report goes to your agent as any agent's result does: sealed, as an envelope, while your agent works; with
 its next turn's message while it is stopped. Each Reviewer started there is listed under the button with **Open**; a
 command task has none, having written nothing. The hunt's report names the task it was sent from — *Sent from task

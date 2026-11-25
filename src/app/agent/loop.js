@@ -38,6 +38,7 @@ import { FLOW_NAME, FLOW_OFF, flowCall } from "./flow-tool.js";
 import { THREAD, THREAD_OFF, folderVerdict, threadAskWords, threadCall } from "./thread-tool.js";
 import { CRAFT_NAME, CRAFT_OFF, craftCall } from "./craft-tool.js";
 import { COME_BACK, comeBackCall } from "./come-back.js";
+import { RUN_CHECK, RUN_CHECK_OFF } from "./run-check.js";
 import { MCP_RESOURCES } from "./mcp-resources.js";
 import { BROWSER, actingSite, browserGate } from "./browser-tool.js";
 import { LSP, errorsOfDiagnostics } from "./lsp-tool.js";
@@ -252,6 +253,9 @@ const FOLDER_NOTE = "it names Filament's data folder, which another machine's ag
  *   its chat's skill stand (agent/craft-tool.js) — null outside a crafter chat, and `craft` is not offered
  * @property {{ session: string } | null} [comeBack]  the chat this run's agent may come back to later (agent/come-back.js)
  *   — null for a sub-agent, a lead, or a client's own conversation, and `come_back` is not offered
+ * @property {((signal: AbortSignal | null) => Promise<{ ok: true, text: string } | { ok: false, error: string }>) | null} [runCheck]
+ *   a sub-agent that only reads: its run of the check of the graph task it looks at, in a copy of the folder
+ *   (agent/run-check.js, x20) — null where it holds none, and `run_check` is not offered
  * @property {{ page: () => string, allowed: (site: string) => boolean, allow: (site: string, lead?: boolean) => void, team?: import("../browser/registry.js").TeamOf | null } | null} [browser]
  *   the chat's browser while `browser` is offered (HarnessV4_Browser_Plan BR2): the page it shows now, which the rules
  *   and the gate read, and the sites this agent may act on — those the developer said yes to for this chat (BR-D6), and
@@ -2222,6 +2226,12 @@ async function loopTurn(a, ctl) {
       } else if (u.name === COME_BACK) {
         // The chat's come-back (agent/come-back.js): set, replaced or dropped — its turn comes later, by itself.
         const r = comeBackCall(u.input, a.comeBack ?? null);
+        if (!r.ok) throw new Error(r.error);
+        out = r.text;
+      } else if (u.name === RUN_CHECK) {
+        // The check of the graph task a sub-agent that only reads looks at (agent/run-check.js), in a copy of the folder.
+        if (!a.runCheck) throw new Error(RUN_CHECK_OFF);
+        const r = await a.runCheck(cut);
         if (!r.ok) throw new Error(r.error);
         out = r.text;
       } else if (u.name === "delegate_read") {

@@ -36,6 +36,7 @@ import { THREAD_OFF, THREAD_TOOL, threadAtOf, threadCall, threadCtxOf } from "./
 import { FLOW_OFF, FLOW_TOOL, flowAtOf, flowCall } from "./agent/flow-tool.js";
 import { BROWSER, BROWSER_READ_ONLY, BROWSER_TOOL, actingSite } from "./agent/browser-tool.js";
 import { BACKGROUND_COMMAND_MACHINE_TOOL, BACKGROUND_COMMAND_TOOL } from "./agent/commands.js";
+import { RUN_CHECK_OFF, RUN_CHECK_TOOL } from "./agent/run-check.js";
 import { SKILL_TOOL, skillAnswer } from "./agent/skills.js";
 import { CRAFT_OFF, CRAFT_TOOL, craftAtOf, craftCall } from "./agent/craft-tool.js";
 import { dismissAnswer, dismisses, otherThanDismiss, writesLetter } from "./agent/envelopes.js";
@@ -109,6 +110,8 @@ const BROWSER_DEF = defOf(BROWSER_TOOL);
 const BACKGROUND_DEF = defOf(BACKGROUND_COMMAND_TOOL, true);
 /** The same with machine and cwd, where a plain chat's agent tool takes machine (the remote-agents plan's c-tools). */
 const BACKGROUND_MACHINE_DEF = defOf(BACKGROUND_COMMAND_MACHINE_TOOL, true);
+/** A sub-agent that only reads runs its graph task's check in a copy of the folder (agent/run-check.js, x20): loaded whole. */
+const RUN_CHECK_DEF = defOf(RUN_CHECK_TOOL, true);
 /**
  * The skill tool (HarnessV4_Skills_Plan S1-1), as the loop's is: loaded whole, as the session's words name it — beside
  * an agent's own Skill tool, a name held back would send it to that one.
@@ -126,7 +129,7 @@ const memoryOrdered = (defs) => [...defs].sort((a, b) => MEMORY_ORDER.indexOf(a.
 /**
  * Every Filament tool a coding agent's session may be offered, as this build defines it, in the order a session's list
  * gives them (`list`): the graph's and the checklist, the chat's recall, a team's, the waits and the envelopes, a command
- * in the background, the skill, memory's, a report, ask_lead, then those held by name (the visuals, the artifact, the
+ * in the background, a reviewer's run of its task's check, the skill, memory's, a report, ask_lead, then those held by name (the visuals, the artifact, the
  * Space, the team and flow tools, the browser and the crafter's tool). What a coding agent's print reads (agent/prefix.js
  * `agentPrint`), so a release that changed none of them moves nothing. A launch's agent tool is the offer's, not the
  * build's.
@@ -144,6 +147,7 @@ export const buildAgentTools = () => [
   ENVELOPE_SUB_DEF,
   BACKGROUND_DEF,
   BACKGROUND_MACHINE_DEF,
+  RUN_CHECK_DEF,
   SKILL_DEF,
   ...memoryOrdered(memoryToolDefs("anthropic")).map((t) => defOf(t, true)),
   REPORT_DEF,
@@ -174,7 +178,7 @@ const TURN_NAMES = new Set(/** @type {string[]} */ ([TEAM_AGENT_TOOL.name, WORKE
 /**
  * @param {{ memory: any, memoryToolsOn: () => boolean, graphs: () => any,
  *   turns: { get: (chainId: string | null) => import("./agent-inbox.js").AgentTurn | null },
- *   subagents: () => { offer: (chainId: string) => import("./agent/tools.js").LaunchOffer, asks: (chainId: string) => import("./agent/tools.js").Askable[], askLead?: (id: string, q: { question: string, options: string[] } | null, o: { n?: number | null, withinMs?: number, emit?: ((e: any) => void) | null }) => Promise<import("./agent/subagents.js").LeadAnswer>, checkedProblem?: (chainId: string, commands: readonly string[]) => string | null, subLetter?: (id: string, input: any) => { ok: boolean, text: string, sent?: import("./agent/subagents.js").LetterSent } } | null,
+ *   subagents: () => { offer: (chainId: string) => import("./agent/tools.js").LaunchOffer, asks: (chainId: string) => import("./agent/tools.js").Askable[], askLead?: (id: string, q: { question: string, options: string[] } | null, o: { n?: number | null, withinMs?: number, emit?: ((e: any) => void) | null }) => Promise<import("./agent/subagents.js").LeadAnswer>, checkedProblem?: (chainId: string, commands: readonly string[]) => string | null, subLetter?: (id: string, input: any) => { ok: boolean, text: string, sent?: import("./agent/subagents.js").LetterSent }, checksOf?: (id: string) => string[], runCheck?: (id: string, o?: { signal?: AbortSignal | null }) => Promise<{ ok: true, text: string } | { ok: false, error: string }> } | null,
  *   membersOf: (chainId: string) => readonly import("../core/roster.js").Member[] | null,
  *   machines?: import("../services/machines/index.js").Machines | null,
  *   artifacts?: import("../services/artifacts.js").ArtifactStore | null, port?: () => number, maxBytes?: () => number,
@@ -276,6 +280,8 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
    * turn's. @param {AgentToolCtx} ctx
    */
   const writesLead = (ctx) => !!ctx.by && !!ctx.chain && !ctx.team && !ctx.launch;
+  /** Whether a call's agent is a sub-agent that only reads and holds its graph task's check (x20, run_check). @param {AgentToolCtx} ctx */
+  const holdsCheck = (ctx) => !!ctx.by && (subagents()?.checksOf?.(ctx.by.id)?.length ?? 0) > 0;
   /**
    * Whether a call's agent keeps the chat's checklist (the owner's tool plan of 11-08): the chat's own agent or a team's
    * lead, in a chat of Filament's, where the session has the task graph whose words send a short job to it. A sub-agent,
@@ -306,6 +312,7 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
         ...(launch ? [defOf(launch, true), CODER_WAIT_DEF, ENVELOPE_DEF] : []),
         ...(writesLead(ctx) ? [ENVELOPE_SUB_DEF] : []),
         ...(runsCommands(ctx) ? [kept ? BACKGROUND_MACHINE_DEF : BACKGROUND_DEF] : []),
+        ...(holdsCheck(ctx) ? [RUN_CHECK_DEF] : []),
         ...(hasSkills(skillsAt(ctx)) ? [SKILL_DEF] : []),
         // Memory's, while its tools are on: never for a chat Memory settings leave out (`leftOut`).
         ...(memoryOn() && !ctx.leftOut ? memoryOrdered(agentMemoryMcpTools(memory)).map((t) => ({ ...t, upfront: true })) : []),
@@ -322,7 +329,7 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
       ];
     },
     has: (name) =>
-      isMemoryTool(name) || name === TASKS_DEF.name || name === CHECKLIST_DEF.name || name === REPORT_DEF.name || name === ASK_LEAD_DEF.name || name === VISUAL_GUIDE_DEF.name || name === SHOW_VISUAL_DEF.name || name === ARTIFACT_DEF.name || name === SPACE_DEF.name || name === BESIDE_DEF.name || name === THREAD_DEF.name || name === FLOW_DEF.name || name === BROWSER_DEF.name || name === BACKGROUND_DEF.name || name === SKILL_DEF.name || name === CRAFT_DEF.name || TURN_NAMES.has(name),
+      isMemoryTool(name) || name === TASKS_DEF.name || name === CHECKLIST_DEF.name || name === REPORT_DEF.name || name === ASK_LEAD_DEF.name || name === VISUAL_GUIDE_DEF.name || name === SHOW_VISUAL_DEF.name || name === ARTIFACT_DEF.name || name === SPACE_DEF.name || name === BESIDE_DEF.name || name === THREAD_DEF.name || name === FLOW_DEF.name || name === BROWSER_DEF.name || name === BACKGROUND_DEF.name || name === RUN_CHECK_DEF.name || name === SKILL_DEF.name || name === CRAFT_DEF.name || TURN_NAMES.has(name),
     async call(name, args, ctx) {
       if (isRecallTool(name)) {
         if (!ctx.chain || !memory?.archive) return { text: "Not run: recall reads a chat's own record, and this call stands in no chat.", isError: true };
@@ -499,6 +506,13 @@ export function createAgentTools({ memory, memoryToolsOn, graphs, turns, subagen
         // read for a call that names one alone.
         const there = args?.machine != null && String(args.machine).trim() !== "";
         return commands.call(args, { chain: ctx.chain, cwd: ctx.cwd, permit: ctx.permit ?? null, judgeNow: ctx.judgeNow ?? null, modeNow: ctx.modeNow ?? null, askPerson: ctx.askPerson ?? null, rulesAsk: ctx.rulesAsk ?? null, signal: ctx.signal ?? null, machines: there && machinesFor(ctx), agent: ctx.by ? `subagent:${ctx.by.id}` : null });
+      }
+      // The check of the graph task a sub-agent that only reads looks at, in a copy of the folder (x20).
+      if (name === RUN_CHECK_DEF.name) {
+        const reg = subagents();
+        if (!ctx.by || !reg?.runCheck || !holdsCheck(ctx)) return { text: RUN_CHECK_OFF, isError: true };
+        const r = await reg.runCheck(ctx.by.id, { signal: ctx.signal ?? null });
+        return r.ok ? { text: r.text } : { text: r.error, isError: true };
       }
       // The chat's browser (AT-D7): the agent's own tab, a sub-agent's in tabs of its own, judged by the chat's switch as
       // the loop's calls are — looking runs, acting is refused in read-only, asks once per site in Edit on the

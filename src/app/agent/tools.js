@@ -39,6 +39,7 @@ import { FLOW_NAME, FLOW_TOOL } from "./flow-tool.js";
 import { THREAD, THREAD_TOOL } from "./thread-tool.js";
 import { CRAFT_NAME, CRAFT_TOOL } from "./craft-tool.js";
 import { COME_BACK, COME_BACK_TOOL } from "./come-back.js";
+import { RUN_CHECK, RUN_CHECK_TOOL } from "./run-check.js";
 import { MCP_RESOURCES } from "./mcp-resources.js";
 import { BROWSER, BROWSER_TOOL } from "./browser-tool.js";
 import { LSP, LSP_TOOL } from "./lsp-tool.js";
@@ -442,7 +443,7 @@ export const SUBAGENT_OFF = Object.freeze(["ask", "plan", "agent", "wait"]);
  * `mcp` takes the chat's MCP servers, which have no names here (turn.js).
  */
 export const CARD_TOOL_NAMES = Object.freeze({
-  shell: Object.freeze(["bash", "bash_background", "bash_output", "bash_kill", "powershell"]),
+  shell: Object.freeze(["bash", "bash_background", "bash_output", "bash_kill", "powershell", RUN_CHECK]),
   browser: Object.freeze([BROWSER]),
   web: Object.freeze(["web_fetch", "web_search"]),
   mcp: Object.freeze([]),
@@ -1205,14 +1206,15 @@ const LEAD_READS_OWN = leadToolsOf(null).readsOwn;
  * E15 step 3) — its agent tool then lists them. `browser`: the session's switch `plugins.browser` (HarnessV4_Browser_Plan
  * BR-D5), last of all, so a set without it is the bytes it always was — then `craft`, a crafter chat's craft tool
  * (agent/craft-tool.js), after it for the same reason, and `comeBack`, a harness chat's own agent's come_back
- * (agent/come-back.js), after them. `places`: Builder and Reviewer where what they may do is set on them
+ * (agent/come-back.js), after them, and `runCheck`, run_check of a sub-agent that only reads and holds its task's check
+ * (agent/run-check.js, x20), last. `places`: Builder and Reviewer where what they may do is set on them
  * (HarnessV4_ShippedAgents_Plan SA1) — the agent tool says each one's level as it stands. `machines`: this Filament
  * keeps a machine for its agents, and the loop's agent tool takes `machine` (`agentToolFor`), and so does
  * bash_background (`BASH_BACKGROUND_THERE`, c-tools) — each while it is on.
  * @param {string} kind @param {readonly any[]} own @param {any} tasks
- * @param {{ delegateRead: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], browser?: boolean, craft?: boolean, comeBack?: boolean, machines?: boolean }} args
+ * @param {{ delegateRead: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], browser?: boolean, craft?: boolean, comeBack?: boolean, runCheck?: boolean, machines?: boolean }} args
  */
-function frozenSet(kind, own, tasks, { delegateRead, disabled = [], web = null, graph = false, report = false, askLead = false, asks = [], places = [], browser = false, craft = false, comeBack = false, machines = false }) {
+function frozenSet(kind, own, tasks, { delegateRead, disabled = [], web = null, graph = false, report = false, askLead = false, asks = [], places = [], browser = false, craft = false, comeBack = false, runCheck = false, machines = false }) {
   const off = new Set(disabled);
   // Visuals are switched off by show_visual: its guide serves nothing without it.
   if (off.has(SHOW_VISUAL)) off.add(VISUAL_GUIDE);
@@ -1221,9 +1223,10 @@ function frozenSet(kind, own, tasks, { delegateRead, disabled = [], web = null, 
   const browserOn = browser && !off.has(BROWSER);
   const craftOn = craft && !off.has(CRAFT_NAME);
   const comeBackOn = comeBack && !off.has(COME_BACK);
+  const runCheckOn = runCheck && !off.has(RUN_CHECK);
   const machinesOn = machines && !off.has(AGENT_TOOL.name);
   const commandsThere = machines && !off.has(BASH_BACKGROUND_THERE.name);
-  const key = `${kind}|${delegateRead ? "d" : "-"}|${[...off].sort().join(",")}|${fetchOn ? "f" : "-"}${searchOn ? "s" : "-"}${graph ? "g" : "-"}${report ? "r" : "-"}${askLead ? "l" : "-"}${browserOn ? "b" : "-"}${craftOn ? "c" : "-"}${comeBackOn ? "w" : "-"}${machinesOn ? "m" : "-"}${commandsThere ? "k" : "-"}|${askKey(asks)}${places.length ? `|${askKey(places)}` : ""}`;
+  const key = `${kind}|${delegateRead ? "d" : "-"}|${[...off].sort().join(",")}|${fetchOn ? "f" : "-"}${searchOn ? "s" : "-"}${graph ? "g" : "-"}${report ? "r" : "-"}${askLead ? "l" : "-"}${browserOn ? "b" : "-"}${craftOn ? "c" : "-"}${comeBackOn ? "w" : "-"}${runCheckOn ? "x" : "-"}${machinesOn ? "m" : "-"}${commandsThere ? "k" : "-"}|${askKey(asks)}${places.length ? `|${askKey(places)}` : ""}`;
   let set = SETS.get(key);
   if (!set) {
     const named = asks.length || places.length || machinesOn ? own.map((t) => (t === AGENT_TOOL ? agentToolFor(asks, places, machinesOn) : ROSTER_OF.has(t) ? teamAgentToolFor(asks, ROSTER_OF.get(t)) : t)) : own;
@@ -1239,6 +1242,7 @@ function frozenSet(kind, own, tasks, { delegateRead, disabled = [], web = null, 
         ...(browserOn ? [BROWSER_TOOL] : []),
         ...(craftOn ? [CRAFT_TOOL] : []),
         ...(comeBackOn ? [COME_BACK_TOOL] : []),
+        ...(runCheckOn ? [RUN_CHECK_TOOL] : []),
       ].filter((t) => !off.has(t.name)),
     );
     SETS.set(key, set);
@@ -1258,9 +1262,10 @@ function frozenSet(kind, own, tasks, { delegateRead, disabled = [], web = null, 
  * sub-agents (HarnessV3-TaskGraph-v2 TG2-D20) — its tasks has note, and its wait says a look follows; without the
  * graph it moves nothing. `places`: Builder and Reviewer where what they may do is set on them (SA1). `craft`: the chat is
  * a crafter chat, whose main agent has the craft tool. `comeBack`: the agent is a harness chat's own, which may come
- * back to it later (agent/come-back.js). `machines`: this Filament keeps a machine for its agents, and the agent tool
+ * back to it later (agent/come-back.js). `runCheck`: a sub-agent that only reads, holding the check of the graph task
+ * it looks at (agent/run-check.js, x20). `machines`: this Filament keeps a machine for its agents, and the agent tool
  * and bash_background take `machine`.
- * @param {{ delegateRead: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], supervise?: boolean, browser?: boolean, craft?: boolean, comeBack?: boolean, machines?: boolean }} args
+ * @param {{ delegateRead: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], supervise?: boolean, browser?: boolean, craft?: boolean, comeBack?: boolean, runCheck?: boolean, machines?: boolean }} args
  */
 export const toolSetFor = ({ supervise = false, ...args }) => (supervise && args.graph ? frozenSet("loop-reads", LOOP_READS_OWN, TASKS_READS_TOOL, args) : frozenSet("loop", LOOP_OWN, TASKS_TOOL, args));
 /**
@@ -1293,17 +1298,18 @@ export const leadToolSetFor = ({ supervise = false, members = null, ...args }) =
  * browser switch (HarnessV4_Browser_Plan BR-D5); `places`, Builder and Reviewer where what they may do is set on them
  * (HarnessV4_ShippedAgents_Plan SA1) — the agent's own agent tool says it; a lead launches its team's members. `craft`,
  * a crafter chat's main agent (agent/craft-tool.js); `comeBack`, a harness chat's own agent, which may come back to it
- * later (agent/come-back.js); `machines`, this Filament keeps a machine for its agents (`keepsAgentsMachine`) — the
- * agent's own agent tool and bash_background take `machine`, a lead's none.
- * @param {{ delegateRead?: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, recall?: boolean, lead?: boolean, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], supervise?: boolean, members?: readonly Member[] | null, browser?: boolean, craft?: boolean, comeBack?: boolean, machines?: boolean }} [args]
+ * later (agent/come-back.js); `runCheck`, a sub-agent that only reads and holds its task's check (agent/run-check.js);
+ * `machines`, this Filament keeps a machine for its agents (`keepsAgentsMachine`) — the agent's own agent tool and
+ * bash_background take `machine`, a lead's none.
+ * @param {{ delegateRead?: boolean, disabled?: readonly string[], web?: { fetch?: boolean, search?: boolean } | null, recall?: boolean, lead?: boolean, graph?: boolean, report?: boolean, askLead?: boolean, asks?: readonly Askable[], places?: readonly Askable[], supervise?: boolean, members?: readonly Member[] | null, browser?: boolean, craft?: boolean, comeBack?: boolean, runCheck?: boolean, machines?: boolean }} [args]
  * @returns {any[]}
  */
-export function loopToolArgs({ delegateRead = false, disabled = [], web = null, recall = false, lead = false, graph = false, report = false, askLead = false, asks = [], places = [], supervise = false, members = null, browser = false, craft = false, comeBack = false, machines = false } = {}) {
-  const set = lead ? leadToolSetFor({ delegateRead, disabled, web, graph, asks, supervise, members, browser }) : toolSetFor({ delegateRead, disabled, web, graph, report: report || graph, askLead, asks, places, supervise, browser, craft, comeBack, machines });
+export function loopToolArgs({ delegateRead = false, disabled = [], web = null, recall = false, lead = false, graph = false, report = false, askLead = false, asks = [], places = [], supervise = false, members = null, browser = false, craft = false, comeBack = false, runCheck = false, machines = false } = {}) {
+  const set = lead ? leadToolSetFor({ delegateRead, disabled, web, graph, asks, supervise, members, browser }) : toolSetFor({ delegateRead, disabled, web, graph, report: report || graph, askLead, asks, places, supervise, browser, craft, comeBack, runCheck, machines });
   return recall ? [...set, recallToolDef("anthropic")] : [...set];
 }
 export const isLoopTool = (name) =>
-  isHandTool(name) || isWebTool(name) || isMcpTool(name) || name === MCP_DOOR || name === MCP_RESOURCES || name === SKILL_TOOL_NAME || name === "ask" || name === "plan" || name === "tasks" || name === "report" || name === "ask_lead" || name === "agent" || name === "worker" || name === "wait" || name === ENVELOPE || name === "delegate_read" || name === VISUAL_GUIDE || name === SHOW_VISUAL || name === ARTIFACT || name === SPACE || name === BESIDE_TEAM || name === FLOW_NAME || name === THREAD || name === CRAFT_NAME || name === COME_BACK || name === BROWSER || name === LSP;
+  isHandTool(name) || isWebTool(name) || isMcpTool(name) || name === MCP_DOOR || name === MCP_RESOURCES || name === SKILL_TOOL_NAME || name === "ask" || name === "plan" || name === "tasks" || name === "report" || name === "ask_lead" || name === "agent" || name === "worker" || name === "wait" || name === ENVELOPE || name === "delegate_read" || name === VISUAL_GUIDE || name === SHOW_VISUAL || name === ARTIFACT || name === SPACE || name === BESIDE_TEAM || name === FLOW_NAME || name === THREAD || name === CRAFT_NAME || name === COME_BACK || name === RUN_CHECK || name === BROWSER || name === LSP;
 
 /** @param {unknown} v */
 export const permissionMode = (v) =>

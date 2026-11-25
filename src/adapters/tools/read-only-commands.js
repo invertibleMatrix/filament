@@ -13,9 +13,11 @@
 //   or not — every other `$` is a variable or a substitution; a backslash escaping one character;
 //   `;`, `&&`, `||`, `|` and line breaks between commands; output only to /dev/null (`>`, `>>`, `1>`, `2>`), `2>&1`,
 //   `>&2`. A `~` inside a word is a letter (`HEAD~3`); one that starts it, or follows a `=` or `:`, is a home folder.
-// - The programs: ls, cat, head, tail, wc, du, grep, rg, sed, find, pwd and echo, each with only the options known to
-//   read — none that follows links, runs or writes something, reads names or patterns from a file, or never ends
-//   (`tail -f`) — and sed only with a script that picks lines to print (`sed -n '1,80p'`).
+// - The programs: ls, cat, head, tail, wc, du, grep, rg, sed, find, cut, sort, uniq, tr, pwd and echo, each with only
+//   the options known to read — none that follows links, runs or writes something, reads names or patterns from a
+//   file, or never ends (`tail -f`) —, sed only with a script that picks lines to print (`sed -n '1,80p'`), and uniq
+//   with one operand at most (a second is the file it writes). A `$` stays refused, `$?` aside: a variable the person
+//   passes to commands may hold a secret.
 //   `cd <folder>` may come first, before the commands it runs in. Joined by `&&`, then `&&` and `|` only, nothing runs
 //   if the cd fails; joined otherwise (`;`, `||`, a line break), the rest may run in the working folder, so each later
 //   command is read from both folders (AH-F2). A `cd` piped into a command does not move it.
@@ -38,7 +40,9 @@
 //   the fence reads it by its letters.
 // - The globs: only in a path's last part, not starting with `.` or `[` (either could match `..`), no `**`, from a
 //   folder that holds no link, since the shell picks the names. A glob that starts a word comes after `--`: the
-//   agent can name a file `--pre=x`, and `rg foo *` would hand it to rg as an option.
+//   agent can name a file `--pre=x`, and `rg foo *` would hand it to rg as an option. In a long option's value after
+//   its `=` (`grep --include=*.js`) a glob stays that option, whatever names it expands into — never in the option
+//   that gives the pattern.
 // - The programs themselves: the shell must find each one before any folder the agent could write to (inside the
 //   working folder, or relative to the folder a command runs in), where its own file could stand in for it.
 // - For another machine's agents (`agentsDevice`): Filament's own command line is no read, nor is a path in a
@@ -345,9 +349,12 @@ function parse(prog, args, spec) {
       options = false;
       continue;
     }
-    if (w.globs.length) return no(`${prog} ${t}: an option with an unquoted glob — quote it`);
+    // A glob in a long option's value after its `=` (`--include=*.js`): whatever names the shell expands it into start
+    // with the same `--name=`, so each is that option still — never the one that gives the pattern, which a name the
+    // agent made could turn into another script (sed's).
+    const eq = t.startsWith("--") ? t.indexOf("=") : -1;
+    if (w.globs.length && !(eq > 2 && w.globs.every((g) => g > eq) && t.slice(2, eq) !== spec.patternLong)) return no(`${prog} ${t}: an option with an unquoted glob — quote it`);
     if (t.startsWith("--")) {
-      const eq = t.indexOf("=");
       const name = eq < 0 ? t.slice(2) : t.slice(2, eq);
       if (eq < 0 && spec.long?.has(name)) {
         if (spec.noPattern?.has(name)) patterned = true;
@@ -440,6 +447,52 @@ const SED = {
   patternShort: "e",
   patternLong: "expression",
 };
+
+/** @type {Spec} cut: every form of it only prints */
+const CUT = { flags: "nsz", values: "bcdf", long: set("complement", "only-delimited", "zero-terminated"), longValues: set("bytes", "characters", "delimiter", "fields", "output-delimiter") };
+/** @type {Spec} sort without -o / --output (it writes the file), -T (where its scratch goes), --compress-program (runs one),
+ * --files0-from or --random-source (read a file) */
+const SORT = {
+  flags: "bdfgiMhnRrVcCmsuz",
+  values: "ktS",
+  long: set("ignore-leading-blanks", "dictionary-order", "ignore-case", "general-numeric-sort", "ignore-nonprinting", "month-sort", "human-numeric-sort", "numeric-sort", "random-sort", "reverse", "version-sort", "check", "debug", "merge", "stable", "unique", "zero-terminated"),
+  longValues: set("sort", "check", "key", "buffer-size", "field-separator", "parallel"),
+};
+/** @type {Spec} uniq; its second operand is a file it writes, refused where it is read (`PROGRAMS.uniq`) */
+const UNIQ = {
+  flags: "cdDiuz",
+  values: "fsw",
+  long: set("count", "repeated", "all-repeated", "group", "ignore-case", "unique", "zero-terminated"),
+  longValues: set("all-repeated", "group", "skip-fields", "skip-chars", "check-chars"),
+};
+/**
+ * The first word that reads as an option after a program's first operand, or null: a value an option takes is no
+ * operand (`-f 2`, `-cf2`, `--skip-fields 2`), and `--` makes every word after it one.
+ * @param {Word[]} args @param {Spec} spec
+ */
+function optionAfterOperand(args, spec) {
+  let operand = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i].text;
+    if (operand) {
+      if (t.startsWith("-") && t !== "-") return t;
+    } else if (t === "--" || !t.startsWith("-") || t === "-") operand = true;
+    else if (t.startsWith("--")) {
+      if (!t.includes("=") && spec.longValues?.has(t.slice(2)) && !OPTIONAL_VALUE.has(t.slice(2))) i++;
+    } else
+      for (let j = 1; j < t.length; j++)
+        if (spec.values?.includes(t[j])) {
+          if (j === t.length - 1) i++;
+          break;
+        }
+  }
+  return null;
+}
+/** Long options whose value comes only after their `=` (`--group[=METHOD]`): the next word is no value of theirs. */
+const OPTIONAL_VALUE = set("all-repeated", "group");
+
+/** @type {Spec} tr, which reads its input alone: its operands are sets of characters */
+const TR = { flags: "cCdst", long: set("complement", "delete", "squeeze-repeats", "truncate-set1") };
 
 /** A program whose operands are all paths. @param {string} prog @param {Spec} spec */
 const reader = (prog, spec) => (/** @type {Word[]} */ args, /** @type {Place} */ at) => {
@@ -805,6 +858,26 @@ const PROGRAMS = {
   du: reader("du", DU),
   grep: searcher("grep", GREP),
   rg: searcher("rg", RG),
+  cut: reader("cut", CUT),
+  sort: reader("sort", SORT),
+  // Its input, if named, is its one operand: a second is the file it writes. BSD's uniq (macOS) reads no option after
+  // its first operand: one there is that second operand.
+  uniq(args, at) {
+    const after = optionAfterOperand(args, UNIQ);
+    if (after) return no(`uniq ${after}: an option after its input — put it before`);
+    const p = parse("uniq", args, UNIQ);
+    if (!("operands" in p)) return p;
+    if (p.operands.length > 1) return no(`uniq ${p.operands[1].text}: uniq's second operand is a file it writes`);
+    return p.operands.length ? operand(p.operands[0], at) : YES;
+  },
+  // Its sets are characters, never paths; a glob in one is the shell reading a folder: quoted, it is a set.
+  tr(args) {
+    const p = parse("tr", args, TR);
+    if (!("operands" in p)) return p;
+    if (!p.operands.length || p.operands.length > 2) return no("tr takes one set or two");
+    const starred = p.operands.find((w) => w.globs.length);
+    return starred ? no(`tr ${starred.text}: a set with an unquoted glob — quote it`) : YES;
+  },
   // Its script is its first operand, unless `-e` gave it; each picks lines to print (`printOnly`).
   sed(args, at) {
     const p = parse("sed", args, SED);

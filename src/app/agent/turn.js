@@ -20,6 +20,7 @@ import { FLOW_NAME, flowAtOf } from "./flow-tool.js";
 import { THREAD, threadAtOf } from "./thread-tool.js";
 import { craftAtOf } from "./craft-tool.js";
 import { COME_BACK } from "./come-back.js";
+import { RUN_CHECK } from "./run-check.js";
 import { PROMPT_VERSION } from "./prompt.js";
 import { loopSystem } from "./system.js";
 import { createEnvironmentKeeper } from "./environment.js";
@@ -899,6 +900,9 @@ export function createAgentLoopTurn(deps) {
     // Coming back to the chat later (agent/come-back.js): its own agent's, in a chat Filament composes — the waker starts
     // no turn of a client's own conversation.
     const comeBackOffered = !host && !leadTeam && !!memState?.sit?.composed && !!artifactChain;
+    // A sub-agent that only reads runs the check of the graph task it looks at, in a copy of the folder (agent/run-check.js,
+    // x20): offered where it holds one.
+    const runCheckOffered = !!host && !!registry && registry.checksOf(host.id).length > 0;
     // A model that takes no tools (HarnessV4_Tasks E4: its row on the Upstreams page, or its provider's listing, says
     // so) is offered none: the turn runs in words, its prompt says why, and nothing a tool would need is set up. A
     // fork keeps the main agent's set as it was sent, which for such a model was none.
@@ -1042,7 +1046,7 @@ export function createAgentLoopTurn(deps) {
     if (keepsMachine && !off.includes("agent")) (rec.changes ||= []).push("agent: this Filament keeps a machine for its agents: the agent tool takes machine, list_machines and cwd");
     const commandsThere = keepsMachine && !off.includes("bash_background") ? createRemoteCommands({ machines: deps.machines ?? null }) : null;
     if (commandsThere) (rec.changes ||= []).push("agent: this Filament keeps a machine for its agents: bash_background takes machine and cwd, and runs its command there");
-    const own = wordsOnly ? Object.freeze([]) : loopToolArgs({ delegateRead: !!readerModel, disabled: off, web, lead: !!leadTeam, members: leadTeam?.members ?? null, graph: graphOn, report: !!host?.task, askLead: !!host?.askLead, asks, places, supervise: superviseOn, browser: browserOn, craft: !!craftHere, comeBack: comeBackOffered, machines: keepsMachine });
+    const own = wordsOnly ? Object.freeze([]) : loopToolArgs({ delegateRead: !!readerModel, disabled: off, web, lead: !!leadTeam, members: leadTeam?.members ?? null, graph: graphOn, report: !!host?.task, askLead: !!host?.askLead, asks, places, supervise: superviseOn, browser: browserOn, craft: !!craftHere, comeBack: comeBackOffered, runCheck: runCheckOffered, machines: keepsMachine });
     const mcpDefs = mcpTools.filter((t) => mcpCore.has(t.server)).map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
     // A fork (subagents.js, view `fork`) runs on the main agent's request furniture as it was sent — its system
     // prompt, tools, thinking and output ceiling — and on the messages the registry composed: every round then sends
@@ -2311,6 +2315,7 @@ export function createAgentLoopTurn(deps) {
         thread: off.includes(THREAD) ? null : threadHere,
         craft: craftHere,
         comeBack: comeBackOffered && artifactChain && !off.includes(COME_BACK) ? { session: artifactChain } : null,
+        runCheck: runCheckOffered && host && registry && !off.includes(RUN_CHECK) ? (signal) => registry.runCheck(host.id, { signal }) : null,
         browser: browserOn && browserChain && browsers ? browsers.forAgent(browserChain, browserSeat, browserTeam) : null,
         subagents: off.includes("agent") ? null : launcher,
         inbox: door?.inbox || null,

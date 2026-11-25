@@ -90,6 +90,7 @@ import { RETRY_TRIES, withRetries } from "../../core/retry.js";
 import { OUT_HOLD_MS, causeWords, holdWords } from "../../core/provider-cause.js";
 import { checkCommandsProblem, checkedRefusal, grantsHit, grantsNote, grantsOf, grantsRefusal, refusalWords, runRefusal, teamCheckWhy, withCardRuns, withTeamCheck } from "./grants.js";
 import { CHECK_NOT_RUN, CHECK_RETURNS, FOLDER_NOT_CHECKED, MERGE_NOT_CHECKED, TASK_NOT_CHECKED, TASK_NOT_RUN, bounceText, checkRuled, checkWords, failedAlike, failedRun, folderBackText, folderCheckNote, folderRuled, folderTail, stuckText, taskRuled, undoneNote, undoneText, waitingText } from "./check.js";
+import { RUN_CHECK_OFF, runCheckAnswer } from "./run-check.js";
 import { rulesFrom } from "./rules.js";
 import { namesOutside } from "../agent-permits.js";
 import { runOwnCommand, runningShells, stopShell, tellLater } from "../../adapters/tools/hands.js";
@@ -490,6 +491,11 @@ const sinceBlock = (v, r, w) =>
  * @property {(chainId: string, id: string) => { name: string, graph: number } | { error: string }} [huntedTask]  the task
  *   a Hunter is fired from, as the session's graph holds it at the launch (11-02, the graph runner's): its name and the
  *   graph's start — or why none is fired from it, in words: the graph holds no task of that id, or not a done one
+ * @property {(chainId: string, id: string) => { check: string[], graph: number } | null} [taskCheck]  the check a task of
+ *   the session's graph names now, by its id, with the graph's start — null where the graph holds no such task, or it
+ *   names none: a sub-agent that only reads and looks at that task runs it (x20)
+ * @property {(chainId: string) => import("./prompt.js").PermissionMode | null} [turnMode]  the mode the chat's running
+ *   turn fixed, where its request fixed one: a sub-agent's run_check runs under it, as Filament's own checks do (x20)
  * @property {(o: { chainId: string, agentId: string, files: import("../../adapters/git/worktree.js").ChangedFile[], marked?: readonly string[], repo?: string }) => void} [workApplied]
  *   a sub-agent's work went into the session's folder by an apply — the developer's, a command's: the graph runner's,
  *   whose task's change that waited for its apply is done then (10-28); `marked`, the files it left with git's conflict
@@ -930,6 +936,7 @@ const actedBy = (sa, e) => {
  *   restart too
  * @property {Hunted} [hunted]  that task as the graph held it at the launch (11-02): its report names it after a
  *   restart, and a task its finding names hangs off it
+ * @property {Looks} [looks]  one that only reads: the graph task whose check it may run (x20, run_check)
  * @property {import("./remote-agents.js").RemoteChat} [remote]  one launched on another machine (the remote-agents plan's
  *   s-launch): its chat there, which a follow-up goes on in after a restart too
  */
@@ -937,6 +944,11 @@ const actedBy = (sa, e) => {
  * @typedef {object} Hunted  the graph task a Hunter was fired from, as the graph held it at the launch (11-02)
  * @property {string} name  its name, which the hunt's report names it by
  * @property {number} graph  the start of the graph that held it: a task of another graph is not that one
+ */
+/**
+ * @typedef {object} Looks  the graph task a sub-agent that only reads looks at, whose check it runs (x20, run_check)
+ * @property {string} task  its id
+ * @property {number} graph  the start of the graph that held it at the launch: once that graph is gone, no check runs
  */
 /**
  * @typedef {object} Attempt  one of two or three workers its lead launched at once on one brief (HarnessV3-TaskGraph-v2
@@ -1118,6 +1130,8 @@ const actedBy = (sa, e) => {
  *   what, in the place of a refusal (team_v2_plan §5.7)
  * @property {string | null} [hunts]  the graph task a Hunter hunts bugs in, by its id (HarnessV4_DesignPass_Plan UX9): the
  *   Plan view's Hunt bugs names it, so the task's box says who was fired from it
+ * @property {string | null} [looksAt]  the graph task a coding agent's helper is launched for (10-28), by its id: one that
+ *   only reads may run that task's check (x20)
  * @property {boolean} [dry]  only whether it would go: its refusal, or ok with the model it would run on and whether it
  *   would have a copy of its own (`dry`) — nothing made, nothing taken (the card for sub-agents that change files asks it)
  */
@@ -1390,6 +1404,9 @@ const heldKept = (v) => (Number(v?.tokens) > 0 ? { held: { tokens: Number(v.toke
  * @property {string | null} [hunts]  the graph task it hunts bugs in, where its launch named one (UX9)
  * @property {Hunted} [hunted]  that task as the session's graph held it at the launch (11-02): missing where the launch
  *   named none, or no graph was there to read
+ * @property {Looks} [looks]  one that only reads: the graph task it looks at (x20) — the task a hunt is fired from, the
+ *   one it explores, the one a coding agent's helper is launched for —, whose check as the task names it then its
+ *   run_check runs in a copy of the folder, where Filament would run it in this session (`runCheck`)
  * @property {string[]} [taskCheck]  a graph task's worker: its task's own check, as its runner gave it at its launch and
  *   as the task stood when its planner sent it back — none where the task has none (HarnessV3-TaskGraph-v2 TG2-D63)
  * @property {string[] | null} [taken]  the commands its done report named, taken as its task's check where the task had
@@ -2734,6 +2751,7 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
     ...(sa.task || sa.taskWas ? { task: sa.task?.id || String(sa.taskWas) } : {}),
     ...(sa.hunts ? { hunts: sa.hunts } : {}),
     ...(sa.hunted ? { hunted: sa.hunted } : {}),
+    ...(sa.looks ? { looks: sa.looks } : {}),
     // Its conversation, for its next message after a restart (10-26) — never a copy of the main agent's: that one was
     // the main agent's request, its tools and its thinking, and given back it runs as its card, reading what was said.
     ...(sa.convo.length && !sa.fork && sa.view !== "fork" ? { convo: sa.convo } : {}),
@@ -2823,6 +2841,8 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
       ...(typeof t.hunts === "string" && TASK_ID.test(t.hunts) ? { hunts: t.hunts } : {}),
       // …and that task as the graph held it, which its report and a task its finding names go by (11-02).
       ...(typeof t.hunts === "string" && TASK_ID.test(t.hunts) && typeof t.hunted?.name === "string" && Number.isFinite(t.hunted.graph) ? { hunted: { name: t.hunted.name, graph: Number(t.hunted.graph) } } : {}),
+      // …and the task it looks at, whose check a follow-up may run (x20): one that only reads.
+      ...(t.may === "read" && typeof t.looks?.task === "string" && TASK_ID.test(t.looks.task) && Number.isFinite(t.looks.graph) ? { looks: { task: t.looks.task, graph: Number(t.looks.graph) } } : {}),
       model: t.model,
       // A follow-up runs on the model and the effort its launch gave it (E23-D5), after a restart too.
       effort: effortKept(t.effort),
@@ -2943,6 +2963,49 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
 
   /** Sub-agents and checks whose copy is in use — being taken, or an answer or a check runs in it: a reconcile or a trim of the copies spares them. @type {Set<string>} */
   const treeIds = new Set();
+  /** The sub-agents whose run of their check is going (x20, `runCheck`): one at a time each. @type {Set<string>} */
+  const looking = new Set();
+  /** Whether a reviewer's check runs now, and the runs waiting for it to end, first come first (x20). */
+  /** @type {{ busy: boolean, waiting: (() => void)[] }} */
+  const lookTurn = { busy: false, waiting: [] };
+  /**
+   * A reviewer's check waits until no other runs (`runCheck`) — false where `signal` stopped it first.
+   * @param {AbortSignal | null} signal @returns {Promise<boolean>}
+   */
+  const takeLookTurn = (signal) =>
+    new Promise((resolve) => {
+      if (signal?.aborted) return resolve(false);
+      if (!lookTurn.busy) {
+        lookTurn.busy = true;
+        return resolve(true);
+      }
+      const go = () => {
+        signal?.removeEventListener("abort", stop);
+        resolve(true);
+      };
+      const stop = () => {
+        const i = lookTurn.waiting.indexOf(go);
+        if (i >= 0) lookTurn.waiting.splice(i, 1);
+        resolve(false);
+      };
+      lookTurn.waiting.push(go);
+      signal?.addEventListener("abort", stop, { once: true });
+    });
+  /**
+   * The check a sub-agent that only reads may run (x20): what the task it looks at names now, while the graph that held
+   * it at its launch stands — none for any other. @param {Subagent | undefined} sa @returns {string[]}
+   */
+  const looksCheck = (sa) => {
+    if (!sa?.looks || sa.may !== "read") return [];
+    const now = ctx?.taskCheck?.(sa.chainId, sa.looks.task);
+    return now && now.graph === sa.looks.graph ? [...now.check] : [];
+  };
+  /** A reviewer's check ended: the next waiting runs, else none. */
+  const giveLookTurn = () => {
+    const next = lookTurn.waiting.shift();
+    if (next) next();
+    else lookTurn.busy = false;
+  };
   /**
    * The sub-agents whose work could not be captured at an exchange's end, nor on a second try (the owner's of 11-09):
    * each copy stays in use, its work in it alone — with its chat, its folder, why and since when, for Filament's
@@ -6646,6 +6709,15 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
     // instead (AG-85), and there it edits — more than its card says, on their word.
     const inFolder = may === "copy" && developer && spec.worktree === false;
     const level = inFolder ? "edit" : may;
+    // One that only reads may run the check of the graph task it looks at (x20): the task a hunt is fired from, the one
+    // it explores, the one a coding agent's helper is launched for — its commands as the task names them, in a copy of
+    // the folder, each run reading them and asking again whether Filament would run them in this session now
+    // (`runCheck`). Never a change's reviewer: the change it reviews waits in its worker's copy, which a run of the
+    // folder would not hold; nor one whose card goes without a shell.
+    const looksAt = level === "read" && !card.toolsOff?.includes("shell") ? (hunts ?? (task && !task.review ? task.id : null) ?? (spec.looksAt || null)) : null;
+    const lookedAt = looksAt && ctx?.taskCheck ? ctx.taskCheck(chainId, looksAt) : null;
+    /** @type {Looks | null} */
+    const looks = looksAt && lookedAt ? { task: looksAt, graph: lookedAt.graph } : null;
     // Of which kind its own is (the owner's plan of 11-09 for big repos): a patch — no checkout — for a builder on
     // Filament's loop, a worktree where it runs commands from the start or its agent runs its own tools (workspace-kind.js).
     const engine = ctx?.agentOf?.(model) ? "acp" : "loop";
@@ -6677,6 +6749,7 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
       card: { tag: card.tag, name: card.name, thinks: card.thinks, may: card.may, ...(card.toolsOff?.length ? { toolsOff: [...card.toolsOff] } : {}) },
       task: task ? { id: task.id, review: task.review } : null,
       ...(hunts ? { hunts, ...(hunted ? { hunted: { name: hunted.name, graph: hunted.graph } } : {}) } : {}),
+      ...(looks ? { looks } : {}),
       // A graph task's worker is launched with its task's check granted (V2-1), or none (TG2-D63) — its task's own, kept
       // apart from its team's, which stays on its team.
       ...(task ? { taskCheck: [...(spec.grants?.check || [])], taken: null } : {}),
@@ -9381,7 +9454,7 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
              * @param {boolean} bg @param {LaunchParent} par
              */
             /** What `launch` is asked, here or at the card's Accept. @param {boolean} bg @param {LaunchParent | null} par */
-            const asked = (bg, par) => ({ origin: /** @type {const} */ ("agent"), chainId, prompt: input?.prompt, description: input?.description, ...(own ? { worker: kind, view } : { as: kind }), ...(savedCard ? { said: true } : {}), ...(handed ? { changes: handed } : {}), ...(chosen?.ok ? chosen.fields : {}), ...(attached ? { images: attached.images, attachedFiles: attached.files } : {}), background: bg, cwd, mode, parentModel: model, thinking, parent: par, ...(batch != null ? { batch: `${runId}:${batch}` } : {}) });
+            const asked = (bg, par) => ({ origin: /** @type {const} */ ("agent"), chainId, prompt: input?.prompt, description: input?.description, ...(own ? { worker: kind, view } : { as: kind }), ...(savedCard ? { said: true } : {}), ...(handed ? { changes: handed } : {}), ...(chosen?.ok ? chosen.fields : {}), ...(attached ? { images: attached.images, attachedFiles: attached.files } : {}), background: bg, cwd, mode, parentModel: model, thinking, parent: par, ...(batch != null ? { batch: `${runId}:${batch}` } : {}), ...(taskId ? { looksAt: taskId } : {}) });
             const startNow = async (bg, par) => {
               if (helpKey) helping.set(helpKey, null);
               const r = await (async () => {
@@ -10955,6 +11028,51 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
           }
         : null;
       return { id: sa.id, ...(fetchLfs ? { fetchLfs } : {}), ...(workspace ? { workspace } : {}), ...(widen ? { widen } : {}), card: { tag: sa.card.tag, name: sa.card.name, thinks: sa.card.thinks, asked: sa.asked, ...(sa.card.toolsOff?.length ? { toolsOff: [...sa.card.toolsOff] } : {}) }, may: sa.may, readOnly, team: sa.team, task: sa.task, fork, workdir, folder: sa.cwd, brief, asks, self, supervise: !!sa.run.look, askLead: !!sa.team, grants: workdir ? sa.grants : null, planHeld: !!sa.run.planHeld, held, notes: standingNotes(sa), ...(rateMovesOn ? { rateMovesOn: true } : {}), ...(sa.second ? { second: true } : {}), ...(sa.weighs ? { weighs: sa.weighs } : {}) };
+    },
+    /**
+     * The check a sub-agent that only reads may run (x20): the commands the graph task it looks at names now, for which
+     * it is offered run_check (agent/run-check.js) — none for any other, nor once the graph that held the task is gone.
+     * @param {string} id @returns {string[]}
+     */
+    checksOf: (id) => looksCheck(subs.get(String(id || ""))),
+    /**
+     * A sub-agent that only reads runs the check of the task it looks at, as the task names it now (x20, run_check),
+     * as Filament runs a check (`checkFolder`): in a copy of the folder as it stands, every command, one that failed run
+     * once more, under the mode the chat's running turn fixed. Not where Filament would not run it in the session now —
+     * read-only now or at its launch, another machine's agents' chat that asks, a command of a shape no check takes, one
+     * that names the folder itself, one a rule of the session's speaks for —, nor while a run of its own is still going:
+     * said in words. One reviewer's check runs at a time (`takeLookTurn`): each may run a whole suite in a copy of its
+     * own, and several at once would hold the machine as long.
+     * @param {string} id @param {{ signal?: AbortSignal | null }} [o]
+     * @returns {Promise<{ ok: true, text: string } | { ok: false, error: string }>}
+     */
+    async runCheck(id, { signal = null } = {}) {
+      const sa = subs.get(String(id || ""));
+      const checks = looksCheck(sa);
+      if (!sa || !checks.length) return { ok: false, error: RUN_CHECK_OFF };
+      /** @param {string} w */
+      const no = (w) => ({ ok: /** @type {const} */ (false), error: `Not run: ${String(w).replace(/\.$/, "")}.` });
+      const mode = ctx?.turnMode?.(sa.chainId) ?? null;
+      if (sa.mode === "read-only") return no(TASK_NOT_CHECKED.readOnly);
+      // Read-only now and another machine's agents' chat are said by the run itself, in its own words; a shape, the
+      // folder named or a rule here — in the words a task's author reads, less what they tell that author to do.
+      const bar = checkBar(sa.chainId, checks, { mode });
+      if (bar && !("readOnly" in bar) && !ctx?.agentsAsk?.(sa.chainId)) {
+        const why = "shape" in bar ? bar.shape : refusalWords(bar.hit, { folder: bar.folder, lift: "a check", runs: "Filament runs it in a copy of the folder" });
+        return no(`Filament would not run this check itself: ${why.replace(/:\s*leave (?:it|check) out\b[\s\S]*$/, "")}`);
+      }
+      if (looking.has(sa.id)) return no("a run of your check is still going; call run_check again once it has ended");
+      looking.add(sa.id);
+      try {
+        if (!(await takeLookTurn(signal))) return no("it was stopped while it waited for another reviewer's check to end");
+        try {
+          return runCheckAnswer(await checkFolder(sa.chainId, checks, { id: `${sa.id}-look`, all: true, mode, ...(signal ? { signal } : {}) }));
+        } finally {
+          giveLookTurn();
+        }
+      } finally {
+        looking.delete(sa.id);
+      }
     },
     /**
      * The host's run exists: what its lead said before it did reaches it now, and the launching turn's run names it

@@ -2346,6 +2346,10 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     taskHelper: { refusal: (chainId, id) => graphs.helperRefusal(chainId, id), took: (chainId, id, helper) => graphs.helperTook(chainId, id, helper) },
     // A Hunter fired from a task of the graph keeps that task as the graph holds it (11-02).
     huntedTask: (chainId, id) => graphs.huntedTask(chainId, id),
+    // A sub-agent that only reads may run the check of the graph task it looks at (x20), under the mode the chat's
+    // running turn fixed, as Filament's own checks run.
+    taskCheck: (chainId, id) => graphs.taskCheck(chainId, id),
+    turnMode: (chainId) => graphs.turnMode(chainId),
     // A sub-agent its session's graph will still ask for outlives the registry's prune (the bug report's L9).
     holds: (chainId) => graphs.holds(chainId),
     // A flow the main agent drives In place (HarnessV4_OneAgent_Plan OA4): the chat's turn stays open until it ends.

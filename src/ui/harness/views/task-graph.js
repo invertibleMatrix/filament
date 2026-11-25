@@ -107,7 +107,7 @@ export function huntBrief(t) {
     ...(t.acceptance ? [`Its acceptance: ${t.acceptance}`] : []),
     ...(t.writes?.length ? [`The files it named: ${t.writes.join(", ")}`] : []),
     ...(changed.length ? [`The files it changed: ${changed.join(", ")}`] : []),
-    ...(t.check?.length ? [`Its check: ${t.check.join(", then ")}`] : []),
+    ...(t.check?.length ? [`Its check: ${t.check.join(", then ")}`, "Run its check with run_check where you have it: Filament runs it in a copy of the folder as it stands, and answers how each command ended with the end of its output."] : []),
     "",
     "Read the code as it is now — those files, and what calls them — never the summary above alone. Report the bugs you can show: each with its file and line, the code that shows it, why it is a bug and the input or the order of events that sets it off. One you cannot tie to code goes under Plausible, apart. Say what you did not reach.",
     'Start your report with one line, "Subject: " and what you found in under 20 words: the agent that reads it may read that line before the rest.',

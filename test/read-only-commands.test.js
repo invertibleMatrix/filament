@@ -17,7 +17,7 @@ import { runAgentTurn } from "../src/app/agent/loop.js";
 
 const WIN = process.platform === "win32";
 /** The programs a fake Git (Windows) or the fake PATH folder (elsewhere) holds; rg, node and python sit in their own. */
-const PROGRAMS = ["ls", "cat", "head", "tail", "wc", "du", "grep", "sed", "find", "git"];
+const PROGRAMS = ["ls", "cat", "head", "tail", "wc", "du", "grep", "sed", "find", "git", "cut", "sort", "uniq", "tr"];
 const exe = (/** @type {string} */ name) => (WIN ? `${name}.exe` : name);
 /** A program file the lookup can find. @param {string} dir @param {string} name */
 const tool = (dir, name) => {
@@ -205,6 +205,56 @@ describe("readOnlyCommand (HarnessV3-Launch LD-D11)", () => {
       ["echo ${?}", /a `\$`/],
       ["echo $(pwd)", /a `\$`/],
       ["cat $?/../../x", /`\.\.` after a name in 0\/\.\.\/\.\.\/x/],
+    ]))
+      no(c, why);
+  });
+
+  // (fails before: yes — x20: two hunts of 11-23 had `cut`, `sort | uniq -c` and `grep --include=*.js` refused, and
+  // looked by reading alone)
+  test("cut, sort, uniq and tr as filters, and a glob after a long option's `=`: yes; their forms that write or run: no", () => {
+    for (const c of [
+      "cut -d: -f1 a.txt",
+      "cut -c1-10 a.txt b.md",
+      "cut --fields=2 --delimiter=, -- a.txt",
+      "grep -o foo a.txt | cut -d' ' -f2 | sort | uniq -c",
+      "sort -k2,2n -t, a.txt",
+      "sort -u --reverse a.txt b.md",
+      "uniq -c a.txt",
+      "uniq -f 2 -c a.txt",
+      "uniq -cf2 a.txt",
+      "uniq --skip-fields 2 a.txt",
+      "uniq --group -c a.txt",
+      "uniq --all-repeated=separate",
+      "ls | tr a-z A-Z",
+      "cat a.txt | tr -d '\\r'",
+      "tr '[:upper:]' '[:lower:]'",
+      "grep -rn --include=*.js foo src",
+      "grep -rn --exclude-dir=node_* --include=*.md foo .",
+      "rg --glob=*.js foo src",
+      "ls --ignore=*.md",
+    ])
+      yes(c);
+    for (const [c, why] of /** @type {[string, RegExp][]} */ ([
+      ["sort -o out.txt a.txt", /sort -o is not an option known to only read/],
+      ["sort --output=out.txt a.txt", /sort --output is not an option known to only read/],
+      ["sort -T . a.txt", /sort -T is not an option known to only read/],
+      ["sort --compress-program=gzip a.txt", /sort --compress-program is not an option known to only read/],
+      ["sort --files0-from=list a.txt", /sort --files0-from is not an option known to only read/],
+      ["uniq a.txt out.txt", /^uniq out\.txt: uniq's second operand is a file it writes$/],
+      // BSD's uniq (macOS) takes an option after its input for its second operand, a file it writes.
+      ["uniq a.txt -c", /^uniq -c: an option after its input — put it before$/],
+      ["uniq -f 2 a.txt --count", /^uniq --count: an option after its input — put it before$/],
+      ["uniq -- a.txt -c", /^uniq -c: an option after its input — put it before$/],
+      ["cut -f1 ../outside/secret.txt", /is outside the working folder/],
+      ["tr x* y", /^tr x\*: a set with an unquoted glob — quote it$/],
+      ["tr", /^tr takes one set or two$/],
+      ["tr a b c", /^tr takes one set or two$/],
+      // Not after its `=`, nor in the option that gives the pattern: a name the agent made could become another script.
+      ["sed -n --expression=1p* a.txt", /an option with an unquoted glob — quote it/],
+      ["grep --regexp=a* a.txt", /an option with an unquoted glob — quote it/],
+      ["grep --inc*=x foo a.txt", /an option with an unquoted glob — quote it/],
+      ["grep --include *.js foo src", /a value with an unquoted glob — quote it/],
+      ["ls -I*.md", /an option with an unquoted glob — quote it/],
     ]))
       no(c, why);
   });

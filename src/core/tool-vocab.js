@@ -235,6 +235,14 @@ export const KINDS = {
     never: true,
     cosmetic: [],
   },
+  // A sub-agent that only reads running the check of the graph task it looks at, in a copy of the folder
+  // (agent/run-check.js, x20): Filament's own.
+  "run-check": {
+    names: ["run_check"],
+    fields: {},
+    never: true,
+    cosmetic: [],
+  },
   // Claude desktop's own artifact tool (its Code tab's `Artifact`), as a chat imported from Claude Code holds its
   // calls: a page kept on claude.ai, never here (HarnessV4_Artifacts_Plan AFC-150). Its name differs from Filament's in
   // case alone (`BY_EXACT_NAME`).

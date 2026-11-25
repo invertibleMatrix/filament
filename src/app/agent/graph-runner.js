@@ -2008,6 +2008,23 @@ export function createGraphRunner({ archive, registry, events, crew, log, now = 
       return { name: t.name, graph: g.startedAt };
     },
     /**
+     * The check a task of the session's graph names now, by its id, with the graph's start (x20): a sub-agent that only
+     * reads and looks at that task runs it — read at each run, so a check changed since is the one it runs, and a graph
+     * that closed or started again since gives it none. Null where the graph holds no such task, or it names none.
+     * @param {string} chainId @param {string} id @returns {{ check: string[], graph: number } | null}
+     */
+    taskCheck(chainId, id) {
+      const g = get(chainId);
+      const t = g?.tasks.find((x) => x.id === id);
+      const check = Array.isArray(t?.check) ? t.check.filter((c) => typeof c === "string" && c.trim()) : [];
+      return g && check.length ? { check, graph: g.startedAt } : null;
+    },
+    /**
+     * The mode the chat's running turn fixed, where its request fixed one (`modeIn`): Filament's own checks run under
+     * it, and so does a run_check of a sub-agent of the chat's (x20). @param {string} chainId
+     */
+    turnMode: (chainId) => modeIn(chainId),
+    /**
      * The planner applies a worker's change that waits for it (the owner's of 11-02) — the agent's `apply_changes`, a
      * coding agent's through its agent tool, a lead's through its worker tool, each by the registry's apply: its task
      * merges now, in graph order behind a merge under way (`merge`), the folder checked with it, and its end told with the

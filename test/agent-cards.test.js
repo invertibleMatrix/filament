@@ -462,7 +462,7 @@ describe("the tools an agent goes without (SA2)", () => {
 
   test("the loop's tools each switch takes away; a fork, which keeps the main agent's tools, has them refused in words", () => {
     assert.deepEqual(Object.keys(CARD_TOOL_NAMES), [...CARD_TOOLS], "a list for every switch");
-    assert.deepEqual(cardOffTools(["shell", "visuals"]), ["bash", "bash_background", "bash_output", "bash_kill", "powershell", "show_visual", "visual_guide", "artifact"]);
+    assert.deepEqual(cardOffTools(["shell", "visuals"]), ["bash", "bash_background", "bash_output", "bash_kill", "powershell", "run_check", "show_visual", "visual_guide", "artifact"]);
     assert.deepEqual([cardOffTools(["mcp"]), cardOffTools(null)], [[], []], "the MCP servers are no names: the turn leaves them out");
     const refused = cardRefusals({ name: "End user", toolsOff: ["web", "mcp"] }, [{ name: "read" }, { name: "mcp__docs__search" }, { name: "web_fetch" }]);
     assert.deepEqual(Object.keys(refused), ["web_fetch", "web_search", "mcp__docs__search"]);

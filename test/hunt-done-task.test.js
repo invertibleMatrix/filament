@@ -134,6 +134,9 @@ describe("the brief", () => {
     // A worker's task: its report's words and the files it changed; a long name cut in the description alone.
     const w = huntBrief({ id: "t5", name: "Cache", goal: "Expire old keys", writes: ["src/cache.js"], check: ["npm test", "npm run lint"], report: { did: "Moved the expiry into get()", files: [{ path: "src/cache.js" }, { path: "test/cache.test.js" }] } });
     assert.match(w.prompt, /Its goal: Expire old keys\nWhat was done: Moved the expiry into get\(\)\nThe files it named: src\/cache\.js\nThe files it changed: src\/cache\.js, test\/cache\.test\.js\nIts check: npm test, then npm run lint\n/);
+    // (fails before: yes — x20: a hunt could not run its task's check, and its brief did not say how) run_check runs it.
+    assert.match(w.prompt, /\nRun its check with run_check where you have it: Filament runs it in a copy of the folder as it stands/);
+    assert.ok(!huntBrief({ id: "t7", name: "No check" }).prompt.includes("run_check"), "no check, no such line");
     const long = huntBrief({ id: "t6", name: "x".repeat(90), summary: "y".repeat(3000) });
     assert.ok(long.prompt.includes(`What was done: ${"y".repeat(3000)}\n`), "the agent's own words, whole");
     assert.equal(long.description, `Bug hunt: t6 · ${"x".repeat(59)}…`);

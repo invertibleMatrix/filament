@@ -222,7 +222,7 @@ test("a grant covers its command as written or followed by more words; parts eac
     "npm test $(echo x)",
     "npm test `echo x`",
     "npm test && npm install left-pad",
-    "npm test && sort out.txt",
+    "npm test && sort -o out.txt a.txt",
     `npm test --prefix "${fwd(F)}"`,
     "cd ../../.. && npm test",
     `cd "${fwd(F)}" && npm test`,
