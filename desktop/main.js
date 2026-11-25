@@ -112,6 +112,14 @@ const SOON_MS = 2000;
 /** How many times the windows' browser session is asked for as Filament comes up, and how far apart (`ownerSession`). */
 const SESSION_TRIES = 4;
 const SESSION_RETRY_MS = 750;
+/**
+ * How long the app attached at its start waits for its windows' session before it opens them all the same: a Filament
+ * that answers late leaves no window unopened for its ~22 s of tries, and the session reaches them as it lands
+ * (`backFromPairing`) (the hunt on x45).
+ */
+const ATTACH_SESSION_MS = 3000;
+/** The page Filament gives a window that called with no session (src/http/guards.js PAIR_PAGE). */
+const PAIR_PAGE = "/ui/pair.html";
 
 /** What later launches asked before this one was ready — a double-click while it starts, a `--quit` —, done once it is. @type {string[][]} */
 const early = [];
@@ -987,25 +995,56 @@ async function run() {
    * process alone (`windowsSession`, `sendSession`), never written to disk — the page itself holds no secret. Taken
    * again at each start of Filament, before its windows load: a session lasts while the start that minted it does.
    */
-  const ownerSession = async () => {
-    sessionFor = ownerHeaders(dataDir, origin)[OWNER_HEADER] || "";
+  /** The mint under way, which every asker shares: "" once none is. @type {Promise<boolean> | null} */
+  let minting = null;
+  /** What the newest mint that failed said, logged once until it says something else. */
+  let mintFailed = "";
+  /** @returns {Promise<boolean>} whether the windows hold a session of this key now */
+  const mint = async () => {
+    const key = ownerHeaders(dataDir, origin)[OWNER_HEADER] || "";
+    sessionFor = key;
     // Asked again a few times, a moment apart, before the windows load without it: a call that failed once — Filament
     // busy as it starts — left them on no session for the whole start (the hunt on s0a).
     let why = "";
+    let refused = false;
     for (let tries = 0; tries < SESSION_TRIES; tries++) {
       if (tries) await new Promise((r) => setTimeout(r, SESSION_RETRY_MS));
       try {
         const r = await ask("/api/owner/session", { method: "POST", body: "{}" });
         const j = /** @type {any} */ (r.ok ? await r.json() : null);
-        if (typeof j?.token === "string" && j.token) return void (windowsSession = j.token);
+        if (typeof j?.token === "string" && j.token) {
+          windowsSession = j.token;
+          mintFailed = "";
+          backFromPairing();
+          return true;
+        }
         why = `HTTP ${r.status}`;
         // Refused: no key read, or another Filament's — asked again, it says the same.
-        if (r.status === 403) break;
+        refused = r.status === 403;
+        if (refused) break;
       } catch (/** @type {any} */ e) {
         why = String(e?.message || e);
       }
     }
-    log.line(`Filament minted no browser session for the app's windows (${why})`);
+    // One that got no answer stands as no mint: the next call carrying this key asks again (the hunt on x45).
+    if (!refused && sessionFor === key) sessionFor = "";
+    if (why !== mintFailed) log.line(`Filament minted no browser session for the app's windows (${why})`);
+    mintFailed = why;
+    return false;
+  };
+  const ownerSession = () => (minting ??= mint().finally(() => (minting = null)));
+  /**
+   * The app's own windows that loaded with no session — Filament gives a stranger its pairing page — take their page
+   * again once one is minted: a late mint never leaves them at the pairing page (the hunt on x45).
+   */
+  const backFromPairing = () => {
+    for (const [name, w] of windows) {
+      if (w.isDestroyed()) continue;
+      try {
+        const at = new URL(w.webContents.getURL());
+        if (at.origin === origin && at.pathname === PAIR_PAGE) void w.loadURL(pageOf(name)).catch(() => {});
+      } catch {}
+    }
   };
   const sup = createSupervisor({
     fork: () => {
@@ -2058,8 +2097,9 @@ async function run() {
   updater?.start();
   if (owned) sup.start();
   // Attached at the start to a Filament already running (a terminal's, a service's): the windows' session first, so the
-  // harness they open calls it as its owner — under the owner key, without one it was its pairing page.
-  else await ownerSession();
+  // harness they open calls it as its owner — under the owner key, without one it was its pairing page. A few seconds at
+  // most: a late one reaches the windows as it lands.
+  else await Promise.race([ownerSession(), new Promise((r) => setTimeout(r, ATTACH_SESSION_MS))]);
   // The harness shows at once — while its own Filament starts, with the app's page saying so — unless the app started
   // hidden (tray only, as at logon).
   if (!process.argv.includes("--hidden")) openWindow("harness");

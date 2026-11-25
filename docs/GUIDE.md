@@ -2299,7 +2299,9 @@ computer too, where `server.loopbackTrust` is `token`: memory's tools, briefing,
   Where no app started this Filament — a server, Filament started on its own (`filament start`), one the app attached
   to — there is no press key: an answer or a setting goes through from any caller Filament knows (the owner key, a
   window's session, a pairing, the admin token). The owner key holds there too, and an app that attaches to a running
-  Filament gives its windows their owner session before it opens them.
+  Filament gives its windows their owner session before it opens them. It waits a few seconds at most: where that Filament
+  answers late, the windows open all the same, and one that loaded the pairing page meanwhile takes its own page as the
+  session lands. A session asked for that got no answer is asked for again at the app's next call.
   The key guards Filament's door, not its files. A command you allowed runs as your account: it can write Filament's
   own files in its data folder — the configuration, the devices it knows, a chat's settings — and start Filament
   again, and no key stands in its way. What the key stops is a call to the admin API that would answer for you, let

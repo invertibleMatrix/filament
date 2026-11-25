@@ -84,7 +84,9 @@ test("the app's main process: the harness shows at the launch, waits with the ap
   const main = read("desktop/main.js");
   assert.match(main, /import \{ underWay, waitPage, waitWords \} from "\.\/lib\/waiting\.js";/);
   // At the launch, unless hidden (tray only, as at logon); a second launch brings the window forward whatever the state.
-  assert.match(main, /if \(owned\) sup\.start\(\);\n(?: {2}\/\/[^\n]*\n)+ {2}if \(!process\.argv\.includes\("--hidden"\)\) openWindow\("harness"\);/);
+  // Attached at its start: the windows' session first, a few seconds at most (the hunt on x45).
+  assert.match(main, /if \(owned\) sup\.start\(\);\n(?: {2}\/\/[^\n]*\n)+ {2}else await Promise\.race\(\[ownerSession\(\), new Promise\(\(r\) => setTimeout\(r, ATTACH_SESSION_MS\)\)\]\);\n(?: {2}\/\/[^\n]*\n)+ {2}if \(!process\.argv\.includes\("--hidden"\)\) openWindow\("harness"\);/);
+  assert.match(main, /^const ATTACH_SESSION_MS = 3000;$/m);
   assert.match(main, /launched = \(argv\) => \{\n {4}if \(argv\.includes\("--quit"\)\) return void quit\(\);\n {4}if \(argv\.includes\("--card"\)\) return void openCard\(\);\n(?: {4}[^\n]*\n)*? {4}const w = openWindow\("harness", "", \{ launch: true \}\);\n/);
   assert.doesNotMatch(main, /\bshown = false\b/, "no launch is put off to Filament's answer any more");
   // A window opened while its own Filament gives no page: the app's page in it, a spinner while it is on its way.
@@ -93,6 +95,12 @@ test("the app's main process: the harness shows at the launch, waits with the ap
   // As Filament's state moves the waiting windows say it; at its answer each takes its page, at the route it was asked.
   // The windows' browser session first (src/services/owner.js), so the page they load calls with it.
   assert.match(main, /if \(state === "up" \|\| taken\?\.kind === "attach"\) void ownerSession\(\)\.finally\(reload\);\n {4}else for \(const w of waiting\.keys\(\)\) paintWait\(w\);/);
+  // (fails before: yes — the hunt on x45: a mint that got no answer stood as done, so no call asked again, and a window
+  // that loaded with none sat at the pairing page however late the session came)
+  assert.match(main, /const ownerSession = \(\) => \(minting \?\?= mint\(\)\.finally\(\(\) => \(minting = null\)\)\);/, "every asker shares the mint under way");
+  assert.match(main, /if \(!refused && sessionFor === key\) sessionFor = "";/, "one that got no answer is asked again by the next call with that key");
+  assert.match(main, /windowsSession = j\.token;\n {10}mintFailed = "";\n {10}backFromPairing\(\);\n {10}return true;/);
+  assert.match(main, /if \(at\.origin === origin && at\.pathname === PAIR_PAGE\) void w\.loadURL\(pageOf\(name\)\)/, "a window at the pairing page takes its own page once the session lands");
   assert.match(main, /const waited = waiting\.get\(w\);\n {6}if \(waited\) \{\n {8}waiting\.delete\(w\);\n {8}void w\.loadURL\(`\$\{pageOf\(waited\.name\)\}\$\{waited\.route\}`\)/);
   assert.match(main, /if \(route && waited\) waited\.route = route;/, "a chat asked meanwhile opens at the answer");
   assert.match(main, /w\.on\("closed", \(\) => \{\n {6}every\.delete\(w\);\n {6}unloaded\.delete\(w\);\n {6}waiting\.delete\(w\);/);
