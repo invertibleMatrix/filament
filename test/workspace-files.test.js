@@ -363,6 +363,37 @@ describe("the workspace adapter", () => {
     const noRoots = await listDirs({ roots: [], allowed: () => true });
     assert.ok(noRoots.dirs.length >= 1, "the machine's filesystem roots");
   });
+
+  // (fails before: yes — x54, the hunt on x34: a folder's entries and each link among them were looked at on the server's
+  // thread, which a link to a share that went away holds as long as the share does)
+  test("the folder browser lists a folder whose link does not answer within its wait, that link left out, a link that answers listed", async () => {
+    const base = mkdtempSync(join(tmpdir(), "filament-browse-links-"));
+    try {
+      mkdirSync(join(base, "real"));
+      mkdirSync(join(base, "target"));
+      fs.symlinkSync(join(base, "target"), join(base, "good"), "junction");
+      fs.symlinkSync(join(base, "target"), join(base, "dead"), "junction");
+      const allowed = (/** @type {string} */ p) => folderVerdict({ agentLoop: { roots: [base] }, server: { host: "127.0.0.1" } }, p).ok;
+      let open = () => {};
+      const shut = new Promise((r) => (open = () => r(undefined)));
+      const at = Date.now();
+      const r = await listDirs({ path: base, roots: [base], allowed, there: { ms: 50, statOf: (p) => (/[\\/]dead$/.test(p) ? shut : stat(p)) } });
+      open();
+      assert.deepEqual(r.dirs.map((d) => d.name), ["good", "real", "target"]);
+      assert.ok(Date.now() - at < 1000, `answered in ${Date.now() - at} ms`);
+      // The folder itself not answering: said in words within its wait, no listing.
+      const hung = listDirs({ path: join(base, "real"), roots: [base], allowed, there: { ms: 50, statOf: (p) => (/[\\/]real$/.test(p) ? new Promise(() => {}) : stat(p)) } });
+      await assert.rejects(hung, /does not answer/);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  // (fails before: yes — x54: a folder asked off the thread and found not there was stat-ed again on it by the fence)
+  test("a folder found not there off the thread is judged missing with no look of the fence's own", () => {
+    assert.deepEqual(folderVerdict(rules([dir]), dir, { gone: true }), { ok: false, root: dir, why: "missing" });
+    assert.equal(folderVerdict(rules([dir]), dir).ok, true, "asked itself, it is there");
+  });
 });
 
 /** The folder rules' configuration: these roots, Filament listening on `host`. @param {string[]} roots @param {string} [host] */

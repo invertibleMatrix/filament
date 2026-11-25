@@ -23,7 +23,7 @@ import { clip } from "../src/core/text.js";
 import { createSpaceStore } from "../src/services/spaces.js";
 import { createGuidance } from "../src/app/watchers/guidance.js";
 import { createWatchEvents } from "../src/app/watchers/events.js";
-import { createCommitWatch, placeAmong } from "../src/app/watchers/commits.js";
+import { createCommitWatch, placeAmong, placeAmongSoon } from "../src/app/watchers/commits.js";
 import { createOwnTimes } from "../src/app/watchers/own-times.js";
 import { createConnectionWatch } from "../src/app/watchers/connection.js";
 import { createSpaceTools } from "../src/app/space-tools.js";
@@ -334,6 +334,40 @@ describe("what a trigger names is this project's: its chat, its place, its tool"
     const now = spaces.get("p1").routines.find((x) => x.id === r.id);
     assert.equal(now?.seen?.trouble ?? null, null, "the place before is not its trouble");
     assert.deepEqual(started, [[join(root, "packages", "app"), "main"]]);
+  });
+
+  // (fails before: yes — x54, the hunt on x34: a commit watcher's place was looked at on the server's thread, the fence's
+  // existsSync and realpathSync and a stat, which a share that went away holds as long as it does)
+  test("a commit watcher's place on a drive or share that does not answer is its trouble in words, nothing looked at there on the server's thread, and it is judged again a moment later", async () => {
+    const clock = { at: at(9) };
+    const spaces = createSpaceStore({ dir: null, now: () => clock.at });
+    const root = fresh("hung");
+    const added = fresh("hung-added");
+    let answers = false;
+    /** @type {string[][]} */
+    const started = [];
+    const commits = createCommitWatch({
+      store: spaces, heard: () => 0, folderOf: () => root, chatOf: () => null, own: createOwnTimes(), now: () => clock.at, retryMs: 50,
+      // The server's: a folder it added that does not answer is left out of its folders.
+      foldersOf: async () => (answers ? [root, added] : [root]),
+      there: async (/** @type {string} */ p) => (p === added && !answers ? null : true),
+      watch: /** @type {any} */ ((/** @type {string} */ place, /** @type {string} */ branch) => (started.push([place, branch]), { stop: () => {} })),
+    });
+    stops.push(() => commits.stop());
+    const f = routineFields({ title: "Commits", text: "x", trigger: { kind: "commit", branch: "main", place: added } }, { create: true });
+    assert.ok(f.ok, JSON.stringify(f));
+    const r = spaces.routinePropose("p1", f.fields, { chain: "c1", byName: "Lead", model: "m" });
+    spaces.routineOn("p1", r.id);
+    commits.sync();
+    await commits.settled();
+    const trouble = () => spaces.get("p1").routines.find((x) => x.id === r.id)?.seen?.trouble?.why ?? null;
+    assert.equal(trouble(), `place "${added}" cannot be checked: its drive or share does not answer`);
+    assert.deepEqual(started, []);
+    // The agent that proposes it is told the same.
+    assert.deepEqual(await placeAmongSoon([root], added, async (p) => (p === added ? null : true)), { ok: false, error: `place "${added}" cannot be checked: its drive or share does not answer`, unanswered: true });
+    answers = true;
+    await until(() => started.length > 0, "its branch watched once its share answers", { timeoutMs: 5000 });
+    assert.deepEqual(started, [[added, "main"]]);
   });
 
   test("a connection trigger's tool is one the project's chats have, switched on, that its server marks read-only: any other is refused as it is proposed", async () => {

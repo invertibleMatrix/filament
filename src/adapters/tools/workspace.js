@@ -3,14 +3,13 @@
 // code viewer, a name search, and the folder browser's subdirectories. The same fence the hands run behind
 // (`resolveInside`: lexical and real-path containment) keeps every path inside the folder; the folder itself is the
 // caller's to allow (the admin area judges it against agentLoop.roots). Nothing here writes.
-import { readdirSync, statSync, existsSync, realpathSync, lstatSync } from "node:fs";
-import { open, readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, relative, resolve, basename, dirname, extname, sep } from "node:path";
 import { resolveInside } from "./fs-fence.js";
 import { withoutOwnSwitch } from "./own-programs.js";
 import { OWN_CONFIG, gitAbove, gitProgram, notStarted, refusedWords } from "../git/snapshot.js";
 import { execFileOffThread } from "../git/spawn-pool.js";
-import { folderThere } from "../git/folder-there.js";
+import { FOLDER_STAT_MS, folderThere } from "../git/folder-there.js";
 
 export const MAX_TREE_ENTRIES = 2000;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -356,7 +355,8 @@ async function listFiles(root) {
  * The folder browser's one level: the subdirectories of `path`, its parent, and — with no path — the top level,
  * which is the allowed roots when some are listed, else this machine's filesystem roots (the drives on Windows,
  * `/` elsewhere), each looked at off the server's thread, a moment at most: a drive or share that does not answer — a
- * mapped drive gone offline — is left out, never waited on there (folder-there.js `folderThere`). Hidden folders
+ * mapped drive gone offline — is left out, never waited on there (folder-there.js `folderThere`). A folder's own
+ * entries are read so too, and a link among them is listed where what it points at answers as a folder. Hidden folders
  * (dot-prefixed) are left out unless asked for. The caller has already allowed `path`, looked at off the thread; the
  * parent is offered only when it is allowed too (`allowed(parent)`).
  * @param {{ path?: string, hidden?: boolean, roots: string[], allowed: (p: string) => boolean, there?: { ms?: number, statOf?: (path: string) => Promise<unknown> } }} opts
@@ -367,39 +367,69 @@ export async function listDirs({ path = "", hidden = false, roots, allowed, ther
     const answered = await Promise.all(top.map((p) => folderThere(p, there)));
     return { path: "", parent: null, top: true, dirs: top.filter((_, i) => answered[i] === true).map((p) => ({ name: p, path: p })) };
   }
+  // The folder, its entries and each link among them are read off the server's thread, a moment each at most (x54,
+  // the hunt on x34): a link to a share that went away is left out, never waited on there.
+  const ms = there?.ms ?? FOLDER_STAT_MS;
+  const statOf = there?.statOf ?? stat;
   const abs = resolve(path);
-  if (!existsSync(abs) || !statSync(abs).isDirectory()) throw new Error(`no such folder: ${path}`);
+  const here = await folderThere(abs, there);
+  if (here === null) throw new Error(`${path} does not answer: its drive or share is not reached`);
+  const info = here ? /** @type {any} */ (await settledWithin(Promise.resolve().then(() => statOf(abs)), ms)) : null;
+  if (!info?.isDirectory?.()) throw new Error(`no such folder: ${path}`);
+  /** @type {import("node:fs").Dirent[] | null} */
   let list;
   try {
-    list = readdirSync(abs, { withFileTypes: true });
+    list = await settledWithin(readdir(abs, { withFileTypes: true }), ms, true);
   } catch (/** @type {any} */ e) {
     throw new Error(`cannot list ${path}: ${e.code || e.message}`);
   }
-  const dirs = list
-    .filter((d) => (d.isDirectory() || (d.isSymbolicLink() && isDirLink(join(abs, d.name)))) && d.name !== ".git" && (hidden || !d.name.startsWith(".")))
+  if (!list) throw new Error(`${path} does not answer: its drive or share is not reached`);
+  const shown = list.filter((d) => d.name !== ".git" && (hidden || !d.name.startsWith(".")));
+  // A link is a folder where what it points at answers as one: asked as a folder is (`folderThere`, a few at once).
+  const links = shown.filter((d) => d.isSymbolicLink());
+  const linkThere = await Promise.all(links.map((d) => folderThere(join(abs, d.name), there)));
+  const linkDirs = new Set(
+    (await Promise.all(links.map(async (d, i) => (linkThere[i] === true && /** @type {any} */ (await settledWithin(Promise.resolve().then(() => statOf(join(abs, d.name))), ms))?.isDirectory?.() ? d.name : null)))).filter(Boolean),
+  );
+  const dirs = shown
+    .filter((d) => d.isDirectory() || linkDirs.has(d.name))
     .map((d) => ({ name: d.name, path: join(abs, d.name) }))
     .sort(byName);
   const parent = dirname(abs);
-  const isTop = parent === abs || (roots.length && roots.some((r) => samePath(resolve(r), abs)));
+  const isTop = parent === abs || (roots.length > 0 && (await Promise.all(roots.map((r) => samePath(resolve(r), abs, ms)))).some(Boolean));
   return { path: abs, parent: isTop || !allowed(parent) ? null : parent, top: false, dirs };
 }
-function isDirLink(p) {
-  try {
-    return lstatSync(p).isSymbolicLink() && statSync(p).isDirectory();
-  } catch {
-    return false;
-  }
-}
-function samePath(a, b) {
-  const norm = (p) => {
-    let r = p;
-    try {
-      r = realpathSync(p);
-    } catch {}
-    r = r.replace(/[\\/]+$/, "");
+/**
+ * What `p` settles to within `ms`, else null — it goes on, and nothing waits for it. `rethrow`: a failure is thrown, not
+ * taken as null. @template T @param {Promise<T>} p @param {number} ms @param {boolean} [rethrow] @returns {Promise<T | null>}
+ */
+const settledWithin = (p, ms, rethrow = false) =>
+  new Promise((done, fail) => {
+    const t = setTimeout(() => done(null), ms);
+    t.unref?.();
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        done(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        if (rethrow) fail(e);
+        else done(null);
+      },
+    );
+  });
+/**
+ * Whether two folders are one, each as the filesystem resolves it — off the server's thread, `ms` at most: one that does
+ * not answer is compared as written. @param {string} a @param {string} b @param {number} ms
+ */
+async function samePath(a, b, ms) {
+  const norm = async (/** @type {string} */ p) => {
+    const r = String((await settledWithin(realpath(p), ms)) ?? p).replace(/[\\/]+$/, "");
     return process.platform === "win32" ? r.toLowerCase() : r;
   };
-  return norm(a) === norm(b);
+  const [x, y] = await Promise.all([norm(a), norm(b)]);
+  return x === y;
 }
 /** The filesystem roots a browser may start from when no roots are listed: `/`, or each drive letter Windows has. */
 function driveLetters() {

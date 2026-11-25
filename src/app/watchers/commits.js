@@ -4,7 +4,8 @@
 // from that folder —, one watch for every watcher of the same branch there (adapters/git/watch.js `watchBranch`: within
 // moments of a commit, whichever worktree made it). A place is followed only where it is a folder of its project
 // (`placeAmong`, of the folders `foldersOf` says: its own, those it added, its repository's worktrees), whoever kept
-// it: any other is the watcher's trouble, and no branch there is read. Each keeps the commit it last looked at on its
+// it: any other is the watcher's trouble, and no branch there is read; one on a drive or share that does not answer is
+// asked off the server's thread first (`placeAmongSoon`), its trouble meanwhile, and judged again a minute later. Each keeps the commit it last looked at on its
 // cursor (`watchHead`): a move from there is heard as one event — the commits added, newest first, what a rewrite
 // dropped, a move back, the branch made or deleted —; the first look is where it listens from. So a restart catches up
 // from where it was, and what came while it was paused or off is not made up: resumed, it looks anew. Pause all holds
@@ -36,6 +37,7 @@ import { statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { resolveInside } from "../../adapters/tools/fs-fence.js";
 import { branchCameAt, commitsBetween, commitsMade, commonDirOf, watchBranch } from "../../adapters/git/watch.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
 import { NO_BRANCH, watchEventOf } from "../../core/watchers.js";
 import { normalizeCwd } from "../../core/project-id.js";
 import { SHELL_EDGE_MS } from "./own-times.js";
@@ -89,6 +91,22 @@ export function placeAmong(folders, place) {
 }
 
 /**
+ * `placeAmong`, its project's own folder and the place asked off the server's thread first (adapters/git/folder-there.js
+ * `folderThere`): one on a drive or share that does not answer is refused in words, `unanswered`, before the fence or a
+ * stat looks at it on that thread, which would wait as long as the share (x54, the hunt on x34).
+ * @param {readonly string[]} folders @param {string} place @param {typeof folderThere} [there]
+ * @returns {Promise<{ ok: true, place: string } | { ok: false, error: string, unanswered?: true }>}
+ */
+export async function placeAmongSoon(folders, place, there = folderThere) {
+  const own = folders[0];
+  if (own) {
+    const asked = await Promise.all([there(own), there(isAbsolute(place) ? place : resolve(own, place))]);
+    if (asked.includes(null)) return { ok: false, error: `place "${place}" cannot be checked: its drive or share does not answer`, unanswered: true };
+  }
+  return placeAmong(folders, place);
+}
+
+/**
  * @param {{ store: { get: (project: string) => { routines: Routine[] }, routinesAll: () => { project: string, r: Routine }[], pausedSince: () => number | null, archived?: (project: string) => boolean,
  *     watchHead: (project: string, id: string, head: string, was?: { from: number, head: string | null } | null) => boolean,
  *     watchTrouble: (project: string, id: string, why: string | null) => boolean },
@@ -97,13 +115,13 @@ export function placeAmong(folders, place) {
  *   own: Pick<import("./own-times.js").OwnTimes, "chatsSince" | "endOf">,
  *   foldersOf?: ((project: string) => Promise<readonly string[]> | readonly string[]) | null,
  *   watch?: typeof watchBranch, between?: typeof commitsBetween, made?: typeof commitsMade, cameAt?: typeof branchCameAt, commonOf?: (folder: string) => Promise<string | null>,
- *   now?: () => number, log?: (level: string, msg: string) => void, retryMs?: number }} deps
+ *   there?: typeof folderThere, now?: () => number, log?: (level: string, msg: string) => void, retryMs?: number }} deps
  *   `folderOf`: a project's folder; `chatOf`: whether a chat is a routine's run, and the folder it works in; `own`:
  *   the keeper of each chat's own times (app/watchers/own-times.js), which whoever made it has hear the bus and stops.
  *   `foldersOf`: a project's folders, its own first (the server's: with those it added and its repository's
  *   worktrees), which a watcher's place is held to; without it a place is taken as it is kept (a test's stand-in).
  */
-export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper, foldersOf = null, watch = watchBranch, between = commitsBetween, made = commitsMade, cameAt = branchCameAt, commonOf = commonDirOf, now = Date.now, log = () => {}, retryMs = RETRY_MS }) {
+export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper, foldersOf = null, watch = watchBranch, between = commitsBetween, made = commitsMade, cameAt = branchCameAt, commonOf = commonDirOf, there = folderThere, now = Date.now, log = () => {}, retryMs = RETRY_MS }) {
   /** Each branch watched, by its place and name. @type {Map<string, Watched>} */
   const branches = new Map();
   /** Each folder's repository, as a key (`normalizeCwd` of its common folder), once read. @type {Map<string, Promise<string | null>>} */
@@ -122,6 +140,16 @@ export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper,
   const places = new Map();
   /** @type {Set<Promise<void>>} */
   const judging = new Set();
+  /** Judgments that could not be made, made again a minute later, once (`judgePlaces`). @type {ReturnType<typeof setTimeout> | null} */
+  let rejudge = null;
+  const rejudgeSoon = () => {
+    if (rejudge || stopped) return;
+    rejudge = setTimeout(() => {
+      rejudge = null;
+      sync();
+    }, retryMs);
+    rejudge.unref?.();
+  };
   /**
    * A placed watcher's judgment's key: its place is judged anew where it changed, and each time the watcher is switched
    * on or resumed (its cursor's start), so a folder added to the project since is found.
@@ -315,8 +343,8 @@ export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper,
   /**
    * Each placed watcher that looks has its place judged against its project's folders, once for each time it is
    * switched on or resumed: followed where it is one of them, the branches set again as that is known; any other is the
-   * watcher's trouble, kept on its cursor for its row to say. Folders that could not be read are asked again at the
-   * next `sync`.
+   * watcher's trouble, kept on its cursor for its row to say. Folders that could not be read, and a place whose drive or
+   * share does not answer (`placeAmongSoon`), are asked again at the next `sync`, a minute later at the latest.
    * @param {NonNullable<typeof foldersOf>} folders
    */
   function judgePlaces(folders) {
@@ -333,7 +361,10 @@ export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper,
       const p = Promise.resolve()
         .then(() => folders(project))
         .then(
-          (list) => ({ v: placeAmong(list, place), kept: true }),
+          async (list) => {
+            const v = await placeAmongSoon(list, place, there);
+            return { v, kept: !("unanswered" in v) };
+          },
           (e) => ({ v: { ok: /** @type {const} */ (false), error: `place "${place}" cannot be checked: its project's folders could not be read (${e?.message || e})` }, kept: false }),
         )
         .then(({ v, kept }) => {
@@ -342,7 +373,10 @@ export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper,
           const w = store.routinesAll().find((x) => x.project === project && x.r.id === r.id)?.r;
           if (!w || !watches(w) || judgedKey(project, w) !== key) return;
           if (kept) places.set(key, v);
-          else places.delete(key);
+          else {
+            places.delete(key);
+            rejudgeSoon();
+          }
           if (v.ok) return void sync();
           log("warn", `watchers: “${r.title}” of ${project} follows no branch: ${v.error}`);
           troubled(project, r.id, v.error);
@@ -419,6 +453,7 @@ export function createCommitWatch({ store, heard, folderOf, chatOf, own: keeper,
     /** Every watch stopped (the server's stop). */
     stop() {
       stopped = true;
+      if (rejudge) clearTimeout(rejudge);
       for (const b of branches.values()) {
         b.w?.stop();
         if (b.retry) clearTimeout(b.retry);

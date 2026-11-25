@@ -148,7 +148,7 @@ import { createSpaceSync } from "./app/space-sync.js";
 import { createSpaceNews } from "./app/space-news.js";
 import { createSpaceLanes, placeFiles } from "./app/space-lanes.js";
 import { branchOf, remoteOf, uncommittedIn } from "./adapters/git/inspect.js";
-import { folderHung } from "./adapters/git/folder-there.js";
+import { folderHung, folderThere } from "./adapters/git/folder-there.js";
 import { repoStandingOf } from "./adapters/git/standing.js";
 import { createDashboardRunner, JOBS_KEPT } from "./services/dashboard-runner.js";
 import { createPulls } from "./app/space-pulls.js";
@@ -160,7 +160,7 @@ import { createRoutines } from "./app/routines.js";
 import { createWatchEvents } from "./app/watchers/events.js";
 import { createGuidance } from "./app/watchers/guidance.js";
 import { createConnectionWatch } from "./app/watchers/connection.js";
-import { createCommitWatch, placeAmong } from "./app/watchers/commits.js";
+import { createCommitWatch, placeAmongSoon } from "./app/watchers/commits.js";
 import { createFileWatch } from "./app/watchers/files.js";
 import { appSecretsOf, createScriptWatch } from "./app/watchers/script.js";
 import { createWebhookWatch } from "./app/watchers/webhook.js";
@@ -2971,7 +2971,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   const stopWatchingTurns = ownTimes.listen(events);
   const stopWatchingCommands = onShellsChange((chainId) => ownTimes.shells(chainId, runningShellsOf(chainId)));
   /**
-   * A project's folders, which a commit watcher's place is held to (app/watchers/commits.js `placeAmong`): its own
+   * A project's folders, which a commit watcher's place is held to (app/watchers/commits.js `placeAmongSoon`): its own
    * first, then those its layer adds for its chats to read (`loop.addedFolders`, judged as a chat's are) and the
    * worktrees of its repository the fence allows, as the lanes read them. None where it has no folder.
    * @param {string} project @returns {Promise<string[]>}
@@ -2982,7 +2982,12 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
     /** @type {string[]} */
     let added = [];
     try {
-      added = addedFoldersOf(config.get(), memory.archive?.projectSettings(project)?.loop?.addedFolders).folders;
+      const listed = memory.archive?.projectSettings(project)?.loop?.addedFolders;
+      const named = (Array.isArray(listed) ? listed : []).filter((f) => typeof f === "string" && f.trim() && !shareKeptOut(config.get(), f.trim()));
+      // Each asked off the server's thread first, where the fence below would stat it (x54, the hunt on x34): one that
+      // does not answer, or is not there, is not followed; one the folder rules keep out is never asked.
+      const there = await Promise.all(named.map((f) => folderThere(f.trim())));
+      added = addedFoldersOf(config.get(), named.filter((_, i) => there[i] === true)).folders;
     } catch {
       // The project's settings could not be read: none added, so a place there is not followed.
     }
@@ -2994,7 +2999,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   };
   // What a watcher's trigger names, checked as an agent proposes it (the space tool): a commit's place a folder of the
   // project, a connection's tool one its chats have that its server marks read-only.
-  space.placeIn = async (project, place) => placeAmong(await watchFolders(project), place);
+  space.placeIn = async (project, place) => placeAmongSoon(await watchFolders(project), place);
   space.toolReads = (project, tool) => spaceToolsNow().askable(project, tool);
   // A branch's new commits, within moments of each, caught up after a restart from where each watcher last looked (w3);
   // never a watcher's own: a commit made in its repository while a command of a routine's run, or of the chat it wakes,

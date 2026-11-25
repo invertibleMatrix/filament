@@ -469,19 +469,23 @@ export function newFolderRefusal(cfg, folder, { from = "" } = {}) {
  * check so a caller can say it in its own words; `root` is the folder as resolved.
  * @param {any} cfg
  * @param {string} cwd
- * @param {{ person?: boolean, copy?: string }} [o]  `person`: judged for a chat of this machine's person — its start, its turn, a
+ * @param {{ person?: boolean, copy?: string, gone?: boolean }} [o]  `person`: judged for a chat of this machine's person — its start, its turn, a
  *   folder it adds —, for which Filament's copies folder is no root: another machine's agents' chats work there, and a
  *   row that reads a folder reads theirs too (the security re-read of 11-11: it was a root for every chat). `copy`: the
- *   one copy there placed for the person's own chat (services/copies.js `owned`), a root for that chat alone
+ *   one copy there placed for the person's own chat (services/copies.js `owned`), a root for that chat alone. `gone`:
+ *   the caller asked the folder off the thread and found it not there — "missing" with no stat of its own
  * @returns {{ ok: true, root: string, why: null } | { ok: false, root: string, why: "empty" | "missing" | "outside" | "exposed" }}
  */
-export function folderVerdict(cfg, cwd, { person = false, copy = "" } = {}) {
+export function folderVerdict(cfg, cwd, { person = false, copy = "", gone = false } = {}) {
   const al = cfg?.agentLoop || {};
   const roots = (Array.isArray(al.roots) ? al.roots : []).map(String).filter(Boolean);
   const c = String(cwd || "").trim();
   if (!c) return { ok: false, root: "", why: "empty" };
   const kept = shareKeptOut(cfg, c);
   if (kept) return { ok: false, root: resolve(c), why: kept };
+  // Asked off the server's thread already and found not there (folder-there.js `folderThere`): no stat of it here,
+  // which a link to a share that went away may hold as long as the share does (x54, the hunt on x34).
+  if (gone) return { ok: false, root: c, why: "missing" };
   let isDir = false;
   try {
     isDir = statSync(c).isDirectory();
@@ -801,9 +805,10 @@ export function createAgentLoopTurn(deps) {
     // A folder on a drive or share that does not answer is refused in words before the fence looks at it on the
     // server's thread, which would wait as long as the share (folder-there.js `folderThere`); one the folder rules keep
     // out is never asked.
-    if (cwd && !shareKeptOut(cfg, String(cwd)) && (await folderThere(String(cwd))) === null)
-      return refuse(`I can't reach ${cwd}: its drive or share does not answer. Ask again once it does.`, "agent: refused — the folder does not answer");
-    const verdict = folderVerdict(cfg, cwd, whose);
+    const there = cwd && !shareKeptOut(cfg, String(cwd)) ? await folderThere(String(cwd)) : true;
+    if (there === null) return refuse(`I can't reach ${cwd}: its drive or share does not answer. Ask again once it does.`, "agent: refused — the folder does not answer");
+    // One it found not there is judged missing with no stat of the fence's own (x54).
+    const verdict = folderVerdict(cfg, cwd, { ...whose, gone: there === false });
     const root = verdict.root;
     if (verdict.why === "empty")
       return refuse(

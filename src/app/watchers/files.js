@@ -4,9 +4,10 @@
 // size and time against the walk before, fs.watch only a hint): its place — a place not whole read from its project's
 // folder —, else that folder, and from there the folders its glob names before any of its marks (core/watchers.js
 // `globHead`), so a glob of one folder walks that folder alone. A place is watched only where it is a folder of its
-// project (app/watchers/commits.js `placeAmong`, of the folders `foldersOf` says, read once for each time it is
+// project (app/watchers/commits.js `placeAmongSoon`, of the folders `foldersOf` says, read once for each time it is
 // switched on or resumed), and never inside a repository's own .git: any other is the watcher's trouble, and nothing
-// there is read. One that is no folder yet is looked for again each minute.
+// there is read. One that is no folder yet is looked for again each minute, and so is one on a drive or share that does
+// not answer, its project's folders read again then.
 // The first look is where it listens from. After it, the files that appeared, changed or went — those its trigger
 // listens for (`on`) — are one event once none of them moved for its settle: how many and how, where, and their names,
 // never what they hold. Each look told is kept on its cursor (`watchLooked`), so a start after a stop tells, as
@@ -33,7 +34,8 @@ import { fileKey, keptFromAgents } from "../../adapters/tools/fs-fence.js";
 import { watchFolder } from "../../adapters/tools/file-watch.js";
 import { globToRegExp } from "../../core/path-glob.js";
 import { FILE_SKIPS, globHead, watchEventOf } from "../../core/watchers.js";
-import { placeAmong } from "./commits.js";
+import { folderThere } from "../../adapters/git/folder-there.js";
+import { placeAmongSoon } from "./commits.js";
 
 /**
  * A file's time is cut to whole seconds on some disks, to two on others, and a call's end is said after what it wrote:
@@ -63,13 +65,13 @@ const RETRY_MS = 60_000;
  *   folderOf: (project: string) => string | null, chatOf: (chain: string) => { run: boolean, folder: string | null } | null,
  *   own: Pick<import("./own-times.js").OwnTimes, "chatsSince" | "timesOf" | "writesOf">,
  *   foldersOf?: ((project: string) => Promise<readonly string[]> | readonly string[]) | null,
- *   watch?: typeof watchFolder, now?: () => number, log?: (level: string, msg: string) => void, retryMs?: number }} deps
+ *   watch?: typeof watchFolder, there?: typeof folderThere, now?: () => number, log?: (level: string, msg: string) => void, retryMs?: number }} deps
  *   `folderOf`: a project's folder; `chatOf`: whether a chat is a routine's run, and the folder it works in; `own`:
  *   the keeper of each chat's own times and file-writing calls (app/watchers/own-times.js), which whoever made it has
  *   hear the bus and stops. `foldersOf`: a project's folders, its own first (the server's: with those it added and its
  *   repository's worktrees), which a watcher's place is held to; without it, its own alone.
  */
-export function createFileWatch({ store, heard, folderOf, chatOf, own: keeper, foldersOf = null, watch = watchFolder, now = Date.now, log = () => {}, retryMs = RETRY_MS }) {
+export function createFileWatch({ store, heard, folderOf, chatOf, own: keeper, foldersOf = null, watch = watchFolder, there = folderThere, now = Date.now, log = () => {}, retryMs = RETRY_MS }) {
   /** Each watcher followed, by its project and id. @type {Map<string, Followed>} */
   const followed = new Map();
   let stopped = false;
@@ -116,8 +118,9 @@ export function createFileWatch({ store, heard, folderOf, chatOf, own: keeper, f
   const counted = (n) => n.toLocaleString("en-US");
 
   /**
-   * Where a watcher's files are read from: its place among its project's folders (`placeAmong`), those read once for
-   * it; its project's own folder where it names none. With the folders its fence is judged by.
+   * Where a watcher's files are read from: its place among its project's folders (`placeAmongSoon`), those read once
+   * for it, and again where its drive or share did not answer; its project's own folder where it names none. With the
+   * folders its fence is judged by.
    * @param {Followed} f
    * @returns {Promise<{ ok: true, place: string, bases: readonly string[] } | { ok: false, error: string }>}
    */
@@ -131,8 +134,11 @@ export function createFileWatch({ store, heard, folderOf, chatOf, own: keeper, f
         return { ok: false, error: `place "${f.t.place}" cannot be checked: its project's folders could not be read (${e?.message || e})` };
       }
     }
-    const v = placeAmong(f.folders, f.t.place);
-    return v.ok ? { ok: true, place: v.place, bases: f.folders } : v;
+    const bases = f.folders;
+    const v = await placeAmongSoon(bases, f.t.place, there);
+    // A folder it added on that drive was left out of its folders while it did not answer: read again next time.
+    if ("unanswered" in v) f.folders = null;
+    return v.ok ? { ok: true, place: v.place, bases } : v;
   }
 
   /**

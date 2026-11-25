@@ -451,7 +451,9 @@ branch line says the folder did not answer; nothing else on that machine waits o
 share is not asked until it answers, and one on another disk is read at once; one folder that hangs on a drive that
 answers — a link to a share gone offline — is that folder's alone. A chat's Changes, branch, places and files there,
 and a turn's changes, say the folder does not answer, and are read again once it does; a turn sent there says it
-cannot reach the folder, and the folder browser leaves out a drive that does not answer.
+cannot reach the folder, and the folder browser leaves out a drive, or a link among a folder's entries, that does not
+answer. A turn in a folder found gone is refused as gone. A watcher whose place is on a drive or share that does not
+answer says so on its row, and is looked for again each minute until it answers.
 
 **A chat alone.** A Filament's page opened with `?only=chat` in its address (`http://127.0.0.1:20300/ui/harness.html?only=chat#/task/<chat>`)
 shows that chat alone — its header, its transcript, its box and its panes, no left bar — as another machine's window

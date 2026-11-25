@@ -328,7 +328,7 @@ export function spaceGuide(asked) {
  * chat's words are none of another chat's agent's to read — memory keeps its turns to itself, or a turn kept apart named
  * it — which that agent reads as "an untitled chat" (core/space.js `readerNames`). `placeIn`: a commit watcher's place
  * as a folder of the project — its own, one it added, a worktree of its repository —, or why it is none
- * (app/watchers/commits.js `placeAmong`); `toolReads`: whether a connection watcher's tool is one the project's chats
+ * (app/watchers/commits.js `placeAmongSoon`); `toolReads`: whether a connection watcher's tool is one the project's chats
  * have, switched on, that its server marks read-only (app/space-tools.js `askable`).
  * @typedef {{ store: import("../../services/spaces.js").SpaceStore, projectOf: (chain: string) => string | null,
  *   nameOf: (chain: string) => string, apart?: (chain: string) => boolean, on: (chain: string) => boolean,
