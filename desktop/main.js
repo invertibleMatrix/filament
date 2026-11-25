@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isCheckout, resolveDataDir } from "../src/config.js";
 import { attachWatch, followPort, foundAt, hostOf, portOf, refusedWords } from "./lib/start.js";
 import { createSupervisor } from "./lib/supervisor.js";
-import { askedByPerson, isPress, mayGrant, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv } from "./lib/policy.js";
+import { askedByPerson, isPress, mayGrant, openedByOwn, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv } from "./lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "./lib/window-state.js";
 import { swatchBitmap, trayRows, trayTip } from "./lib/tray.js";
 import { createLog, serverTail } from "./lib/log.js";
@@ -198,13 +198,19 @@ async function run() {
   /** The app's windows' owner session, as Filament minted it for this start (`ownerSession`): "" before one. */
   let windowsSession = "";
   /**
+   * The app's own windows' pages: those it makes, and those Filament's own page opened (lib/policy.js `openedByOwn`).
+   * Only they carry the owner session: a window an artifact opened at Filament's address gets none, whoever loads it
+   * again (the hunt on x37). @type {WeakSet<Electron.WebContents>}
+   */
+  const ownContents = new WeakSet();
+  /**
    * The windows' calls to Filament's own origin carry their owner session (lib/policy.js `ownerSessionGoes`), added
    * here as each goes: never a cookie, which this computer's address would send to every port of it. Listened on again
    * as Filament moves (`follow`), its filter naming the origin.
    */
   const sendSession = () =>
     session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ownerSessionUrls(origin) }, (d, done) =>
-      done({ requestHeaders: windowsSession && ownerSessionGoes(d, origin) ? { ...d.requestHeaders, [OWNER_SESSION_HEADER]: windowsSession } : d.requestHeaders }),
+      done({ requestHeaders: windowsSession && ownerSessionGoes({ ...d, fromOwn: !!d.webContents && ownContents.has(d.webContents) }, origin) ? { ...d.requestHeaders, [OWNER_SESSION_HEADER]: windowsSession } : d.requestHeaders }),
     );
   sendSession();
   // A menu no one sees, for its keys alone: reload, the developer tools, zoom, full screen. Every other key is the page's
@@ -308,8 +314,10 @@ async function run() {
       if (route !== "refuse") void outside(url, route, { always: route === "editor" });
       return { action: "deny" };
     });
-    contents.on("did-create-window", (child) => {
+    contents.on("did-create-window", (child, details) => {
       child.setMenuBarVisibility(false);
+      // Opened by Filament's own page in one of the app's windows: the app's own too, its calls with the owner session.
+      if (!remote && openedByOwn(child.webContents.opener, ownContents.has(contents), origin, details?.referrer?.url || "")) ownContents.add(child.webContents);
       if (!remote) track(child);
       onChild?.(child);
       // Another machine's window keeps the origin it opened at: its view moving to another route moves none of it.
@@ -708,6 +716,7 @@ async function run() {
     w.setMenuBarVisibility(false);
     if (place.maximized) w.maximize();
     track(w);
+    ownContents.add(w.webContents);
     guard(w.webContents);
     if (launch && process.platform === "win32") w.show();
     else w.once("ready-to-show", () => w.show());
@@ -862,6 +871,7 @@ async function run() {
     w.setMenuBarVisibility(false);
     if (place.maximized) w.maximize();
     track(w);
+    ownContents.add(w.webContents);
     guard(w.webContents);
     w.once("ready-to-show", () => w.show());
     w.on("close", () => {
@@ -1388,6 +1398,7 @@ async function run() {
         backgroundColor: cardLight ? "#fbfbfd" : "#1d1d20",
         webPreferences: { ...SAFE, preload: join(ROOT, "desktop", "card-preload.cjs") },
       });
+      ownContents.add(w.webContents);
       guard(w.webContents);
       // Esc hides it, whichever page it shows; so does a click anywhere else, as a tray's popover hides (the owner's of
       // 11-08).

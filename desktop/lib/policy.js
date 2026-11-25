@@ -137,12 +137,16 @@ export const ownerSessionUrls = (origin) => {
  * port of this computer's address (a server an agent runs, an image a model wrote into a chat), another name for it,
  * an artifact's frame's, a frame's that an artifact holds at Filament's own address, nor a window's an artifact opens
  * there — a pop-up, one with no opener, a form it sends to a new window: Electron's `initiatorOrigin` names it (the
- * hunt on s0e). A frame Electron can no longer read is none of Filament's.
- * @param {{ url: string, resourceType?: string, initiatorOrigin?: string, frame?: { origin: string, parent: any } | null }} call
- *   Electron's webRequest details @param {string} origin
+ * hunt on s0e). A frame Electron can no longer read is none of Filament's. Only a call of the app's own windows
+ * (`fromOwn`: one the app made, or one Filament's own page opened, `openedByOwn`): a window an artifact opened at
+ * Filament's address gets none whoever loads it again — the app after a failed load or a crash, the person's Ctrl+R —
+ * where its load carries no initiator (the hunt on x37).
+ * @param {{ url: string, resourceType?: string, initiatorOrigin?: string, frame?: { origin: string, parent: any } | null, fromOwn?: boolean }} call
+ *   Electron's webRequest details, and whether its window is the app's own @param {string} origin
  */
-export function ownerSessionGoes({ url, resourceType, initiatorOrigin, frame }, origin) {
+export function ownerSessionGoes({ url, resourceType, initiatorOrigin, frame, fromOwn }, origin) {
   try {
+    if (fromOwn !== true) return false;
     const to = new URL(url);
     const own = new URL(origin);
     if (own.protocol !== "http:" || (to.protocol !== "http:" && to.protocol !== "ws:") || to.host !== own.host) return false;
@@ -150,6 +154,29 @@ export function ownerSessionGoes({ url, resourceType, initiatorOrigin, frame }, 
     if (resourceType === "mainFrame") return true;
     if (!frame) return false;
     for (let f = frame; f; f = f.parent) if (f.origin !== own.origin) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a window a page opened is the app's own (`ownerSessionGoes`'s `fromOwn`): opened by a frame whose every frame
+ * up to its window's is at Filament's own origin, in a window that is the app's own (`openerOwn`). One opened with no
+ * opener (`noopener`, as the harness opens the console and its pages) is judged by the page that opened it, its
+ * `referrer`: no frame but Filament's own page says Filament's origin there, as no artifact may frame one of its pages
+ * (`frame-ancestors 'self'`, src/core/artifacts.js `pageFramePolicy`). One an artifact's frame opened, or a window an
+ * artifact opened, or one that says no page (`noreferrer`) is none — judged once as it is made, whatever it loads
+ * after (the hunt on x37).
+ * @param {{ origin: string, parent: any } | null | undefined} opener  Electron's `webContents.opener`
+ * @param {boolean} openerOwn @param {string} origin @param {string} [referrer]  the page that opened it, as Electron says it
+ */
+export function openedByOwn(opener, openerOwn, origin, referrer = "") {
+  try {
+    if (!openerOwn) return false;
+    const own = new URL(origin).origin;
+    if (!opener) return !!referrer && new URL(referrer).origin === own;
+    for (let f = opener; f; f = f.parent) if (f.origin !== own) return false;
     return true;
   } catch {
     return false;

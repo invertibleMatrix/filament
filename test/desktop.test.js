@@ -14,7 +14,7 @@ import { followPort, foundAt, hostOf, portOf, refusedWords } from "../desktop/li
 import { createSupervisor, END_WAIT_MS, LATE_MS, OTHER_START_MS, RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
 import { STARTED_ALREADY } from "../src/cli/listening.js";
 import { EXIT } from "../src/services/machines/client.js";
-import { ACTIVATION_MS, askedByPerson, isPress, mayGrant, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv, SUPERVISOR } from "../desktop/lib/policy.js";
+import { ACTIVATION_MS, askedByPerson, isPress, mayGrant, openedByOwn, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv, SUPERVISOR } from "../desktop/lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "../desktop/lib/window-state.js";
 import { trayRows, trayTip } from "../desktop/lib/tray.js";
 import { createLog, serverTail } from "../desktop/lib/log.js";
@@ -492,7 +492,7 @@ describe("what its windows may show, and what its server is given", () => {
   test("the windows' owner session goes to Filament's own origin alone, asked by its own frames: no other port, name or artifact's frame", () => {
     const own = { origin, parent: null };
     const art = { origin: "http://chart-1.art.localhost:20300", parent: own };
-    const goes = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame) => ownerSessionGoes({ url, resourceType, frame }, origin);
+    const goes = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame) => ownerSessionGoes({ url, resourceType, frame, fromOwn: true }, origin);
     assert.deepEqual(ownerSessionUrls(origin), ["http://127.0.0.1:20300/*", "ws://127.0.0.1:20300/*"]);
     assert.equal(goes("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null), true, "a window's own load");
     assert.equal(goes("http://127.0.0.1:20300/api/state", "xhr", own), true);
@@ -520,14 +520,31 @@ describe("what its windows may show, and what its server is given", () => {
     // (fails before: yes — the hunt on s0e: a window an artifact opened at Filament's address loaded with the session,
     // which the SameSite=Strict cookie it replaced never went with) Started by an artifact, as Electron 45 says it: a
     // pop-up (its opener the artifact), one with no opener and a form sent to a new window (no frame) alike.
-    const started = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame, /** @type {string | undefined} */ initiatorOrigin) => ownerSessionGoes({ url, resourceType, frame, initiatorOrigin }, origin);
+    const started = (/** @type {string} */ url, /** @type {string} */ resourceType, /** @type {any} */ frame, /** @type {string | undefined} */ initiatorOrigin) => ownerSessionGoes({ url, resourceType, frame, initiatorOrigin, fromOwn: true }, origin);
     assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", art, art.origin), false, "an artifact's pop-up");
     assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null, art.origin), false, "one with no opener, a form to a new window");
     assert.equal(started("http://127.0.0.1:20300/api/state", "xhr", own, "null"), false, "a sandboxed frame's, its origin opaque");
     assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", own, origin), true, "a pop-up of Filament's own page");
     assert.equal(started("http://127.0.0.1:20300/ui/harness.html", "mainFrame", null, undefined), true, "the app's own load");
     assert.equal(started("ws://127.0.0.1:20300/api/runs/socket", "webSocket", own, origin), true);
+    // (fails before: yes — the hunt on x37: a window an artifact opened, loaded again with no initiator — the app's
+    // reload after a failed load or a crash, the person's Ctrl+R — carried the session)
+    const in_ = (/** @type {boolean | undefined} */ fromOwn) => ownerSessionGoes({ url: "http://127.0.0.1:20300/ui/harness.html", resourceType: "mainFrame", frame: null, fromOwn }, origin);
+    assert.deepEqual([in_(true), in_(false), in_(undefined)], [true, false, false], "only the app's own windows, whoever loads them");
+    assert.equal(openedByOwn(own, true, origin), true, "a pop-up Filament's own page opened in one of the app's windows");
+    assert.equal(openedByOwn({ origin, parent: own }, true, origin), true, "by a frame of its own in it");
+    assert.equal(openedByOwn(art, true, origin), false, "by an artifact's frame");
+    assert.equal(openedByOwn({ origin, parent: art }, true, origin), false, "by a frame an artifact holds at Filament's own address");
+    assert.equal(openedByOwn(own, false, origin), false, "by a window an artifact opened");
+    assert.equal(openedByOwn(null, true, origin, `${origin}/ui/harness.html`), true, "with no opener (noopener) from Filament's own page: the console, its pages");
+    assert.equal(openedByOwn(null, true, origin, "http://chart-1.art.localhost:20300/"), false, "with no opener, from an artifact's frame");
+    assert.equal(openedByOwn(null, true, origin, ""), false, "with no opener and no referrer: no page says it opened it");
+    assert.equal(openedByOwn(null, false, origin, `${origin}/ui/harness.html`), false, "from a window an artifact opened");
+    assert.equal(openedByOwn(/** @type {any} */ ({ get origin() { throw new Error("Render frame was disposed"); }, parent: null }), true, origin), false);
     const main = readFileSync(new URL("../desktop/main.js", import.meta.url), "utf8");
+    assert.match(main, /ownerSessionGoes\(\{ \.\.\.d, fromOwn: !!d\.webContents && ownContents\.has\(d\.webContents\) \}, origin\)/);
+    assert.match(main, /if \(!remote && openedByOwn\(child\.webContents\.opener, ownContents\.has\(contents\), origin, details\?\.referrer\?\.url \|\| ""\)\) ownContents\.add\(child\.webContents\);/);
+    assert.equal((main.match(/ownContents\.add\(w\.webContents\);\n {4,6}guard\(w\.webContents\);/g) || []).length, 3, "the app's windows, its popped Browser and the tray's card");
     assert.doesNotMatch(main, /cookies\.set\(/, "no cookie holds it");
     assert.match(main, /onBeforeSendHeaders\(\{ urls: ownerSessionUrls\(origin\) \}/);
     assert.match(main, /origin = `http:\/\/\$\{h\}:\$\{p\}`;\n {4}sendSession\(\);/, "listened on again as Filament moves");

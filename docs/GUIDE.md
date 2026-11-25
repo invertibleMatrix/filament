@@ -2328,7 +2328,10 @@ computer too, where `server.loopbackTrust` is `token`: memory's tools, briefing,
   start of Filament — by the key itself, never by a session — and kept in the app's memory alone: the app adds it to
   its windows' own calls to Filament's address and port (the `x-filament-owner-session` header), never a cookie, which
   a browser sends to every port of this computer's address. A server an agent runs on another port, an image a model
-  wrote into a chat, an artifact's frame and anything it holds or opens get none, and the pages themselves cannot read it. It
+  wrote into a chat, an artifact's frame and anything it holds or opens get none, and the pages themselves cannot read it.
+  Only the app's own windows carry it — those it makes, and those Filament's own page opens (its console, its pages) —:
+  a window an artifact opened at Filament's address, and any window that one opens, gets none whoever loads it again, the
+  app after a failed load or a crash, or your Ctrl+R. It
   counts over this computer's own address
   alone: a request a proxy hands on that carries it is judged without it, as any request from another machine is, and
   said once in the log. It is taken out of
