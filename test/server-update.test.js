@@ -93,6 +93,7 @@ describe("filament update, on a server installed by install.sh", () => {
   const was = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]));
   const own = { ...here };
   const ownSpawn = tools.spawn;
+  const ownPlatform = tools.platform;
   /** The releases: download/v<version>/<file> under it; `latest` the version GitHub calls the newest. */
   let rel = "";
   let latest = "";
@@ -122,6 +123,9 @@ describe("filament update, on a server installed by install.sh", () => {
   let filament;
 
   before(async () => {
+    // systemd runs the server's Filament here, on any platform: the stand-ins' Linux, with Windows' own links where
+    // the test runs on Windows.
+    tools.platform = "linux";
     rel = mkdtempSync(join(tmpdir(), "filament-update-releases-"));
     releases = createServer((req, res) => {
       const path = decodeURIComponent(String(req.url || "").split("?")[0]);
@@ -148,6 +152,7 @@ describe("filament update, on a server installed by install.sh", () => {
   after(async () => {
     Object.assign(here, own);
     tools.spawn = ownSpawn;
+    tools.platform = ownPlatform;
     for (const n of NAMES) {
       if (was[n] === undefined) delete process.env[n];
       else process.env[n] = was[n];

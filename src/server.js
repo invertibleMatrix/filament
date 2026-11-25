@@ -3497,7 +3497,7 @@ export function createApp({ dataDir, overrides = {}, onShutdown = () => process.
   // default in a checkout and any other build, where the person's own switch turns it on.
   const installKind = (() => {
     if (supervisor === "desktop") return "desktop";
-    if (supervisor === "systemd") return "server";
+    if (supervisor === "systemd" || supervisor === "service") return "server";
     try {
       if (JSON.parse(readFileSync(join(__dirname, "..", "build-info.json"), "utf8"))?.kind === "server") return "server";
     } catch {}

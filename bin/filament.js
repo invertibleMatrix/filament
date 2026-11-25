@@ -83,9 +83,9 @@ async function start(dataDir) {
   let port;
   try { port = has("--port") ? portOption(opt("--port")) : undefined; } catch (/** @type {any} */ e) { console.error(`Filament: ${e.message}`); process.exit(2); }
   // Where systemd's unit runs this data folder's Filament (filament service install), it is started through systemctl —
-  // not run here beside it, where systemd would not restart it after a crash, nor stop it. Not where systemd or the app
-  // runs this very start: FILAMENT_SUPERVISOR says so.
-  if (process.platform === "linux" && !process.env.FILAMENT_SUPERVISOR) {
+  // not run here beside it, where systemd would not restart it after a crash, nor stop it; on a Windows host, through its
+  // scheduled task's runner. Not where systemd, the runner or the app runs this very start: FILAMENT_SUPERVISOR says so.
+  if ((process.platform === "linux" || process.platform === "win32") && !process.env.FILAMENT_SUPERVISOR) {
     const { startUnit } = await import("../src/cli/service.js");
     const flags = { ...(has("--port") ? { port: String(opt("--port")) } : {}), ...(has("--host") ? { host: String(opt("--host")) } : {}) };
     try {

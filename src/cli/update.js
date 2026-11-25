@@ -13,7 +13,8 @@
 // points current at it again; older ones are removed, as install.sh removes them — one that cannot be is said. Nothing
 // is half done: a download, a checksum, a glibc or an unpack that fails leaves current and the versions as they were,
 // and the folder it worked in goes. A version systemd starts that does not come up is left for the one before: current
-// pointed back, that one started, said in one line with what stands. Before a version starts on the data folder
+// pointed back, that one started, said in one line with what stands. On a Windows host its scheduled task's runner does
+// what systemd does here (service.js), and its restart says "service". Before a version starts on the data folder
 // another wrote, the update says which stores' files it does not read and what it does with them (`sayUnread`). A
 // checkout updates with git pull; the Filament app updates itself.
 import { spawnSync } from "node:child_process";
@@ -27,7 +28,7 @@ import { fetchInstaller, isNewer, lookForUpdate, serverAsset, serverTarball } fr
 import { CliError, EXIT, clientAt, connect, whereFilament } from "./client.js";
 import { processRuns } from "./listening.js";
 import { ownerHeaders } from "../services/owner.js";
-import { UNIT, onPath, runTool, tools, underSystemd, upWords } from "./service.js";
+import { UNIT, mainPid, onPath, onWindows, runTool, serviceNow, serviceSupervisor, tools, underSystemd, upWords } from "./service.js";
 import { pause } from "./flows.js";
 
 /** The file at a server build's top that says what it is (scripts/dist-server.mjs MARKER). */
@@ -472,14 +473,20 @@ async function sayUnread(dataDir, dir, to, from, say) {
 }
 
 /**
- * The process systemd's unit runs Filament as: its pid, 0 where it runs none or no systemd is here, null where systemd
- * could not say. @param {AbortSignal} [signal] @returns {Promise<number | null>}
+ * The process the service runs Filament as (service.js `mainPid`: systemd's unit's, or the Windows task's runner's): its
+ * pid, 0 where it runs none or no systemd is here, null where systemd could not say.
+ * @param {AbortSignal | undefined} signal @param {string} dataDir @returns {Promise<number | null>}
  */
-async function unitPid(signal) {
-  if (!onPath("systemctl")) return 0;
-  const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "--value"], signal);
-  return p.code === 0 ? Number(p.out) || 0 : null;
+async function unitPid(signal, dataDir) {
+  if (!onWindows() && !onPath("systemctl")) return 0;
+  return mainPid(signal, dataDir);
 }
+
+/** The service that runs Filament here, in words. */
+const serviceWords = () => (onWindows() ? "its scheduled task" : "systemd");
+
+/** The command that restarts the service's Filament at once, cutting what runs. */
+const restartNow = () => (onWindows() ? "filament restart --force" : `systemctl --user restart ${UNIT}`);
 
 /**
  * Filament restarted on the version current points at now, where something starts it again: systemd's, by filament
@@ -490,7 +497,7 @@ async function unitPid(signal) {
  * another version than `version` answers, current stays and that is said. What `version` does not read of the data
  * folder is said first (`sayUnread`). → how it went.
  * @param {import("./commands.js").Run} r @param {{ base: string, version: string, from: string }} to @param {(s: string) => void} say
- * @returns {Promise<"systemd" | "by-hand" | "not-running">}
+ * @returns {Promise<"systemd" | "service" | "by-hand" | "not-running">}
  */
 async function restartOn(r, { base, version, from }, say) {
   try {
@@ -514,7 +521,7 @@ async function restartOn(r, { base, version, from }, say) {
     if (e?.code === EXIT.interrupted) throw e;
   }
   if (!client) {
-    const pid = await unitPid(r.signal);
+    const pid = await unitPid(r.signal, r.dataDir);
     if (pid === 0) {
       say(`No Filament answers now: it runs ${version} at its next start.`);
       return "not-running";
@@ -524,16 +531,16 @@ async function restartOn(r, { base, version, from }, say) {
     const mute =
       pid === null
         ? `no Filament answered at ${url} within ${ANSWER_MS / 1000} seconds, and systemd could not say whether its unit runs`
-        : `systemd runs a Filament (process ${pid}) that did not answer at ${url} within ${ANSWER_MS / 1000} seconds`;
+        : `${serviceWords()} runs a Filament (process ${pid}) that did not answer at ${url} within ${ANSWER_MS / 1000} seconds`;
     if (r.flags.force !== true)
-      throw new CliError(`Filament ${version} is installed, and current points at it; ${mute}, so ${pid === null ? "nothing is restarted" : "it goes on"} — systemctl --user restart ${UNIT} starts ${version} now, and cuts what runs.`, EXIT.failed);
+      throw new CliError(`Filament ${version} is installed, and current points at it; ${mute}, so ${pid === null ? "nothing is restarted" : "it goes on"} — ${restartNow()} starts ${version} now, and cuts what runs.`, EXIT.failed);
     say(`${mute}: --force restarts it.`);
     // --force restarts the unit at once and asks nothing of Filament: its answer once it runs again is waited for at
     // the data folder's address.
     await restart(ownClientOf(r.dataDir));
-    return "systemd";
+    return serviceSupervisor();
   }
-  if (client.state?.supervisor === "systemd") {
+  if (client.state?.supervisor === serviceSupervisor()) {
     /** The Filament asked to stop once idle: the one that answered last. */
     let runs = client;
     /** Its process, as systemd said it once it refused (--wait): a start of systemd's own is another. */
@@ -541,7 +548,7 @@ async function restartOn(r, { base, version, from }, say) {
     for (let told = false; ; ) {
       try {
         await restart(runs);
-        return "systemd";
+        return serviceSupervisor();
       } catch (/** @type {any} */ e) {
         if (e?.code !== EXIT.busy) throw e;
         if (r.flags.wait !== true)
@@ -550,7 +557,7 @@ async function restartOn(r, { base, version, from }, say) {
         if (!told) say(`Filament ${version} is installed, and current points at it; the Filament that runs (${runs.version}) goes on while it works — ${e.message}: it restarts on ${version} once nothing runs.`);
         told = true;
         // Where systemd could not say, the process it said last stands: none is taken for a start of its own.
-        old = (await unitPid(r.signal)) ?? old;
+        old = (await unitPid(r.signal, r.dataDir)) ?? old;
       }
       await pause(here.idleMs, r.signal);
       /** @type {import("./client.js").Client | "not-running" | null} */
@@ -566,7 +573,7 @@ async function restartOn(r, { base, version, from }, say) {
         return "not-running";
       }
       // Started again meanwhile — systemd's, after a crash or someone's restart — on the version current points at.
-      if (now.version === version) return "systemd";
+      if (now.version === version) return serviceSupervisor();
       runs = now;
     }
   }
@@ -599,19 +606,6 @@ async function goBack(r, { base, version, from }, why) {
 }
 
 /**
- * The unit's main process (0: none) and systemd's word on it — `ActiveState`: active; activating while it starts again
- * after one ended; failed once it ended too often; inactive once stopped; "" where systemd cannot say.
- * @param {AbortSignal} [signal] @returns {Promise<{ pid: number, active: string }>}
- */
-async function unitNow(signal) {
-  if (!onPath("systemctl")) return { pid: 0, active: "" };
-  const p = await runTool("systemctl", ["--user", "show", UNIT, "-p", "MainPID", "-p", "ActiveState"], signal);
-  if (p.code !== 0) return { pid: 0, active: "" };
-  const v = Object.fromEntries(p.out.split("\n").map((l) => /** @type {[string, string]} */ (l.trim().split("=", 2))));
-  return { pid: Number(v.MainPID) || 0, active: String(v.ActiveState || "") };
-}
-
-/**
  * --wait, where no Filament answered while it waited: systemd's unit watched for up to `tools.upMs`, as a restart's
  * Filament is (service.js `upOf`). One that answers is handed back; one stopped is "not-running", which runs `version`
  * at its next start. A start of systemd's own meanwhile — `version`, which current points at, after the one that ran
@@ -630,11 +624,12 @@ async function cameBack(r, to, old) {
   for (const end = Date.now() + tools.upMs; Date.now() < end; ) {
     try {
       const c = await connect(r.dataDir, { timeoutMs: ANSWER_MS, signal: r.signal });
-      if (c.state?.supervisor === "systemd") return c;
+      if (c.state?.supervisor === serviceSupervisor()) return c;
     } catch (/** @type {any} */ e) {
       if (e?.code === EXIT.interrupted || r.signal?.aborted) throw e;
     }
-    const u = await unitNow(r.signal);
+    // The unit's main process (0: none) and the service's word on it (service.js `serviceNow`).
+    const u = await serviceNow(r.signal, r.dataDir);
     // One systemd cannot say is watched on, never taken for one that stopped: what it last said stands.
     if (u.active) {
       heard = true;
@@ -648,12 +643,12 @@ async function cameBack(r, to, old) {
   }
   if (!heard && !started)
     throw new CliError(
-      `Filament ${to.version} is installed, and current points at it; no Filament answered at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, and systemd could not say whether its unit runs — filament service status says where it stands, and systemctl --user restart ${UNIT} starts ${to.version}.`,
+      `Filament ${to.version} is installed, and current points at it; no Filament answered at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, and systemd could not say whether its unit runs — filament service status says where it stands, and ${restartNow()} starts ${to.version}.`,
       EXIT.failed,
     );
   if (started || !pid) throw await goBack(r, to, upWords(!pid));
   throw new CliError(
-    `Filament ${to.version} is installed, and current points at it; systemd runs a Filament (process ${pid}) that did not answer at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, so it goes on — systemctl --user restart ${UNIT} starts ${to.version} now, and cuts what runs.`,
+    `Filament ${to.version} is installed, and current points at it; ${serviceWords()} runs a Filament (process ${pid}) that did not answer at ${whereFilament(r.dataDir).url} within ${tools.upMs / 1000} seconds, so it goes on — ${restartNow()} starts ${to.version} now, and cuts what runs.`,
     EXIT.failed,
   );
 }
@@ -731,7 +726,7 @@ async function updating(r, said) {
     } catch (/** @type {any} */ e) {
       if (e?.code === EXIT.interrupted) throw e;
     }
-    if (!runs || runs.state?.supervisor !== "systemd" || !runs.version || runs.version === installed) return false;
+    if (!runs || runs.state?.supervisor !== serviceSupervisor() || !runs.version || runs.version === installed) return false;
     say(`Filament ${installed} is installed, and current points at it; the Filament that runs is ${runs.version}: it restarts on ${installed}.`);
     const restart = await restartOn(r, { base, version: installed, from: runs.version }, say);
     report({ result: "restarted", from: runs.version, version: installed, restart });

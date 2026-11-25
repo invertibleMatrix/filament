@@ -36,10 +36,11 @@ export function uptimeWords(ms) {
  * @param {string | null} supervisor
  */
 export function restartWords(supervisor) {
-  // The desktop app (HarnessV3-Native NA2) and a systemd service (filament service install) start Filament again after
-  // a stop; nothing else does.
-  return supervisor === "desktop" || supervisor === "systemd"
-    ? { label: "Restart Filament", button: "Restart Filament", desc: `Filament stops and ${supervisor === "desktop" ? "the Filament app" : "systemd"} starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.` }
+  // The desktop app (HarnessV3-Native NA2) and a service (filament service install: systemd's unit, or a Windows host's
+  // scheduled task) start Filament again after a stop; nothing else does.
+  const by = supervisor === "desktop" ? "the Filament app" : supervisor === "systemd" ? "systemd" : supervisor === "service" ? "its scheduled task" : "";
+  return by
+    ? { label: "Restart Filament", button: "Restart Filament", desc: `Filament stops and ${by} starts it again, in a few seconds. Refused while a turn runs, so nothing is cut.` }
     : { label: "Stop Filament", button: "Stop Filament", desc: "This stops Filament; start it again yourself: nothing on this machine starts it after a stop (the Filament app did not start it). Refused while a turn runs." };
 }
 
