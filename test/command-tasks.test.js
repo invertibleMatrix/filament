@@ -471,7 +471,12 @@ test("the registry runs each item in a lane of one snapshot — uncommitted work
 // (fails before: yes)
 test("the registry's lanes share the items, each run's commands go in order and stop at the first that does not pass", async () => {
   const { dir } = repo();
-  const r = registryOver(dir, { own: false, answer: (c) => ({ exit: c.includes("bad") ? 1 : 0, output: c, stopped: false }) });
+  /** @type {ReturnType<typeof registryOver>} */
+  let r;
+  // Each run waits until both lanes took an item: a lane whose copy is made first would otherwise run all four before
+  // the other's copy is ready under a full suite's load (x25), and the lanes would share nothing.
+  const bothLanes = () => until(() => new Set(r.ran.map((x) => x.root)).size >= 2 || null, "both lanes to take an item");
+  r = registryOver(dir, { own: false, answer: async (c) => (await bothLanes(), { exit: c.includes("bad") ? 1 : 0, output: c, stopped: false }) });
   const two = (/** @type {string} */ item) => ({ item, steps: [{ command: `node try.js ${item}`, invert: false }, { command: `node after.js ${item}`, invert: false }] });
   const out = /** @type {any} */ (await r.registry.runCommands("c1", [two("a"), two("bad"), two("c"), two("d")], { id: "cmd-two", lanes: 2, signal: new AbortController().signal }));
   assert.deepEqual(out.runs.map((/** @type {any} */ x) => [x.item, x.command, x.passed]), [["a", "node after.js a", true], ["bad", "node try.js bad", false], ["c", "node after.js c", true], ["d", "node after.js d", true]]);

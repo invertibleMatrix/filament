@@ -24,7 +24,7 @@
     "start": "node bin/filament.js",
     "dev": "node --watch bin/filament.js",
     "postinstall": "node scripts/pty-helper.mjs",
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test --test-concurrency=8 \"test/*.test.js\"",
     "test:golden": "node --test test/golden.test.js",
     "test:ratchets": "node --test test/ratchets.test.js",
     "typecheck": "node --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",

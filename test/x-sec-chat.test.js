@@ -361,7 +361,11 @@ describe("another machine's agents' chat", () => {
     try {
       const made = await agents("/api/sessions", { method: "POST", body: { cwd: repo, model: MODEL, preset: "plain" } });
       const id = String((await made.json()).id);
-      const slow = `node -e "require('fs').writeFileSync('${slashed(began)}','began'); setTimeout(function(){require('fs').writeFileSync('${slashed(marker)}','ran')}, 4000)"`;
+      // It writes its marker once the test opens its gate, after the grant went off (x25: a marker 4 s after it began was
+      // written under a full suite's load before the cut came): cut, it is gone and writes nothing; left running, it
+      // writes at once.
+      const gateFile = join(base, "task-gate.txt");
+      const slow = `node -e "var fs=require('fs'); fs.writeFileSync('${slashed(began)}','began'); var t=setInterval(function(){if(fs.existsSync('${slashed(gateFile)}')){fs.writeFileSync('${slashed(marker)}','ran'); clearInterval(t)}}, 50); setTimeout(function(){clearInterval(t)}, 60000)"`;
       const add = { action: "add", goal: "Run it", tasks: [{ id: "c1", name: "Slow run", by: "command", run: [slow] }, { id: "c2", name: "Then another", by: "command", run: [later(next, 100)], needs: ["c1"] }] };
       // The task added, a command that asks in Edit: the turn waits on the person's answer while the task runs.
       await theirTurn(id, `CALLS<<${JSON.stringify([["tasks", add], ["bash", { command: `node -e "1"` }]])}>>`);
@@ -371,7 +375,10 @@ describe("another machine's agents' chat", () => {
       assert.equal(await written(began, 5000), true, "its command task runs");
       await grant(false);
       try {
-        assert.equal(await written(marker, 5500), false, "its command task's run was cut");
+        // The cut's own while, then the gate: a run still going writes its marker within the next moment.
+        await sleep(5000);
+        writeFileSync(gateFile, "go");
+        assert.equal(await written(marker, 2000), false, "its command task's run was cut");
         assert.equal(await written(next, 1500), false, "and the task that needed it never started");
       } finally {
         await grant(true);

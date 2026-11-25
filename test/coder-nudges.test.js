@@ -210,9 +210,10 @@ describe("a coding agent hears the loop's mid-turn lines", () => {
     await say(id, "one");
     const from = queued().length;
     const t = await begin(id, "~queue ~twoedits", { refuse: true });
-    await until(() => !existsSync(join(gates, "refusequeue")) || null, "the steer at q1's step, refused");
+    // Each step is a call of the fake agent's process: under a full suite's load one took past 10 s (x25).
+    await until(() => !existsSync(join(gates, "refusequeue")) || null, "the steer at q1's step, refused", { timeoutMs: 30_000 });
     writeFileSync(join(gates, "q1"), "");
-    await until(() => queued().slice(from).includes(CODER_UNPLANNED_LINE) || null, "the line, at q2's step");
+    await until(() => queued().slice(from).includes(CODER_UNPLANNED_LINE) || null, "the line, at q2's step", { timeoutMs: 30_000 });
     const notes = await t.end();
     assert.deepEqual(queued().slice(from), [CODER_UNPLANNED_LINE]);
     assert.ok(notes.includes("acp: own changed a second file with neither a checklist nor a task graph — Filament asked it to plan its steps, at its next step"), notes.join("\n"));

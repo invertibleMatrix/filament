@@ -110,7 +110,9 @@ describe("stopping a command stops everything it started (TL-D3)", { skip: !(GIT
   test("a command forking as fast as it can is stopped with every fork, those that land while the stop runs too", async () => {
     const m = marker();
     await assert.rejects(() => runHand("bash", { command: `while :; do (sleep ${m} &); done`, timeout: 2 }, { root }), /timed out after 2 seconds/);
-    await until(() => running(m).length === 0, "every forked sleep to be gone", { timeoutMs: 8000 });
+    // Some 150 forks, each killed the MSYS way, take this machine about 11 s (x25's probe of 11-24): 25 s still ends well
+    // before a fork's 40 s sleep would end it alone.
+    await until(() => running(m).length === 0, "every forked sleep to be gone", { timeoutMs: 25_000 });
   });
 
   // (fails when every tagged process is killed the MSYS way: a Windows program's own children are not MSYS's to see.

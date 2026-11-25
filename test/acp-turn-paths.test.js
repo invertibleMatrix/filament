@@ -295,10 +295,12 @@ test("a client that hangs up on a turn it continued with its tool results cancel
   }
   assert.match(seen, /permission:allow/);
   ac.abort();
+  // The cancel reaches the agent's process and its answer comes back before the record is written: under a full
+  // suite's load that took past 8 s (x25); a turn left waiting never finishes at all.
   const rec = await waitFor(async () => {
     const r = await shim.record(String(res.headers.get("x-filament-request-id")));
     return r && r.status !== "pending" ? r : null;
-  });
+  }, { ms: 30_000 });
   assert.ok(rec, "the record finished instead of waiting with the socket gone");
   assert.deepEqual([rec.stopReason, rec.status, rec.error], ["cancelled", "aborted", "client disconnected"]);
 });

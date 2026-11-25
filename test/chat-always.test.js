@@ -641,6 +641,10 @@ describe("Always allow in this chat, through a Filament", () => {
     assert.ok(waiting, "it asks: the chat's always-allow is not its own");
     assert.equal(ran().includes("s"), false);
     assert.equal((await shim.api(`${S(loopChat)}/subagents/${sid}/stop`, { method: "POST", body: {} })).status, 200);
+    // Its run has ended before the next test's restart (x25: under a full suite's load the stop had not settled when
+    // that Filament stopped, and its waiting call ran in the next one, an "s" among the chat's own runs).
+    await until(async () => ((await (await shim.api(`${S(loopChat)}/subagents`)).json()).subagents || []).some((/** @type {any} */ x) => x.id === sid && x.status !== "running") || null, "the stopped sub-agent's run to end", { timeoutMs: 20_000 });
+    assert.equal(ran().includes("s"), false, "its call never ran");
     const fork = await (await shim.api(`${S(loopChat)}/fork`, { method: "POST", body: { atTurn: 1 } })).json();
     assert.ok(fork.chainId, JSON.stringify(fork));
     assert.deepEqual([archive.getChain(fork.chainId)?.meta?.alwaysRun, await chatRules(fork.chainId)], [undefined, []]);

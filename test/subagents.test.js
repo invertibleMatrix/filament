@@ -1702,6 +1702,18 @@ const settled = (id) =>
     const { subagents } = await (await shim.api(`/api/sessions/${encodeURIComponent(id)}/subagents`)).json();
     return subagents.length && subagents.every((/** @type {any} */ s) => s.status !== "running") ? subagents : null;
   }, "the session's sub-agents to report", WORK);
+/**
+ * A message sent once no turn runs in the chat, as the page sends it: a report wakes the chat with a turn of Filament's
+ * own, and a message sent while that turn runs is refused (409, "a turn is already running"), which a full suite's load
+ * makes likely right after `settled`. @param {string} id @param {string} content @returns {Promise<Response>}
+ */
+const sendFree = (id, content) =>
+  until(async () => {
+    const r = await shim.api(`/api/sessions/${encodeURIComponent(id)}/turns`, { method: "POST", body: { content, stream: false } });
+    if (r.status === 409) return null;
+    assert.equal(r.status, 200, await r.clone().text());
+    return r;
+  }, `the chat to take "${content}" once no turn runs`, WORK);
 
 // (fails before: yes — HarnessV4_ShippedAgents_Plan SA2: no agent had tools of its own to go without)
 test("a sub-agent whose card goes without the shell is offered none of it, and its prompt says so; put back, it has it again", async () => {
@@ -2391,9 +2403,10 @@ test("/subagent in a harness session launches into the session's loop; list and 
   assert.match(said, /Launched sub-agent `sa_[0-9a-f]{8}`[\s\S]*Its report goes to this session's agent/);
   const [sa] = await settled(id);
   assert.deepEqual([sa.origin, sa.view], ["command", "folded"]);
-  const list = await shim.api(`/api/sessions/${encodeURIComponent(id)}/turns`, { method: "POST", body: { content: "/subagent list", stream: false } });
+  // Its report wakes the chat's agent: the next words go once that turn lets go.
+  const list = await sendFree(id, "/subagent list");
   assert.match(await list.text(), new RegExp(`${sa.id}\` — done`));
-  const show = await shim.api(`/api/sessions/${encodeURIComponent(id)}/turns`, { method: "POST", body: { content: `/subagent ${sa.id}`, stream: false } });
+  const show = await sendFree(id, `/subagent ${sa.id}`);
   assert.match(await show.text(), /Its report:\\n\\nCHILD REPORT/);
 });
 

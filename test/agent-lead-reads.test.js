@@ -409,7 +409,12 @@ before(async () => {
     // The workers, on the loop. Each says its plan and lists the files, which is what its lead's look shows.
     if (all.includes(WATCHED.description)) {
       // Its next reply is held until its lead has messaged it, so the message is what its third request reads.
-      if (all.includes(STEER)) return say("SCOUT REPORT: a.txt is here; I read none, as the lead said.");
+      // Its report waits until its lead was shown the look that says the message was read, and waits again (x25: under
+      // a full suite's load the report landed while that look's prompt ran, sealed into it).
+      if (all.includes(STEER)) {
+        await gates.reported?.passed;
+        return say("SCOUT REPORT: a.txt is here; I read none, as the lead said.");
+      }
       if (!answeredIn(b, "toolu_s_glob")) return planned("toolu_s_glob");
       await gates.steered.passed;
       return use(`toolu_s_again_${++calls}`, "glob", { pattern: "*.txt" });
@@ -497,7 +502,7 @@ const listedAt = async (url) => Object.fromEntries((await mcp(url, "tools/list")
 // (fails before: yes — a coding agent that led a team heard nothing of a worker before its report: Filament woke it with
 // reports alone, and its wait answered with a line for each worker)
 test("a coding agent that reads along: woken with a look at its worker's plan as its next prompt, the new part only; its wait answers with a look; its message reaches the running worker at once, read at the worker's next step", async () => {
-  gates = { steered: gate() };
+  gates = { steered: gate(), reported: gate() };
   const id = await newSession({});
   const { res, runId } = await turn(id, `~mcpcall agent ${JSON.stringify(WATCHED)}`);
 
@@ -546,6 +551,13 @@ test("a coding agent that reads along: woken with a look at its worker's plan as
     return ended >= 0 && events.slice(ended).some((e) => e.type === "turn-state" && e.to === "waiting");
   }, "the lead's prompt that sent the message to end, and the lead to wait for its workers");
   gates.steered.open();
+  await until(async () => {
+    if (!promptsOf(first.sessionId).some((p) => String(p.text).includes("[Filament: a look at your workers. Since the last: 1 moved, 0 did not.]"))) return null;
+    const events = await runEvents(runId);
+    const shown = events.findLastIndex((e) => e.type === "look");
+    return (shown >= 0 && events.slice(shown).some((e) => e.type === "turn-state" && e.to === "waiting")) || null;
+  }, "the look that says the message was read to be shown, and the lead to wait again", { timeoutMs: 30_000 });
+  gates.reported.open();
   const said = await res.text();
   assert.ok(said.includes("mcp:Waited 1 s: no report arrived, and no look is due. End your turn now: the workers keep running, and Filament wakes you with each report, and with a look whenever something is new.\\n\\nWorkers still running (1):\\n- scout"), said);
   assert.ok(!said.includes("Since the last: 0 moved, 1 did not."), "no look with nothing new in it");

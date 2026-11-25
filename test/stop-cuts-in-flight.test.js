@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startApp, fakeUpstream, anthropicReply, parseSse } from "./helpers/app.js";
-import { until, upstreamControls } from "./helpers/wait.js";
+import { removeDirs, until, upstreamControls } from "./helpers/wait.js";
 import { textOpen, textDelta } from "./helpers/sse.js";
 import { createEventBus } from "../src/services/events.js";
 import { createRunLog } from "../src/services/runs.js";
@@ -82,7 +82,8 @@ describe("a stop from the harness cuts the loop's in-flight work", () => {
   after(async () => {
     await shim.stop();
     await up.close();
-    rmSync(root, { recursive: true, force: true });
+    // A command the stop killed may hold its folder a moment past its kill on Windows (EPERM): waited out, not failed on.
+    await removeDirs(root);
   });
   /** An agent-loop turn, streamed: the head carries the request id, which is the run's id, while the turn runs. */
   const start = async (content) => {

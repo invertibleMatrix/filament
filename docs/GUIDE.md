@@ -153,7 +153,7 @@ did not type.
 | `--data-dir <path>` | Use another data folder. The environment variable `FILAMENT_DATA_DIR` does the same. Without either, a git checkout uses its own (see [Where things live](#where-things-live)). |
 | `--open` | After start, open the harness in the browser once a model can answer, the console's Home before that. |
 | `-v`, `--version`, `-h`, `--help` | Version and help. |
-| `npm test` | Run the test suite (fake upstreams, no network). |
+| `npm test` | Run the test suite (fake upstreams, no network), eight test files at a time: many more at once start more processes than a busy Windows machine gives, and a file whose process fails to start fails with no test of its own named. |
 | `npm run docs` | Regenerate `docs/PARAMETERS.md` and `docs/TEMPLATES.md` from the schema and the templates, and `docs/COMMANDS.md` from the chat commands' registry. |
 | `npm run acp-schema` | Pin ACP's schema again from the one the installed Claude Code agent carries, after an agent update (a test says when it is due). |
 | `npm run app` | Open the harness as its own window (Edge/Chrome app mode, Windows). `-- -Page /` opens the console instead. |
