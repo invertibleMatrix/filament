@@ -299,11 +299,12 @@ export function createPages({ electron, send, log = () => {}, newId = () => `t-$
   const { WebContentsView, BrowserWindow, session, nativeImage = null } = electron;
   /**
    * @typedef {{ id: string, view: any, wc: any, host: any, size: { width: number, height: number }, fit: boolean, scale: number,
-   *   rect: Rect | null, drawn: Rect | null, held: string, cast: Cast | null, castSeq: number }} Page
+   *   rect: Rect | null, drawn: Rect | null, held: string, cast: Cast | null, castSeq: number, turn: Promise<void> | null }} Page
    *   `size`: the page's own, in CSS pixels; `fit`: it takes the pane's size instead, as before BS1 (Fit the pane,
    *   BS-D5); `scale`: the view's pixels per page pixel now; `rect`: the pane's rectangle it is drawn in, while it is,
    *   and `drawn` where in it; `held`: the size and scale the page's protocol was last told; `cast`: its cast to
-   *   Filament, while a page watches it, and `castSeq` its frames' number so far
+   *   Filament, while a page watches it, and `castSeq` its frames' number so far; `turn`: its mouse or Chrome's
+   *   screenshot of it under way (`inTurn`)
    * @typedef {{ way: "screencast" | "shots", key: string, last: string, said: boolean, sentAt: number }} Cast
    *   `way`: Chrome's screencast (a page over a pane at its own size) or its picture taken every `CAST_SHOT_MS`;
    *   `key`: the way and the frame's size it was started at; `last`: the last picture's JPEG sent, `said` whether a
@@ -429,6 +430,28 @@ export function createPages({ electron, send, log = () => {}, newId = () => `t-$
       t.held = "";
       log(`browser: a page did not take its size (${String(e?.message || e)})`);
     });
+  };
+  /**
+   * The page's mouse and Chrome's screenshot of it, one at a time (`turn`). While Chrome takes its screenshot of a page
+   * drawn at another scale it draws the page at scale 1, so a mouse's point sent meanwhile, in the view's pixels, is
+   * read as the page's own and lands at the scale's share of it: a press from a cast, whose pictures are taken every
+   * `CAST_SHOT_MS`, missed (the drive's check 34 with the app's window in sight). Each waits for the one under way,
+   * `SHOT_MS` at the most.
+   * @template T @param {Page} t @param {() => Promise<T>} fn @returns {Promise<T>}
+   */
+  const inTurn = async (t, fn) => {
+    const before = t.turn;
+    /** @type {() => void} */
+    let end = () => {};
+    const mine = new Promise((r) => (end = () => r(undefined)));
+    t.turn = mine;
+    try {
+      if (before) await Promise.race([before, wait(SHOT_MS)]);
+      return await fn();
+    } finally {
+      end();
+      if (t.turn === mine) t.turn = null;
+    }
   };
   /**
    * A page leaves the window it is shown in — parked, closed, or shown in another —: that window's veil goes with it
@@ -693,7 +716,7 @@ export function createPages({ electron, send, log = () => {}, newId = () => `t-$
     const view = new WebContentsView({ webPreferences: { session: profile(), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: true } });
     const wc = view.webContents;
     /** @type {Page} */
-    const t = { id: tab, view, wc, host: null, size: { width: size.width, height: size.height }, fit: false, scale: 1, rect: null, drawn: null, held: "", cast: null, castSeq: 0 };
+    const t = { id: tab, view, wc, host: null, size: { width: size.width, height: size.height }, fit: false, scale: 1, rect: null, drawn: null, held: "", cast: null, castSeq: 0, turn: null };
     tabs.set(tab, t);
     parkOne(t);
     guard(tab, wc);
@@ -765,10 +788,13 @@ export function createPages({ electron, send, log = () => {}, newId = () => `t-$
     if (!t.rect || t.fit || s === 1 || !nativeImage || !t.wc.debugger.isAttached()) return t.wc.capturePage();
     try {
       const ms = Math.max(1, Math.min(SHOT_MS, end - clock()));
-      const shot = await Promise.race([
-        t.wc.debugger.sendCommand("Page.captureScreenshot", { format: "png" }),
-        wait(ms).then(() => { throw new Error(`Chrome's screenshot did not answer in ${ms / 1000} s`); }),
-      ]);
+      // In its turn: no mouse reaches the page while Chrome draws it at scale 1 for the screenshot (`inTurn`).
+      const shot = await inTurn(t, () =>
+        Promise.race([
+          t.wc.debugger.sendCommand("Page.captureScreenshot", { format: "png" }),
+          wait(ms).then(() => { throw new Error(`Chrome's screenshot did not answer in ${ms / 1000} s`); }),
+        ]),
+      );
       const img = nativeImage.createFromBuffer(Buffer.from(String(shot?.data || ""), "base64"));
       if (!img.isEmpty()) return img;
       throw new Error("Chrome's screenshot came back empty");
@@ -842,9 +868,10 @@ export function createPages({ electron, send, log = () => {}, newId = () => `t-$
         const params = m.params && typeof m.params === "object" ? m.params : {};
         // The agent's mouse at the page's own point: the protocol reads a mouse's point in the view's pixels, and the
         // view draws the page at its scale (BS0) — times the scale, it lands where the agent aimed. Its quads, its layout
-        // and its keys are the page's own, as they are.
-        const scaled = method === "Input.dispatchMouseEvent" && t.scale !== 1 ? { ...params, x: Number(params.x) * t.scale, y: Number(params.y) * t.scale } : params;
-        return t.wc.debugger.sendCommand(method, scaled);
+        // and its keys are the page's own, as they are. A mouse's point waits for Chrome's screenshot under way, which
+        // draws the page at scale 1 meanwhile (`inTurn`), and takes the scale as it is then.
+        if (method !== "Input.dispatchMouseEvent") return t.wc.debugger.sendCommand(method, params);
+        return inTurn(t, () => t.wc.debugger.sendCommand(method, t.scale !== 1 ? { ...params, x: Number(params.x) * t.scale, y: Number(params.y) * t.scale } : params));
       }
       case "capture":
         return capture(tab, m.width, m.height);

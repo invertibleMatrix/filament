@@ -631,6 +631,74 @@ describe("the page's own size (E31 BS1)", () => {
     const asked = shots(vp);
     assert.deepEqual([await picture("ph"), shots(vp)], [said("jpeg 70"), asked], "parked again: Electron's capture, Chrome's not asked");
   });
+
+  // (fails before: yes — the drive's check 34 with the app's window in sight: a press from a cast, its pictures Chrome's
+  // screenshots every 200 ms, reached the page while Chrome drew it at scale 1 and landed at 0.32 of its point)
+  test("a mouse's point waits for Chrome's screenshot under way, and a screenshot for a mouse's; one that never answers holds neither past its time", async () => {
+    const f = fakeElectron();
+    const shotImg = { isEmpty: () => false, getSize: () => ({ width: 2560, height: 1600 }), resize: () => shotImg, toJPEG: () => Buffer.from("shot") };
+    const nativeImage = { createFromBuffer: () => shotImg };
+    /** The waits under way, each ended by the test. @type {(() => void)[]} */
+    const timers = [];
+    const pages = createPages({ electron: { ...f.electron, nativeImage }, send: () => {}, wait: () => new Promise((r) => timers.push(() => r(undefined))) });
+    await pages.handle({ op: "open", tab: "t1" });
+    const [v1] = f.made.views;
+    // Electron's capture, cut by the scale where Chrome's screenshot never answers.
+    v1.webContents.capturePage = async () => ({ ...shotImg, crop: () => shotImg });
+    const d = v1.webContents.debugger;
+    /** The answers each command waits for, by method, in the order asked. @type {Map<string, (() => void)[]>} */
+    const held = new Map();
+    d.sendCommand = (/** @type {string} */ m, /** @type {any} */ p) => {
+      d.sent.push([m, p]);
+      if (m !== "Page.captureScreenshot" && m !== "Input.dispatchMouseEvent") return Promise.resolve({ done: m });
+      return new Promise((r) => held.set(m, [...(held.get(m) || []), () => r(m === "Page.captureScreenshot" ? { data: Buffer.from("png").toString("base64") } : {})]));
+    };
+    const answer = (/** @type {string} */ m) => held.get(m)?.shift()?.();
+    const mice = () => d.sent.filter(([m]) => m === "Input.dispatchMouseEvent").map(([, p]) => [p.type, p.x, p.y]);
+    const shots = () => d.sent.filter(([m]) => m === "Page.captureScreenshot").length;
+    pages.place("t1", new f.Win(), { x: 0, y: 0, width: 400, height: 250 });
+    assert.equal(pages.sizeOf("t1")?.scale, 0.3125);
+    // A screenshot under way: the press waits for it, then goes at the scale.
+    const picture = pages.handle({ op: "capture", tab: "t1", width: 1280, height: 800 });
+    await settle();
+    const press = pages.handle({ op: "cdp", tab: "t1", method: "Input.dispatchMouseEvent", params: { type: "mousePressed", x: 1040, y: 720, button: "left", clickCount: 1 } });
+    await settle();
+    assert.deepEqual([shots(), mice()], [1, []], "no mouse while Chrome draws the page at scale 1");
+    answer("Page.captureScreenshot");
+    await picture;
+    await settle();
+    assert.deepEqual(mice(), [["mousePressed", 325, 225]]);
+    // A press under way: the next screenshot waits for it.
+    const next = pages.handle({ op: "capture", tab: "t1", width: 1280, height: 800 });
+    await settle();
+    assert.equal(shots(), 1, "no screenshot while a press is on its way");
+    answer("Input.dispatchMouseEvent");
+    await press;
+    await settle();
+    assert.equal(shots(), 2);
+    answer("Page.captureScreenshot");
+    await next;
+    // A screenshot that never answers: the press waits for its time, then goes.
+    const stuck = pages.handle({ op: "capture", tab: "t1", width: 1280, height: 800 });
+    await settle();
+    const late = pages.handle({ op: "cdp", tab: "t1", method: "Input.dispatchMouseEvent", params: { type: "mouseReleased", x: 1040, y: 720, button: "left", clickCount: 1 } });
+    await settle();
+    assert.deepEqual(mice(), [["mousePressed", 325, 225]]);
+    for (const fire of timers.splice(0)) fire();
+    await settle();
+    assert.deepEqual(mice(), [["mousePressed", 325, 225], ["mouseReleased", 325, 225]]);
+    answer("Input.dispatchMouseEvent");
+    await late;
+    assert.deepEqual(await stuck, { data: Buffer.from("shot").toString("base64"), mediaType: "image/jpeg" }, "the picture Electron's, cut");
+    held.delete("Page.captureScreenshot");
+    // Its keys never wait.
+    const typing = pages.handle({ op: "capture", tab: "t1", width: 1280, height: 800 });
+    await settle();
+    await pages.handle({ op: "cdp", tab: "t1", method: "Input.dispatchKeyEvent", params: { type: "keyDown", key: "a" } });
+    assert.deepEqual(d.sent.at(-1), ["Input.dispatchKeyEvent", { type: "keyDown", key: "a" }]);
+    answer("Page.captureScreenshot");
+    await typing;
+  });
 });
 
 // HarnessV4_BrowserSize_Plan BS3, the owner's word of 10-23: "whenever the browser tab is in control of an agent and we

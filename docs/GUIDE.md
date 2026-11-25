@@ -5847,7 +5847,8 @@ of the harness's over the pane puts the page away for as long as it shows, a pic
 browser tab, or driving another machine's Filament (from the app's machines menu, a paired device) whose pages this app
 does not hold, the pane shows the page live as the app on that machine — or, with no app there, Chrome on that machine — casts it, a few frames a second, while the pane is on your screen (a tab behind, or Settings over
 the panes, stops it until you are back): once you **Take over**, your clicks — double and triple ones too —, scrolling,
-keys and paste reach the page where you put them. A view-only device sees none of the chat's browser: a page there may
+keys and paste reach the page where you put them, even while the app on that machine shows the page small in its own
+window. A view-only device sees none of the chat's browser: a page there may
 show what someone signs in with, so its pane says so and asks for nothing. Where the app on that machine is too old
 to cast, the pane shows a picture of the page every 2 seconds instead; with neither an app nor Chrome on that machine,
 there is no page to show, and the pane says so.
