@@ -79,7 +79,7 @@ export function createUpdateThere({ pick = pickRoute, cookieOf, fetchOf = routeF
       : String(a.body?.error || `${m.name} answered HTTP ${a.status}`);
   /**
    * `filament update --version <v> --json` over SSH, as install.sh installed it there, for a Filament from before the
-   * route: done once systemd's Filament restarted on it; refused while a turn runs there, the update kept — asked again
+   * route: done once its service's Filament restarted on it; refused while a turn runs there, the update kept — asked again
    * once it ends, the version installed restarts on —; else said as it stands (`installed`: the version is there, and
    * the Filament that runs did not restart on it). @param {Machine} m @param {string} alias @param {string} version
    * @returns {Promise<UpdateStart>}
@@ -92,7 +92,8 @@ export function createUpdateThere({ pick = pickRoute, cookieOf, fetchOf = routeF
     try {
       report = JSON.parse(String(run.stdout || ""));
     } catch {}
-    if (run.code === 0 && report?.restart === "systemd") return { ok: true, version, ssh: true };
+    // Restarted by its service: systemd's, or a Windows host's scheduled task's ("service").
+    if (run.code === 0 && (report?.restart === "systemd" || report?.restart === "service")) return { ok: true, version, ssh: true };
     if (run.code === 0)
       return {
         ok: false,

@@ -17,7 +17,7 @@
 // what systemd does here (service.js), and its restart says "service". Before a version starts on the data folder
 // another wrote, the update says which stores' files it does not read and what it does with them (`sayUnread`). A
 // checkout updates with git pull; the Filament app updates itself.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -30,6 +30,7 @@ import { processRuns } from "./listening.js";
 import { ownerHeaders } from "../services/owner.js";
 import { UNIT, mainPid, onPath, onWindows, runTool, serviceNow, serviceSupervisor, tools, underSystemd, upWords } from "./service.js";
 import { pause } from "./flows.js";
+import { SUPERVISOR as TASK_SUPERVISOR } from "./service-task.js";
 
 /** The file at a server build's top that says what it is (scripts/dist-server.mjs MARKER). */
 const MARKER = "build-info.json";
@@ -798,6 +799,31 @@ export const UPDATE_SCRIPT = 'f=$1; shift; "$@" >"$f.json" 2>"$f.log"; echo $? >
  */
 export const unexpanded = (w) => w.replace(/\$/g, "$$$$");
 
+/**
+ * What a Windows host's update runs, by Node (`node -e`): what `UPDATE_SCRIPT` does by sh — the command after `$1` run
+ * with its answer kept beside it (`.json`, `.log`, `.code`).
+ */
+export const UPDATE_RUNNER = [
+  'const { spawnSync } = require("node:child_process");',
+  'const fs = require("node:fs");',
+  "const [f, cmd, ...args] = process.argv.slice(1);",
+  'const out = fs.openSync(`${f}.json`, "w");',
+  'const err = fs.openSync(`${f}.log`, "w");',
+  'const r = spawnSync(cmd, args, { stdio: ["ignore", out, err], windowsHide: true });',
+  'if (r.error) fs.writeSync(err, String(r.error.message));',
+  'fs.writeFileSync(`${f}.code`, String(r.status ?? 1));',
+].join("\n");
+
+/**
+ * A program started apart from this Filament, as a Windows host's update runs: detached, no console, nothing of it held
+ * here, so the restart it makes ends this process and never it. → its pid. @param {string} file @param {string[]} args
+ */
+const launchApart = (file, args) => {
+  const child = spawn(file, args, { detached: true, stdio: "ignore", windowsHide: true });
+  child.unref();
+  return child.pid || 0;
+};
+
 /** The most of an update's words `state` says. */
 const WORDS_MAX = 4000;
 
@@ -813,13 +839,19 @@ const WORDS_MAX = 4000;
  * s3d): `filament update [--version <v>] --wait --json` run by systemd in a unit of its own (`UPDATE_UNIT`), never as a
  * child of this Filament, which systemd's restart takes down with its own unit (its KillMode). The update waits until no
  * turn runs to restart (--wait), and goes back to the version before where the new one does not come up, as it does
- * when typed there. `can`: whether it can here — a server build install.sh installed, run by systemd, systemd-run on
- * the PATH —, and why not in words. `state`: whether one runs, and how the last one went (`<dataDir>/update/last.*`).
- * `start`: one started → the version asked; refused in words with a status (`{ status, message }`).
- * @param {{ dataDir: string, supervisor: string | null, root?: () => string, run?: typeof runTool, now?: () => number }} o
- *   `root`: this Filament's folder (`here.root`), `run`: how systemd's tools are run
+ * when typed there. On a Windows host run by its scheduled task, the update is a process apart (`UPDATE_RUNNER`), its
+ * pid kept with its start. `can`: whether it can here — a server build install.sh (or install.ps1) installed, run by
+ * systemd with systemd-run on the PATH, or by the Windows task —, and why not in words. `state`: whether one runs, and
+ * how the last one went (`<dataDir>/update/last.*`). `start`: one started → the version asked; refused in words with a
+ * status (`{ status, message }`).
+ * @param {{ dataDir: string, supervisor: string | null, root?: () => string, run?: typeof runTool, now?: () => number, launch?: (file: string, args: string[]) => number }} o
+ *   `root`: this Filament's folder (`here.root`), `run`: how systemd's tools are run, `launch`: how a Windows host's
+ *   update is started apart (→ its pid)
  */
-export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, run = runTool, now = Date.now }) {
+export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, run = runTool, now = Date.now, launch = launchApart }) {
+  // A Windows host's (s3f7): its scheduled task's runner runs this Filament, and no unit holds the update — it runs
+  // apart from this Filament instead (`launch`), and outlives the restart, which ends this process alone.
+  const windows = supervisor === TASK_SUPERVISOR;
   const dir = join(dataDir, "update");
   const at = (/** @type {string} */ ext) => join(dir, `last.${ext}`);
   /** @param {number} status @param {string} message */
@@ -835,8 +867,9 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
       return { can: false, why: String(e?.message || e), version: null };
     }
     const version = install.version;
+    if (windows) return { can: true, why: null, version };
     if (supervisor !== "systemd")
-      return { can: false, why: `Filament ${version} here was started by hand, not by its systemd service: filament update there updates it (filament service install runs it under systemd).`, version };
+      return { can: false, why: `Filament ${version} here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, or a Windows host's scheduled task).`, version };
     if (!onPath("systemd-run")) return { can: false, why: "There is no systemd-run on this machine's PATH to update Filament with: filament update there updates it.", version };
     return { can: true, why: null, version };
   };
@@ -869,8 +902,20 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
       words: words.length > WORDS_MAX ? `…${words.slice(-WORDS_MAX)}` : words,
     };
   };
-  /** Whether its unit runs now. */
-  const running = async () => /^(active|activating|reloading)$/.test((await run("systemctl", ["--user", "is-active", UPDATE_UNIT])).out.trim());
+  /**
+   * Whether its unit runs now; on a Windows host, whether the process it started runs, its exit code not kept yet.
+   */
+  const running = async () => {
+    if (windows) {
+      if (read("code") !== null) return false;
+      let pid = 0;
+      try {
+        pid = Number(JSON.parse(read("started") || "null")?.pid) || 0;
+      } catch {}
+      return pid > 0 && processRuns(pid);
+    }
+    return /^(active|activating|reloading)$/.test((await run("systemctl", ["--user", "is-active", UPDATE_UNIT])).out.trim());
+  };
   return {
     can,
     /** @returns {Promise<{ running: boolean, last: LastUpdate | null }>} */
@@ -896,14 +941,29 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
       mkdirSync(dir, { recursive: true });
       for (const ext of ["code", "json", "log"]) rmSync(at(ext), { force: true });
       writeFileSync(at("started"), JSON.stringify({ version: asked, at: now() }));
-      const cli = join(installOf(root(), { moved: true }).base, "current", "bin", "filament");
+      const base = installOf(root(), { moved: true }).base;
+      const words = ["--data-dir", dataDir, "update", ...(asked ? ["--version", asked] : []), "--wait", "--json"];
+      if (windows) {
+        // The build current points at, its own Node and filament.js: what the task's runner starts next.
+        const node = join(base, "current", "node", "node.exe");
+        let pid = 0;
+        try {
+          pid = launch(node, ["-e", UPDATE_RUNNER, join(dir, "last"), node, join(base, "current", "bin", "filament.js"), ...words]);
+        } catch (/** @type {any} */ e) {
+          rmSync(at("started"), { force: true });
+          throw refusal(502, `The update could not be started: ${e?.message || e}`);
+        }
+        writeFileSync(at("started"), JSON.stringify({ version: asked, at: now(), pid }));
+        return { ok: true, version: asked };
+      }
+      const cli = join(base, "current", "bin", "filament");
       const p = await run("systemd-run", [
         "--user",
         "--collect",
         "--quiet",
         `--unit=${UPDATE_UNIT}`,
         "--",
-        ...["/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(dir, "last"), cli, "--data-dir", dataDir, "update", ...(asked ? ["--version", asked] : []), "--wait", "--json"].map(unexpanded),
+        ...["/bin/sh", "-c", UPDATE_SCRIPT, "sh", join(dir, "last"), cli, ...words].map(unexpanded),
       ]);
       if (p.code !== 0) {
         rmSync(at("started"), { force: true });

@@ -5,11 +5,11 @@
 // command where its Filament has no such route (desktop/lib/update-there.js).
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate, unexpanded } from "../src/cli/update.js";
+import { UPDATE_RUNNER, UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate, unexpanded } from "../src/cli/update.js";
 import { updateRoutes } from "../src/http/admin/update.js";
 import { SSH_UPDATE_MS, createUpdateThere, updateScript } from "../desktop/lib/update-there.js";
 import { removeDirs } from "./helpers/wait.js";
@@ -30,12 +30,16 @@ const folder = () => {
  * pointing at it. → its folder.
  * @param {string} version
  */
-function serverBuild(version) {
+function serverBuild(version, target = "linux-x64") {
   const base = join(folder(), "filament");
   const dir = join(base, version);
   mkdirSync(join(dir, "bin"), { recursive: true });
-  writeFileSync(join(dir, "build-info.json"), JSON.stringify({ kind: "server", version, target: "linux-x64", file: `filament-server-${version}-linux-x64.tar.gz`, engine: true, releases: { provider: "github", owner: "o", repo: "r" } }));
-  writeFileSync(join(dir, "bin", "filament"), "#!/bin/sh\n");
+  writeFileSync(join(dir, "build-info.json"), JSON.stringify({ kind: "server", version, target, file: `filament-server-${version}-${target}.tar.gz`, engine: true, releases: { provider: "github", owner: "o", repo: "r" } }));
+  // A Windows host's build (install.ps1's): its launcher filament.cmd, its own Node and filament.js beside it.
+  if (target.startsWith("win32-")) {
+    mkdirSync(join(dir, "node"), { recursive: true });
+    for (const f of [join("bin", "filament.cmd"), join("bin", "filament.js"), join("node", "node.exe")]) writeFileSync(join(dir, f), "");
+  } else writeFileSync(join(dir, "bin", "filament"), "#!/bin/sh\n");
   symlinkSync(WIN ? dir : version, join(base, "current"), "junction");
   return dir;
 }
@@ -93,7 +97,7 @@ describe("this Filament updated on request", () => {
     const f = fakeRun();
     const mk = (/** @type {string | null} */ supervisor, root = dir) => createSelfUpdate({ dataDir: data, supervisor, root: () => root, run: f.run });
     assert.match(String(mk("systemd", process.cwd()).can().why), /runs from a checkout/, "a checkout");
-    assert.deepEqual(mk(null).can(), { can: false, why: "Filament 1.0.0 here was started by hand, not by its systemd service: filament update there updates it (filament service install runs it under systemd).", version: "1.0.0" });
+    assert.deepEqual(mk(null).can(), { can: false, why: "Filament 1.0.0 here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, or a Windows host's scheduled task).", version: "1.0.0" });
     const was = process.env.PATH;
     process.env.PATH = folder();
     try {
@@ -142,6 +146,53 @@ describe("this Filament updated on request", () => {
       assert.match(last.words, /^….*so current points at 1\.0\.0 again\.$/s);
       assert.equal(last.words.length, 4001);
     });
+  });
+
+  // (fails before: yes — s3f7: a Windows host's Filament, run by its scheduled task, could not be updated from the desk:
+  // it asked for systemd-run)
+  test("on a Windows host run by its scheduled task: filament update --wait --json started apart by the build's own Node, its pid kept; one runs at a time; one that could not start, said, nothing left behind", async () => {
+    const dir = serverBuild("1.0.0", "win32-x64");
+    const data = folder();
+    const f = fakeRun();
+    /** @type {[string, string[]][]} */
+    const launched = [];
+    // An update under way: a process that runs.
+    const busy = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    try {
+      const u = createSelfUpdate({ dataDir: data, supervisor: "service", root: () => dir, run: f.run, now: () => 1_000, launch: (file, args) => (launched.push([file, args]), Number(busy.pid)) });
+      assert.deepEqual(u.can(), { can: true, why: null, version: "1.0.0" }, "no systemd-run asked for");
+      assert.deepEqual(await u.state(), { running: false, last: null });
+      assert.deepEqual(await u.start("1.1.0"), { ok: true, version: "1.1.0" });
+      const current = join(dirname(dir), "current");
+      const node = join(current, "node", "node.exe");
+      assert.deepEqual(launched, [[node, ["-e", UPDATE_RUNNER, join(data, "update", "last"), node, join(current, "bin", "filament.js"), "--data-dir", data, "update", "--version", "1.1.0", "--wait", "--json"]]]);
+      assert.deepEqual(f.ran, [], "nothing of systemd's");
+      assert.equal(JSON.parse(readFileSync(join(data, "update", "last.started"), "utf8")).pid, busy.pid);
+      assert.deepEqual(await u.state(), { running: true, last: { version: "1.1.0", at: 1_000, code: null, report: null, words: "" } });
+      await assert.rejects(u.start("1.1.0"), { status: 409, message: "An update runs here already: it says how it went once it ends." });
+      // Its exit code kept: it ended, whatever runs under that pid now.
+      writeFileSync(join(data, "update", "last.code"), "0");
+      assert.equal((await u.state()).running, false);
+      const failing = createSelfUpdate({ dataDir: data, supervisor: "service", root: () => dir, run: f.run, launch: () => { throw new Error("spawn EACCES"); } });
+      await assert.rejects(failing.start("1.1.0"), { status: 502, message: "The update could not be started: spawn EACCES" });
+      assert.equal(existsSync(join(data, "update", "last.started")), false, "nothing said started");
+    } finally {
+      busy.kill();
+    }
+  });
+
+  test("a Windows host's update runner: the command after its file run, its answer kept beside it — what it printed, its words, its exit code; a program that is none, said", () => {
+    const d = folder();
+    const last = join(d, "last");
+    const r = spawnSync(process.execPath, ["-e", UPDATE_RUNNER, last, process.execPath, "-e", 'console.log(JSON.stringify({ result: "updated" })); console.error("its words"); process.exit(3)'], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(`${last}.json`, "utf8")), { result: "updated" });
+    assert.equal(readFileSync(`${last}.log`, "utf8").trim(), "its words");
+    assert.equal(readFileSync(`${last}.code`, "utf8"), "3");
+    const none = spawnSync(process.execPath, ["-e", UPDATE_RUNNER, last, join(d, "no-such-program.exe")], { encoding: "utf8" });
+    assert.equal(none.status, 0, none.stderr);
+    assert.match(readFileSync(`${last}.log`, "utf8"), /ENOENT/);
+    assert.equal(readFileSync(`${last}.code`, "utf8"), "1");
   });
 
   test("refused in words: a version that is none, the one that runs, where it cannot, and a start systemd refused — nothing left behind", async () => {
@@ -346,6 +397,8 @@ describe("another machine's Filament updated from the desk", () => {
     assert.deepEqual(await stands({ result: "installed", installed: "1.0.0" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on: filament restart there starts it." });
     assert.deepEqual(await stands({ result: "updated", restart: "not-running" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, where no Filament runs now: it runs 1.0.0 at its next start." });
     assert.deepEqual(await stands({ result: "updated", restart: "by-hand" }), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, whose Filament was started by hand: it runs 1.0.0 once it is started again there." });
+    // (s3f7) Restarted by a Windows host's scheduled task: done, as systemd's restart is.
+    assert.deepEqual(await stands({ result: "updated", version: "1.0.0", restart: "service" }), { ok: true, version: "1.0.0", ssh: true });
     // Its ways of failing, each in words: a turn runs there, ssh asks what only the person can answer, its own words.
     const busy = desk({ answer: old, run: { code: 5, stdout: "", stderr: "…" } });
     assert.deepEqual(await busy.u.start(box([WAY, SSH]), "1.0.0"), { ok: false, installed: true, words: "Filament 1.0.0 is installed on Workstation, and its Filament runs on while a turn runs there: Update again once it ends restarts it on 1.0.0." });
