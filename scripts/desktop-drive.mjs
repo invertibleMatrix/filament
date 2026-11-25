@@ -3,14 +3,16 @@
 // The desktop app, driven (HarnessV3-Native NA2 to NA4 and NA3b, HarnessV4_Browser_Plan BR5; the plans' checks): Electron started on the checkout over
 // throwaway data folders and ports, a fake model and a stand-in memory engine behind them, its pages read over the
 // DevTools protocol. Its notifications are off in the app's own settings (written as a person's choice would be), so
-// they are written to the app's log, never shown: your notification centre stays as it was. Nothing here is a test hook in the app: it is started, asked and quit as a person or a script would — a
+// they are written to the app's log, never shown: your notification centre stays as it was. Its windows are started
+// with Chromium's occlusion tracking off, so a window your own windows cover still counts as shown and its pages keep
+// drawing. Nothing here is a test hook in the app: it is started, asked and quit as a person or a script would — a
 // launch, a second launch, `--quit`. Every process it starts is ended by its PID (and what that PID started), every
 // folder it made is removed; port 20300 and the Filament you run are never touched. Windows only for now: the process
 // checks read Windows' process list.
 //   npm run test:desktop
 //   npm run test:desktop -- --built [exe]   the packaged app (`npm run dist:win`'s
 //                                            dist\windows\<version>\win-unpacked\Filament.exe unless named) instead of
-//                                            Electron over the checkout: checks 1, 2, 9, 10, 11 and 26–30
+//                                            Electron over the checkout: checks 1, 2, 9, 10, 11, 26–30 and 34
 //   npm run test:desktop -- --pictures <dir>  what the browser's checks looked like, kept there as PNGs
 //   npm run test:desktop -- --desk           the desk's checks (35) alone, over two Filaments of their own
 //   npm run test:desktop -- --owner          the windows' owner session's check (36) alone
@@ -231,17 +233,27 @@ function writeConfig(dir, port, upstream, root, { memory = false, failing = "", 
   }
   cfg.agentLoop = { ...cfg.agentLoop, enabled: true, permissions: "auto", roots: [root], readerModel: "" };
   writeFileSync(join(dir, "config.json"), JSON.stringify(cfg));
+  // The app's notifications off, for every app the drive starts on it (the header's promise): a turn that fails or
+  // runs long is written to the app's log, never shown (the hunt on x65).
+  mkdirSync(join(dir, "desktop"), { recursive: true });
+  writeFileSync(join(dir, "desktop", "settings.json"), JSON.stringify({ notify: false }));
 }
 
 /** @type {{ pid: number, label: string }[]} */
 const mine = [];
 const plainEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^ELECTRON_/i.test(k)));
 /**
+ * Every Electron the drive starts takes it: Windows' occlusion tracking marks a window that other windows cover as
+ * hidden, and a hidden harness stops drawing what it watches (the Browser pane's Take over, its size chip, a cast) —
+ * the drive runs on a desktop someone uses (x69).
+ */
+const SHOWN = "--disable-features=CalculateNativeWinOcclusion";
+/**
  * Start the app over `dataDir` (its port, the folder's config's, unless `args` gives `--port`); `debug`, its DevTools port.
  * @param {string} dataDir @param {{ debug?: number, args?: string[], label: string, env?: Record<string, string> }} o
  */
 function launch(dataDir, { debug, args = [], label, env = {} }) {
-  const p = spawn(BUILT || ELECTRON, [...(BUILT ? [] : [MAIN]), "--data-dir", dataDir, ...(debug ? [`--remote-debugging-port=${debug}`] : []), ...args], { env: { ...plainEnv(), ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const p = spawn(BUILT || ELECTRON, [...(BUILT ? [] : [MAIN]), "--data-dir", dataDir, SHOWN, ...(debug ? [`--remote-debugging-port=${debug}`] : []), ...args], { env: { ...plainEnv(), ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   let said = "";
   p.stdout?.on("data", (d) => (said += d));
   p.stderr?.on("data", (d) => (said += d));
@@ -329,8 +341,6 @@ async function driveDesk() {
   const portD = await freePort();
   const debugD = await freePort();
   writeConfig(dataD, portD, up.url, root);
-  mkdirSync(join(dataD, "desktop"), { recursive: true });
-  writeFileSync(join(dataD, "desktop", "settings.json"), JSON.stringify({ notify: false }));
   const D = launch(dataD, { debug: debugD, label: "app at the desk" });
   const harnessD = await until(async () => (await pagesOf(debugD)).find((p) => p.url.startsWith(`http://127.0.0.1:${portD}/ui/harness.html`)), 60000, "the desk's harness");
   await until(() => evalIn(harnessD, `!!document.querySelector(".app-shell")`), 30000, "the desk's harness drawn");
@@ -934,7 +944,7 @@ async function driveBrowser(portA, originA, debugA, dataA) {
     const code34 = /** @type {{ status: number, json: any }} */ ((await evalIn(harness26, pair34).catch(() => null)) || { status: 0, json: {} });
     const name34 = String(code34.json?.pageHost || "").replace(/\.localhost$/i, "");
     const link34 = `${originA}/ui/pair.html#code=${encodeURIComponent(String(code34.json?.code || ""))}${name34 ? `&name=${encodeURIComponent(name34)}` : ""}&to=${encodeURIComponent(`/ui/harness.html#/task/${encodeURIComponent(sid26)}`)}`;
-    const P = spawn(ELECTRON, [plainMain, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: link34 }, stdio: "ignore", windowsHide: true });
+    const P = spawn(ELECTRON, [plainMain, SHOWN, `--remote-debugging-port=${plainDebug}`, `--user-data-dir=${join(base, "plain-profile")}`], { env: { ...plainEnv(), FILAMENT_PLAIN_URL: link34 }, stdio: "ignore", windowsHide: true });
     if (P.pid) mine.push({ pid: P.pid, label: "a plain window over Filament" });
     try {
       const plain34 = await until(async () => (await pagesOf(plainDebug).catch(() => [])).find((p) => new URL(p.url).port === String(portA) && p.url.includes("/ui/harness.html#/task/")), 30000, "the plain window's harness").catch(() => null);
@@ -1033,9 +1043,6 @@ try {
   let portA = await freePort();
   const debugA = await freePort();
   writeConfig(dataA, portA, up.url, root, { memory: true, failing: down.url });
-  // The app's own choice, as a person's: notifications off — written to its log, never shown.
-  mkdirSync(join(dataA, "desktop"), { recursive: true });
-  writeFileSync(join(dataA, "desktop", "settings.json"), JSON.stringify({ notify: false }));
   const engineState = join(dataA, "fake-engine-state.json");
   writeFileSync(engineState, JSON.stringify({ memories: [], canonical: [], seq: 1 }));
   const engine = { FILAMENT_MEMORY_SIDECAR: JSON.stringify({ command: process.execPath, args: [FAKE_SIDECAR], env: { FAKE_SIDECAR_STATE: engineState } }) };
@@ -1328,7 +1335,8 @@ try {
     // ---- 15: a Filament that cannot start (its config.json does not read): said once, not tried again and again --------------
     const dataE = join(base, "e");
     const portE = await freePort();
-    mkdirSync(dataE, { recursive: true });
+    mkdirSync(join(dataE, "desktop"), { recursive: true });
+    writeFileSync(join(dataE, "desktop", "settings.json"), JSON.stringify({ notify: false }));
     writeFileSync(join(dataE, "config.json"), `{ "server": { "port": ${portE} }, `);
     // --port: a config that does not read gives the app the default port, which is the Filament you run.
     const E = launch(dataE, { args: ["--port", String(portE)], label: "app that cannot start Filament" });
@@ -1435,8 +1443,6 @@ try {
     const portG = await freePort();
     const debugG = await freePort();
     writeConfig(dataG, portG, up.url, root);
-    mkdirSync(join(dataG, "desktop"), { recursive: true });
-    writeFileSync(join(dataG, "desktop", "settings.json"), JSON.stringify({ notify: false }));
     const hold = join(base, "hold-start.cjs");
     writeFileSync(hold, 'if (process.type === "utility") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 4000);\n');
     // NODE_OPTIONS reads a backslash in quotes as an escape: the path with forward slashes, as Windows takes it too.
@@ -1470,8 +1476,6 @@ try {
     const portH = await freePort();
     const debugH = await freePort();
     writeConfig(dataH, portH, up.url, root);
-    mkdirSync(join(dataH, "desktop"), { recursive: true });
-    writeFileSync(join(dataH, "desktop", "settings.json"), JSON.stringify({ notify: false }));
     const dataR = join(base, "r");
     const portR = await freePort();
     // Another machine stood in for by a Filament on this computer, opened with no pairing: any program here is let in
@@ -1650,8 +1654,6 @@ try {
     const portH2 = await freePort();
     const debugH2 = await freePort();
     writeConfig(dataH2, portH2, up.url, root);
-    mkdirSync(join(dataH2, "desktop"), { recursive: true });
-    writeFileSync(join(dataH2, "desktop", "settings.json"), JSON.stringify({ notify: false }));
     const H2 = launch(dataH2, { debug: debugH2, label: "app adding a machine" });
     const harnessH2 = await until(async () => (await pagesOf(debugH2)).find((p) => p.url.startsWith(`http://127.0.0.1:${portH2}/ui/harness.html`)), 60000, "the harness of the app adding a machine");
     await until(() => evalIn(harnessH2, `!!document.querySelector(".app-shell")`), 30000, "its harness drawn");
