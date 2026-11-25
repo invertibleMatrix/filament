@@ -88,9 +88,12 @@
   function Unlink([string]$p) { [IO.Directory]::Delete($p, $false) }
   # A folder and all in it removed by cmd's rd, which takes a junction in it away and never follows it: Remove-Item
   # -Recurse follows one in Windows PowerShell 5.1 and empties the folder it points at, and .NET's recursive delete
-  # refuses one.
+  # refuses one. The path reaches cmd in an environment variable it expands inside quotes: Windows PowerShell 5.1
+  # passes an argument with no space in it unquoted, and cmd read a folder under a user named R&D as two commands.
   function DeleteTree([string]$p) {
-    & (Join-Path $env:SystemRoot 'System32\cmd.exe') /d /c rd /s /q $p | Out-Null
+    $env:FILAMENT_RD_PATH = $p
+    try { & (Join-Path $env:SystemRoot 'System32\cmd.exe') /d /c rd /s /q '"%FILAMENT_RD_PATH%"' | Out-Null }
+    finally { Remove-Item -LiteralPath Env:FILAMENT_RD_PATH -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $p) { throw [System.Exception]::new("rd /s /q left $($p): a file in it is in use") }
   }
   # A folder renamed, tried again for a few seconds where Windows says it is in use: an antivirus looks at a new
@@ -132,12 +135,14 @@
   # current moved from `$before` to `$version`: every version's folder but those two removed (a folder named as a
   # version that holds a server build's build-info.json). Each is renamed aside first: Windows renames no folder a
   # running Filament has a file open in, so one still running is kept whole, never half removed. What a run cut short
-  # left aside goes too.
+  # left aside (a Ctrl+C while rd removed it) goes at every run's end, the version current pointed at or not.
   function Prune([string]$base, [string]$version, [string]$before) {
+    foreach ($d in Get-ChildItem -LiteralPath $base -Directory -Force) {
+      if ($d.Name -match '^\.prune-[0-9a-f]{8}$' -and -not (IsLink $d.FullName)) { try { DeleteTree $d.FullName } catch {} }
+    }
     if (-not $before -or $before -eq $version) { return }
     foreach ($d in Get-ChildItem -LiteralPath $base -Directory -Force) {
       $n = $d.Name
-      if ($n -match '^\.prune-[0-9a-f]{8}$' -and -not (IsLink $d.FullName)) { try { DeleteTree $d.FullName } catch {}; continue }
       if ($n -eq $version -or $n -eq $before -or -not (IsVersion $n) -or (IsLink $d.FullName) -or -not (Test-Path -LiteralPath (Join-Path $d.FullName $Marker))) { continue }
       $gone = Join-Path $base (".prune-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
       try { [IO.Directory]::Move($d.FullName, $gone) } catch {
@@ -287,11 +292,9 @@
       if ($before -ne $version) { Point $dir $current }
       $s.swapping = $false
       $pathWords = if ($modifyPath) { OnPath $bin } else { '' }
+      Prune $base $version $before
       if ($before -eq $version) { Say "Filament $version$engineWords is installed already, in $($dir): nothing changed." }
-      else {
-        Prune $base $version $before
-        Say "Filament $version$engineWords was installed already, in $($dir): current points at it now$keptWords."
-      }
+      else { Say "Filament $version$engineWords was installed already, in $($dir): current points at it now$keptWords." }
       if ($pathWords) { Say $pathWords }
       SayNext $bin
       return

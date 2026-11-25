@@ -373,7 +373,7 @@ with Windows' own `tar.exe`. No administrator is needed: everything goes in your
 
 Its options are environment variables, set before the line: `$env:FILAMENT_VERSION = '1.2.3'`, and
 `FILAMENT_NO_ENGINE` and `FILAMENT_RELEASES_URL` as on Linux. Two versions are kept, and an install that fails partway
-is undone, as `install.sh` does.
+is undone, as `install.sh` does. A version a run was stopped partway through removing (Ctrl+C) goes at the next run.
 
 **Keep it running.** `filament service install` registers Task Scheduler's task `\Filament\Filament`. It starts at
 boot with no one logged in, as you without your password (S4U: it reaches no network share, and Windows' Credential

@@ -518,6 +518,35 @@ for (const shell of SHELLS.length ? SHELLS : [{ name: "PowerShell", file: "" }])
       }
     });
 
+    // (fails before: yes — the hunt on s3f2: rd took its path unquoted, which cmd read under a user named R&D as two
+    // commands; and a .prune- folder a run cut short left stayed until current moved to another version)
+    test("a LOCALAPPDATA with & in its path: installed, the oldest removed, no work folder left; what a run cut short left aside goes at the next run, the same version's too", async () => {
+      for (const v of ["9.0.0", "9.1.0", "9.2.0"]) await release(v);
+      const home = tmp("user-");
+      const at = join(home, "R&D");
+      mkdirSync(at);
+      const base = join(at, "filament");
+      const env = { LOCALAPPDATA: at, FILAMENT_RELEASES_URL: url };
+      try {
+        for (const v of ["9.0.0", "9.1.0", "9.2.0"]) {
+          latest = v;
+          const r = await ps(env);
+          assert.equal(r.code, 0, r.err);
+        }
+        assert.deepEqual(readdirSync(base).sort(), ["9.1.0", "9.2.0", "current"], "the oldest removed, no work folder left");
+        assert.equal(runs(base), "9.2.0");
+        // A version set aside by a run stopped while rd removed it: the same version's run takes it away.
+        mkdirSync(join(base, ".prune-0123abcd", "bin"), { recursive: true });
+        writeFileSync(join(base, ".prune-0123abcd", "bin", "filament.cmd"), "@echo off\r\n");
+        const r = await ps(env);
+        assert.equal(r.code, 0, r.err);
+        assert.equal(r.out.trim().split("\n")[0], `Filament 9.2.0 is installed already, in ${join(base, "9.2.0")}: nothing changed.`);
+        assert.deepEqual(readdirSync(base).sort(), ["9.1.0", "9.2.0", "current"], "the leftover gone");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+
     // The user's PATH is the registry's (HKCU\Environment): the script's own OnPath is run here against a key of its
     // own under HKCU\Software, taken away after, with Windows' "environment changed" note left out, so this machine's
     // PATH is never touched.
