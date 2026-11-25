@@ -269,7 +269,7 @@ test("the arm64 server build: on ARM64_RUNNER's runner or ubuntu-22.04-arm, skip
 });
 
 // (fails before, s3f: yes — no Windows server build: a Windows PC could be no host)
-test("the Windows server build: on windows-latest, its memory engine the windows job's under its key, npm run dist:server, its tarballs and feed in both drafts, checked in the release and named in its notes", async () => {
+test("the Windows server build: on windows-latest, its memory engine the windows job's under its key, npm run dist:server, its tarballs, feed and install.ps1 in both drafts, checked in the release and named in its notes", async () => {
   const text = await yml();
   const win = job(text, "server-windows");
   const W = "win32-x64";
@@ -278,14 +278,16 @@ test("the Windows server build: on windows-latest, its memory engine the windows
   assert.match(win, /\n {4}runs-on: windows-latest\n/);
   const cache = (/** @type {string} */ j) => /\n {10}path: (vendor\/memory-engine\/\S+)\n {10}key: (.+)\n/.exec(j)?.slice(1);
   assert.deepEqual(cache(win), cache(job(text, "windows")), "the windows job's bundle, under its key: either job's is the other's");
-  const order = ["run: npm ci\n", "uses: actions/cache@v6\n", "run: npm run engine:bundle\n", "run: npm run dist:server\n", "- name: Into the draft release\n", "uses: actions/upload-artifact@v7\n"];
+  const order = ["run: npm ci\n", "uses: actions/cache@v6\n", "run: npm run engine:bundle\n", "run: npm run dist:server\n", "run: cp scripts/install.ps1 ", "- name: Into the draft release\n", "uses: actions/upload-artifact@v7\n"];
   for (let i = 1; i < order.length; i++) assert.ok(win.indexOf(order[i - 1]) > 0 && win.indexOf(order[i - 1]) < win.indexOf(order[i]), `${order[i - 1].trim()} before ${order[i].trim()}`);
+  // cp is Git Bash's: the runner's own shell is PowerShell
+  assert.match(win, /- name: install\.ps1 beside them\n {8}shell: bash\n {8}run: cp scripts\/install\.ps1 "dist\/server\/\$\{\{ needs\.version\.outputs\.version \}\}\/install\.ps1"\n/);
   const v = "${{ needs.version.outputs.version }}";
-  assert.deepEqual(keeps(win), [tarballName(v, true, W), tarballName(v, false, W), feedName(W)].map((f) => `dist/server/${v}/${f}`));
+  assert.deepEqual(keeps(win), [tarballName(v, true, W), tarballName(v, false, W), feedName(W), "install.ps1"].map((f) => `dist/server/${v}/${f}`));
   assert.deepEqual(sends(win), keeps(win));
   const listed = /\n\s+for f in ([\s\S]*?); do\n/.exec(checkStep(text))?.[1] || "";
-  for (const f of [tarballName("$VERSION", true, W), tarballName("$VERSION", false, W), feedName(W)]) assert.ok(listed.includes(`"${f}"`) || listed.includes(` ${f}`), `the release checks ${f}`);
-  assert.match(text.slice(text.indexOf("- name: The release's notes")), /\*\*Windows hosts\*\* \(x64, no desktop app\)/);
+  for (const f of [tarballName("$VERSION", true, W), tarballName("$VERSION", false, W), feedName(W), "install.ps1"]) assert.ok(listed.includes(`"${f}"`) || listed.includes(` ${f}`), `the release checks ${f}`);
+  assert.match(text.slice(text.indexOf("- name: The release's notes")), /\*\*Windows hosts\*\* \(x64, no desktop app\): \\`irm https:\/\/github\.com\/\$RELEASES_REPO\/releases\/latest\/download\/install\.ps1 \| iex\\` in PowerShell/);
 });
 
 // (fails before: yes — the run built Windows alone)

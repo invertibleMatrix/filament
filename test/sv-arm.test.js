@@ -418,7 +418,7 @@ describe("install.sh on arm64", { skip: !SH && "no POSIX sh on this machine (on 
       for (const [os, arch] of [["Linux", "riscv64"], ["Linux", "armv7l"], ["Darwin", "arm64"], ["FreeBSD", "amd64"]]) {
         const r = await sh({ ...h.env, UNAME_S: os, UNAME_M: arch });
         assert.equal(r.code, 1, `${os} ${arch}: ${r.out}`);
-        assert.equal(r.err, `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is ${os} on ${arch}: nothing was installed. On a Mac or Windows, install the desktop app from https://github.com/invertibleMatrix/filament/releases/latest.\n`);
+        assert.equal(r.err, `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is ${os} on ${arch}: nothing was installed. On a Mac, install the desktop app from https://github.com/invertibleMatrix/filament/releases/latest. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm https://github.com/invertibleMatrix/filament/releases/latest/download/install.ps1 | iex\n`);
       }
       // Raspberry Pi OS's 32-bit release on a Pi's 64-bit kernel: uname says aarch64, and its programs are 32-bit
       for (const arch of ["aarch64", "x86_64"]) {

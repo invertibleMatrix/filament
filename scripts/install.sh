@@ -223,7 +223,7 @@ prune() {
     n=${d##*/}
     if [ "$n" != "$version" ] && [ "$n" != "$before" ] && [ -d "$d" ] && [ ! -L "$d" ] && is_version "$n" && [ -f "$d/$MARKER" ]; then
       rm -rf "$d"
-      say "Removed Filament $n, older than the two kept ($d)."
+      say "Removed Filament $n, not one of the two kept ($d)."
     fi
   done
 }
@@ -283,7 +283,7 @@ main() {
     *) target="" ;;
   esac
   if [ "$os" != Linux ] || [ -z "$target" ]; then
-    refuse "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is $os on $arch: nothing was installed. On a Mac or Windows, install the desktop app from $RELEASES/latest."
+    refuse "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and this machine is $os on $arch: nothing was installed. On a Mac, install the desktop app from $RELEASES/latest. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm $RELEASES/latest/download/install.ps1 | iex"
   fi
   # A 64-bit kernel can run 32-bit programs alone (Raspberry Pi OS's 32-bit release on a Pi's arm64 kernel): Filament's
   # Node would not start there.
@@ -416,7 +416,7 @@ EOF
   esac
   # The version's folder comes in by one rename, from beside it: a half one is never at its path. One there that is
   # not this build (the other tarball of the version, or one damaged) goes back if the run fails before current is
-  # swapped, as does all it changed (cleanup); the versions older than the two kept are removed after.
+  # swapped, as does all it changed (cleanup); the versions but the two kept are removed after.
   swapping=1
   if [ -e "$dir" ] || [ -L "$dir" ]; then mv "$dir" "$work/old"; fi
   placed=1

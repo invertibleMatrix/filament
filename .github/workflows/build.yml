@@ -12,7 +12,8 @@
 # toward none (the owner's of 11-16). docs/releasing.md says what the secrets are and how to set them. Beside the
 # desktop builds, Filament for servers: `npm run dist:server`'s tarballs, their latest-server.yml and the install.sh that installs them
 # (the remote-agents plan's sv-ci), in the same release — x64's, and arm64's with latest-server-arm64.yml (sv-arm), on
-# the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off.
+# the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off; and Windows hosts' (s3f),
+# with latest-server-win32-x64.yml and the install.ps1 that installs them.
 name: Build
 
 on:
@@ -580,6 +581,11 @@ jobs:
       - name: Build the tarballs
         run: npm run dist:server
 
+      # Windows' installer goes up with its tarballs, as install.sh with x64's: `irm … /releases/latest/download/install.ps1 | iex`.
+      - name: install.ps1 beside them
+        shell: bash
+        run: cp scripts/install.ps1 "dist/server/${{ needs.version.outputs.version }}/install.ps1"
+
       - name: Into the draft release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -592,6 +598,7 @@ jobs:
             "dist/server/$VERSION/filament-server-$VERSION-win32-x64.tar.gz"
             "dist/server/$VERSION/filament-server-$VERSION-win32-x64-no-engine.tar.gz"
             "dist/server/$VERSION/latest-server-win32-x64.yml"
+            "dist/server/$VERSION/install.ps1"
           )
           GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
           if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
@@ -604,6 +611,7 @@ jobs:
             dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-win32-x64.tar.gz
             dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-win32-x64-no-engine.tar.gz
             dist/server/${{ needs.version.outputs.version }}/latest-server-win32-x64.yml
+            dist/server/${{ needs.version.outputs.version }}/install.ps1
           if-no-files-found: error
           retention-days: 1
           overwrite: true
@@ -622,7 +630,8 @@ jobs:
     steps:
       # Every system's installers and update files in both drafts, or the run fails and says which is missing where: a
       # release without a system's latest*.yml offers that system no update. The servers' install.sh reads
-      # latest-server.yml, and installs nothing from a release without it. arm64's servers' files are asked for where
+      # latest-server.yml, and Windows hosts' install.ps1 latest-server-win32-x64.yml: neither installs from a release
+      # without its file. arm64's servers' files are asked for where
       # their job ran. A file counts once it is whole: an upload cut off leaves an asset GitHub has not marked uploaded.
       - name: Every system's files are here
         env:
@@ -647,7 +656,7 @@ jobs:
                      "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
                      "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
                      "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh \
-                     "filament-server-$VERSION-win32-x64.tar.gz" "filament-server-$VERSION-win32-x64-no-engine.tar.gz" latest-server-win32-x64.yml $arm64; do
+                     "filament-server-$VERSION-win32-x64.tar.gz" "filament-server-$VERSION-win32-x64-no-engine.tar.gz" latest-server-win32-x64.yml install.ps1 $arm64; do
               grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in $repo's draft."; missing=1; }
             done
             echo "$repo:"
@@ -677,7 +686,7 @@ jobs:
           - **macOS** (Apple Silicon): \`Filament-$VERSION-mac-arm64.dmg\` — open it and drag Filament to Applications
           - **Linux** (x64): \`Filament-$VERSION-linux-x86_64.AppImage\` (any distribution: \`chmod +x\` it and run it), or \`Filament-$VERSION-linux-amd64.deb\` for Debian and Ubuntu (\`sudo apt install ./Filament-$VERSION-linux-amd64.deb\`)
           - **Linux servers** ($servers, no desktop app): \`curl -fsSL https://github.com/$RELEASES_REPO/releases/latest/download/install.sh | sh\`, or \`filament-server-$VERSION-linux-x64.tar.gz\` by hand
-          - **Windows hosts** (x64, no desktop app): \`filament-server-$VERSION-win32-x64.tar.gz\`
+          - **Windows hosts** (x64, no desktop app): \`irm https://github.com/$RELEASES_REPO/releases/latest/download/install.ps1 | iex\` in PowerShell, or \`filament-server-$VERSION-win32-x64.tar.gz\` by hand
 
           The installed app finds this release itself once it is published.
           EOF

@@ -17,7 +17,7 @@ app it built. What it makes, in `dist/<system>/<version>/`:
 | Linux (x64) | `npm run dist:linux` | `Filament-<v>-linux-x86_64.AppImage`, a single file for any distribution, and `Filament-<v>-linux-amd64.deb` for Debian and Ubuntu | `latest-linux.yml` |
 | Linux servers (x64), no desktop app | `npm run dist:server` | `filament-server-<v>-linux-x64.tar.gz`, and `…-no-engine.tar.gz` without the memory engine, which `install.sh` installs (section 6) | `latest-server.yml` |
 | Linux servers (arm64), no desktop app | `npm run dist:server`, on an arm64 machine | `filament-server-<v>-linux-arm64.tar.gz`, and `…-no-engine.tar.gz` | `latest-server-arm64.yml` |
-| Windows hosts (x64), no desktop app | `npm run dist:server`, on Windows | `filament-server-<v>-win32-x64.tar.gz`, and `…-no-engine.tar.gz` | `latest-server-win32-x64.yml` |
+| Windows hosts (x64), no desktop app | `npm run dist:server`, on Windows | `filament-server-<v>-win32-x64.tar.gz`, and `…-no-engine.tar.gz`, which `install.ps1` installs (section 6) | `latest-server-win32-x64.yml` |
 
 The update file lists each install file with its SHA-512. An installed Filament checks a download against it and
 keeps nothing that doesn't match.
@@ -300,8 +300,18 @@ on servers with that glibc or newer; Filament itself runs on glibc 2.28 and newe
 [Filament on a server](server.md).
 
 **The Windows server build:** the `server-windows` job does the same on `windows-latest`, with the `windows` job's
-memory engine bundle (the same cache), and adds three files to the release: `filament-server-<v>-win32-x64.tar.gz`,
-its `-no-engine` one and `latest-server-win32-x64.yml`. The release checks them, and its notes name them.
+memory engine bundle (the same cache), and adds four files to the release: `filament-server-<v>-win32-x64.tar.gz`,
+its `-no-engine` one, `latest-server-win32-x64.yml` and `scripts/install.ps1`, the installer for Windows hosts. The
+release checks them, and its notes name them. A Windows PC with no desktop app installs the newest published release,
+in PowerShell, with no administrator:
+
+```powershell
+irm https://github.com/invertibleMatrix/filament/releases/latest/download/install.ps1 | iex
+```
+
+It installs into `%LOCALAPPDATA%\filament\<v>`, points the junction `current` there at it, keeps the version before
+for a roll back and puts `current\bin` (with `filament.cmd`) on the user's PATH. It takes install.sh's options from
+the environment: `FILAMENT_VERSION`, `FILAMENT_NO_ENGINE`, `FILAMENT_RELEASES_URL` and `FILAMENT_NO_MODIFY_PATH`.
 
 **The arm64 server build:** the `server-arm64` job does the same on an arm64 machine, with its own memory engine
 bundle, and adds three files to the release: `filament-server-<v>-linux-arm64.tar.gz`, its `-no-engine` one and

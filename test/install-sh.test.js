@@ -225,7 +225,7 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
       for (const [os, arch] of [["Darwin", "arm64"], ["Linux", "riscv64"], ["FreeBSD", "x86_64"]]) {
         const r = await sh({ ...h.env, UNAME_S: os, UNAME_M: arch });
         assert.equal(r.code, 1, `${os} ${arch}: ${r.out}`);
-        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and this machine is ${os} on ${arch}: nothing was installed\\. On a Mac or Windows, install the desktop app from https://github\\.com/invertibleMatrix/filament/releases/latest\\.\\n$`));
+        assert.match(r.err, new RegExp(`^Filament for servers is built for Linux on x86_64 and on arm64 \\(aarch64\\), and this machine is ${os} on ${arch}: nothing was installed\\. On a Mac, install the desktop app from https://github\\.com/invertibleMatrix/filament/releases/latest\\. On Windows, install the desktop app, or Filament for Windows hosts in PowerShell: irm https://github\\.com/invertibleMatrix/filament/releases/latest/download/install\\.ps1 \\| iex\\n$`));
       }
       // another C library than glibc, or a glibc older than Node's own builds need
       const musl = await sh({ ...h.env, GLIBC: "musl" });
@@ -352,7 +352,7 @@ describe("install.sh", { skip: !SH && "no POSIX sh on this machine (on Windows, 
       assert.equal(r.code, 0, r.err);
       assert.deepEqual(folders(), ["1.1.0", "1.2.0", "current"]);
       at("1.2.0");
-      assert.match(r.out, /^Removed Filament 1\.0\.0, older than the two kept \(\S+\/filament\/1\.0\.0\)\.$/m);
+      assert.match(r.out, /^Removed Filament 1\.0\.0, not one of the two kept \(\S+\/filament\/1\.0\.0\)\.$/m);
 
       // a damaged download: refused, and the install is as it was
       latest = "1.3.0";

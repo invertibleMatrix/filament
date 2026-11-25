@@ -52,6 +52,14 @@ Three words you will meet everywhere:
 - The desktop app needs no Node of its own: it carries its runtime. What still needs Node on the machine is what you
   start with it — MCP servers started with `npx`, coding agents installed with npm.
 - A Linux server with no desktop installs Filament with one command and no root: see [Filament on a server](server.md).
+- A Windows PC with no desktop app (a host) installs Filament for Windows hosts the same way, in PowerShell and with no
+  administrator: `irm https://github.com/invertibleMatrix/filament/releases/latest/download/install.ps1 | iex`. It goes
+  into `%LOCALAPPDATA%\filament\<version>`, behind the junction `current`, with the version before kept for a roll back,
+  and `current\bin` on your PATH, so a new window or SSH session runs it as `filament`. It takes install.sh's options from
+  the environment (`FILAMENT_VERSION`, `FILAMENT_NO_ENGINE`, `FILAMENT_RELEASES_URL`, `FILAMENT_NO_MODIFY_PATH`): to go
+  back to the version kept, `$env:FILAMENT_VERSION='1.2.3'; irm … | iex` with its number. Run as
+  `powershell -c "irm … | iex"` (a script's or an SSH session's way), its exit code says whether it installed; typed into
+  a PowerShell, that window stays open and `$LASTEXITCODE` says it.
 
 ### Start it
 
