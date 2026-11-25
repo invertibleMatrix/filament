@@ -275,10 +275,13 @@ describe("the chat's offer on a coding agent's request (d-allow §3)", () => {
 
 const text = (/** @type {any[]} */ blocks) => (blocks || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
 /** A message's words. @param {any} m */
-const wordsOf = (m) => (typeof m?.content === "string" ? m.content : (m?.content || []).filter((/** @type {any} */ b) => b?.type === "text").map((/** @type {any} */ b) => b.text).join(""));
+// The person's own words alone: a notice of Filament's quotes a sub-agent's task, which is none of theirs to run (x55).
+const wordsOf = (m) => (typeof m?.content === "string" ? m.content : (m?.content || []).filter((/** @type {any} */ b) => b?.type === "text" && !String(b.text).startsWith("[Filament:")).map((/** @type {any} */ b) => b.text).join(""));
 /** The words that have the model run commands through bash, in order. @param {string[]} commands */
 const run = (commands) => `RUN:${Buffer.from(JSON.stringify(commands)).toString("base64url")}`;
 let calls = 0;
+/** What the model was sent last. @type {any[]} */
+let lastMessages = [];
 /**
  * The model behind the loop's chats: after the newest message that names commands (`run`), it asks to run each through
  * bash in turn, and then says how each went — `ran`, or `refused` where its result was an error.
@@ -288,6 +291,7 @@ const brain = async (call) => {
   if (call.kind !== "anthropic") return undefined;
   const reply = (/** @type {any[]} */ blocks, stop = "end_turn") => anthropicReply("", { model: "brain-model", stop, blocks, usage: { input_tokens: 30, output_tokens: 7 } });
   const msgs = call.body.messages || [];
+  lastMessages = msgs;
   const at = msgs.findLastIndex((/** @type {any} */ m) => m.role === "user" && /RUN:[\w-]+/.test(wordsOf(m)));
   if (at < 0 || !call.body.tools?.length) return reply([{ type: "text", text: "MODEL ANSWER" }]);
   // The message's last one: the person's own words end it, and what Filament says of a sub-agent's task comes before.
@@ -651,6 +655,34 @@ describe("Always allow in this chat, through a Filament", () => {
     const other = await chat("agent/brain-model", loopDir);
     assert.match((await say(other, run([adds("a")]))).words, ASKS);
     assert.equal((await say(other, { content: "no", allow: false })).words, "DONE: refused");
+  });
+
+  // (fails before: yes — x55: Filament's stop overtook the person's, its run's loop not yet at it — a call waiting on an
+  // ask —, cut the sub-agent as a restart's, and told its chat so with its task quoted to launch anew: the chat's next
+  // turn ran the very command the person stopped, under the chat's own always-allow)
+  test("a sub-agent stopped as Filament stops ends as that stop: its chat is never told to launch it anew, and its call never runs", async () => {
+    const runs = () => ran().split("s").length - 1;
+    const had = runs();
+    const archive = /** @type {any} */ (shim.app.memory.archive);
+    if (!keptIn(loopChat).some((/** @type {any} */ k) => k.command === adds("s"))) archive.mergeMeta(loopChat, { alwaysRun: [...keptIn(loopChat), { command: adds("s"), hand: "bash", folder: loopKeeps.folder, at: 1 }] });
+    const spawn = await shim.api(`${S(loopChat)}/subagents`, { method: "POST", body: { prompt: run([adds("s")]), description: "Run it again" } });
+    assert.equal(spawn.status, 200, await spawn.clone().text());
+    const sid = String((await spawn.json()).subagent.id);
+    await until(async () => (await (await shim.api(`${S(loopChat)}/asks`)).json()).asks.find((/** @type {any} */ x) => x.from === sid) || null, "the sub-agent's call to wait", { timeoutMs: 20_000 });
+    // The stop and Filament's own in one breath: its loop has not read the stop when Filament stops.
+    const reg = /** @type {any} */ (shim.app.subagents);
+    assert.equal(reg.stop(sid).ok, true);
+    reg.shutdown();
+    const dataDir = shim.dataDir;
+    await shim.stop();
+    shim = await start({ dataDir });
+    // Its report wakes its chat (a turn of its own, "another agent's report has come for you"), or rides the next.
+    await say(loopChat, run([]));
+    assert.equal(runs(), had, "its call never ran in the next Filament");
+    const told = lastMessages.flatMap((/** @type {any} */ m) => (Array.isArray(m.content) ? m.content : [{ text: m.content }])).map((/** @type {any} */ c) => String(c?.text ?? "")).filter((t) => t.includes(sid));
+    assert.equal(told.length, 1, JSON.stringify(told));
+    assert.match(told[0], new RegExp(`sub-agent ${sid} \\("Run it again"\\) alongside you; it was stopped by the developer`), "its end as the person's stop");
+    assert.doesNotMatch(told[0], /cut by a Filament restart|launch it anew/, "never a cut its chat is told to launch anew");
   });
 
   // (fails before: yes — nothing was kept to survive one)

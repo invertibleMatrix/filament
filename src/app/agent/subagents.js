@@ -1499,7 +1499,7 @@ const heldKept = (v) => (Number(v?.tokens) > 0 ? { held: { tokens: Number(v.toke
  * @property {number} folderBacks  how often the folder's check sent its change back to it since its last apply stood:
  *   twice at most
  * @property {Attempt | null} [attempt]  one of several workers launched at once on its brief (TG2-D53), or none
- * @property {{ parent: LaunchParent | null, finished: HostFinish | null, wrote: boolean, acted?: boolean, toolCalls: number, abort: AbortController, messages: any[] | null, detached: "report" | "aside" | null, unhook: (() => void) | null, onDetach: ((how: "report" | "aside" | "away") => void) | null, progress: Progress, window: { window: number | null, usable: number | null } | null, held: { text: string, from: string }[], asking: { settle: (answer: import("./loop.js").AskAnswer | null) => void, n: number, lead?: true, remote?: string, kind?: "permission" | "question", options?: string[], words?: false } | null, leadAsk: LeadAsk | null, planHeld: boolean, stoppedBy: string | null, shells: Map<string, string>, ran: { command: string, exit: number | null }[], progressAt: number, progressDue: boolean, look: import("./looks.js").Mark | null, unwatch: (() => void) | null, watch: import("../../core/watch.js").WatchState | null, convo?: any[] | null } | null} run
+ * @property {{ parent: LaunchParent | null, finished: HostFinish | null, wrote: boolean, acted?: boolean, toolCalls: number, abort: AbortController, messages: any[] | null, detached: "report" | "aside" | null, unhook: (() => void) | null, onDetach: ((how: "report" | "aside" | "away") => void) | null, progress: Progress, window: { window: number | null, usable: number | null } | null, held: { text: string, from: string }[], asking: { settle: (answer: import("./loop.js").AskAnswer | null) => void, n: number, lead?: true, remote?: string, kind?: "permission" | "question", options?: string[], words?: false } | null, leadAsk: LeadAsk | null, planHeld: boolean, stoppedBy: string | null, stopAsked?: string | null, overtaken?: boolean, shells: Map<string, string>, ran: { command: string, exit: number | null }[], progressAt: number, progressDue: boolean, look: import("./looks.js").Mark | null, unwatch: (() => void) | null, watch: import("../../core/watch.js").WatchState | null, convo?: any[] | null } | null} run
  *   `detached`: the developer freed the launching call from it (BUG-12 Detach); `unhook` lets go of the launching turn's
  *   stop and hang-up; `onDetach` answers a foreground launch's waiting call — sent to the background by the developer,
  *   or `away`: its machine does not answer, and nobody knows when it will (`remoteTurn`)
@@ -1510,7 +1510,7 @@ const heldKept = (v) => (Number(v?.tokens) > 0 ? { held: { tokens: Number(v.toke
  *   its call waits for, or (`lead`) its lead's to its question — the person's press alone, for what its chat on another
  *   machine asks there (`remote`, that machine's name; s-asks); `leadAsk`: its question to its lead (TG2-D49), from
  *   when it asked until its end is read; `planHeld`: its changes and commands wait for its lead's review of its plan
- *   (TG2-D50); `stoppedBy`: whose stop cut its request, when no run of it could take the stop;
+ *   (TG2-D50); `stoppedBy`: whose stop cut its request, when no run of it could take the stop; `stopAsked`: whose stop was asked, whatever ended the run, and `overtaken` once Filament's own stop ended it first (x55);
  *   `shells`: its commands still running, by call; `ran`: the commands it ran to their end, with their exits — a graph
  *   task's record, read from its run's events, never from its words; `progressAt`: when its progress last reached the
  *   events feed, and `progressDue`: a later send of it is set; `look`: what its lead has seen of this run, when its
@@ -5124,6 +5124,8 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
   /** A running sub-agent stopped, as `from`: a stop steered into its run, else — no run of it takes one — its abort. @param {Subagent} sa @param {string} from */
   const stopRun = (sa, from) => {
     if (!sa.run) return;
+    // Asked, whatever ends the run first: Filament's own stop overtaking it ends it as this stop (`shutdown`, x55).
+    sa.run.stopAsked = from;
     const runId = sa.exchanges.at(-1)?.runId;
     // A run that reported takes no stop: what runs now is Filament's check of it (TG2-D45), which the abort ends.
     const steered = runId && runs && !sa.run.finished ? runs.steer(runId, { kind: "stop", text: "", from }) : null;
@@ -5629,6 +5631,8 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
       // Filament cut it as it stopped: that is its end, whatever the cut call said (a hang-up, a refusal) (BUG-26).
       // A host that finished its work as the cut landed keeps its "done" (the round's code review).
       if (sa.cutByRestart && o.status !== "done") Object.assign(o, { status: "aborted", ok: false, error: CUT_BY_RESTART });
+      // A stop asked that an abort overtook (Filament stopping) ends as that stop, as its loop would have ended it (x55).
+      else if (run.overtaken && run.stopAsked && o.status === "aborted") Object.assign(o,{ status: "stopped", ok: false, error: null, stoppedBy: o.stoppedBy ?? run.stopAsked });
       // One that ended before it reported (its loop threw, its provider failed before its last round said anything, a
       // stop cut it mid-round) left what it did in its run's log: that stands for its report, said as such, so its
       // work is not lost with its run (the transcript audit, 2026-10-23).
@@ -10466,6 +10470,16 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
       let n = 0;
       for (const sa of subs.values()) {
         if (sa.status !== "running" || !sa.run) continue;
+        // One stopped before Filament's stop reached it, its loop not yet at the stop (a call waiting on an ask): it ends
+        // as that stop, its report going where a stop's goes — never a cut its chat is told to launch anew, its task
+        // quoted, which brought back work the person stopped (x55).
+        if (sa.run.stopAsked) {
+          sa.run.stoppedBy ??= sa.run.stopAsked;
+          sa.run.overtaken = true;
+          sa.run.abort.abort();
+          n += 1;
+          continue;
+        }
         sa.cutByRestart = true;
         // One the developer kept aside stays theirs: its cut report is held for them, as they chose. A graph task's
         // cut end is its runner's.
@@ -10514,20 +10528,25 @@ export function createSubagentRegistry({ config, log, events, runs, liveWords = 
       if ([...c.queue, ...c.sealed].some((d) => d.from === id && told(d.text)) || heldOf(chain).some((h) => h.agentId === id && h.exchange === exchange)) return false;
       const description = String(b.description || id);
       // What it had done stands in its run's log (the transcript audit, 2026-10-23): its session reads it with the notice.
-      const words = cutReportOfRun(runEvents(runId));
-      const text = restartText({ id, description }, { rounds, report: words, fromLog: !!words }, String(b.task || ""), words ? `${LOGGED_REPORT}\n\n${words}` : "", freshHint(subs.get(id) || null));
+      const logged = runEvents(runId);
+      const words = cutReportOfRun(logged);
+      // A stop asked before the process died, its loop not yet at it: that stop is its end, never a cut to launch anew (x55).
+      const stop = /** @type {any} */ (logged.find((e) => e?.type === "steer" && e?.kind === "stop"));
+      const text = stop
+        ? `[Filament: sub-agent ${id} ("${description}") was stopped by ${whoseStop(stop.from).who} as Filament stopped${rounds ? `, after ${rounds} round${rounds === 1 ? "" : "s"}` : ""}.${words ? ` ${LOGGED_REPORT}\n\n${words}` : ""}]`
+        : restartText({ id, description }, { rounds, report: words, fromLog: !!words }, String(b.task || ""), words ? `${LOGGED_REPORT}\n\n${words}` : "", freshHint(subs.get(id) || null));
       const kept = b.deliver === false;
       if (kept) keepHeld(chain, { agentId: id, exchange, description, text });
       else {
         // Its end is a result like any other: it may reach a loop at work sealed (HarnessV4_Envelopes_Plan EN-D4).
-        const subject = `it was cut by a Filament restart before it finished${words ? "; inside is what its run's log shows of its work" : ""}`;
+        const subject = stop ? `it was stopped by ${whoseStop(stop.from).who} as Filament stopped` : `it was cut by a Filament restart before it finished${words ? "; inside is what its run's log shows of its work" : ""}`;
         enqueue(chain, { text, from: id, description, kind: "report", exchange, seal: true, subject, sender: `sub-agent ${id} ("${description}")`, spends: [], wrote: false });
       }
       // An attempt cut with its process (TG2-D53): the reports of its group that waited for it go now, none having won.
       const thawedSa = subs.get(id);
       if (thawedSa?.attempt && !winnerOf(thawedSa)) heldGo(groupOf(thawedSa));
       if (kept || b.by === "owner" || b.by === "command") {
-        const stored = ctx.mark(chain, { event: "arrival", at: now(), agentId: id, exchange, description, status: "aborted", ms: 0, rounds, toolCalls: 0, delivery: kept ? "held" : "auto", error: "Filament stopped before it finished" });
+        const stored = ctx.mark(chain, { event: "arrival", at: now(), agentId: id, exchange, description, status: stop ? "stopped" : "aborted", ms: 0, rounds, toolCalls: 0, delivery: kept ? "held" : "auto", ...(stop ? {} : { error: "Filament stopped before it finished" }) });
         if (stored) events.publish("subagents", { type: "subagent-mark", chainId: chain, mark: stored });
       }
       log("info", `sub-agents: ${id} (run ${runId}) was left running when Filament last stopped; session ${chain} hears it ${kept ? "as a report kept for the developer" : "with its next turn"}`);

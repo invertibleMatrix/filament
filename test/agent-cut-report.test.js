@@ -143,6 +143,17 @@ test("a run a crash left open: the session's notice carries what its log shows",
   assert.match(registry.peekQueued("c1")[1].text, /What it had not reported is lost; launch it anew/, "a log that shows nothing: as before");
 });
 
+// (fails before: yes — a stop its loop had not reached when the process died read as a cut to launch anew, its task with it)
+test("a run a crash left open with a stop in its log: the session hears that stop, never a cut to launch anew", () => {
+  const { registry, logs } = logged(async () => ({ report: "x" }));
+  logs.set("r9", [...CUT, { n: 10, type: "steer", kind: "stop", from: "agent" }]);
+  const brief = { agentId: "sa_0badf0a1", exchange: 0, description: "Cache audit", task: "audit the cache", by: "agent", deliver: true };
+  assert.equal(registry.orphaned({ runId: "r9", chainId: "c1", brief, rounds: 2 }), true);
+  const [q] = registry.peekQueued("c1");
+  assert.equal(q.text, `[Filament: sub-agent sa_0badf0a1 ("Cache audit") was stopped by the agent as Filament stopped, after 2 rounds. ${LOGGED}\n\n${CUT_WORDS}]`);
+  assert.doesNotMatch(q.text, /launch it anew|audit the cache/);
+});
+
 // (fails before: yes — an edit card in an agent's thread had no call to ask: its run keeps no snapshot)
 test("an edit card in an agent's thread reads its call's change from its conversation: its loop's while it runs, the one it keeps once it ended", async () => {
   const gate = deferred();

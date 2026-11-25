@@ -6247,7 +6247,7 @@ is a **thread**; a team is a row with its workers under it.
   words, answers and figures, and a change that still waits for Apply. Besides those thirty it keeps every thread whose
   change waits for Apply, or whose mark as applied can still be undone — they never take a place from the newest. A
   mark can be undone for a day after it was made, while its helper has not worked since; past that its thread is one of
-  the thirty again, and Clean up may let its hold go. A thread that was working when Filament stopped reads *cut off*, with the work it had done; the main agent hears what its run's log shows of it, after a crash too.
+  the thirty again, and Clean up may let its hold go. A thread that was working when Filament stopped reads *cut off*, with the work it had done; the main agent hears what its run's log shows of it, after a crash too. One that a stop, yours or an agent's, had not yet reached reads *stopped*: that stop is its end, and the main agent is told so, never asked to launch it anew.
   Its conversation stays as well — its calls and what they returned, each message kept once in the archive, encrypted
   when the archive is — so your next message in a kept thread, the main agent's follow-up or a Retry goes on in it,
   as if Filament had never stopped. A thread a restart cut, one that began as a copy of your agent, or one whose
