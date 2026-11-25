@@ -14,7 +14,7 @@ import { qrcode } from "../src/ui/harness/vendor/qr/qrcode.mjs";
 import { pairLinks } from "../src/http/admin/remote.js";
 import { SECTIONS, PAGE_ROWS } from "../src/ui/harness/settings/page.js";
 import { readFileSync } from "node:fs";
-import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, LOOK_PATH, NO_NAME_WORDS, opensAt, pageMove, pageNameOf, printOf, printWords } from "../src/ui/pair.js";
+import { codeOf, deviceName, claimWords, clearWords, goesTo, inTheClear, mountPair, LOOK_PATH, NO_NAME_WORDS, SLOW_NAME_WORDS, opensAt, pageMove, pageNameOf, printOf, printWords } from "../src/ui/pair.js";
 import { startApp } from "./helpers/app.js";
 
 const T0 = Date.parse("2026-11-06T12:00:00Z");
@@ -868,9 +868,9 @@ test("the pairing page: the code a link's fragment carries, this device's name f
 /**
  * The pairing page over a fake document: its elements by id, the address, its history and the window's events, and a
  * server that answers who it is, who the caller is, and the claim.
- * @param {{ hash?: string, me?: any, refused?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string, port?: string, opensName?: boolean }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said;
+ * @param {{ hash?: string, me?: any, refused?: any, claim?: { status: number, body: any }, protocol?: string, hostname?: string, port?: string, opensName?: boolean, opens?: (url: string) => Promise<boolean | null> }} [o]  `hostname`: localhost (this machine, an SSH tunnel) unless said;
  *   `refused`: the admin gate's refusal of a caller it does not know, as it says it; `opensName`: false where the browser
- *   cannot open a name under localhost (Safari)
+ *   cannot open a name under localhost (Safari); `opens`: the look itself, answered as the test says
  */
 const pairPage = async (o = {}) => {
   /** @type {Record<string, any>} */
@@ -887,7 +887,7 @@ const pairPage = async (o = {}) => {
   const posted = [];
   /** The addresses the page looked at (src/ui/pair.js `opensAt`): a picture at a name under localhost, which a browser that cannot open it fails. @type {string[]} */
   const looked = [];
-  const opens = async (/** @type {string} */ url) => (looked.push(url), o.opensName !== false);
+  const opens = async (/** @type {string} */ url) => (looked.push(url), o.opens ? o.opens(url) : o.opensName !== false);
   const fetchImpl = /** @type {any} */ (async (/** @type {string} */ path, /** @type {any} */ init) => {
     const reply = (/** @type {number} */ status, /** @type {any} */ body) => ({ ok: status < 400, status, json: async () => body });
     if (path === "/.well-known/filament") return reply(200, { name: "Workstation" });
@@ -1010,6 +1010,35 @@ test("a browser here's link lands at 127.0.0.1 and moves on to this Filament's n
   assert.match(owned.el("pair-lead").textContent, /^Paired as|^Pairing this browser with Workstation/);
   const typed = await pairPage({ hostname: `${NAME}.localhost`, port: "7777", hash: "#code=ABCD-EFGH" });
   assert.deepEqual(typed.posted, [], "a link with no name, a code from another machine's Settings: typed, not claimed unasked");
+
+  // (fails before: yes — the hunt on x39: a look under way was never let go, so an older link's look that ended last
+  // sent the browser on with its old code)
+  /** @type {((ok: boolean | null) => void)[]} */
+  const answers = [];
+  const two = await pairPage({ hostname: "127.0.0.1", port: "7777", opens: () => new Promise((r) => void answers.push(r)) });
+  two.loc.hash = `#code=AAAA-AAAA&name=${NAME}`;
+  two.heard.hashchange();
+  two.loc.hash = `#code=BBBB-BBBB&name=${NAME}`;
+  two.heard.hashchange();
+  await settle();
+  answers[1](true);
+  await settle();
+  answers[0](true);
+  await settle();
+  assert.deepEqual(two.loc.replaced, [`http://${NAME}.localhost:7777/ui/pair.html#code=BBBB-BBBB&name=${NAME}`], "the newest link's code alone");
+  // (fails before: yes — the hunt on x39: a name that did not answer in time was told as a browser that cannot open it,
+  // Safari blamed, and no later link looked again)
+  /** @type {boolean | null} */
+  let answer = null;
+  const slow = await pairPage({ hostname: "127.0.0.1", port: "7777", hash: `#code=ABCD-EFGH&name=${NAME}`, opens: async () => answer });
+  assert.deepEqual([slow.loc.replaced, slow.loc.hash, slow.posted], [[], "", []], "not moved, the code off the address, claimed nowhere");
+  assert.deepEqual([slow.el("pair-form").hidden, slow.el("pair-said").textContent, slow.el("pair-said").err], [true, SLOW_NAME_WORDS("Workstation"), true]);
+  assert.doesNotMatch(SLOW_NAME_WORDS("Workstation"), /Safari/);
+  answer = true;
+  slow.loc.hash = `#code=WXYZ-2345&name=${NAME}`;
+  slow.heard.hashchange();
+  await settle();
+  assert.deepEqual(slow.loc.replaced, [`http://${NAME}.localhost:7777/ui/pair.html#code=WXYZ-2345&name=${NAME}`], "the link opened again looks again, and moves on");
 });
 
 // (fails before: yes — the hunt on x38: the look's clock was AbortSignal.timeout, which Safari before 16 lacks: the page
@@ -1034,8 +1063,8 @@ test("the look at the name: a picture that loads, one that fails, one that never
     made[1].onerror();
     assert.equal(await fails, false);
     const silent = opensAt("http://filament-0123456789ab.localhost:7777/y.png");
-    t.mock.timers.tick(3000);
-    assert.equal(await silent, false, "no answer in its time: the name is not opened");
+    t.mock.timers.tick(5000);
+    assert.equal(await silent, null, "no answer in its time: said as that, not as a name it cannot open");
   } finally {
     g.Image = was;
   }

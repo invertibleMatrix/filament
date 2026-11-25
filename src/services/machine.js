@@ -112,29 +112,37 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
   let stale = false;
   /** This Filament's page name's label (`PAGE_LABEL`): "" until read or made. */
   let page = "";
+  /**
+   * This account's alone (the hunt on x38): one a copy, a restore or another program left readable to others gives away
+   * the page name a browser here is paired at. Not on Windows, whose files have no such mode. @param {string} path
+   */
+  const ownOnly = (path) => {
+    if (process.platform === "win32") return;
+    try {
+      chmodSync(path, 0o600);
+    } catch (/** @type {any} */ e) {
+      log("warn", `[machine] could not make ${path} this account's alone: ${e?.message || e}`);
+    }
+  };
   if (file)
     try {
-      const j = JSON.parse(readFileSync(file, "utf8"));
+      const text = readFileSync(file, "utf8");
+      // As soon as it is read, whatever it holds (the hunt on x39): one that does not parse is set aside as it is.
+      ownOnly(file);
+      const j = JSON.parse(text);
       if (typeof j?.id !== "string" || !j.id.trim()) throw new Error("it names no id");
       named = j.named === true;
       const name = cleanName(j.name);
       stale = !!name && !named && isIP(name) !== 0 && isIP(hostName()) === 0;
       kept = { id: j.id.trim(), name: (!stale && name) || hostName() };
       page = typeof j.page === "string" && PAGE_LABEL.test(j.page) ? j.page : "";
-      // This account's alone as it is read too (the hunt on x38): one a copy, a restore or another program left readable
-      // to others gives away the page name a browser here is paired at.
-      if (process.platform !== "win32")
-        try {
-          chmodSync(file, 0o600);
-        } catch (/** @type {any} */ e) {
-          log("warn", `[machine] could not make ${file} this account's alone: ${e?.message || e}`);
-        }
     } catch (/** @type {any} */ e) {
       if (e?.code !== "ENOENT") {
         // Set aside, never overwritten: the id another machine paired with may still be read out of it by hand.
         const aside = `${file}.unreadable-${now()}`;
         try {
           renameSync(file, aside);
+          ownOnly(aside);
         } catch {}
         log("warn", `[machine] could not read ${file} (${e?.message || e}), set aside as ${aside}: this machine has a new id, and a machine paired with the old one asks to pair again`);
       }
@@ -146,6 +154,8 @@ export function createMachine({ dataDir = null, host = computerName, log = () =>
       const tmp = `${file}.tmp`;
       // This account's alone: it keeps the page name (`PAGE_LABEL`).
       writeFileSync(tmp, JSON.stringify({ version: 1, id: kept.id, name: kept.name, ...(named ? { named: true } : {}), page }, null, 1), { mode: 0o600 });
+      // Its mode is given only to a file the write makes: one a write cut short left behind keeps its own (the hunt on x39).
+      ownOnly(tmp);
       renameSync(tmp, file);
     } catch (/** @type {any} */ e) {
       log("warn", `[machine] could not keep this machine's id and name: ${e.message}`);

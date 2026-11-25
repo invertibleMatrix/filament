@@ -245,10 +245,12 @@ A browser on this computer — `filament open`, the tray's **Open in browser** �
 under localhost (`filament-` and twelve letters, `.localhost`, made once and kept in the data folder's `machine.json`),
 so its cookie is that name's alone: a browser sends 127.0.0.1's cookies to every port of it, a server an agent runs
 there among them. Its link opens at 127.0.0.1, which every browser opens, and the page moves on to the name where the
-browser opens it (it loads Filament's own picture there to tell), a link opened on a pairing page already there too;
-one that cannot (Safari) is told so — open the link in Chrome, Firefox or Edge, or use the app — and pairs nothing,
-taking the code of any later link off the address as well. `machine.json` is made readable by your account alone each
-time Filament reads it (not on Windows). Filament holds its port at both of this computer's loopback addresses,
+browser opens it (it loads Filament's own picture there to tell), a link opened on a pairing page already there too —
+the newest link's code alone, where two are opened in turn; one that cannot (Safari) is told so — open the link in
+Chrome, Firefox or Edge, or use the app — and pairs nothing, taking the code of any later link off the address as
+well. Where the name does not answer within five seconds (a busy computer), the page says so and pairs nothing; open
+the link again. `machine.json` is made readable by your account alone each time Filament reads it, whatever it holds,
+and so is a copy set aside because it did not read (not on Windows). Filament holds its port at both of this computer's loopback addresses,
 127.0.0.1 and [::1], since a browser may reach the name over either; where another program holds the other one at that
 port, no browser here is paired until it lets go — the app's Open in browser and `filament open` say so, and
 `filament doctor` names it — and a browser here paired before is let go as Filament starts, since its cookie may reach
@@ -2524,6 +2526,7 @@ longer kept is "Filament (its own calls)".
 | 403 on a call from a script, saying Filament answers a program on this computer by its owner key | Under `server.loopbackTrust` `token`, its default, a program here needs Filament's owner key. | Send the contents of `owner.key` in the data folder as the `x-filament-owner` header on every call (it is made anew at each start), or use the `filament` command line. |
 | 403 or 415 on an admin call from a script that sends the owner key | Mutating admin calls need `application/json` and, from a browser, the console's own origin. | Send JSON; run scripts without an `Origin` header. |
 | "This browser cannot open <machine>'s own name for Filament" | The browser cannot open a name under `.localhost` (Safari cannot). | Open the link in Chrome, Firefox or Edge, or use the Filament app. |
+| "<machine> did not answer at its own name for Filament in time" | Filament did not answer at its own name within five seconds: the computer is busy, or the browser is slow to open the name. | Open the link again in a moment; where it comes back each time, open it in Chrome, Firefox or Edge, or use the Filament app. |
 | "The Filament at … did not take the owner key in …" | The `filament` command line reads another data folder than the one that Filament runs from. | `--data-dir` names the folder it runs from. |
 | `filament doctor` says another program holds Filament's port at this computer's other loopback address | A program answers Filament's port at `[::1]` or `127.0.0.1`, whichever Filament could not take; no browser here pairs while it does, and one paired before was let go as Filament started (Settings › Remote access lists it revoked). | Stop that program, or set `server.port` to a free port and restart Filament. |
 | "no route matches" | No route's pattern fits the model name. | Check the Routes page's "Try a model name" box; add or reorder a route. |

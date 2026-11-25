@@ -105,26 +105,35 @@ export function pageMove(loc) {
 export const NO_NAME_WORDS = (machine) =>
   `This browser cannot open ${machine}'s own name for Filament (a name under localhost), where its sign-in is kept from every other server on this computer — Safari cannot. Open this link in Chrome, Firefox or Edge, or use the Filament app.`;
 
+/**
+ * What a browser here is told where this Filament's name did not answer in its time (`opensAt` null): a busy computer,
+ * which a link opened again may find answering; never taken for a browser that cannot open it (the hunt on x39).
+ * @param {string} machine
+ */
+export const SLOW_NAME_WORDS = (machine) =>
+  `${machine} did not answer at its own name for Filament in time: it may be busy. Open the link again in a moment. Where this comes back each time, open the link in Chrome, Firefox or Edge, or use the Filament app.`;
+
 /** How long the page waits to learn whether the browser opens the name. */
-const NAME_LOOK_MS = 3000;
+const NAME_LOOK_MS = 5000;
 /** What the page looks for at the name: Filament's own picture, which no browser blocks as Firefox may /health's JSON read with no-cors. */
 export const LOOK_PATH = "/ui/filament-icon.png";
 
 /**
  * Whether the browser opens an address — the name a browser here is paired at (`pageMove`) — by a picture loaded from
- * it, within `NAME_LOOK_MS`: a name it cannot open (Safari's under localhost) fails, or never answers. A clock of its
- * own, for browsers with no `AbortSignal.timeout` (Safari before 16). @param {string} url
- * @returns {Promise<boolean>}
+ * it: true where it loads, false where it fails (a name it cannot open, Safari's under localhost), null where nothing
+ * answered within `NAME_LOOK_MS`. A clock of its own, for browsers with no `AbortSignal.timeout` (Safari before 16).
+ * @param {string} url
+ * @returns {Promise<boolean | null>}
  */
 export const opensAt = (url) =>
   new Promise((resolve) => {
     const img = new Image();
-    const done = (/** @type {boolean} */ ok) => {
+    const done = (/** @type {boolean | null} */ ok) => {
       clearTimeout(clock);
       img.onload = img.onerror = null;
       resolve(ok);
     };
-    const clock = setTimeout(() => done(false), NAME_LOOK_MS);
+    const clock = setTimeout(() => done(null), NAME_LOOK_MS);
     img.onload = () => done(true);
     img.onerror = () => done(false);
     img.src = url;
@@ -146,7 +155,7 @@ export const goesTo = (hash) => {
 
 /**
  * The page's behaviour over its elements (pair.html).
- * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void }, opens?: (url: string) => Promise<boolean> }} [o]
+ * @param {{ doc?: Document, fetchImpl?: typeof fetch, loc?: Location, hist?: History, ua?: string, win?: { addEventListener: (type: string, fn: () => void) => void }, opens?: (url: string) => Promise<boolean | null> }} [o]
  *   `loc.replace`: a browser here's link moved to its name (`pageMove`)
  *   `win`: where a link opened on this page already says its new code (hashchange)
  *   `opens`: whether the browser opens an address (`opensAt`)
@@ -190,23 +199,31 @@ export async function mountPair({ doc = document, fetchImpl = fetch, loc = locat
   };
   /** The browser cannot open this Filament's name: no code is claimed on this page, a link opened on it later neither. */
   let nameless = false;
+  /** Each look begun: one that ends after a newer one began does nothing, so the newest link's code is the one carried (the hunt on x39). */
+  let looks = 0;
   // A browser here's link: on to the name it is paired at, where the browser opens it — a picture of Filament's own
   // there, which a name the browser cannot open fails —; else the words, the code off the address, none claimed here.
+  // A name that did not answer in time is said as that, and a link opened again looks again.
   /** @param {string} move  where `pageMove` sends it */
   const moveOn = async (move) => {
-    if (await opens(new URL(`${LOOK_PATH}?look=${Date.now()}`, move).href)) return void loc.replace(move);
+    const mine = ++looks;
+    const opened = await opens(new URL(`${LOOK_PATH}?look=${Date.now()}`, move).href);
+    if (mine !== looks) return;
+    if (opened) return void loc.replace(move);
     bare();
     form.hidden = true;
-    nameless = true;
+    nameless ||= opened === false;
     let named = "this computer";
     try {
       named = String((await (await fetchImpl("/.well-known/filament")).json())?.name || named);
     } catch {}
-    say(NO_NAME_WORDS(named), true);
+    if (mine === looks) say(opened === false ? NO_NAME_WORDS(named) : SLOW_NAME_WORDS(named), true);
   };
   // (the hunt on x38) A link opened on this page — at 127.0.0.1, where an earlier one landed — moves on as one opened
   // afresh; on a page the browser could not move, its code comes off the address and is claimed nowhere.
   win.addEventListener("hashchange", () => {
+    // A look under way is the link before's: let go, whatever this one is.
+    looks++;
     const move = pageMove(loc);
     if (nameless) return void (loc.hash && bare());
     if (move) return void moveOn(move);

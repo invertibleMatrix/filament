@@ -94,6 +94,24 @@ test("a machine.json that cannot be read is set aside, never overwritten, and sa
   }
 });
 
+// (fails before: yes, on Linux and macOS — the hunt on x39: a machine.json that did not parse was set aside as readable
+// to others as it was, and a temporary file a write cut short left behind gave its own mode to the next machine.json)
+test("machine.json and what is set aside of it are this account's alone whatever they hold; a temporary file left behind gives its mode to none", { skip: process.platform === "win32" && "no such file modes on Windows" }, () => {
+  const dir = fresh();
+  try {
+    const file = join(dir, "machine.json");
+    writeFileSync(file, "{ not json", { mode: 0o644 });
+    chmodSync(file, 0o644);
+    writeFileSync(`${file}.tmp`, "left behind", { mode: 0o644 });
+    chmodSync(`${file}.tmp`, 0o644);
+    createMachine({ dataDir: dir, host: () => "box", now: () => 7 });
+    assert.equal(statSync(`${file}.unreadable-7`).mode & 0o777, 0o600, "set aside, this account's alone");
+    assert.equal(statSync(file).mode & 0o777, 0o600, "the new one, over the temporary file left behind");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a name as kept: no control characters, one space between words, at most NAME_MAX characters; no hostname at all says This machine", () => {
   assert.equal(cleanName("a\u0000b\u001fc\u007fd"), "a b c d");
   assert.equal(cleanName("x".repeat(NAME_MAX + 10)).length, NAME_MAX);
