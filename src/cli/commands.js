@@ -707,7 +707,7 @@ export const COMMANDS = [
   {
     name: "restart",
     usage: "restart [--force]",
-    summary: "Restart Filament — once no turn runs, unless --force — where something starts it again: the Filament app, or systemd",
+    summary: "Restart Filament — once no turn runs, unless --force — where something starts it again: the Filament app, or its service",
     async run(r) {
       /** @type {Awaited<ReturnType<typeof ready>>["client"]} */
       let client;
@@ -756,22 +756,23 @@ export const COMMANDS = [
   {
     name: "update",
     usage: "update [--check | --version <v> | --back] [--force | --wait]",
-    summary: "Update Filament for servers, as install.sh installed it, to the newest release — or go back to the version before",
+    summary: "Update Filament for servers, as install.sh or install.ps1 installed it, to the newest release — or go back to the version before",
     more: [
-      "filament update                the newest release, of the kind installed (with the memory engine, or without):",
-      "                               downloaded, checked by the SHA-512 its latest-server.yml gives and unpacked beside",
-      "                               the version that runs; current then points at it, and the Filament systemd runs",
-      "                               restarts on it once no turn runs (--force: now). One started by hand is told to",
-      "                               start again",
+      "filament update                the newest release, of the kind installed (with the memory engine, or without) and",
+      "                               for the machine its build is for: downloaded, checked by the SHA-512 its feed gives",
+      "                               (latest-server.yml; arm64's, a Windows host's latest-server-win32-x64.yml) and",
+      "                               unpacked beside the version that runs; current then points at it, and the Filament",
+      "                               its service runs (systemd; a Windows host's scheduled task) restarts on it once no",
+      "                               turn runs (--force: now). One started by hand is told to start again",
       "filament update --check        only say whether a newer one is out",
       "filament update --version <v>  that release, older or newer — one kept beside is pointed at again, nothing downloaded",
       "filament update --back         current back to the version kept before, restarted the same way",
       "filament update --wait         the restart waits until no turn runs, asking again every few seconds, where it",
       "                               would be refused (exit 5) — another machine's desk updates it so",
-      "The version before is kept and older ones removed, as install.sh does. A download, a checksum or an unpack that",
+      "The version before is kept and older ones removed, as its installer does. A download, a checksum or an unpack that",
       "fails changes nothing; nor does a release built on a newer glibc than this machine's. A version that does not",
-      "come up under systemd is left for the one before: current points back at it, and it is started again. A checkout",
-      "updates with git pull; the Filament app updates itself.",
+      "come up under its service is left for the one before: current points back at it, and it is started again. A",
+      "checkout updates with git pull; the Filament app updates itself.",
     ].join("\n"),
     run: (r) => runUpdate(r),
   },

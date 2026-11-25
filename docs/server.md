@@ -2,7 +2,8 @@
 
 How to run Filament on a Linux server with no desktop: install it with one command, set it up over SSH, keep it
 running under systemd, reach it from your laptop, and update it. Everything runs as your own user; nothing needs root
-except the few system steps marked `sudo`.
+except the few system steps marked `sudo`. A Windows host is set up the same way, by PowerShell
+([section 10](#10-a-windows-host)).
 
 ## 1. What a server runs
 
@@ -18,6 +19,8 @@ It runs on:
   OS's 32-bit release included.
 - **Its terminals** need the glibc the build was made on, or newer: 2.35 for releases, which are built on Ubuntu 22.04,
   on x86_64 and on arm64 alike. On an older glibc Filament runs, but its terminals don't open.
+- **Windows on x64 (AMD64)**: Windows 10 1803 or newer, or Windows Server 2019 or newer, reached with Windows' own
+  OpenSSH Server ([section 10](#10-a-windows-host)). Not Windows on ARM.
 
 **The agent's browser.** A chat's browser is the desktop app of whoever drives the chat
 ([Which machine's browser a chat uses](GUIDE.md#the-agents-browser)). In your laptop's app, Settings › Remote access ›
@@ -256,13 +259,14 @@ filament update
 ```
 
 It finds the newest published release, of the kind installed (with the memory engine or without) and for the machine
-its build is for (x64 or arm64), downloads it, checks its SHA-512, unpacks it beside the version that runs, and points
-`current` at it. The Filament systemd runs then
-restarts on it, once no turn runs. While a turn runs it exits with code 5 and keeps the update: `filament restart`
-starts the new version once the turn ends. A Filament started by hand is told to start again. A download, a checksum
-or an unpack that fails changes nothing, nor does a release built on a newer glibc than the server's. A new version
-that does not come up under systemd — it ends as it starts, or does not answer within a minute — is left for the one
-before: `current` points back at it, it is started again, and the update says so in one line and exits with code 1.
+its build is for (Linux on x64 or arm64, Windows on x64), downloads it, checks its SHA-512, unpacks it beside the
+version that runs, and points `current` at it. The Filament its service runs (systemd's unit; on a Windows host, its
+scheduled task) then restarts on it, once no turn runs. While a turn runs it exits with code 5 and keeps the update:
+`filament restart` starts the new version once the turn ends. A Filament started by hand is told to start again. A
+download, a checksum or an unpack that fails changes nothing, nor does a release built on a newer glibc than the
+server's. A new version that does not come up under its service — it ends as it starts, or does not answer within a
+minute — is left for the one before: `current` points back at it, it is started again, and the update says so in one
+line and exits with code 1.
 
 | Command | What it does |
 |---|---|
@@ -270,7 +274,7 @@ before: `current` points back at it, it is started again, and the update says so
 | `filament update --version 1.2.3` | That release, older or newer. One kept beside is pointed at again, with nothing downloaded |
 | `filament update --back` | Points `current` back at the version kept before, and restarts the same way |
 | `filament update --force` | Restarts now, cutting a turn that runs |
-| `filament update --wait` | Waits until no turn runs, asking again every few seconds, then restarts; the new version, started by systemd meanwhile, that does not come up is left for the one before — the desktop app's **Update Filament** runs it so |
+| `filament update --wait` | Waits until no turn runs, asking again every few seconds, then restarts; the new version, started by its service meanwhile, that does not come up is left for the one before — the desktop app's **Update Filament** runs it so |
 
 Where no Filament answers and systemd cannot say whether its unit runs, `filament update` says so, restarts nothing
 and goes back to nothing, and exits with code 1: `filament service status` says where it stands.
@@ -311,7 +315,10 @@ rm -rf ~/.config/filament        # only to forget everything: settings, keys, ch
 
 | What you see | Why | What to do |
 |---|---|---|
-| `… built for Linux on x86_64 and on arm64 (aarch64), and this machine is …` | A Mac, Windows, or a Linux machine of another kind (32-bit ARM, RISC-V) | Install the desktop app on a Mac or Windows. Other Linux machines are not built for |
+| `… built for Linux on x86_64 and on arm64 (aarch64), and this machine is …` | A Mac, Windows, or a Linux machine of another kind (32-bit ARM, RISC-V) | Install the desktop app on a Mac. A Windows host installs with `install.ps1` (section 10). Other Linux machines are not built for |
+| `Filament for Windows hosts is built for x64 (AMD64), and this machine is Windows on ARM64.` | Windows on ARM | Install the desktop app there |
+| `Filament's installer unpacks with Windows' own tar.exe, which this Windows does not have` | A Windows older than 10 1803, or than Windows Server 2019 | A newer Windows |
+| `filament service install` says registering a task `takes an administrator` | Task Scheduler refused your account a task that runs at boot with no one logged in | Run it in a PowerShell opened as administrator, or over SSH as an administrator (its sessions are elevated) |
 | `… runs 64-bit programs, and this machine's are 32-bit …` | A 32-bit system on a 64-bit kernel, as Raspberry Pi OS's 32-bit release is on a Pi 4 or 5 | Install the system's 64-bit release |
 | `Filament's releases gave no latest-server-arm64.yml …` on arm64 | That release was built without arm64's tarballs | `FILAMENT_VERSION=` a release that has them, or wait for the next |
 | `filament update` refuses: `release … carries no filament-server-…-linux-arm64.tar.gz` | The newest release was built without arm64's tarballs | Stay on the version you have; the next release with them updates it |
@@ -328,7 +335,7 @@ rm -rf ~/.config/filament        # only to forget everything: settings, keys, ch
 | `filament chat` says `Nothing came from Filament for 45 s` | The connection went quiet without closing (a sleeping laptop, a network that dropped silently) | As above: the turn may go on on the server; `filament chat --chat <id> <message>` once it ends |
 | `Host "…" does not name this machine` | Filament was called by a name it doesn't know (a reverse proxy, a hosts alias) | `filament settings set server.allowedHosts '["that.name"]'` |
 | A Codex sign-in waits and never ends | The sign-in that opens a page on this machine was picked, and over SSH that page is on the server | Stop it, then `filament agents sign-in codex --way chatgpt-code` |
-| `filament update` refuses: `not where install.sh installs it`, `runs from a checkout`, or `no server build` | This Filament was not installed by `install.sh` | Install with `install.sh` (section 2). A checkout updates with `git pull`, then `filament restart` |
+| `filament update` refuses: `not where install.sh installs it` (on Windows, `install.ps1`), `runs from a checkout`, or `no server build` | This Filament was not installed by its installer | Install with `install.sh` (section 2), or `install.ps1` on a Windows host (section 10). A checkout updates with `git pull`, then `filament restart` |
 | `filament update` refuses: `it was built on glibc …` | The new release needs a newer glibc than the server has | Stay on the version you have, or move to a newer system |
 | `filament update` exits with code 5 | A turn runs | The update is in place: `filament restart` once the turn ends, or `filament update --force` next time |
 | `filament update` says `… did not come up … so current points at … again` | The new version did not start on this server | The version before runs again. `filament service status` shows the log; `filament update` tries the new one again |
@@ -336,3 +343,65 @@ rm -rf ~/.config/filament        # only to forget everything: settings, keys, ch
 | The app says `<server> runs Filament …, too old for this app: update Filament on <server>.` | The server speaks an older wire than the app | Its ⋯ › **Update Filament on** *it* in the app, or `filament update` on the server |
 | The app says `… too new for this app: update this app.` | The app is older than the server | Update the Filament app (its tray's Check for updates) |
 | A script on the server gets 403, saying Filament answers a program on this computer by its owner key | It sent no owner key | Send `owner.key` from the data folder as the `x-filament-owner` header (made anew at each start), or use the `filament` command line (section 5) |
+
+## 10. A Windows host
+
+Filament for servers runs on a Windows host too — a Windows Server, or a Windows 10 or 11 PC you reach over SSH, on
+x64 — with no desktop app: the same server, harness, command line and memory engine, with Node for Windows. Everything
+above holds, with these differences.
+
+**Set up over SSH** from the Filament app (section 2) does it all, each step in PowerShell there, as Windows' own
+OpenSSH Server starts it. That server must be on there first (Settings › System › Optional features › OpenSSH Server,
+then `Start-Service sshd`), and your key in place, since the key the sheet offers is added on a Linux machine alone:
+in `%USERPROFILE%\.ssh\authorized_keys`, or for an administrator in `C:\ProgramData\ssh\administrators_authorized_keys`.
+
+**Install by hand**, in PowerShell on the host:
+
+```powershell
+irm https://github.com/invertibleMatrix/filament/releases/latest/download/install.ps1 | iex
+```
+
+It reads the release's `latest-server-win32-x64.yml`, downloads the tarball it names, checks its SHA-512 and unpacks it
+with Windows' own `tar.exe`. No administrator is needed: everything goes in your own folder.
+
+| Path | What it is |
+|---|---|
+| `%LOCALAPPDATA%\filament\<version>\` | One version, whole |
+| `%LOCALAPPDATA%\filament\current` | A junction to the version that runs |
+| `%LOCALAPPDATA%\filament\current\bin\filament.cmd` | The command line. `current\bin` goes on your user PATH (`FILAMENT_NO_MODIFY_PATH=1` leaves the PATH as it is); a new terminal finds `filament` |
+| `%APPDATA%\Filament\` | The data folder: settings, keys, chats, memory |
+
+Its options are environment variables, set before the line: `$env:FILAMENT_VERSION = '1.2.3'`, and
+`FILAMENT_NO_ENGINE` and `FILAMENT_RELEASES_URL` as on Linux. Two versions are kept, and an install that fails partway
+is undone, as `install.sh` does.
+
+**Keep it running.** `filament service install` registers Task Scheduler's task `\Filament\Filament`. It starts at
+boot with no one logged in, as you without your password (S4U: it reaches no network share, and Windows' Credential
+Manager is closed to it). Its runner starts Filament again 3 s after it ends by itself, as systemd does. Registering
+the task takes an administrator: a PowerShell opened as administrator, or SSH as one. `filament service status`,
+`logs` and `uninstall` work as on Linux, and its log is `<data folder>\service\server.log`. With its task installed,
+`filament start`, `stop` and `restart` go through its runner.
+
+**Your network.** Windows Firewall lets no one in to Filament's ports until a rule does. In a PowerShell opened as
+administrator:
+
+```powershell
+New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow
+```
+
+Tailscale serves Filament with no rule, as on Linux, and Windows' Tailscale names no operator to set.
+
+**Update.** `filament update` updates it as on Linux, its scheduled task restarting it on the new version. The app's
+**Update Filament** runs the update apart from Filament, by the build's own Node, so the restart it makes ends
+Filament alone.
+
+**Uninstall**, in PowerShell:
+
+```powershell
+filament service uninstall       # or filament stop, where you started it by hand
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\filament"
+Remove-Item -Recurse -Force "$env:APPDATA\Filament"   # only to forget everything: settings, keys, chats and memory
+```
+
+Then take `%LOCALAPPDATA%\filament\current\bin` off your user PATH (Settings › System › About › Advanced system
+settings › Environment Variables).

@@ -60,7 +60,9 @@ Three words you will meet everywhere:
   back to the version kept, `$env:FILAMENT_VERSION='1.2.3'; irm … | iex` with its number. Run as
   `powershell -c "irm … | iex"` (a script's or an SSH session's way), its exit code says whether it installed; typed into
   a PowerShell, that window stays open and `$LASTEXITCODE` says it. To run it at boot with no one logged in, and again
-  after a crash, run `filament service install` once as an administrator (below).
+  after a crash, run `filament service install` once as an administrator (below). The desktop app's **Set up over SSH…**
+  does all of it from your laptop; [A Windows host](server.md#10-a-windows-host) says the rest (its firewall, update,
+  uninstall).
 
 ### Start it
 
