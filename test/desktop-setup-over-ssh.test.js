@@ -20,6 +20,10 @@ const LAN_LINK = `https://192.168.1.20:20343/ui/pair.html#code=ABCD-EFGH&fp=${FP
 const TS_LINK = "https://box.tail1234.ts.net/ui/pair.html#code=ABCD-EFGH";
 const OK = { code: 0, stdout: "", stderr: "", cut: false, why: null, ask: null, began: true };
 const FIREWALL_LINE = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
+/** A Mac's LaunchDaemon's sudo line, as `filament service status --json` says it there (src/cli/service.js `daemonLine`). */
+const BOOT_LINE = "sudo launchctl bootout system/com.filamentdev.server 2>/dev/null; sudo install -m 644 -o root -g wheel /Users/me/.config/filament/service/com.filamentdev.server.plist /Library/LaunchDaemons/com.filamentdev.server.plist && sudo launchctl bootstrap system /Library/LaunchDaemons/com.filamentdev.server.plist";
+/** The real path of the Node Filament runs on, on a Mac. */
+const MAC_NODE = "/Users/me/.local/share/filament/0.9.85/node/bin/node";
 /** What a terminal's ssh runs there: its command's script, decoded. @param {any} t */
 const scriptOf = (t) => Buffer.from(/printf %s ([A-Za-z0-9+/=]+)/.exec(String(t?.args.at(-1)))?.[1] || "", "base64").toString("utf8");
 /** What a terminal's ssh runs there by PowerShell: its script, decoded. @param {any} t */
@@ -73,6 +77,10 @@ function fakeMachine(o = {}) {
     rule: o.rule ?? false,
     /** A Windows host: its commands PowerShell's, Filament as install.ps1 installs it, run by Task Scheduler. */
     windows: o.windows ?? false,
+    /** A Mac with Apple silicon: Filament as install.sh installs it, run by launchd's LaunchAgent. */
+    mac: o.mac ?? false,
+    /** A Mac's LaunchDaemon installed, the one its service install wrote: it starts Filament at boot. */
+    boot: o.boot ?? false,
     /** @type {string[]} */ codes: [],
     links: o.links ?? null,
     /** @type {string[]} */ ran: [],
@@ -80,16 +88,19 @@ function fakeMachine(o = {}) {
   const platform = () =>
     m.windows
       ? platformOf(["os=Windows", "arch=AMD64", "bits=64", "home=C:\\Users\\me\\AppData\\Local", "has=winget", "has=tar", ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\r\n"), "powershell")
-      : platformOf(
-          ["os=Linux", `arch=${m.arch}`, "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
-          "sh",
-        );
-  const dataDir = m.windows ? "C:\\Users\\me\\AppData\\Roaming\\filament" : "/home/me/.local/share/filament/data";
+      : m.mac
+        ? platformOf(["os=Darwin", "arch=arm64", "bits=64", "libc=", "macos=14.5", "arm64=1", "home=/Users/me", "has=launchctl", "has=sudo", ...["curl", "tar", "gzip", "openssl", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"), "sh")
+        : platformOf(
+            ["os=Linux", `arch=${m.arch}`, "bits=64", "libc=glibc 2.35", "home=/home/me", ...(m.systemd ? ["has=systemctl", "has=loginctl"] : []), ...["curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"].map((t) => `has=${t}`), ...(m.tailscale ? ["has=tailscale"] : []), ...(m.filament ? [`filament=${m.filament}`] : [])].join("\n"),
+            "sh",
+          );
+  const dataDir = m.windows ? "C:\\Users\\me\\AppData\\Roaming\\filament" : m.mac ? "/Users/me/.config/filament" : "/home/me/.local/share/filament/data";
   const status = () => ({
     ...m.service,
-    linger: m.windows ? (m.service.installed ? true : null) : m.linger,
+    linger: m.windows ? (m.service.installed ? true : null) : m.mac ? (m.service.installed ? m.boot : null) : m.linger,
+    ...(m.mac ? { bootLine: m.service.installed && !m.boot ? BOOT_LINE : null } : {}),
     dataDir: m.service.installed ? dataDir : null,
-    filament: m.service.active === "active" ? { version: m.filament, url: "http://127.0.0.1:20300", supervisor: m.windows ? "service" : "systemd" } : null,
+    filament: m.service.active === "active" ? { version: m.filament, url: "http://127.0.0.1:20300", supervisor: m.windows || m.mac ? "service" : "systemd" } : null,
   });
   /** @param {string} alias @param {any} what @param {any} [opt] */
   const ssh = async (alias, what, opt = {}) => {
@@ -109,7 +120,7 @@ function fakeMachine(o = {}) {
     if (s.includes(INSTALL_URL) || s.includes(INSTALL_PS_URL)) {
       assert.ok(opt.timeoutMs >= 600_000, "the install is given its time");
       const v = /FILAMENT_VERSION(?: = |=)'([^']+)'/.exec(s)?.[1] || "0.9.90";
-      const feed = m.windows ? "latest-server-win32-x64.yml" : "latest-server.yml";
+      const feed = m.windows ? "latest-server-win32-x64.yml" : m.mac ? "latest-server-darwin-arm64.yml" : "latest-server.yml";
       if (/FILAMENT_VERSION = '|FILAMENT_VERSION='/.test(s) && !m.release)
         return { ...OK, code: 1, stderr: `${m.windows ? "" : "install.sh: "}Filament's releases gave no ${feed} at https://github.com/x/releases/download/v${v}/${feed} (is ${v} a release of Filament for servers?): nothing was installed.\n` };
       m.filament = v;
@@ -128,7 +139,7 @@ function fakeMachine(o = {}) {
       };
     if (s.includes("service install")) {
       m.service = { installed: true, active: "active", enabled: "enabled" };
-      return { ...OK, stdout: m.windows ? "Wrote C:\\Users\\me\\AppData\\Roaming\\filament\\service\\task.xml.\r\n" : "Wrote ~/.config/systemd/user/filament.service.\n" };
+      return { ...OK, stdout: m.windows ? "Wrote C:\\Users\\me\\AppData\\Roaming\\filament\\service\\task.xml.\r\n" : m.mac ? "Wrote ~/Library/LaunchAgents/com.filamentdev.server.plist.\n" : "Wrote ~/.config/systemd/user/filament.service.\n" };
     }
     if (s.includes("loginctl enable-linger") && !s.includes("sudo")) {
       if (m.lingerMay) m.linger = true;
@@ -142,12 +153,14 @@ function fakeMachine(o = {}) {
       return OK;
     }
     if (s.includes("memory on")) return ((m.memory = true), OK);
+    if (s.includes("settings get server.lan.enabled") && m.mac)
+      return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.tailscale ? "tailscale=1\n" : ""}${m.ufw ? "macfw=1\n" : ""}node=${MAC_NODE}\n` };
     if (s.includes("settings get server.lan.enabled"))
       return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.ufw && !(m.windows && m.rule) ? (m.windows ? "firewall=1\n" : "ufw=1\n") : ""}${m.tailscale ? "tailscale=1\n" : ""}` };
-    if (s.includes("tailscale status --json")) return { ...OK, stdout: JSON.stringify({ BackendState: m.tailscale }) };
+    if (s.includes("tailscale status --json") || s.includes('"$t" status --json')) return { ...OK, stdout: JSON.stringify({ BackendState: m.tailscale }) };
     // Its prefs read by any user; its serve's config too.
     if (s.includes("tailscale debug prefs")) return { ...OK, stdout: `me\n${JSON.stringify({ OperatorUser: m.operator ? "me" : "" }, null, 2)}\n` };
-    if (s.includes("tailscale serve status --json")) return { ...OK, stdout: m.serve && m.served ? JSON.stringify({ Web: { "box.tail1234.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:20345" } } } } }) : "{}" };
+    if (s.includes("tailscale serve status --json") || s.includes('"$t" serve status --json')) return { ...OK, stdout: m.serve && m.served ? JSON.stringify({ Web: { "box.tail1234.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:20345" } } } } }) : "{}" };
     if (s.includes("settings set server.tailscale.serve true")) return ((m.serve = true), OK);
     if (s.includes("settings set server.lan.enabled true")) return ((m.lan = true), OK);
     if (s === (m.windows ? PAIR_PS : PAIR_SCRIPT)) {
@@ -293,9 +306,9 @@ test("a machine that asks for a password: this computer's key offered there, add
 });
 
 test("refused as install.sh refuses: another system, or what its installer needs missing", async () => {
-  const mac = { ok: true, platform: platformOf("os=Darwin\narch=arm64\nbits=64", "sh") };
+  const mac = { ok: true, platform: platformOf("os=Darwin\narch=x86_64\nbits=64\nmacos=14.5\narm64=", "sh") };
   const r = await rig(fakeMachine(), { probe: async () => mac }).setup.run({ alias: ALIAS, step: "reach" });
-  assert.deepEqual([r.state, r.words], ["failed", "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for Windows on x64: this machine is Darwin on arm64."]);
+  assert.deepEqual([r.state, r.words], ["failed", "Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's (x86_64)."]);
   const bare = { ok: true, platform: platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.35\nhome=/root\nhas=tar\nhas=gzip", "sh") };
   const r2 = await rig(fakeMachine(), { probe: async () => bare }).setup.run({ alias: ALIAS, step: "reach" });
   assert.equal(r2.state, "failed");
@@ -591,6 +604,49 @@ test("a fresh Windows host: every command PowerShell's — install.ps1 at this a
   const again = await t.all();
   assert.deepEqual(again.map((r) => [r.step, r.state]), [["reach", "done"], ...STEPS.slice(1).map((s) => [s.id, "skipped"])]);
   assert.equal(again[0].words, "me@box answers: Windows on AMD64, Filament 0.9.85 installed there.");
+});
+
+// (fails before: yes — a Mac was refused at its first step)
+test("a fresh Mac: install.sh at this app's version, launchd's LaunchAgent and its LaunchDaemon's sudo line, its agents and memory, macOS's firewall line for its Node, paired; then nothing to do but what sudo does", async () => {
+  const f = fakeMachine({ mac: true });
+  const t = rig(f);
+  const out = await t.all();
+  assert.deepEqual(out.map((r) => [r.step, r.state]), STEPS.map((s) => [s.id, "done"]));
+  assert.equal(out[0].words, "me@box answers: macOS 14.5 on arm64.");
+  assert.ok(f.m.ran.some((s) => s.includes(INSTALL_URL) && s.includes("FILAMENT_VERSION='0.9.85' sh")), "install.sh at this app's version");
+  assert.equal(out[1].words, "Filament 0.9.85 is installed there, in ~/.local/share/filament.");
+  assert.equal(out[2].words, "Filament 0.9.85 runs there under launchd (its LaunchAgent), started as its user logs in at the Mac, and again after a crash.");
+  assert.deepEqual(out[2].also?.map((l) => l.line), [BOOT_LINE], "its LaunchDaemon's sudo line, as its status says it");
+  assert.equal(scriptOf(out[2].also?.[0].terminal), BOOT_LINE, "and run there in a terminal, where sudo asks");
+  assert.equal(f.m.ran.some((s) => /loginctl|systemctl/.test(s)), false, "no lingering, no systemd");
+  assert.match(out[3].words, /^Connected Claude Code\..* Memory is on now\.$/);
+  const fw = `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add '${MAC_NODE}' && sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp '${MAC_NODE}'`;
+  assert.deepEqual(out[4].also?.map((l) => l.line), [fw], "macOS's firewall lets its Node in");
+  assert.equal(scriptOf(out[4].also?.[0].terminal), fw);
+  const ways = f.m.ran.find((s) => s.includes("settings get server.lan.enabled")) || "";
+  assert.ok(ways.includes("socketfilterfw --getglobalstate") && ways.includes('readlink -f "$HOME/.local/bin/filament"'), "its firewall read, and its Node's real path");
+  assert.deepEqual(t.paired, [LAN_LINK]);
+  assert.deepEqual(out[5].machine, { id: ID, name: "Box" });
+  // Its LaunchDaemon installed (the sudo line run): at boot, its line said no more.
+  f.m.boot = true;
+  const again = await t.all();
+  assert.deepEqual(again.map((r) => [r.step, r.state]), [["reach", "done"], ...STEPS.slice(1).map((s) => [s.id, "skipped"])]);
+  assert.deepEqual([again[2].words, again[2].also], ["Filament 0.9.85 runs there under launchd (its LaunchAgent), started at boot, and again after a crash.", undefined]);
+  assert.deepEqual(again[4].also?.map((l) => l.line), [fw], "the firewall's line while it is on");
+  // Its firewall off: no line.
+  f.m.ufw = false;
+  assert.equal((await t.setup.run({ alias: ALIAS, step: "route" })).also, undefined);
+});
+
+test("a Mac with Tailscale: found where its app keeps it, shared on the tailnet, no operator to name", async () => {
+  const f = fakeMachine({ mac: true, tailscale: "Running" });
+  const out = await rig(f).all();
+  assert.deepEqual(out.map((r) => r.state), STEPS.map(() => "done"));
+  assert.equal(out[4].also, undefined, "a Mac's Tailscale names no operator");
+  assert.equal(f.m.ran.some((s) => s.includes("tailscale debug prefs")), false);
+  const look = f.m.ran.find((s) => s.includes('"$t" status --json')) || "";
+  assert.ok(look.includes("/Applications/Tailscale.app/Contents/MacOS/Tailscale") && look.includes("/opt/homebrew/bin/tailscale"), "its app's and Homebrew's, which an SSH session's PATH does not hold");
+  assert.deepEqual(f.m.ran.filter((s) => s.includes("settings set")).map((s) => s.split("\n").at(-1)), ['exec "$HOME/.local/bin/filament" settings set server.tailscale.serve true']);
 });
 
 test("a Windows host with Tailscale: shared on the tailnet, no operator to name; its release not out for Windows, the newest offered — its own feed asked", async () => {

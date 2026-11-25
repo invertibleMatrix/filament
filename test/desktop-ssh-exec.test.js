@@ -13,7 +13,7 @@ import { PassThrough } from "node:stream";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BEGAN, ENDED, KILL_GRACE_MS, OUTPUT_MAX, PROBE_PS, PS_LINE_MAX, SCRIPT_MAX, batchArgs, clixmlWords, commandOf, execWords, platformOf, probeSsh, psQuote, runEither, runSsh, shQuote, sshTerminal } from "../desktop/lib/ssh-exec.js";
+import { BEGAN, ENDED, KILL_GRACE_MS, OUTPUT_MAX, PROBE_PS, PROBE_SH, PS_LINE_MAX, SCRIPT_MAX, batchArgs, clixmlWords, commandOf, execWords, platformOf, probeSsh, psQuote, runEither, runSsh, shQuote, sshTerminal } from "../desktop/lib/ssh-exec.js";
 
 /** What a marked script for sh says around its command: that it began, then the command in a shell of its own, then its end and code — each with the run's mark. @param {string} m */
 const shHead = (m) => `printf '%s\\n' ${BEGAN}-${m} >&2\n(\n`;
@@ -117,20 +117,35 @@ describe("what a machine is", () => {
   const TOOLS = "has=systemctl\nhas=curl\nhas=tar\nhas=gzip\nhas=sha512sum\nhas=base64\nhas=od\nhas=mktemp\nhas=readlink\nhas=ln\n";
   test("Linux on x86_64 or arm64, 64-bit, glibc 2.28 or newer has a server build; anything else is said as install.sh says it", () => {
     const linux = platformOf(`os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.35\nldd=ldd (Ubuntu GLIBC 2.35-0ubuntu3) 2.35\nhome=/home/me\n${TOOLS}filament=0.9.84\n`, "sh");
-    assert.deepEqual(linux, { os: "Linux", arch: "x86_64", bits: 64, libc: "2.35", has: ["systemctl", "curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"], shell: "sh", filament: "0.9.84", target: "linux-x64", refusal: null, missing: [], needs: null });
+    assert.deepEqual(linux, { os: "Linux", arch: "x86_64", bits: 64, libc: "2.35", macos: null, has: ["systemctl", "curl", "tar", "gzip", "sha512sum", "base64", "od", "mktemp", "readlink", "ln"], shell: "sh", filament: "0.9.84", target: "linux-x64", refusal: null, missing: [], needs: null });
     assert.equal(platformOf("os=Linux\narch=aarch64\nbits=64\nlibc=glibc 2.36", "sh").target, "linux-arm64");
     assert.equal(platformOf("os=Linux\narch=aarch64\nbits=64\nlibc=\nldd=ldd (GNU libc) 2.31", "sh").libc, "2.31", "ldd's word where getconf says none");
     assert.match(String(platformOf("os=Linux\narch=aarch64\nbits=32\nlibc=glibc 2.36", "sh").refusal), /^Filament for servers runs 64-bit programs, and this machine's are 32-bit, on its aarch64 kernel/);
     assert.match(String(platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=\nldd=musl libc (x86_64)", "sh").refusal), /C library is another \(Alpine's musl\?\)/);
     assert.equal(platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.27", "sh").refusal, "Filament for servers needs glibc 2.28 or newer, and this machine has 2.27.");
     assert.equal(platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.28", "sh").target, "linux-x64");
-    assert.equal(platformOf("os=Darwin\narch=arm64\nbits=64", "sh").refusal, "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for Windows on x64: this machine is Darwin on arm64.");
+    assert.equal(platformOf("os=FreeBSD\narch=amd64\nbits=64", "sh").refusal, "Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), for a Mac with Apple silicon, and for Windows on x64: this machine is FreeBSD on amd64.");
     assert.match(PROBE_PS, /\[Environment\]::Is64BitOperatingSystem/);
+  });
+
+  // (fails before: yes — every Mac was refused as no Linux)
+  test("a Mac with Apple silicon on macOS 13.5 or newer has a server build (darwin-arm64), no glibc weighed, its chip read through Rosetta; an Intel Mac and an older macOS refused as install.sh refuses them", () => {
+    const mac = platformOf(`os=Darwin\narch=arm64\nbits=64\nlibc=\nldd=\nmacos=14.5\narm64=1\nhome=/Users/me\nhas=launchctl\n${TOOLS.replace("has=sha512sum\n", "has=openssl\n")}filament=0.9.90\n`, "sh");
+    assert.deepEqual(mac, { os: "macOS", arch: "arm64", bits: 64, libc: null, macos: "14.5", has: ["launchctl", "systemctl", "curl", "tar", "gzip", "openssl", "base64", "od", "mktemp", "readlink", "ln"], shell: "sh", filament: "0.9.90", target: "darwin-arm64", refusal: null, missing: [], needs: null });
+    const rosetta = platformOf("os=Darwin\narch=x86_64\nbits=64\nmacos=15.1\narm64=1", "sh");
+    assert.deepEqual([rosetta.arch, rosetta.target, rosetta.refusal], ["arm64", "darwin-arm64", null], "a shell under Rosetta: the Mac's own chip");
+    assert.equal(platformOf("os=Darwin\narch=x86_64\nbits=64\nmacos=14.5\narm64=", "sh").refusal, "Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's (x86_64).");
+    assert.equal(platformOf("os=Darwin\narch=arm64\nbits=64\nmacos=13.4\narm64=1", "sh").refusal, "Filament for servers needs macOS 13.5 or newer, and this Mac runs 13.4.");
+    assert.equal(platformOf("os=Darwin\narch=arm64\nbits=64\nmacos=13.5\narm64=1", "sh").refusal, null);
+    assert.equal(platformOf("os=Darwin\narch=arm64\nbits=64\nmacos=26\narm64=1", "sh").target, "darwin-arm64", "a version with no minor");
+    assert.match(PROBE_SH, /^echo "macos=\$\(sw_vers -productVersion 2>\/dev\/null <\/dev\/null\)"$/m);
+    assert.match(PROBE_SH, /^echo "arm64=\$\(sysctl -n hw\.optional\.arm64 2>\/dev\/null <\/dev\/null\)"$/m);
+    assert.match(PROBE_SH, / launchctl /, "launchctl looked for");
   });
 
   test("Windows on x64, read by PowerShell, has a server build (install.ps1's); on ARM64, or read by a sh of its own, none; its tar.exe and LOCALAPPDATA needed", () => {
     const win = platformOf("os=Windows\r\narch=AMD64\r\nbits=64\r\nhome=C:\\Users\\me\\AppData\\Local\r\nhas=winget\r\nhas=tar\r\nfilament=0.9.86\r\n", "powershell");
-    assert.deepEqual(win, { os: "Windows", arch: "AMD64", bits: 64, libc: null, has: ["winget", "tar"], shell: "powershell", filament: "0.9.86", target: "win32-x64", refusal: null, missing: [], needs: null });
+    assert.deepEqual(win, { os: "Windows", arch: "AMD64", bits: 64, libc: null, macos: null, has: ["winget", "tar"], shell: "powershell", filament: "0.9.86", target: "win32-x64", refusal: null, missing: [], needs: null });
     assert.equal(platformOf("os=Windows\narch=ARM64\nbits=64\nhas=tar", "powershell").refusal, "Filament for Windows hosts is built for x64 (AMD64), and this machine is Windows on ARM64.");
     const git = platformOf("os=MINGW64_NT-10.0-26100\narch=x86_64\nbits=64\nhome=/c/Users/me", "sh");
     assert.deepEqual([git.os, git.target], ["Windows", null]);
@@ -156,7 +171,7 @@ describe("what a machine is", () => {
     assert.equal(bare.target, "linux-x64", "a build it has, once they are there");
     assert.deepEqual(platformOf("os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.35\nhas=tar", "sh").missing.slice(0, 2), ["curl or wget", "gzip"]);
     assert.match(String(platformOf(`os=Linux\narch=x86_64\nbits=64\nlibc=glibc 2.35\nhome=\n${TOOLS}`, "sh").needs), /^HOME is not set there/);
-    assert.deepEqual([platformOf("os=Darwin\narch=arm64\nbits=64", "sh").missing, platformOf("os=Windows\narch=ARM64", "powershell").needs], [[], null], "one refused needs nothing more");
+    assert.deepEqual([platformOf("os=Darwin\narch=x86_64\nbits=64", "sh").missing, platformOf("os=Windows\narch=ARM64", "powershell").needs], [[], null], "one refused needs nothing more");
   });
 });
 

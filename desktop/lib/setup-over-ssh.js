@@ -1,8 +1,9 @@
 // @ts-check
-// A Linux machine or a Windows host set up from the desk over SSH (the remote desk's s3b, s3f5): from user@host — or a
-// Host of your SSH config — to Filament installed there, run as a service (systemd's; a Windows host's Task Scheduler),
-// its coding agents connected and memory on, reached over https, and this window paired with it as a full device. What
-// runs there is sh's on Linux and PowerShell's on a Windows host (`KITS`), as its probe found it. Each step (`STEPS`)
+// A Linux machine, a Windows host or a Mac set up from the desk over SSH (the remote desk's s3b, s3f5, s3e5): from
+// user@host — or a Host of your SSH config — to Filament installed there, run as a service (systemd's; a Windows host's
+// Task Scheduler; a Mac's launchd), its coding agents connected and memory on, reached over https, and this window
+// paired with it as a full device. What runs there is sh's on Linux and on a Mac (`MAC_KIT`) and PowerShell's on a
+// Windows host (`KITS`), as its probe found it. Each step (`STEPS`)
 // is asked on its own, by the setup sheet of This computer's
 // harness (src/ui/harness/ssh-setup.js), so its progress shows step by step and a failed one is tried again alone; each
 // reads what stands there first and does only what is missing — a machine set up already answers every step with
@@ -199,14 +200,15 @@ export const installPs = (version, url = INSTALL_PS_URL) =>
  * %LOCALAPPDATA%\filament. `filament`: Filament there with words (each plain, or quoted by `quote`); `agents`: its
  * coding agents found and listed as JSON, then a `filament-memory` line and whether memory is on; `ways`: its settings
  * of the network listener and the tailnet's share, whether Tailscale is there, and the firewall a network listener needs
- * opened (ufw; Windows Firewall); `read`: a file's text.
- * @typedef {{ shell: "sh" | "powershell", where: string, quote: (s: string) => string, filament: (words: string) => string,
- *   install: (version: string | null) => string, agents: string, ways: string, tailnet: string, served: string,
- *   read: (path: string) => import("./ssh-exec.js").RunWhat, pair: string }} Kit
+ * opened (ufw; Windows Firewall; a Mac's, `MAC_KIT`); `read`: a file's text.
+ * @typedef {{ system: "linux" | "mac" | "windows", shell: "sh" | "powershell", where: string, quote: (s: string) => string,
+ *   filament: (words: string) => string, install: (version: string | null) => string, agents: string, ways: string,
+ *   tailnet: string, served: string, read: (path: string) => import("./ssh-exec.js").RunWhat, pair: string }} Kit
  * @type {Record<"sh" | "powershell", Kit>}
  */
 const KITS = {
   sh: {
+    system: "linux",
     shell: "sh",
     where: "~/.local/share/filament",
     quote: shQuote,
@@ -229,6 +231,7 @@ const KITS = {
   },
   // A native program's stderr is left to it (a redirected line of one stops Windows PowerShell 5.1's script).
   powershell: {
+    system: "windows",
     shell: "powershell",
     where: "%LOCALAPPDATA%\\filament",
     quote: psQuote,
@@ -254,6 +257,36 @@ const KITS = {
     pair: PAIR_PS,
   },
 };
+/** macOS's own firewall's command line. */
+const MAC_FIREWALL = "/usr/libexec/ApplicationFirewall/socketfilterfw";
+/**
+ * Tailscale's command line on a Mac, in `$t`: on PATH, else where its app and Homebrew put it, which an SSH session's
+ * PATH does not hold (src/services/tailscale.js `cliPlaces`); the app's own acts as one where SHLVL says a shell runs it.
+ */
+const TS_MAC = 'export SHLVL="${SHLVL:-1}"; t=$(command -v tailscale 2>/dev/null); for p in /Applications/Tailscale.app/Contents/MacOS/Tailscale /usr/local/bin/tailscale /opt/homebrew/bin/tailscale; do [ -z "$t" ] && [ -x "$p" ] && t=$p; done';
+/**
+ * A Mac's kit: sh's, install.sh installing Filament in ~/.local as on Linux; Tailscale found where a Mac has it, and
+ * macOS's firewall read — on, or not read — with the real path of the Node Filament runs on, which it lets in.
+ * @type {Kit}
+ */
+const MAC_KIT = {
+  ...KITS.sh,
+  system: "mac",
+  ways: [
+    `f=${FILAMENT}`,
+    'echo "lan=$("$f" settings get server.lan.enabled 2>/dev/null)"',
+    'echo "serve=$("$f" settings get server.tailscale.serve 2>/dev/null)"',
+    TS_MAC,
+    '[ -n "$t" ] && echo tailscale=1',
+    `case "$(${MAC_FIREWALL} --getglobalstate 2>/dev/null </dev/null)" in *disabled* | *"State = 0"*) ;; *) echo macfw=1 ;; esac`,
+    'n=$(readlink -f "$HOME/.local/bin/filament" 2>/dev/null) && n=$(cd "${n%/*}/../node/bin" 2>/dev/null && pwd -P) && echo "node=$n/node"',
+    "true",
+  ].join("\n"),
+  tailnet: `${TS_MAC}\n[ -n "$t" ] && "$t" status --json 2>/dev/null`,
+  served: `${TS_MAC}\n[ -n "$t" ] && "$t" serve status --json 2>/dev/null; true`,
+};
+/** The kit a machine's steps run there, by what its look said. @param {Platform} pl */
+const kitOf = (pl) => (pl.shell === "powershell" ? KITS.powershell : pl.os === "macOS" ? MAC_KIT : KITS.sh);
 /** The line that opens Filament's two ports in Windows Firewall, in an administrator's PowerShell. */
 const WINDOWS_FIREWALL = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
 
@@ -335,7 +368,7 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     seenOf(a).platform = pl;
     if (pl.refusal) return { step: "reach", state: "failed", words: pl.refusal };
     if (pl.needs) return { step: "reach", state: "failed", words: pl.needs };
-    return { step: "reach", state: "done", words: `${a} answers: ${pl.os} on ${pl.arch}${pl.libc ? `, glibc ${pl.libc}` : ""}${pl.filament ? `, Filament ${pl.filament} installed there` : ""}.` };
+    return { step: "reach", state: "done", words: `${a} answers: ${pl.os}${pl.macos ? ` ${pl.macos}` : ""} on ${pl.arch}${pl.libc ? `, glibc ${pl.libc}` : ""}${pl.filament ? `, Filament ${pl.filament} installed there` : ""}.` };
   }
 
   /**
@@ -349,7 +382,7 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       if (r.state !== "done") return { stop: { ...r, step } };
       pl = /** @type {Platform} */ (seen.get(a)?.platform);
     }
-    return { platform: pl, kit: KITS[pl.shell === "powershell" ? "powershell" : "sh"] };
+    return { platform: pl, kit: kitOf(pl) };
   };
 
   /**
@@ -401,16 +434,18 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
   /**
    * Filament run as a service there, started at boot: on Linux by systemd, its user unit installed and running,
    * lingering turned on as its user may, else its sudo line said; on a Windows host by Task Scheduler, its task
-   * (\Filament\Filament) installed and its runner running Filament, at boot with no one logged in.
+   * (\Filament\Filament) installed and its runner running Filament, at boot with no one logged in; on a Mac by launchd,
+   * its LaunchAgent loaded and its runner running Filament, and the sudo line of its LaunchDaemon said (`bootLine`),
+   * which starts it at boot with no one logged in.
    * @param {string} a @returns {Promise<StepResult>}
    */
   async function service(a) {
     const got = await platformOf("service", a);
     if ("stop" in got) return /** @type {StepResult} */ (got.stop);
     const kit = got.kit;
-    const windows = kit.shell === "powershell";
+    const windows = kit.system === "windows";
     if (!got.platform.filament) return { step: "service", state: "failed", words: `Filament is not installed on ${a} yet: Install Filament first.` };
-    if (!windows && !got.platform.has.includes("systemctl"))
+    if (kit.system === "linux" && !got.platform.has.includes("systemctl"))
       return { step: "service", state: "failed", words: `${a} has no systemd: Filament is installed there and runs as you start it (filament start, under tmux or screen), and nothing starts it at boot or after a crash.` };
     let { r, st } = await serviceLook(a, kit);
     if (!st) return trouble("service", a, r, "filament service status");
@@ -425,6 +460,26 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     if (windows) {
       const v = st.filament?.version ? `Filament ${st.filament.version}` : "Filament";
       return { step: "service", state: stood ? "skipped" : "done", words: `${v} runs there under Task Scheduler (its task \\Filament\\Filament), started at boot with no one logged in, and again after a crash.` };
+    }
+    if (kit.system === "mac") {
+      const v = st.filament?.version ? `Filament ${st.filament.version}` : "Filament";
+      // Its LaunchDaemon none, or not the one its install wrote: its sudo line, as `filament service status` says it —
+      // said on every run until it is in.
+      const line = typeof st.bootLine === "string" && st.bootLine ? st.bootLine : null;
+      /** @type {StepLine[]} */
+      const also = line
+        ? [
+            {
+              words:
+                st.linger === true
+                  ? "Its LaunchDaemon there is not the one its service install wrote now. To start that one at boot:"
+                  : "Filament starts as its user logs in at the Mac, not at boot. To start it at boot with no one logged in (its LaunchDaemon, which runs as its user):",
+              line,
+              terminal: term(a, { script: line }, `At boot on ${a}`),
+            },
+          ]
+        : [];
+      return { step: "service", state: stood ? "skipped" : "done", words: `${v} runs there under launchd (its LaunchAgent), started ${st.linger === true ? "at boot" : "as its user logs in at the Mac"}, and again after a crash.`, ...(also.length ? { also } : {}) };
     }
     let changed = !stood;
     /** @type {StepLine[]} */
@@ -522,7 +577,8 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
     const got = await platformOf("route", a);
     if ("stop" in got) return /** @type {StepResult} */ (got.stop);
     const kit = got.kit;
-    const windows = kit.shell === "powershell";
+    const windows = kit.system === "windows";
+    const mac = kit.system === "mac";
     const look = await sh(a, kit, kit.ways);
     if (look.code !== 0) return trouble("route", a, look, "filament settings");
     /** @type {Record<string, string>} */
@@ -547,8 +603,8 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       const also = [];
       // On Linux its user may serve — root, or Tailscale's operator, as its prefs name one —, or Tailscale refuses it its
       // serve: that operator named once, with sudo. Prefs that do not read say the line all the same. Windows' Tailscale
-      // names no operator: what it refuses is said as it stands (`waysThere`).
-      if (!windows) {
+      // and a Mac's app name no operator: what it refuses is said as it stands (`waysThere`).
+      if (kit.system === "linux") {
         const who = await sh(a, kit, "id -un; tailscale debug prefs 2>/dev/null; true");
         const user = String(who.stdout).split(/\r?\n/)[0].trim();
         const prefs = jsonIn(who.stdout, "{");
@@ -578,15 +634,19 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       if (r.code !== 0) return trouble("route", a, r, "filament settings set");
     }
     // The firewall's line on every run where it may close the ports, not on the run that turned the listener on alone:
-    // ufw on, or Windows Firewall on with no rule of the line's (the hunt on s3b).
+    // ufw on, or Windows Firewall on with no rule of the line's (the hunt on s3b); macOS's on, which lets programs in
+    // rather than ports — the Node Filament runs on, by its real path.
+    const macLine = mac && k.macfw && k.node ? `sudo ${MAC_FIREWALL} --add ${shQuote(k.node)} && sudo ${MAC_FIREWALL} --unblockapp ${shQuote(k.node)}` : "";
     /** @type {StepLine[]} */
     const also =
       windows && k.firewall
         ? [{ words: "Windows Firewall lets no one in to Filament's two ports until a rule does — and your cloud's security group, where it has one. In an administrator's PowerShell there:", line: WINDOWS_FIREWALL, terminal: term(a, { script: WINDOWS_FIREWALL, shell: "powershell" }, `The firewall on ${a}`) }]
-        : k.ufw
-          ? [{ words: "Its firewall (ufw) is on: unless it lets Filament's two ports in already (its rules are root's to read), open them — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
-          : [];
-    const tail = k.tailscale ? ` Tailscale is there, not signed in: signed in (${windows ? "its app, or tailscale up" : "sudo tailscale up"}), a setup again shares Filament on your tailnet.` : "";
+        : macLine
+          ? [{ words: "macOS's firewall is on: unless it lets Filament's Node in already (each update's Node is a program of its own to it), let it in — and your cloud's security group, where it has one:", line: macLine, terminal: term(a, { script: macLine }, `The firewall on ${a}`) }]
+          : k.ufw
+            ? [{ words: "Its firewall (ufw) is on: unless it lets Filament's two ports in already (its rules are root's to read), open them — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
+            : [];
+    const tail = k.tailscale ? ` Tailscale is there, not signed in: signed in (${windows || mac ? "its app, or tailscale up" : "sudo tailscale up"}), a setup again shares Filament on your tailnet.` : "";
     // The listener as it stands once the setting is saved: one that could not listen (its port another program's) is
     // said with why, never as listening.
     const n = (await waysThere(a, kit)).network;

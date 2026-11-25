@@ -31,6 +31,8 @@ export const KILL_GRACE_MS = 2_000;
 export const OUTPUT_MAX = 1 << 20;
 /** The oldest glibc Filament's server build runs on (Node's own Linux builds). */
 export const GLIBC_MIN = "2.28";
+/** The oldest macOS Filament's server build runs on (Node's own Mac builds). */
+export const MACOS_MIN = "13.5";
 /** What a command says on its stderr as it begins there, its run's mark after it: before it, a failure is ssh's. */
 export const BEGAN = "filament-ssh-exec-began";
 /** What a command for sh says on its stderr as it ends there, its run's mark and its code after it: a run with none was cut under it. */
@@ -413,16 +415,18 @@ export async function runEither(alias, scripts, o = {}, run = runSsh) {
 }
 
 /**
- * @typedef {{ os: string, arch: string, bits: number | null, libc: string | null, has: string[], shell: "sh" | "powershell",
- *   filament: string | null, target: string | null, refusal: string | null, missing: string[], needs: string | null }} Platform
- *   `libc`: glibc's version, null where the C library is another; `has`: of the tools setup needs, those there;
- *   `filament`: the version of Filament its install.sh put there, else null; `target`: Filament's server build for it
- *   (linux-x64, linux-arm64), else null and `refusal` says why, as install.sh would; `missing`: what install.sh needs
- *   that is not there (a package manager adds it), and `needs` says so, as install.sh would
+ * @typedef {{ os: string, arch: string, bits: number | null, libc: string | null, macos: string | null, has: string[],
+ *   shell: "sh" | "powershell", filament: string | null, target: string | null, refusal: string | null, missing: string[],
+ *   needs: string | null }} Platform
+ *   `os`: Linux, macOS, Windows, or what uname says; `libc`: glibc's version, null where the C library is another;
+ *   `macos`: a Mac's macOS version; `has`: of the tools setup needs, those there; `filament`: the version of Filament its
+ *   installer put there, else null; `target`: Filament's server build for it (linux-x64, linux-arm64, darwin-arm64,
+ *   win32-x64), else null and `refusal` says why, as its installer would; `missing`: what install.sh needs that is not
+ *   there (a package manager adds it), and `needs` says so, as install.sh would
  */
 
 /** The tools install.sh and setup look for, by name: each there is said `has=<name>`. */
-const TOOLS = ["systemctl", "loginctl", "tailscale", "sudo", "curl", "wget", "tar", "gzip", "sha512sum", "openssl", "base64", "od", "mktemp", "readlink", "ln"];
+const TOOLS = ["systemctl", "loginctl", "launchctl", "tailscale", "sudo", "curl", "wget", "tar", "gzip", "sha512sum", "openssl", "base64", "od", "mktemp", "readlink", "ln"];
 
 /** sh's look at the machine, a `key=value` a line. */
 export const PROBE_SH = [
@@ -431,6 +435,9 @@ export const PROBE_SH = [
   'echo "bits=$(getconf LONG_BIT 2>/dev/null </dev/null)"',
   'echo "libc=$(getconf GNU_LIBC_VERSION 2>/dev/null </dev/null)"',
   'echo "ldd=$(ldd --version 2>&1 </dev/null | head -n 1)"',
+  // A Mac's macOS, and its chip as the Mac says it: a shell under Rosetta says x86_64 on Apple silicon.
+  'echo "macos=$(sw_vers -productVersion 2>/dev/null </dev/null)"',
+  'echo "arm64=$(sysctl -n hw.optional.arm64 2>/dev/null </dev/null)"',
   'echo "home=${HOME:-}"',
   `for c in ${TOOLS.join(" ")}; do command -v "$c" >/dev/null 2>&1 && echo "has=$c"; done`,
   'f="$HOME/.local/bin/filament"; [ -x "$f" ] && echo "filament=$("$f" --version 2>/dev/null </dev/null | head -n 1)"',
@@ -464,8 +471,9 @@ const older = (a, b) => {
 
 /**
  * What a probe's lines say of the machine, and Filament's server build for it — or why it has none, as
- * scripts/install.sh refuses: Linux on x86_64 or arm64, 64-bit programs, glibc 2.28 or newer; as scripts/install.ps1
- * does: Windows on x64, read by PowerShell —, and what its installer needs there that is missing (`missing`, `needs`).
+ * scripts/install.sh refuses: Linux on x86_64 or arm64, 64-bit programs, glibc 2.28 or newer; a Mac with Apple silicon
+ * on macOS 13.5 or newer; as scripts/install.ps1 does: Windows on x64, read by PowerShell —, and what its installer needs
+ * there that is missing (`missing`, `needs`).
  * @param {string} said  the probe's output @param {"sh" | "powershell"} shell @returns {Platform}
  */
 export function platformOf(said, shell) {
@@ -479,11 +487,14 @@ export function platformOf(said, shell) {
     if (m[1] === "has") has.push(m[2].trim());
     else if (!(m[1] in k)) k[m[1]] = m[2].trim();
   }
+  const mac = k.os === "Darwin";
   // A Windows host whose sh is Git's, MSYS2's or Cygwin's says so in its own words.
-  const os = /^(MINGW|MSYS|CYGWIN)/i.test(k.os || "") ? "Windows" : k.os || "unknown";
-  const arch = k.arch || "unknown";
+  const os = /^(MINGW|MSYS|CYGWIN)/i.test(k.os || "") ? "Windows" : mac ? "macOS" : k.os || "unknown";
+  // A Mac's chip as the Mac says it, whatever its shell runs under (Rosetta).
+  const arch = mac && k.arm64 === "1" ? "arm64" : k.arch || "unknown";
   const bits = Number(k.bits) || null;
   const glibc = /^glibc\s+([\d.]+)/i.exec(k.libc || "")?.[1] || (/GLIBC|GNU libc/i.test(k.ldd || "") ? /([\d.]+)\s*$/.exec(k.ldd || "")?.[1] : null) || null;
+  const macos = mac && /^\d+(\.\d+)*$/.test(k.macos || "") ? k.macos : null;
   const cpu = /^(x86_64|amd64)$/i.test(arch) ? "x64" : /^(aarch64|arm64)$/i.test(arch) ? "arm64" : null;
   const windows = os === "Windows";
   const refusal = windows
@@ -492,8 +503,14 @@ export function platformOf(said, shell) {
       : shell !== "powershell"
         ? "This Windows host runs commands in a sh of its own (Git's, MSYS2's or Cygwin's), and its PowerShell did not answer: Filament is set up on a Windows host by PowerShell."
         : null
+    : mac
+      ? cpu !== "arm64"
+        ? `Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's (${arch}).`
+        : macos && older(macos, MACOS_MIN)
+          ? `Filament for servers needs macOS ${MACOS_MIN} or newer, and this Mac runs ${macos}.`
+          : null
     : os !== "Linux" || !cpu
-      ? `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), and for Windows on x64: this machine is ${os} on ${arch}.`
+      ? `Filament for servers is built for Linux on x86_64 and on arm64 (aarch64), for a Mac with Apple silicon, and for Windows on x64: this machine is ${os} on ${arch}.`
       : bits === 32
         ? `Filament for servers runs 64-bit programs, and this machine's are 32-bit, on its ${arch} kernel: its system's 64-bit release runs it.`
         : !glibc
@@ -529,7 +546,7 @@ export function platformOf(said, shell) {
           ? "HOME is not set there: Filament installs into the user's own folder, and there is none to install into."
           : null;
   const version = /(\d+\.\d+\.\d+[\w.-]*)/.exec(k.filament || "")?.[1] || null;
-  return { os, arch, bits, libc: glibc, has, shell, filament: version, target: refusal ? null : windows ? "win32-x64" : `linux-${cpu}`, refusal, missing, needs };
+  return { os, arch, bits, libc: glibc, macos, has, shell, filament: version, target: refusal ? null : windows ? "win32-x64" : mac ? "darwin-arm64" : `linux-${cpu}`, refusal, missing, needs };
 }
 
 /**

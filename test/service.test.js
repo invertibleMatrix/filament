@@ -1226,9 +1226,12 @@ describe("filament service, on a Mac host with launchd", () => {
     assert.equal((await m.run(["service", "install"])).code, EXIT.ok);
     const j = JSON.parse((await m.run(["service", "status", "--json"])).out);
     const exec = [process.execPath, join(ROOT, "bin", "filament.js"), "--data-dir", m.data, "service", "run"].map(shWord).join(" ");
+    // (fails before: yes — status said no line, and the desk's setup over SSH had none to offer)
+    const atBoot = (/** @type {string} */ out) => (({ linger, bootLine }) => ({ linger, bootLine }))(JSON.parse(out));
+    const bootLine = `sudo launchctl bootout system/${LABEL} 2>/dev/null; sudo install -m 644 -o root -g wheel ${shWord(serviceFiles(m.data).daemon)} ${shWord(daemon)} && sudo launchctl bootstrap system ${shWord(daemon)}`;
     assert.deepEqual(
       { ...j, journal: j.journal.length > 0 },
-      { installed: true, unit: agent, active: "active", enabled: "enabled", execStart: exec, dataDir: m.data, linger: false, filament: { version: "9.9.9", url: `http://127.0.0.1:${m.port}`, supervisor: "service" }, journal: true, journalError: null },
+      { installed: true, unit: agent, active: "active", enabled: "enabled", execStart: exec, dataDir: m.data, linger: false, bootLine, filament: { version: "9.9.9", url: `http://127.0.0.1:${m.port}`, supervisor: "service" }, journal: true, journalError: null },
     );
     const words = await m.run(["service", "status"]);
     assert.equal(words.code, EXIT.ok, words.err);
@@ -1238,7 +1241,7 @@ describe("filament service, on a Mac host with launchd", () => {
     m.set({ disabled: false });
     // its LaunchDaemon, as the sudo line installs it
     writeFileSync(daemon, readFileSync(serviceFiles(m.data).daemon));
-    assert.equal(JSON.parse((await m.run(["service", "status", "--json"])).out).linger, true);
+    assert.deepEqual(atBoot((await m.run(["service", "status", "--json"])).out), { linger: true, bootLine: null });
     assert.match((await m.run(["service", "status"])).out, /\n {2}at boot {2}: yes — its LaunchDaemon \(/);
     const again = await m.run(["service", "install"]);
     assert.equal(again.code, EXIT.ok, `${again.out}\n${again.err}`);
@@ -1246,6 +1249,7 @@ describe("filament service, on a Mac host with launchd", () => {
     // one another install wrote: the line that replaces it
     writeFileSync(daemon, "<plist>another</plist>\n");
     assert.match((await m.run(["service", "install"])).out, /Its LaunchDaemon \(.+\) is not the one written now: to start this one at boot, run: sudo launchctl bootout system\/com\.filamentdev\.server 2>\/dev\/null; sudo install /);
+    assert.deepEqual(atBoot((await m.run(["service", "status", "--json"])).out), { linger: true, bootLine }, "another's: the line that replaces it");
   });
 
   test("filament stop, start and restart under launchd: stop refused while a turn runs, its stop taken back; else asked once idle, and its runner parks — launchd asked nothing; start takes the stop back and the same runner starts Filament; restart's Filament started again by it; with no runner, start kickstarts the LaunchAgent", async () => {

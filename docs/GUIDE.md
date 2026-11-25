@@ -336,14 +336,15 @@ over SSH and claims its code through the tunnel ([Filament on a server](server.m
 the window holds it, the tunnel's port on this computer reaches that Filament for every program here, not the window
 alone, as the sheet says.
 
-**Setting a machine up over SSH.** A Linux machine or a Windows host (x64, with Windows' own OpenSSH Server) you reach
-with SSH that has no Filament yet — a server, a cloud VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the
+**Setting a machine up over SSH.** A Linux machine, a Windows host (x64, with Windows' own OpenSSH Server) or a Mac with
+Apple silicon (macOS 13.5 or newer, with Remote Login on) you reach with SSH that has no Filament yet — a server, a cloud VM — is set up from the app: Settings › Remote access › **Set up over SSH…** (or **Set it up over SSH…** under the
 Add sheet's fields, which takes the `ssh://` host typed there). Type `user@host` or a Host of your SSH config and
 **Set up**: the sheet runs each step there over SSH, with your keys and your SSH config, and says each as it goes —
 *Reach it over SSH* (what the machine is, and what Filament's installer needs that it lacks), *Install Filament* (this
 app's version; where that release has no build for the machine — an app that is a build of its own, or an arm64
 machine and a release with x64's alone — the newest release is offered instead), *Run it as a service* (systemd,
-at boot; on a Windows host, Task Scheduler's task, at boot with no one logged in), *Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
+at boot; on a Windows host, Task Scheduler's task, at boot with no one logged in; on a Mac, launchd's LaunchAgent),
+*Its coding agents and memory* (each agent installed there connected, memory on; their sign-ins are that
 machine's own Settings › Coding agents), *A way in over https* (shared on your tailnet where Tailscale runs there,
 else its network listener on — said as it stands there: one asked for that does not listen, or that Tailscale does not
 serve, is said with why, and the pairing goes through an SSH tunnel until it does), and *Pair this window with it* (a code made there over SSH and claimed here, at the
@@ -366,6 +367,11 @@ is said under its step with its line, for an administrator's PowerShell there, u
 in. This computer's key is added there by its PowerShell: an administrator's to
 `C:\ProgramData\ssh\administrators_authorized_keys`, the file Windows' OpenSSH reads for them, with its access set to
 Administrators and SYSTEM alone as OpenSSH requires; another user's to `.ssh\authorized_keys` in their profile.
+On a Mac install.sh installs Filament in `~/.local/share/filament`, as on Linux, and launchd's LaunchAgent runs it,
+started as its user logs in: its LaunchDaemon, which starts it at boot with no one logged in, is said under its step
+with its `sudo` line until it is installed. Where macOS's firewall is on, its line lets Filament's Node in, on every
+setup while it is on (each update's Node is a program of its own to it). Tailscale is found where its app or Homebrew
+put it, and a Mac names no Tailscale operator.
 
 Once another machine is kept, the top bar shows the machine you are looking
 at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of

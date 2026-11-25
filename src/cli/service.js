@@ -1286,6 +1286,7 @@ async function statusAgent(r) {
   const disabled = text !== null && (await disabledIn(dom, r.signal));
   const answers = text !== null ? await connect(dataDir, { timeoutMs: 1500 }).catch(() => null) : null;
   const boot = existsSync(daemonFile());
+  const copy = serviceFiles(dataDir).daemon;
   const s = {
     installed: text !== null,
     unit: file,
@@ -1295,6 +1296,9 @@ async function statusAgent(r) {
     dataDir: text !== null ? dataDir : null,
     // Its LaunchDaemon starts it at boot, with no one logged in: what lingering is on Linux.
     linger: text !== null ? boot : null,
+    // The sudo line that installs the LaunchDaemon its install wrote, where the one installed is none or another: the
+    // desk's setup over SSH offers it.
+    bootLine: text !== null && existsSync(copy) && textOf(daemonFile()) !== textOf(copy) ? daemonLine(copy) : null,
     filament: answers ? { version: answers.version, url: answers.url, supervisor: answers.state?.supervisor ?? null } : null,
     journal: text !== null ? logTail(dataDir, 20) : [],
     journalError: null,
