@@ -25,6 +25,7 @@ import { PROMPT, TOOL_TEXT } from "../src/app/agent/prompt.js";
 import { createSubagentRegistry } from "../src/app/agent/subagents.js";
 import { AGENT_TOOL, CODER_WAIT_TOOL, TEAM_AGENT_TOOL, WAIT_TOOL, agentToolFor, coderAgentToolFor, launchKey } from "../src/app/agent/tools.js";
 import { serverInstructions } from "../src/http/mcp.js";
+import { tellLater, untoldOf } from "../src/adapters/tools/hands.js";
 import { createAgentCardStore } from "../src/services/agent-cards.js";
 import { askLine } from "../src/core/messages.js";
 import { FAKE_ACP_AGENT, FIXTURES, anthropicReply, fakeUpstream, startApp } from "./helpers/app.js";
@@ -768,6 +769,32 @@ describe("through the app", () => {
     const events = await runEvents(runId);
     const readAt = events.findIndex((e) => e.type === "steer-read");
     assert.ok(readAt > 0 && events.slice(readAt).filter((e) => e.type === "round-start").length === 2, "its answer, then the report's, each a round of its own");
+  });
+
+  // (fails before: yes — the hunt on x50: a come-back whose time came while the chat's agent waited on its sub-agent
+  // waited untold for that whole wait, its turn attended, nothing taking it)
+  test("a come-back whose time comes while a plain chat's agent waits on its background sub-agent wakes it at once with its note, the report still owed", async () => {
+    gate = deferred();
+    const id = await newSession({ subagents: { pool: [{ model: "m-1", seats: 4 }] } });
+    const res = await shim.api(`/api/sessions/${encodeURIComponent(id)}/turns`, { method: "POST", body: { content: `~mcpcall agent ${JSON.stringify({ description: "Hold it", prompt: "HOLD then list for the come-back", run_in_background: true })}`, stream: true, runEvents: true } });
+    const runId = String(res.headers.get("x-filament-request-id"));
+    try {
+      await until(async () => (await runEvents(runId)).some((e) => e.type === "turn-state" && e.to === "waiting") || null, "the turn to wait for Filament's sub-agent");
+      // Its time, now, as hands.js `comeBackCame` tells it.
+      tellLater({ session: id, agent: null }, { id: "wake_w", command: "", code: null, kind: "wake", text: "[Filament: the time you set has come. Your note: look at CI]" });
+      const first = /** @type {any} */ (promptWith("HOLD then list for the come-back"));
+      const heard = await until(() => promptsOf(first.sessionId).find((p) => String(p.text).includes("Your note: look at CI")) || null, "the note as the agent's next prompt, its sub-agent still running");
+      assert.ok(heard.text.startsWith("[Filament: the time you set has come."), heard.text);
+      const [running] = await subagentsOf(id);
+      assert.equal(running.status, "running", "the report is still owed");
+      assert.deepEqual(untoldOf(id), [], "told, nothing left waiting");
+    } finally {
+      gate.resolve();
+    }
+    const said = await res.text();
+    assert.match(said, /echo\(3\): /, "the report woke it again, in the same turn");
+    const { notes } = await notesOf(runId);
+    assert.ok(notes.includes("acp: cli woken in the same turn: 1 background item (a come-back, a command's end, a watch's lines)"), notes.join("\n"));
   });
 
   // (fails before: yes — the session's tools never changed with whom it names)

@@ -4567,8 +4567,9 @@ A command still running when Filament stops is stopped with it.
 **Coming back later.** A chat's agent comes back to it by itself with `come_back`: it sets a time, a minute to a day
 out, and a note on what to check or do then (a deploy to settle, a CI run, a usage limit that resets). Once the time
 has passed, Filament starts a turn of the agent's in that chat with its note. Where a turn of the agent's still runs
-then, Filament's own agent gets the note at its next step, and a coding agent in a turn of its own as that turn ends.
-One per chat: a new one replaces the one set before. While it waits, the status capsule says **Comes back** at its
+then, Filament's own agent gets the note at its next step, and a coding agent in a turn of its own as that turn ends
+— or at once, in that turn, where it waits on its sub-agents or its team's workers, as a command's end and a watch's
+lines reach it there too. One per chat: a new one replaces the one set before. While it waits, the status capsule says **Comes back** at its
 time, with "tomorrow" after a time on the next day, and its popover has **Cancel**. The time is Filament's clock's: a
 computer that sleeps through it comes back to the chat within a minute of waking. Your Stop drops it, and a restart of
 Filament keeps it: one whose time came meanwhile comes as Filament starts, by the rules of *What a chat was owed comes

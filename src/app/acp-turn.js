@@ -75,7 +75,7 @@ import { CHATS_AGENT, createSkillsBack } from "./agent/skills-back.js";
 import { sealedListText } from "./agent/envelopes.js";
 import { livePlan, planIn, reattachBlock, skillLoadOf } from "./sessions/reattach.js";
 import { fileKey } from "../adapters/tools/fs-fence.js";
-import { SIGHTING_AGENTS_LIMIT, attendShells, comeBackOf, createSightingsKeeper, peekSightings, runningShellsOf, sightFile } from "../adapters/tools/hands.js";
+import { SIGHTING_AGENTS_LIMIT, attendShells, comeBackOf, createSightingsKeeper, onUntoldChange, peekSightings, runningShellsOf, sightFile, takeShellExits, wakeDue } from "../adapters/tools/hands.js";
 import { staleNames } from "./agent/stale.js";
 import { changedSecond, driftChanged, failedAgain, failingLine, newDriftState, outsideLine } from "../core/drift.js";
 import { resolve } from "node:path";
@@ -2575,6 +2575,10 @@ export function createAcpTurn(deps) {
        * @param {import("../services/runs.js").SteerMessage} m
        */
       const heard = (m) => m.kind === "note" && !m.images?.length && weigh(m) === "words";
+      // What comes for the chat's own agent while it waits on its sub-agents or its team's workers — its come-back's
+      // time, a command's end, a watch's lines — wakes it there, told as a turn's start tells them; it waited for the
+      // whole wait (the hunt on x50). A turn that waits on nothing ends, and the chat is woken for them (`attendShells`).
+      const shellOwner = !host && memChain ? { session: memChain, agent: null } : null;
       for (let said = false; ; said = true) {
         // Its turn ended, so it works no more (HarnessV4_Envelopes_Plan EN-D13): a result that came as it wrote its last
         // reply is opened, the sealed ones ahead of it; with none they stay sealed for the reminder. Once it waited for
@@ -2587,20 +2591,32 @@ export function createAcpTurn(deps) {
         // A plain chat's words wake its agent while it waits on its sub-agents, and go with the last report that wakes
         // it; with neither, its turn ends and they go as the next message.
         const notes = run.mailbox && (leadTeam || owes || texts.length) ? run.mailbox.read(heard) : [];
-        if (texts.length || notes.length) {
+        const items = shellOwner && owes && wakeDue(shellOwner.session) ? takeShellExits(shellOwner) : [];
+        if (texts.length || notes.length || items.length) {
           const guided = notes.filter((m) => m.from === WATCHER).length;
-          (rec.priorChanges ||= []).push(`acp: ${agentName} woken in the same turn: ${[fromFilament(texts), notes.length > guided && `${notes.length - guided} of the developer's`, guided && `${guided} a watcher's guidance`].filter(Boolean).join(" and ")}`);
+          (rec.priorChanges ||= []).push(`acp: ${agentName} woken in the same turn: ${[fromFilament(texts), notes.length > guided && `${notes.length - guided} of the developer's`, guided && `${guided} a watcher's guidance`, items.length && `${items.length} background item${items.length === 1 ? "" : "s"} (a come-back, a command's end, a watch's lines)`].filter(Boolean).join(" and ")}`);
           // A sub-agent's agent hears whose each message is, as it does while it works.
           const heardWords = notes.length ? [host ? notes.map(workerNote).join("\n\n") : heardBlock(notes)] : [];
           wakeWent = back ? () => back.heard(true, texts) : null;
-          return [...(back ? [back.text] : []), ...texts, ...heardWords].join("\n\n");
+          return [...(back ? [back.text] : []), ...texts, ...items.map((x) => x.text), ...heardWords].join("\n\n");
         }
         back?.keep();
         if (!owes) return null;
         if (!said) run.agent?.waiting(leadTeam ? "waiting for the team's workers to report" : lt.why?.() || "waiting for Filament's sub-agents to report");
         const mb = run.mailbox;
+        // An item for the chat's agent that wakes: heard as what waits untold for the chat changes.
+        let unhear = () => {};
+        const item = shellOwner
+          ? new Promise((resolve) => {
+              const session = shellOwner.session;
+              unhear = onUntoldChange((s) => s === session && wakeDue(session) && resolve("in"));
+              // One that landed since the take above: at once.
+              if (wakeDue(session)) resolve("in");
+            })
+          : null;
         // The mailbox's wait ends on a note the agent hears, or the run's end: then none can come.
-        const got = await Promise.race([lt.arrival().then(() => "in"), owes.then(() => "in"), ...(mb ? [mb.next(heard).then(() => (mb.peek(heard) ? "in" : "ended"))] : []), abortOf(stopCtl.signal), abortOf(clientAbort.signal), forcedStop]);
+        const got = await Promise.race([lt.arrival().then(() => "in"), owes.then(() => "in"), ...(mb ? [mb.next(heard).then(() => (mb.peek(heard) ? "in" : "ended"))] : []), ...(item ? [item] : []), abortOf(stopCtl.signal), abortOf(clientAbort.signal), forcedStop]);
+        unhear();
         if (got !== "in") {
           waitStopped = got === "stopped" && stopCtl.signal.aborted && !clientAbort.signal.aborted;
           return null;
