@@ -351,17 +351,21 @@ tailnet's address, then the network's, else through an SSH tunnel; its SSH way i
 key ssh does not know is yours to check: ssh asks in a terminal on the sheet, with its fingerprint, and the step goes
 on once you answer. A host key that is not the one your known_hosts holds is refused, and nothing is sent: where the
 machine was set up anew, check its key, then remove the old one (`ssh-keygen -R <host>`). A machine that asks for a password gets this computer's key instead — **Run in a terminal** adds
-it there, the password typed once. What only `sudo` may do — lingering, so Filament starts at boot with no one logged
+it there, the password typed once; a key that could not be written is said so in the terminal, and the setup goes on
+only once it is in. A machine no step has looked at yet says nothing of its system, so both ways are offered: Linux's
+or a Mac's, and a Windows host's. What only `sudo` may do — lingering, so Filament starts at boot with no one logged
 in; Tailscale's operator; the firewall's ports — is said under its step with its line to copy and **Run in a
-terminal**. Where lingering cannot be read there, its line is said all the same. A coding agent that does not connect
+terminal**. Where lingering cannot be read there, its line is said all the same. The firewall's line comes on every
+setup while ufw is on there, as its rules are root's to read. A coding agent that does not connect
 there is said, and the setup goes on. A step that failed says why, with **Retry**. Setting up a machine again does
 only what is missing: one set up already, with no line left for you to run, says *Nothing to do*. One
 paired through its SSH tunnel stays so; remove it from the window first for a setup to try its https ways again.
 On a Windows host every step runs in its PowerShell, as Windows' OpenSSH starts it: install.ps1 installs Filament in
 `%LOCALAPPDATA%\filament`, and what only an administrator may do — Windows Firewall's rule for Filament's two ports —
-is said under its step with its line, for an administrator's PowerShell there. Your key must be in place there first
-(an administrator's in `C:\ProgramData\ssh\administrators_authorized_keys`), as the key this computer offers is added on
-a Linux machine alone.
+is said under its step with its line, for an administrator's PowerShell there, until a rule named Filament lets them
+in. This computer's key is added there by its PowerShell: an administrator's to
+`C:\ProgramData\ssh\administrators_authorized_keys`, the file Windows' OpenSSH reads for them, with its access set to
+Administrators and SYSTEM alone as OpenSSH requires; another user's to `.ssh\authorized_keys` in their profile.
 
 Once another machine is kept, the top bar shows the machine you are looking
 at left of **Changes**: its dot (connected, reconnecting or offline), its icon in its colour, its name, and a count of

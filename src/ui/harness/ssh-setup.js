@@ -29,7 +29,7 @@ export const SETUP_STEPS = Object.freeze([
 
 /**
  * @typedef {{ title: string, file: string, args: string[], line: string | null }} StepTerminal
- * @typedef {{ words: string, line: string, terminal: StepTerminal | null }} StepLine
+ * @typedef {{ words: string, line: string | null, terminal: StepTerminal | null }} StepLine
  * @typedef {{ step: string, state: "done" | "skipped" | "failed" | "ask", words: string, terminal?: StepTerminal,
  *   also?: StepLine[], offer?: { label: string, latest: true }, machine?: { id: string, name: string } }} StepResult
  * @typedef {{ id: string, title: string, state: "pending" | "running" | "done" | "skipped" | "failed" | "ask", words: string,
@@ -292,7 +292,7 @@ export function openSshSetup(o = {}, io = {}) {
                         "div",
                         { class: "ssh-line" },
                         m("span", {}, l.words),
-                        copyBox("tk-line", l.line, "The line"),
+                        l.line ? copyBox("tk-line", l.line, "The line") : null,
                         l.terminal ? m("div", { class: "ssh-acts" }, btn("secondary", "Run in a terminal", () => void flow.runLine(i, j), { disabled: busy })) : null,
                       ),
                     ),

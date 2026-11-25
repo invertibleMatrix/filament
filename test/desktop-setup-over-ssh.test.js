@@ -3,14 +3,15 @@
 // nothing to do; what only the person answers going to a terminal; and the words of each refusal.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INSTALL_PS_URL, INSTALL_URL, STEPS, createSetupOverSsh, feedUrl, installPs, installScript, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
+import { INSTALL_PS_URL, INSTALL_URL, STEPS, createSetupOverSsh, feedUrl, installPs, installScript, keyPs, keyScript, publicKeyHere } from "../desktop/lib/setup-over-ssh.js";
 import { PAIR_PS, PAIR_SCRIPT } from "../desktop/lib/add-machine.js";
 import { commandOf, platformOf, probeSsh, psQuote, runSsh } from "../desktop/lib/ssh-exec.js";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { findGitBash } from "../src/adapters/tools/shell.js";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { spawn as spawnChild, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 
 const ALIAS = "me@box";
 const ID = "m-box";
@@ -18,8 +19,23 @@ const FP = "AB:".repeat(31) + "AB";
 const LAN_LINK = `https://192.168.1.20:20343/ui/pair.html#code=ABCD-EFGH&fp=${FP}`;
 const TS_LINK = "https://box.tail1234.ts.net/ui/pair.html#code=ABCD-EFGH";
 const OK = { code: 0, stdout: "", stderr: "", cut: false, why: null, ask: null, began: true };
+const FIREWALL_LINE = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
 /** What a terminal's ssh runs there: its command's script, decoded. @param {any} t */
 const scriptOf = (t) => Buffer.from(/printf %s ([A-Za-z0-9+/=]+)/.exec(String(t?.args.at(-1)))?.[1] || "", "base64").toString("utf8");
+/** What a terminal's ssh runs there by PowerShell: its script, decoded. @param {any} t */
+const psOf = (t) => Buffer.from(/-EncodedCommand ([A-Za-z0-9+/=]+)$/.exec(String(t?.args.at(-1)))?.[1] || "", "base64").toString("utf16le");
+/**
+ * A POSIX sh here, and the folders of its tools: on Windows Git's dash (else its sh), found as the bash tool finds Git
+ * Bash; elsewhere /bin/sh on this PATH. Null where there is none.
+ */
+const SH = (() => {
+  if (process.platform !== "win32") return existsSync("/bin/sh") ? { file: "/bin/sh", tools: String(process.env.PATH || "/usr/bin:/bin").split(delimiter) } : null;
+  const bash = findGitBash();
+  if (!bash) return null;
+  const git = dirname(dirname(bash));
+  const file = [join(git, "usr", "bin", "dash.exe"), join(git, "usr", "bin", "sh.exe"), join(git, "bin", "sh.exe")].find((f) => existsSync(f));
+  return file ? { file, tools: [join(git, "usr", "bin")] } : null;
+})();
 
 /**
  * A machine there, as its commands answer: what is installed, how its service stands, its agents, its settings.
@@ -51,7 +67,10 @@ function fakeMachine(o = {}) {
     served: o.served ?? true,
     /** An agent whose connect fails there. */
     noConnect: o.noConnect ?? null,
+    /** Its firewall on: ufw, or Windows Firewall. */
     ufw: o.ufw ?? true,
+    /** Windows Firewall's rule of the setup's line there, on and letting in. */
+    rule: o.rule ?? false,
     /** A Windows host: its commands PowerShell's, Filament as install.ps1 installs it, run by Task Scheduler. */
     windows: o.windows ?? false,
     /** @type {string[]} */ codes: [],
@@ -124,7 +143,7 @@ function fakeMachine(o = {}) {
     }
     if (s.includes("memory on")) return ((m.memory = true), OK);
     if (s.includes("settings get server.lan.enabled"))
-      return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.ufw ? (m.windows ? "firewall=1\n" : "ufw=1\n") : ""}${m.tailscale ? "tailscale=1\n" : ""}` };
+      return { ...OK, stdout: `lan=${m.lan}\nserve=${m.serve}\n${m.ufw && !(m.windows && m.rule) ? (m.windows ? "firewall=1\n" : "ufw=1\n") : ""}${m.tailscale ? "tailscale=1\n" : ""}` };
     if (s.includes("tailscale status --json")) return { ...OK, stdout: JSON.stringify({ BackendState: m.tailscale }) };
     // Its prefs read by any user; its serve's config too.
     if (s.includes("tailscale debug prefs")) return { ...OK, stdout: `me\n${JSON.stringify({ OperatorUser: m.operator ? "me" : "" }, null, 2)}\n` };
@@ -254,8 +273,23 @@ test("a machine that asks for a password: this computer's key offered there, add
   assert.equal(r.also?.[0].line, "ssh-copy-id me@box");
   const script = scriptOf(r.also?.[0].terminal);
   assert.equal(script, keyScript("ssh-ed25519 AAAAC3Nza me@desk"));
+  // (the hunt on s3b) A machine that lets no one in says not what it is: a Windows host's way is said too, its
+  // PowerShell's, with no line of sh's.
+  assert.deepEqual(r.also?.map((l) => [l.words.replace(/,.*/, ""), l.line]), [["On Linux or a Mac", "ssh-copy-id me@box"], ["On a Windows host", null]]);
+  assert.equal(psOf(r.also?.[1].terminal), keyPs("ssh-ed25519 AAAAC3Nza me@desk"));
   const none = await rig(f, { probe: async () => ({ ok: false, run }), key: null }).setup.run({ alias: ALIAS, step: "reach" });
   assert.deepEqual(none.also?.map((l) => [l.line, l.terminal]), [["ssh-keygen -t ed25519", null]]);
+  // One a look read before, asking at a later step: its own way alone.
+  for (const windows of [false, true]) {
+    const g = fakeMachine({ windows });
+    let asks = false;
+    const t = rig({ ...g, ssh: async (/** @type {any[]} */ ...x) => (asks ? run : g.ssh(x[0], x[1], x[2])) });
+    await t.setup.run({ alias: ALIAS, step: "reach" });
+    asks = true;
+    const again = await t.setup.run({ alias: ALIAS, step: "install" });
+    assert.deepEqual(again.also?.map((l) => l.line), [windows ? null : "ssh-copy-id me@box"], windows ? "a Windows host's" : "sh's");
+    assert.match(again.also?.[0].words || "", /^Add this computer's key there/);
+  }
 });
 
 test("refused as install.sh refuses: another system, or what its installer needs missing", async () => {
@@ -374,10 +408,32 @@ test("Tailscale's serve not up yet: waited for before the code is made — one c
   assert.match(out[5].words, /its tailnet address did not come: is the tailnet's HTTPS on, and may its user serve\?/);
 });
 
-test("authorized_keys: the key added once, on a line of its own after a last line with no newline", () => {
-  const s = keyScript("ssh-ed25519 AAAAC3Nza me@desk");
-  assert.match(s, /^k='ssh-ed25519 AAAAC3Nza me@desk'$/m);
-  assert.match(s, /if ! grep -qxF "\$k" "\$f"; then \[ -n "\$\(tail -c 1 "\$f"\)" \] && echo >> "\$f"; printf '%s\\n' "\$k" >> "\$f"; fi/);
+// (fails before: yes — a write that failed was said as the key added, with code 0)
+test("authorized_keys, by a real sh: the key added once, on a line of its own after a last line with no newline; a write that fails said with code 1, never as added", { skip: SH ? false : "no POSIX sh here (on Windows, Git for Windows carries one)" }, () => {
+  const home = mkdtempSync(join(tmpdir(), "filament-ssh-keys-"));
+  try {
+    const key = "ssh-ed25519 AAAAC3Nza me@desk";
+    assert.match(keyScript(key), /^k='ssh-ed25519 AAAAC3Nza me@desk'$/m);
+    /** @type {Record<string, string>} */
+    const env = { LANG: "C", HOME: home, PATH: (/** @type {any} */ (SH).tools).join(delimiter) };
+    for (const k of ["SystemRoot", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR"]) if (process.env[k]) env[k] = String(process.env[k]);
+    const run = () => spawnSync(/** @type {any} */ (SH).file, ["-c", keyScript(key)], { env, encoding: "utf8", windowsHide: true });
+    const file = join(home, ".ssh", "authorized_keys");
+    const first = run();
+    assert.deepEqual([first.status, first.stdout, readFileSync(file, "utf8")], [0, "This computer's key is added there: back in Filament, the setup goes on.\n", `${key}\n`]);
+    writeFileSync(file, "ssh-rsa AAAAB3Nza other");
+    assert.deepEqual([run().status, run().status], [0, 0]);
+    assert.equal(readFileSync(file, "utf8"), `ssh-rsa AAAAB3Nza other\n${key}\n`, "after a last line with no newline, once");
+    // A file that takes no write: a folder in its place.
+    rmSync(file);
+    mkdirSync(file);
+    const failed = run();
+    assert.equal(failed.status, 1);
+    assert.equal(failed.stdout, "", "never said added");
+    assert.match(failed.stderr, /This computer's key is not added there: .*authorized_keys could not be written\./);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("install.sh not reading this app's release's feed: the newest offered only where that release is none from here too", async () => {
@@ -442,6 +498,43 @@ test("a way in asked for that does not come up: said with why — never as liste
   assert.equal(twice[4].words, "Filament is asked to share itself on your tailnet there, and Tailscale does not serve it: Tailscale's HTTPS is off for this tailnet. Until it does, the pairing goes through an SSH tunnel.");
 });
 
+// (fails before: yes — the look from before the install was kept, and the service step said Filament not installed)
+test("the look after the install not answered, its connection dropped: the next step looks again, never says Filament is not installed", async () => {
+  const f = fakeMachine();
+  let drop = false;
+  const t = rig(f, { probe: async () => (drop ? ((drop = false), { ok: false, run: { ...OK, code: 255, began: false, why: "ssh to me@box ended: Connection reset by peer" } }) : f.probe()) });
+  assert.equal((await t.setup.run({ alias: ALIAS, step: "reach" })).state, "done");
+  drop = true;
+  const installed = await t.setup.run({ alias: ALIAS, step: "install" });
+  assert.deepEqual([installed.state, installed.words], ["done", "Filament 0.9.85 is installed there, in ~/.local/share/filament."]);
+  const service = await t.setup.run({ alias: ALIAS, step: "service" });
+  assert.equal(service.state, "done", service.words);
+  assert.match(service.words, /^Filament 0\.9\.85 runs there under systemd/);
+});
+
+// (fails before: yes — a second run, its listener on already, said no firewall line)
+test("the firewall's line on every run it may close the ports — ufw on; Windows Firewall on with no rule of the line's —, none where it is off or the rule stands", async () => {
+  /** The way-in step of a machine whose listener is on already. @param {any} o */
+  const route = async (o) => {
+    const f = fakeMachine({ lan: true, ...o });
+    const t = rig(f);
+    await t.setup.run({ alias: ALIAS, step: "reach" });
+    return { f, t, r: await t.setup.run({ alias: ALIAS, step: "route" }) };
+  };
+  const ufw = await route({});
+  assert.deepEqual([ufw.r.state, ufw.r.also?.map((l) => l.line)], ["skipped", ["sudo ufw allow 20343:20344/tcp"]]);
+  assert.match(ufw.r.also?.[0].words || "", /^Its firewall \(ufw\) is on: unless it lets Filament's two ports in already \(its rules are root's to read\), open them/);
+  assert.match(ufw.f.m.ran.find((s) => s.includes("settings get server.lan.enabled")) || "", /grep -q "\^ENABLED=yes" \/etc\/ufw\/ufw\.conf && echo ufw=1/, "ufw read as on by its conf, which any user reads");
+  const off = await route({ ufw: false });
+  assert.deepEqual([off.r.state, off.r.also], ["skipped", undefined]);
+  const win = await route({ windows: true });
+  assert.deepEqual([win.r.state, win.r.also?.map((l) => l.line)], ["skipped", [FIREWALL_LINE]]);
+  assert.ok((win.f.m.ran.find((s) => s.includes("Get-NetFirewallProfile")) || "").includes("Get-NetFirewallRule -DisplayName Filament -ErrorAction Stop"), "the line's own rule looked for");
+  win.f.m.rule = true;
+  const ruled = await win.t.setup.run({ alias: ALIAS, step: "route" });
+  assert.deepEqual([ruled.state, ruled.also], ["skipped", undefined]);
+});
+
 test("a machine you disconnected gets no way added: it stays disconnected", async () => {
   const f = fakeMachine();
   const kept = [{ id: ID, name: "Box", routes: [{ kind: "lan", url: "https://192.168.1.20:20343", fingerprint: FP }], partition: "p", off: true }];
@@ -476,8 +569,6 @@ test("this computer's public key, ed25519's first, read as a line", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
-
-const FIREWALL_LINE = "New-NetFirewallRule -DisplayName Filament -Direction Inbound -Protocol TCP -LocalPort 20343-20344 -Action Allow";
 
 test("a fresh Windows host: every command PowerShell's — install.ps1 at this app's version, Task Scheduler's task, its agents and memory, Windows Firewall's line, paired; then nothing to do", async () => {
   const f = fakeMachine({ windows: true });
@@ -613,6 +704,36 @@ test("a Windows host, its scripts run by a real Windows PowerShell: every step d
     assert.equal(JSON.parse(readFileSync(state, "utf8")).codes, 1, "no code made again");
   } finally {
     server.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// A Windows host's key, by a real Windows PowerShell as its terminal runs it (-EncodedCommand), for a user who is no
+// administrator, in a profile of its own (USERPROFILE); an administrator's file and its access are the script's words.
+// (fails before: yes — there was no Windows key script: a Windows host was offered sh's)
+test("a Windows host's key, by a real Windows PowerShell: added once, on a line of its own; a write that fails said with code 1, never as added", { skip: realPs ? false : "no Windows PowerShell on this computer", timeout: 120_000 }, () => {
+  const home = mkdtempSync(join(tmpdir(), "filament-ps-keys-"));
+  try {
+    const key = "ssh-ed25519 AAAAC3Nza me@desk";
+    const ps = keyPs(key);
+    assert.ok(ps.includes("$admin = [bool]((whoami /groups) -match 'S-1-5-32-544')"), "an administrator known by the group's SID");
+    assert.ok(ps.includes("Join-Path $env:ProgramData 'ssh\\administrators_authorized_keys'"));
+    assert.ok(ps.includes("icacls $f /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F'"), "its access Administrators' and SYSTEM's alone");
+    assert.doesNotThrow(() => commandOf({ script: ps, shell: "powershell" }), "it fits the command line its cmd starts");
+    const run = () => spawnSync("powershell", commandOf({ script: keyPs(key, "$false"), shell: "powershell" }).split(" ").slice(1), { env: { ...process.env, USERPROFILE: home }, encoding: "utf8", windowsHide: true });
+    const file = join(home, ".ssh", "authorized_keys");
+    const first = run();
+    assert.deepEqual([first.status, first.stdout.trim(), readFileSync(file, "utf8")], [0, "This computer's key is added there: back in Filament, the setup goes on.", `${key}\r\n`]);
+    writeFileSync(file, "ssh-rsa AAAAB3Nza other");
+    assert.deepEqual([run().status, run().status], [0, 0]);
+    assert.equal(readFileSync(file, "utf8"), `ssh-rsa AAAAB3Nza other\r\n${key}\r\n`, "after a last line with no newline, once");
+    rmSync(file);
+    mkdirSync(file);
+    const failed = run();
+    assert.equal(failed.status, 1);
+    assert.equal(failed.stdout.trim(), "", "never said added");
+    assert.match(failed.stderr, /This computer's key is not added there: /);
+  } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });

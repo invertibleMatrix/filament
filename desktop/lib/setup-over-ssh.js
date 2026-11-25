@@ -68,8 +68,9 @@ const STEP_IDS = new Set(STEPS.map((s) => s.id));
  * @typedef {import("./machines.js").Route} Route
  * @typedef {{ title: string, file: string, args: string[], line: string | null }} StepTerminal  ssh as the program of a
  *   terminal of the desk's, and the line a person types for it in a shell of their own, where there is one
- * @typedef {{ words: string, line: string, terminal: StepTerminal | null }} StepLine  what only the person may do there
- *   (sudo, a password typed once): said, its line shown, and run in a terminal of the desk's where they press it
+ * @typedef {{ words: string, line: string | null, terminal: StepTerminal | null }} StepLine  what only the person may do
+ *   there (sudo, a password typed once): said, its line shown where it has one, and run in a terminal of the desk's
+ *   where they press it
  * @typedef {{ step: string, state: "done" | "skipped" | "failed" | "ask", words: string, terminal?: StepTerminal,
  *   also?: StepLine[], offer?: { label: string, latest: true }, machine?: { id: string, name: string } }} StepResult
  *   `done`: it did its part; `skipped`: it stood done already, nothing changed; `ask`: the terminal (`terminal`) is the
@@ -117,19 +118,53 @@ export function publicKeyHere(home = homedir()) {
 }
 
 /**
- * What adds a public key to the machine's authorized_keys, once and on a line of its own: run in a terminal where ssh
- * asks the password there. @param {string} key
+ * What adds a public key to the machine's authorized_keys, once and on a line of its own, its folder and file left
+ * writable by its user alone (sshd's StrictModes): run in a terminal where ssh asks the password there. A write that
+ * fails ends it with code 1 and its words, never with the line that says the key is added (the hunt on s3b).
+ * @param {string} key
  */
 export const keyScript = (key) =>
   [
     "umask 077",
-    'mkdir -p "$HOME/.ssh"',
     'f="$HOME/.ssh/authorized_keys"',
-    'touch "$f"',
     `k=${shQuote(key)}`,
+    `fail() { echo "This computer's key is not added there: $f could not be $1." >&2; exit 1; }`,
+    'mkdir -p "$HOME/.ssh" || fail made',
+    'touch "$f" || fail made',
     // A last line with no newline after it would take the key onto it, and neither would let anyone in.
-    `if ! grep -qxF "$k" "$f"; then [ -n "$(tail -c 1 "$f")" ] && echo >> "$f"; printf '%s\\n' "$k" >> "$f"; fi`,
+    `if ! grep -qxF "$k" "$f"; then { [ -z "$(tail -c 1 "$f")" ] || echo; printf '%s\\n' "$k"; } >> "$f" || fail written; fi`,
+    'grep -qxF "$k" "$f" || fail "read back with the key in it"',
+    'chmod go-w "$HOME/.ssh" "$f" 2>/dev/null',
     `echo "This computer's key is added there: back in Filament, the setup goes on."`,
+  ].join("\n");
+
+/** Whether the user there is an administrator, as Windows' OpenSSH reads their keys: the Administrators group's SID, in any language. */
+const PS_ADMIN = "[bool]((whoami /groups) -match 'S-1-5-32-544')";
+
+/**
+ * What adds a public key on a Windows host, by its PowerShell: an administrator's to
+ * %ProgramData%\ssh\administrators_authorized_keys, the file Windows' OpenSSH reads for them, its access then
+ * Administrators' and SYSTEM's alone (by their SIDs) as OpenSSH requires; another user's to .ssh\authorized_keys in
+ * their profile. Once and on a line of its own; a write that fails ends it with code 1 and its words.
+ * @param {string} key @param {string} [admin]  whether its user is an administrator, as PowerShell says it
+ */
+export const keyPs = (key, admin = PS_ADMIN) =>
+  [
+    "$ErrorActionPreference = 'Stop'",
+    "try {",
+    `  $k = ${psQuote(key)}`,
+    `  $admin = ${admin}`,
+    "  if ($admin) { $f = Join-Path $env:ProgramData 'ssh\\administrators_authorized_keys' }",
+    "  else { $d = Join-Path $env:USERPROFILE '.ssh'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f = Join-Path $d 'authorized_keys' }",
+    "  $t = if (Test-Path -LiteralPath $f) { [IO.File]::ReadAllText($f) } else { '' }",
+    "  if (-not (($t -split '\\r?\\n') -ccontains $k)) {",
+    '    $nl = if ($t.Length -and -not $t.EndsWith("`n")) { "`r`n" } else { \'\' }',
+    '    [IO.File]::AppendAllText($f, "$nl$k`r`n", (New-Object Text.UTF8Encoding $false))',
+    "  }",
+    "  if ($admin) { icacls $f /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null; if ($LASTEXITCODE) { throw \"icacls could not set its access (code $LASTEXITCODE)\" } }",
+    "  if (-not (([IO.File]::ReadAllText($f) -split '\\r?\\n') -ccontains $k)) { throw \"$f does not hold it\" }",
+    "  \"This computer's key is added there: back in Filament, the setup goes on.\"",
+    "} catch { [Console]::Error.WriteLine(\"This computer's key is not added there: $($_.Exception.Message)\"); exit 1 }",
   ].join("\n");
 
 /**
@@ -182,7 +217,8 @@ const KITS = {
       `f=${FILAMENT}`,
       'echo "lan=$("$f" settings get server.lan.enabled 2>/dev/null)"',
       'echo "serve=$("$f" settings get server.tailscale.serve 2>/dev/null)"',
-      "command -v ufw >/dev/null 2>&1 && echo ufw=1",
+      // ufw on, as its own conf says it to any user (its rules are root's to read); a conf that does not read, on.
+      'if [ -r /etc/ufw/ufw.conf ]; then grep -q "^ENABLED=yes" /etc/ufw/ufw.conf && echo ufw=1; elif [ -e /etc/ufw/ufw.conf ]; then echo ufw=1; fi',
       "command -v tailscale >/dev/null 2>&1 && echo tailscale=1",
       "true",
     ].join("\n"),
@@ -204,9 +240,11 @@ const KITS = {
       '"lan=$(& $f settings get server.lan.enabled)"',
       '"serve=$(& $f settings get server.tailscale.serve)"',
       "if (Get-Command tailscale -ErrorAction SilentlyContinue) { 'tailscale=1' }",
-      // Windows Firewall on for any of its profiles, or not read: on, as Windows has it.
+      // Windows Firewall on for any of its profiles, or not read: on, as Windows has it — and a rule of the firewall
+      // line's own (`WINDOWS_FIREWALL`), on and letting in, leaves nothing to open.
       "$on = $true",
       "try { $on = [bool]@(Get-NetFirewallProfile | Where-Object { [string]$_.Enabled -ne 'False' }).Count } catch {}",
+      "try { if (@(Get-NetFirewallRule -DisplayName Filament -ErrorAction Stop | Where-Object { [string]$_.Enabled -eq 'True' -and [string]$_.Direction -eq 'Inbound' -and [string]$_.Action -eq 'Allow' }).Count) { $on = $false } } catch {}",
       "if ($on) { 'firewall=1' }",
       "exit 0",
     ].join("\n"),
@@ -272,16 +310,19 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       return { step, state: "ask", words: `ssh does not know ${a}'s host key yet: check that the fingerprint it shows in the terminal is the one ${a} has, and answer yes there — or no.`, terminal: term(a, null, `ssh ${a}`) };
     if (r.ask === "sign-in") {
       const key = publicKey();
-      return {
-        step,
-        state: "failed",
-        words: `${a} asks for a password or a code, which a setup from here cannot type: it runs with a key the machine accepts.`,
-        also: [
-          key
-            ? { words: "Add this computer's key there: you type the password once, in the terminal, then Retry.", line: `ssh-copy-id ${a}`, terminal: term(a, { script: keyScript(key) }, `Add this computer's key to ${a}`) }
-            : { words: "This computer has no SSH key yet: make one, add it there, then Retry.", line: "ssh-keygen -t ed25519", terminal: null },
-        ],
-      };
+      // Its shell as a look before this one read it; a machine that lets no one in says none, and both ways are said:
+      // sh's, and a Windows host's PowerShell's (the hunt on s3b).
+      const shell = seen.get(a)?.platform?.shell;
+      /** @type {StepLine[]} */
+      const add = !key
+        ? [{ words: "This computer has no SSH key yet: make one, add it there, then Retry.", line: "ssh-keygen -t ed25519", terminal: null }]
+        : [
+            ...(shell === "powershell" ? [] : [{ words: `${shell ? "Add" : "On Linux or a Mac, add"} this computer's key there: you type the password once, in the terminal, then Retry.`, line: `ssh-copy-id ${a}`, terminal: term(a, { script: keyScript(key) }, `Add this computer's key to ${a}`) }]),
+            ...(shell === "sh"
+              ? []
+              : [{ words: `${shell ? "Add" : "On a Windows host, add"} this computer's key there — an administrator's in C:\\ProgramData\\ssh\\administrators_authorized_keys, as its OpenSSH reads it: you type the password once, in the terminal, then Retry.`, line: null, terminal: term(a, { script: keyPs(key), shell: "powershell" }, `Add this computer's key to ${a}`) }]),
+          ];
+      return { step, state: "failed", words: `${a} asks for a password or a code, which a setup from here cannot type: it runs with a key the machine accepts.`, also: add };
     }
     return { step, state: "failed", words: r.why || lastLine(r.stderr) || `${what} ended with code ${r.code}.` };
   };
@@ -340,9 +381,11 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
         return { step: "install", state: "failed", words: `Filament ${want}, this app's version, has no server build released: this app is a build of its own. The newest release installs instead.`, offer: { label: "Install the newest release", latest: true } };
       return trouble("install", a, r, installer);
     }
-    // Its version, as it is there now.
+    // Its version, as it is there now. A look that does not answer (the connection dropped just after) leaves no look
+    // kept: the next step looks again, never at what stood before the install (the hunt on s3b).
     const again = await probe(a);
     if (again.ok) seenOf(a).platform = again.platform;
+    else delete seenOf(a).platform;
     const now = (again.ok ? again.platform.filament : null) || want;
     return { step: "install", state: "done", words: `${now ? `Filament ${now}` : "Filament"} is installed there, in ${kit.where}.` };
   }
@@ -534,13 +577,14 @@ export function createSetupOverSsh({ ssh = runSsh, probe = (a) => probeSsh(a), c
       const r = await sh(a, kit, kit.filament("settings set server.lan.enabled true"));
       if (r.code !== 0) return trouble("route", a, r, "filament settings set");
     }
+    // The firewall's line on every run where it may close the ports, not on the run that turned the listener on alone:
+    // ufw on, or Windows Firewall on with no rule of the line's (the hunt on s3b).
     /** @type {StepLine[]} */
     const also =
-      was ? []
-      : windows && k.firewall
+      windows && k.firewall
         ? [{ words: "Windows Firewall lets no one in to Filament's two ports until a rule does — and your cloud's security group, where it has one. In an administrator's PowerShell there:", line: WINDOWS_FIREWALL, terminal: term(a, { script: WINDOWS_FIREWALL, shell: "powershell" }, `The firewall on ${a}`) }]
         : k.ufw
-          ? [{ words: "Where its firewall (ufw) is on, open Filament's two ports — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
+          ? [{ words: "Its firewall (ufw) is on: unless it lets Filament's two ports in already (its rules are root's to read), open them — and your cloud's security group, where it has one:", line: "sudo ufw allow 20343:20344/tcp", terminal: term(a, { argv: ["sudo", "ufw", "allow", "20343:20344/tcp"] }, `The firewall on ${a}`) }]
           : [];
     const tail = k.tailscale ? ` Tailscale is there, not signed in: signed in (${windows ? "its app, or tailscale up" : "sudo tailscale up"}), a setup again shares Filament on your tailnet.` : "";
     // The listener as it stands once the setting is saved: one that could not listen (its port another program's) is
