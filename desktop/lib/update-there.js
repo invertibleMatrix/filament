@@ -92,7 +92,7 @@ export function createUpdateThere({ pick = pickRoute, cookieOf, fetchOf = routeF
     try {
       report = JSON.parse(String(run.stdout || ""));
     } catch {}
-    // Restarted by its service: systemd's, or a Windows host's scheduled task's ("service").
+    // Restarted by its service: systemd's, or the runner's of a Windows host's scheduled task or a Mac's launchd ("service").
     if (run.code === 0 && (report?.restart === "systemd" || report?.restart === "service")) return { ok: true, version, ssh: true };
     if (run.code === 0)
       return {

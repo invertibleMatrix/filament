@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { UPDATE_RUNNER, UPDATE_SCRIPT, UPDATE_UNIT, createSelfUpdate, unexpanded } from "../src/cli/update.js";
+import { tools } from "../src/cli/service.js";
 import { updateRoutes } from "../src/http/admin/update.js";
 import { SSH_UPDATE_MS, createUpdateThere, updateScript } from "../desktop/lib/update-there.js";
 import { removeDirs } from "./helpers/wait.js";
@@ -97,7 +98,7 @@ describe("this Filament updated on request", () => {
     const f = fakeRun();
     const mk = (/** @type {string | null} */ supervisor, root = dir) => createSelfUpdate({ dataDir: data, supervisor, root: () => root, run: f.run });
     assert.match(String(mk("systemd", process.cwd()).can().why), /runs from a checkout/, "a checkout");
-    assert.deepEqual(mk(null).can(), { can: false, why: "Filament 1.0.0 here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, or a Windows host's scheduled task).", version: "1.0.0" });
+    assert.deepEqual(mk(null).can(), { can: false, why: "Filament 1.0.0 here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, a Windows host's scheduled task, or a Mac's launchd).", version: "1.0.0" });
     const was = process.env.PATH;
     process.env.PATH = folder();
     try {
@@ -178,6 +179,30 @@ describe("this Filament updated on request", () => {
       assert.equal(existsSync(join(data, "update", "last.started")), false, "nothing said started");
     } finally {
       busy.kill();
+    }
+  });
+
+  // (fails before: yes — a Mac's Filament, run by launchd's runner, was started apart by a Windows host's node.exe,
+  // which a Mac's build has not)
+  test("on a Mac run by launchd: filament update --wait --json started apart (a session of its own) by the build's own Node, node/bin/node, never by systemd-run", async () => {
+    const dir = serverBuild("1.0.0", "darwin-arm64");
+    const data = folder();
+    const f = fakeRun();
+    /** @type {[string, string[]][]} */
+    const launched = [];
+    const was = tools.platform;
+    tools.platform = "darwin";
+    try {
+      const u = createSelfUpdate({ dataDir: data, supervisor: "service", root: () => dir, run: f.run, now: () => 1_000, launch: (file, args) => (launched.push([file, args]), 4242) });
+      assert.deepEqual(u.can(), { can: true, why: null, version: "1.0.0" }, "no systemd-run asked for");
+      assert.deepEqual(await u.start(), { ok: true, version: null });
+      const current = join(dirname(dir), "current");
+      const node = join(current, "node", "bin", "node");
+      assert.deepEqual(launched, [[node, ["-e", UPDATE_RUNNER, join(data, "update", "last"), node, join(current, "bin", "filament.js"), "--data-dir", data, "update", "--wait", "--json"]]]);
+      assert.deepEqual(f.ran, [], "nothing of systemd's");
+      assert.equal(JSON.parse(readFileSync(join(data, "update", "last.started"), "utf8")).pid, 4242);
+    } finally {
+      tools.platform = was;
     }
   });
 

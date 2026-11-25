@@ -4,8 +4,8 @@
 // one that runs —, or install.ps1 on a Windows host (%LOCALAPPDATA%\filament, `current` a junction, bin\filament.cmd its
 // launcher), updated where it is. The newest release of the repository its build-info.json names (or --version's),
 // the tarball of the kind installed — with the memory engine, or without — for the machine its build is for (Linux x64
-// or arm64, Windows x64), checked by the SHA-512 that machine's latest-server*.yml gives, unpacked beside the version
-// that runs and renamed into place, then `current` moved to it in one rename.
+// or arm64, Windows x64, a Mac with Apple silicon), checked by the SHA-512 that machine's latest-server*.yml gives,
+// unpacked beside the version that runs and renamed into place, then `current` moved to it in one rename.
 // systemd's Filament restarts on it once no turn runs (filament restart's own way: --force does not wait, and restarts
 // one that does not answer too; --wait asks again until nothing runs, where it would be refused, and watches a start of
 // systemd's own meanwhile as a restart's); one started by hand is told to start again. The version current points at
@@ -14,9 +14,9 @@
 // is half done: a download, a checksum, a glibc or an unpack that fails leaves current and the versions as they were,
 // and the folder it worked in goes. A version systemd starts that does not come up is left for the one before: current
 // pointed back, that one started, said in one line with what stands. On a Windows host its scheduled task's runner does
-// what systemd does here (service.js), and its restart says "service". Before a version starts on the data folder
-// another wrote, the update says which stores' files it does not read and what it does with them (`sayUnread`). A
-// checkout updates with git pull; the Filament app updates itself.
+// what systemd does here (service.js), and on a Mac launchd's, and its restart says "service". Before a version starts
+// on the data folder another wrote, the update says which stores' files it does not read and what it does with them
+// (`sayUnread`). A checkout updates with git pull; the Filament app updates itself.
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -28,7 +28,7 @@ import { fetchInstaller, isNewer, lookForUpdate, serverAsset, serverTarball } fr
 import { CliError, EXIT, clientAt, connect, whereFilament } from "./client.js";
 import { processRuns } from "./listening.js";
 import { ownerHeaders } from "../services/owner.js";
-import { UNIT, mainPid, onPath, onWindows, runTool, serviceNow, serviceSupervisor, tools, underSystemd, upWords } from "./service.js";
+import { UNIT, mainPid, onMac, onPath, onWindows, runTool, serviceNow, serviceSupervisor, tools, underSystemd, upWords } from "./service.js";
 import { pause } from "./flows.js";
 import { SUPERVISOR as TASK_SUPERVISOR } from "./service-task.js";
 
@@ -343,8 +343,8 @@ async function putInPlace(r, { base, version: from }, update, say) {
     const build = buildOf(top);
     if (build?.kind !== "server" || build.version !== update.version || !existsSync(join(top, "bin", launcherOf(build.target)))) throw refuse(`${update.name} holds no Filament ${update.version} for servers to run`);
     // node-pty binds to the glibc it was built on: on an older one Filament starts, and no terminal does. The one that
-    // runs here does: it stays.
-    const glibc = here.glibc();
+    // runs here does: it stays. A Linux build's alone: a Mac's and a Windows host's have none.
+    const glibc = String(build.target || "").startsWith("linux-") ? here.glibc() : null;
     const built = /^\d+\.\d+/.exec(String(build.glibc || ""))?.[0];
     if (glibc && built && older(glibc, built)) throw refuse(`it was built on glibc ${built}, and this machine has ${glibc} — Filament would start, but no terminal would open`);
     // The version's folder comes in by one rename, from beside it: a half one is never at its path. One there that is
@@ -474,20 +474,20 @@ async function sayUnread(dataDir, dir, to, from, say) {
 }
 
 /**
- * The process the service runs Filament as (service.js `mainPid`: systemd's unit's, or the Windows task's runner's): its
- * pid, 0 where it runs none or no systemd is here, null where systemd could not say.
+ * The process the service runs Filament as (service.js `mainPid`: systemd's unit's, or the runner's of Windows' task or
+ * a Mac's launchd): its pid, 0 where it runs none or no systemd is here, null where systemd could not say.
  * @param {AbortSignal | undefined} signal @param {string} dataDir @returns {Promise<number | null>}
  */
 async function unitPid(signal, dataDir) {
-  if (!onWindows() && !onPath("systemctl")) return 0;
+  if (!onWindows() && !onMac() && !onPath("systemctl")) return 0;
   return mainPid(signal, dataDir);
 }
 
 /** The service that runs Filament here, in words. */
-const serviceWords = () => (onWindows() ? "its scheduled task" : "systemd");
+const serviceWords = () => (onWindows() ? "its scheduled task" : onMac() ? "launchd" : "systemd");
 
-/** The command that restarts the service's Filament at once, cutting what runs. */
-const restartNow = () => (onWindows() ? "filament restart --force" : `systemctl --user restart ${UNIT}`);
+/** The command that restarts the service's Filament at once, cutting what runs: the runner's own, or systemctl's. */
+const restartNow = () => (onWindows() || onMac() ? "filament restart --force" : `systemctl --user restart ${UNIT}`);
 
 /**
  * Filament restarted on the version current points at now, where something starts it again: systemd's, by filament
@@ -815,8 +815,9 @@ export const UPDATE_RUNNER = [
 ].join("\n");
 
 /**
- * A program started apart from this Filament, as a Windows host's update runs: detached, no console, nothing of it held
- * here, so the restart it makes ends this process and never it. → its pid. @param {string} file @param {string[]} args
+ * A program started apart from this Filament, as a Windows host's or a Mac's update runs: detached (a session of its
+ * own on a Mac), no console, nothing of it held here, so the restart it makes ends this process and never it. → its
+ * pid. @param {string} file @param {string[]} args
  */
 const launchApart = (file, args) => {
   const child = spawn(file, args, { detached: true, stdio: "ignore", windowsHide: true });
@@ -839,18 +840,20 @@ const WORDS_MAX = 4000;
  * s3d): `filament update [--version <v>] --wait --json` run by systemd in a unit of its own (`UPDATE_UNIT`), never as a
  * child of this Filament, which systemd's restart takes down with its own unit (its KillMode). The update waits until no
  * turn runs to restart (--wait), and goes back to the version before where the new one does not come up, as it does
- * when typed there. On a Windows host run by its scheduled task, the update is a process apart (`UPDATE_RUNNER`), its
- * pid kept with its start. `can`: whether it can here — a server build install.sh (or install.ps1) installed, run by
- * systemd with systemd-run on the PATH, or by the Windows task —, and why not in words. `state`: whether one runs, and
+ * when typed there. On a Windows host run by its scheduled task, and a Mac run by launchd, the update is a process apart
+ * (`UPDATE_RUNNER`), its pid kept with its start. `can`: whether it can here — a server build install.sh (or install.ps1)
+ * installed, run by systemd with systemd-run on the PATH, or by the runner of the Windows task or a Mac's launchd —, and
+ * why not in words. `state`: whether one runs, and
  * how the last one went (`<dataDir>/update/last.*`). `start`: one started → the version asked; refused in words with a
  * status (`{ status, message }`).
  * @param {{ dataDir: string, supervisor: string | null, root?: () => string, run?: typeof runTool, now?: () => number, launch?: (file: string, args: string[]) => number }} o
  *   `root`: this Filament's folder (`here.root`), `run`: how systemd's tools are run, `launch`: how a Windows host's
- *   update is started apart (→ its pid)
+ *   or a Mac's update is started apart (→ its pid)
  */
 export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, run = runTool, now = Date.now, launch = launchApart }) {
-  // A Windows host's (s3f7): its scheduled task's runner runs this Filament, and no unit holds the update — it runs
-  // apart from this Filament instead (`launch`), and outlives the restart, which ends this process alone.
+  // A Windows host's (s3f7) or a Mac's (s3e4): the runner of its scheduled task or launchd runs this Filament, and no
+  // unit holds the update — it runs apart from this Filament instead (`launch`: a session of its own on a Mac, which
+  // launchd's end of the job's process group does not reach), and outlives the restart, which ends this process alone.
   const windows = supervisor === TASK_SUPERVISOR;
   const dir = join(dataDir, "update");
   const at = (/** @type {string} */ ext) => join(dir, `last.${ext}`);
@@ -869,7 +872,7 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
     const version = install.version;
     if (windows) return { can: true, why: null, version };
     if (supervisor !== "systemd")
-      return { can: false, why: `Filament ${version} here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, or a Windows host's scheduled task).`, version };
+      return { can: false, why: `Filament ${version} here was started by hand, not by its service: filament update there updates it (filament service install runs it under systemd, a Windows host's scheduled task, or a Mac's launchd).`, version };
     if (!onPath("systemd-run")) return { can: false, why: "There is no systemd-run on this machine's PATH to update Filament with: filament update there updates it.", version };
     return { can: true, why: null, version };
   };
@@ -903,7 +906,7 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
     };
   };
   /**
-   * Whether its unit runs now; on a Windows host, whether the process it started runs, its exit code not kept yet.
+   * Whether its unit runs now; on a Windows host or a Mac, whether the process it started runs, its exit code not kept yet.
    */
   const running = async () => {
     if (windows) {
@@ -944,8 +947,8 @@ export function createSelfUpdate({ dataDir, supervisor, root = () => here.root, 
       const base = installOf(root(), { moved: true }).base;
       const words = ["--data-dir", dataDir, "update", ...(asked ? ["--version", asked] : []), "--wait", "--json"];
       if (windows) {
-        // The build current points at, its own Node and filament.js: what the task's runner starts next.
-        const node = join(base, "current", "node", "node.exe");
+        // The build current points at, its own Node and filament.js: what the runner starts next.
+        const node = onMac() ? join(base, "current", "node", "bin", "node") : join(base, "current", "node", "node.exe");
         let pid = 0;
         try {
           pid = launch(node, ["-e", UPDATE_RUNNER, join(dir, "last"), node, join(base, "current", "bin", "filament.js"), ...words]);

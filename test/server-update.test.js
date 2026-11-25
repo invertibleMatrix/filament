@@ -387,6 +387,22 @@ describe("filament update, on a server installed by install.sh", () => {
     assert.equal(current(), "1.0.0");
   });
 
+  // (fails before: yes — a Mac's build was weighed against this machine's glibc, which only a Linux build is built on:
+  // here a glibc older than the one its build-info.json names refused it)
+  test("a Mac with Apple silicon: darwin-arm64's tarball, checked by latest-server-darwin-arm64.yml, from a release carrying Linux's too; no glibc weighed", async () => {
+    await release("1.1.0", { targets: ["linux-x64", "darwin-arm64"] });
+    latest = "1.1.0";
+    installed(["1.0.0"], "1.0.0", { target: "darwin-arm64" });
+    here.glibc = () => "2.17";
+    const r = await run(["update"]);
+    assert.equal(r.code, EXIT.ok, `${r.out}\n${r.err}`);
+    assert.deepEqual(hits, ["/repos/o/r/releases/latest", "/download/v1.1.0/latest-server-darwin-arm64.yml", "/download/v1.1.0/filament-server-1.1.0-darwin-arm64.tar.gz"]);
+    assert.equal(current(), "1.1.0");
+    const marker = JSON.parse(readFileSync(join(base, "1.1.0", MARKER), "utf8"));
+    assert.deepEqual([marker.target, marker.engine], ["darwin-arm64", true]);
+    assert.ok(existsSync(join(base, "1.1.0", "node", "bin", "node")), "its own Node, where a Mac's runner starts it");
+  });
+
   // (fails before, s3f3: yes — a Windows host's build has bin\filament.cmd, and filament update knew bin/filament alone:
   // its download was "no Filament for servers to run", and none kept beside was one to go back to)
   test("a Windows host, as install.ps1 installs it: the win32-x64 tarball of its kind, checked by latest-server-win32-x64.yml, put in place with its filament.cmd; --back goes to the one kept; one installed elsewhere is told install.ps1", async () => {
