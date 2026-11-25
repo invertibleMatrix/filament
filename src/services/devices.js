@@ -22,7 +22,7 @@ import { cleanName } from "./machine.js";
 export const CODE_TTL_MS = 5 * 60_000;
 /** A code's letters: no 0/O, 1/I/L, so one read out loud or off a screen is typed as it was meant. */
 export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-/** How many codes may be open at once: one per pairing under way is plenty. */
+/** How many codes of a kind may be open at once (for a browser here, and for anything else): one per pairing under way is plenty. */
 export const OPEN_CODES = 5;
 /** The window wrong codes are counted in, and how many it takes, from one address and from all of them. */
 export const GUESS_WINDOW_MS = 5 * 60_000;
@@ -267,7 +267,7 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
   return {
     /**
      * A new pairing code, for a device of `scope` — full, else view: an agents' device is minted, never claimed. The
-     * oldest open code goes where OPEN_CODES are open already. `pressless`: the device it pairs presses nothing while the
+     * oldest open code of its kind goes where OPEN_CODES of that kind are open already. `pressless`: the device it pairs presses nothing while the
      * desktop app holds a key; `here`: it pairs a browser on this computer, claimed on loopback alone (KeptDevice).
      * @param {{ scope?: unknown, pressless?: boolean, here?: boolean }} [o]
      * @returns {OpenCode & { code: string }}
@@ -279,7 +279,12 @@ export function createDevices({ dataDir = null, now = () => Date.now(), log = ()
       while (codes.some((c) => c.code === code));
       /** @type {{ id: string, code: string, scope: Scope, expiresAt: number, pressless?: true, here?: true }} */
       const open = { id: randomUUID(), code, scope: scope === "full" ? "full" : "view", expiresAt: now() + CODE_TTL_MS, ...(pressless ? { pressless: /** @type {true} */ (true) } : {}), ...(here ? { here: /** @type {true} */ (true) } : {}) };
-      codes = [...codes, open].slice(-OPEN_CODES);
+      // The oldest of its own kind goes: a link for a browser here (`npm run app`, Open in browser, `filament open`),
+      // made at each launch and left unused by a window paired already, never pushes out a code made for another
+      // machine, nor such a code one of these (the hunt on x46).
+      const kin = codes.filter((c) => !!c.here === here);
+      const goes = new Set(kin.slice(0, Math.max(0, kin.length - OPEN_CODES + 1)));
+      codes = [...codes.filter((c) => !goes.has(c)), open];
       return { id: open.id, scope: open.scope, expiresAt: open.expiresAt, code: `${code.slice(0, 4)}-${code.slice(4)}`, leftMs: CODE_TTL_MS };
     },
     /** The codes open now, oldest first (never the codes: a page shows its own). @returns {OpenCode[]} */

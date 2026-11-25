@@ -2076,12 +2076,16 @@ and its own browser profile under the data folder (`app-profile`, which `npm run
 browsing. It is the same page the browser tab shows, served by the same running server — there is nothing packaged or
 copied, so a fix in the tree is live in that window on the next reload (Ctrl+R). The window opens at the one-time link
 `filament open --no-open` makes, so it is paired as this computer's own at Filament's own name, and its profile keeps
-the pairing: a window paired already goes straight on, its link's code left to run out unused. Where no link can be
+the pairing: a window paired already goes straight on, its link's code left to run out unused. Such links for a browser
+on this computer push out only one another, never a code made in Settings › Remote access for another machine. Where no link can be
 made (the Filament app holds its key, which makes links with its tray's Open in browser alone), the window opens at
 Filament's own name all the same: one paired already goes straight on, and one not yet paired asks for a code from
 Settings › Remote access, which pairs it at that name. The launcher finds a running Filament where its
 `listening.json` says, else at its config's port, by its `/health`, which answers without the owner key, and starts one
-only where none answers (`-NoStart` waits instead). `-Page /` opens the console and `-Page ui/<page>.html` another
+only where none answers (`-NoStart` waits instead), for the data folder it names, known by its full path whatever its
+case. It waits up to three minutes for it to answer (`-WaitSeconds`), a line every ten seconds while it does — a first
+start installs memory's engine — and opens no window where none answers by then, since one at `127.0.0.1` with no link
+would sit at the pairing page. `-Page /` opens the console and `-Page ui/<page>.html` another
 page, once paired; `-Browser chrome` prefers Chrome; `-SharedProfile` uses the browser's normal profile, paired as its
 own device.
 

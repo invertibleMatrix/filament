@@ -70,6 +70,23 @@ test("a code past its five minutes is refused; a view code makes a view device; 
   assert.equal(devices.claim(codes[OPEN_CODES]).ok, true);
 });
 
+// (fails before: yes — the hunt on x46: each `npm run app` made a link a window paired already left unused, and five
+// of them pushed out the code made in Settings for another machine)
+test("a code for a browser here pushes out only another such code, and a code for another machine only another of those", () => {
+  const { devices } = world();
+  const theirs = Array.from({ length: OPEN_CODES }, () => devices.startPairing());
+  const here = Array.from({ length: OPEN_CODES + 2 }, () => devices.startPairing({ here: true }));
+  const open = devices.pending().map((c) => c.id);
+  assert.equal(open.length, OPEN_CODES * 2);
+  for (const c of theirs) assert.ok(open.includes(c.id), "every code for another machine stays open");
+  assert.deepEqual(here.filter((c) => open.includes(c.id)).map((c) => c.id), here.slice(2).map((c) => c.id), "the oldest links for a browser here went");
+  const sixth = devices.startPairing();
+  const now = devices.pending().map((c) => c.id);
+  assert.ok(!now.includes(theirs[0].id) && now.includes(sixth.id), "past OPEN_CODES for other machines, the oldest of those goes");
+  assert.equal(here.slice(2).filter((c) => now.includes(c.id)).length, OPEN_CODES, "and no link for a browser here");
+  assert.equal(devices.claim(theirs[1].code).ok, true);
+});
+
 // (fails before: yes — a code had no id: a page could not tell its own claim from another's, and a close closed every code)
 test("each open code has an id: its time left said by the store's clock, closed alone by it, and named by the device that claims it", () => {
   const { clock, devices } = world();

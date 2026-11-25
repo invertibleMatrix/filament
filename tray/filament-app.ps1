@@ -11,14 +11,19 @@
 #          -Browser edge|chrome    prefer one; default: Edge, then Chrome, then whichever is found
 #          -SharedProfile          use the browser's normal profile instead of the dedicated one
 #          -NoStart                do not start the server when it is not running; wait for it instead
-param([string]$Page = "ui/harness.html", [string]$Browser = "", [switch]$SharedProfile, [switch]$NoStart, [int]$WaitSeconds = 20)
+#          -WaitSeconds 180        how long to wait for it to answer before giving up with no window
+param([string]$Page = "ui/harness.html", [string]$Browser = "", [switch]$SharedProfile, [switch]$NoStart, [int]$WaitSeconds = 180)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 # The folder and port the server picks (src/services/config/store.js): from a git checkout, Filament-dev on 20301, so it
 # runs beside the installed app and never opens its data; else Filament on 20300. The config's port wins either way.
 $devDir = Join-Path $env:APPDATA "Filament-dev"
 $dataDir = if ($env:FILAMENT_DATA_DIR) { $env:FILAMENT_DATA_DIR } elseif (Test-Path (Join-Path $root ".git")) { $devDir } else { Join-Path $env:APPDATA "Filament" }
-$port = if ($dataDir -eq $devDir) { 20301 } else { 20300 }
+# A folder is known by its full path, its case aside, as the server knows it (store.js `defaultPort`): one named with a
+# trailing slash, in another case or relative to here is still the dev folder.
+function Full-Path([string]$p) { try { [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p)).TrimEnd('\', '/') } catch { $p } }
+$dataDir = Full-Path $dataDir
+$port = if ($dataDir.ToLowerInvariant() -eq (Full-Path $devDir).ToLowerInvariant()) { 20301 } else { 20300 }
 try { $cfg = Get-Content (Join-Path $dataDir "config.json") -Raw | ConvertFrom-Json; if ($cfg.server.port) { $port = [int]$cfg.server.port } } catch {}
 # Where a Filament of this folder says it listens wins, as the command line reads it (src/cli/client.js): one started
 # with --port, or on any free port, answers nowhere else.
@@ -49,12 +54,21 @@ if (-not (Test-Server)) {
   if (-not $NoStart) {
     if ($node) {
       Write-Host "Filament is not running on port $port - starting it"
-      Start-Process -FilePath $node -ArgumentList "`"$(Join-Path $root 'bin\filament.js')`"" -WorkingDirectory $root -WindowStyle Hidden | Out-Null
+      Start-Process -FilePath $node -ArgumentList "`"$(Join-Path $root 'bin\filament.js')`"", "--data-dir", "`"$dataDir`"" -WorkingDirectory $root -WindowStyle Hidden | Out-Null
     } else { Write-Host "Filament is not running on port $port and node was not found - waiting for it" }
   } else { Write-Host "Filament is not running on port $port - waiting up to $WaitSeconds s" }
-  $deadline = (Get-Date).AddSeconds($WaitSeconds)
-  while (-not (Test-Server) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 400 }
-  if (-not (Test-Server)) { Write-Host "still not answering; the window opens anyway and shows the browser's error until it does (reload when Filament is up)" }
+  # Its first start installs memory's engine and opens memory before it listens: a minute or more is no failure. A line
+  # every ten seconds says it is still waited for.
+  $started = Get-Date
+  $deadline = $started.AddSeconds($WaitSeconds)
+  $told = 0
+  while (-not (Test-Server) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 400
+    $s = [int]((Get-Date) - $started).TotalSeconds
+    if ($s -ge $told + 10) { $told = $s - ($s % 10); Write-Host "still waiting for Filament to answer ($told s)" }
+  }
+  # A window opened at 127.0.0.1 with no link is the pairing page under the owner key, and stays it: none opens.
+  if (-not (Test-Server)) { [Console]::Error.WriteLine("Filament did not answer on port $port within $WaitSeconds s, so no window was opened: run this again once it answers (node bin/filament.js status says how it stands)"); exit 1 }
 }
 
 # A window at 127.0.0.1 is no one's under the owner key (server.loopbackTrust "token"): the link `filament open --no-open`

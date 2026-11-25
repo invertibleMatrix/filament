@@ -137,5 +137,17 @@ test("the browser-window launcher in tray/ follows the same rule", () => {
   const ps = read("tray/filament-app.ps1");
   assert.match(ps, /\$devDir = Join-Path \$env:APPDATA "Filament-dev"/);
   assert.match(ps, /elseif \(Test-Path \(Join-Path \$root "\.git"\)\) \{ \$devDir \}/);
-  assert.match(ps, /\$port = if \(\$dataDir -eq \$devDir\) \{ 20301 \} else \{ 20300 \}/);
+  // (fails before: yes — the hunt on x46: compared as typed, a trailing slash or another case read as another folder)
+  assert.match(ps, /\$dataDir = Full-Path \$dataDir\n\$port = if \(\$dataDir\.ToLowerInvariant\(\) -eq \(Full-Path \$devDir\)\.ToLowerInvariant\(\)\) \{ 20301 \} else \{ 20300 \}/);
+  assert.match(ps, /"--data-dir", "`"\$dataDir`""/, "the Filament it starts is the folder's it named");
+});
+
+// (fails before: yes — the hunt on x46: past 20 s it opened a window at 127.0.0.1 with no link, the pairing page under
+// the owner key, while a first start was still installing memory's engine)
+test("the browser-window launcher waits minutes for a Filament it starts, saying so, and opens no unpaired window", () => {
+  const ps = read("tray/filament-app.ps1");
+  assert.match(ps, /\[int\]\$WaitSeconds = 180\)/);
+  assert.match(ps, /Write-Host "still waiting for Filament to answer \(\$told s\)"/);
+  assert.match(ps, /if \(-not \(Test-Server\)\) \{ \[Console\]::Error\.WriteLine\("Filament did not answer on port \$port within \$WaitSeconds s, so no window was opened[^"]*"\); exit 1 \}/);
+  assert.doesNotMatch(ps, /the window opens anyway/);
 });
