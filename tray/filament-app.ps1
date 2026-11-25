@@ -51,7 +51,11 @@ if (-not $browser) { [Console]::Error.WriteLine("no Edge or Chrome found - the a
 
 $node = $null; try { $node = (Get-Command node -ErrorAction Stop).Source } catch { foreach ($c in @("$env:ProgramFiles\nodejs\node.exe", "$env:LOCALAPPDATA\Programs\nodejs\node.exe")) { if (Test-Path $c) { $node = $c; break } } }
 if (-not (Test-Server)) {
-  if (-not $NoStart) {
+  # A Filament of this folder still opening holds its start lock (src/cli/listening.js START_LOCK) before it answers:
+  # waited for, never started beside (a second would be refused all the same).
+  $other = 0; try { $l = Get-Content (Join-Path $dataDir "filament.lock") -Raw | ConvertFrom-Json; if ($l.pid -and (Get-Process -Id ([int]$l.pid) -ErrorAction Stop)) { $other = [int]$l.pid } } catch {}
+  if ($other) { Write-Host "a Filament of this data folder is starting (pid $other) - waiting for it" }
+  elseif (-not $NoStart) {
     if ($node) {
       Write-Host "Filament is not running on port $port - starting it"
       Start-Process -FilePath $node -ArgumentList "`"$(Join-Path $root 'bin\filament.js')`"", "--data-dir", "`"$dataDir`"" -WorkingDirectory $root -WindowStyle Hidden | Out-Null

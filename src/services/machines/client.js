@@ -7,9 +7,9 @@
 /**
  * What a command's end says to its caller — a script, or an agent that ran it: 0 done; 1 failed; 2 typed wrong; 3 no
  * Filament answers; 4 it needs the person (a sign-in in a browser, a key typed at a terminal); 5 busy — a turn runs, the
- * chat is held; 130 stopped with Ctrl+C.
+ * chat is held; 6 another Filament of its data folder starts or runs there (`filament start`); 130 stopped with Ctrl+C.
  */
-export const EXIT = Object.freeze({ ok: 0, failed: 1, usage: 2, noFilament: 3, needsPerson: 4, busy: 5, interrupted: 130 });
+export const EXIT = Object.freeze({ ok: 0, failed: 1, usage: 2, noFilament: 3, needsPerson: 4, busy: 5, startedAlready: 6, interrupted: 130 });
 
 /** A command's failure, with the exit code it ends with and its words. */
 export class CliError extends Error {

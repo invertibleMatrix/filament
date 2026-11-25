@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { followPort, foundAt, hostOf, portOf, refusedWords } from "../desktop/lib/start.js";
-import { createSupervisor, END_WAIT_MS, LATE_MS, RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
+import { createSupervisor, END_WAIT_MS, LATE_MS, OTHER_START_MS, RESTART_GAP_MS } from "../desktop/lib/supervisor.js";
+import { STARTED_ALREADY } from "../src/cli/listening.js";
+import { EXIT } from "../src/services/machines/client.js";
 import { ACTIVATION_MS, askedByPerson, isPress, mayGrant, ownerSessionGoes, ownerSessionUrls, routeOf, serverArgs, serverEnv, SUPERVISOR } from "../desktop/lib/policy.js";
 import { keepPlace, placeOf, readPlaces } from "../desktop/lib/window-state.js";
 import { trayRows, trayTip } from "../desktop/lib/tray.js";
@@ -355,6 +357,30 @@ describe("the app's own server", () => {
     r.children[0].exit(1);
     await r.tick(RESTART_GAP_MS);
     assert.deepEqual([r.children.length, r.sup.now().state], [1, "taken"], "its listen lost the race to that Filament's: that one is shown");
+  });
+
+  // (fails before: yes — the hunt on x46: a start refused by another Filament of the folder still opening memory read as
+  // a failed start, the port free while that one had not yet listened)
+  test("a start refused by the folder's lock: the other Filament is waited for and shown once it answers; one that never does fails", async () => {
+    /** @type {any} */
+    let there = { kind: "start" };
+    const r = rig({ answers: async () => false, vacant: async () => there });
+    r.sup.start();
+    await r.tick(300);
+    r.children[0].exit(STARTED_ALREADY);
+    await r.tick(60_000);
+    assert.deepEqual([r.children.length, r.sup.now().state], [1, "starting"], "waited for, nothing started beside it");
+    there = { kind: "attach", version: "0.1.0", dataDir: "C:\\d", supervisor: null };
+    await r.tick(2000);
+    assert.deepEqual([r.children.length, r.sup.now().state, r.sup.now().found?.kind], [1, "taken", "attach"]);
+
+    const never = rig({ answers: async () => false, vacant: async () => ({ kind: "start" }) });
+    never.sup.start();
+    await never.tick(300);
+    never.children[0].exit(STARTED_ALREADY);
+    await never.tick(OTHER_START_MS + 2000);
+    assert.deepEqual([never.children.length, never.sup.now().state], [1, "failed"]);
+    assert.equal(EXIT.startedAlready, STARTED_ALREADY, "the command line's exit table says the same code");
   });
 
   // (fails before: yes — the review of NA2: an answer to "is it up?" still on its way when a restart began set it up)

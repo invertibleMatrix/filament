@@ -9,6 +9,8 @@
 // app shows from then on. Plain Node: the child, the questions to the server and the clock come in from the caller
 // (NA-D13).
 
+import { STARTED_ALREADY } from "../../src/cli/listening.js";
+
 /** How long after one start the next may come at the soonest (the tray's rule). */
 export const RESTART_GAP_MS = 5000;
 /** How long a stopped server's process may take to end before it is ended: Filament's own drain is 20 s. */
@@ -17,6 +19,13 @@ export const END_WAIT_MS = 25_000;
 export const LATE_MS = 40_000;
 /** How often a starting server is asked whether it answers. */
 const POLL_MS = 250;
+/**
+ * A start refused because another Filament of its data folder starts there (its lock, src/cli/listening.js
+ * STARTED_ALREADY): that one is waited for, asked each OTHER_POLL_MS, up to OTHER_START_MS — a first start installs
+ * memory's engine —, and shown once it answers (the hunt on x46).
+ */
+export const OTHER_START_MS = 5 * 60_000;
+const OTHER_POLL_MS = 1000;
 
 /**
  * @typedef {{ pid: number | undefined, kill: () => boolean, onExit: (fn: (code: number | null) => void) => void }} Child
@@ -117,6 +126,12 @@ export function createSupervisor({ fork, answers, shutdown, vacant = async () =>
       become("restarting");
       if (pending) return;
       pending = true;
+      if (!answered && !meant && exit === STARTED_ALREADY) {
+        log("another Filament of this data folder is starting; the app waits for it to answer, and shows it");
+        become("starting");
+        void waitOther(now());
+        return;
+      }
       if (!answered && !meant) {
         // It never answered: it cannot start. Said, not tried again and again — unless another took its port.
         log(`Filament ended before it answered (exit ${exit ?? "?"})`);
@@ -148,9 +163,30 @@ export function createSupervisor({ fork, answers, shutdown, vacant = async () =>
       log("not started again: try again from the tray once what server.log says is fixed");
       return become("failed");
     }
+    took(f);
+  };
+  /** The port another holds: the app shows it (an `attach`), or says who holds it. @param {Exclude<import("./start.js").Found, { kind: "start" }>} f */
+  const took = (f) => {
     found = f;
     log(f.kind === "attach" ? `port taken by a Filament started ${f.supervisor === "tray" ? "by the tray" : "elsewhere"} (data folder ${f.dataDir}); not started again` : `not started again: ${f.why}`);
     become("taken");
+  };
+  /**
+   * Another Filament of this folder starting, whose lock refused this start: asked for until it answers, then shown as
+   * one that took the port; one that never answers is said as a start that failed. @param {number} from
+   */
+  const waitOther = async (from) => {
+    const f = await vacant().catch(() => /** @type {import("./start.js").Found} */ ({ kind: "start" }));
+    if (child || stopping) return void (pending = false);
+    if (f.kind !== "start") {
+      pending = false;
+      return took(f);
+    }
+    if (now() - from < OTHER_START_MS) return void later(() => void waitOther(from), OTHER_POLL_MS);
+    pending = false;
+    code = STARTED_ALREADY;
+    log(`the other Filament of this data folder gave no answer in ${Math.round(OTHER_START_MS / 60_000)} minutes; not started again: try again from the tray`);
+    become("failed");
   };
 
   /** A question to Filament that got no answer at all. @param {any} e @returns {Asked} */

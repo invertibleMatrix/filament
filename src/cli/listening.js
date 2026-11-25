@@ -4,7 +4,7 @@
 // and its version — and takes it away as it stops. `filament status` and every command that asks the server reads it,
 // so a port picked at start (`--port 0`) or changed since is found, never guessed from the config. A file whose process
 // is gone (Filament was killed) is no Filament.
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** The file's name, in the data folder. */
@@ -69,4 +69,62 @@ export function readListening(dataDir, { alive = processRuns } = {}) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The start lock's name, in the data folder: the Filament that starts there holds it from before it opens anything —
+ * its config, its devices, its archive — until it ends. `listening.json` comes only once it listens, and a first start
+ * opens memory for a minute or more before that (the hunt on x46).
+ */
+export const START_LOCK = "filament.lock";
+/** The exit of a start refused because another Filament of its data folder starts or runs there (the app waits for it). */
+export const STARTED_ALREADY = 6;
+
+/** What the lock says, or null: none, or not (yet) a lock. @param {string} file @returns {{ pid: number, startedAt: number | null } | null} */
+const lockOf = (file) => {
+  try {
+    const row = JSON.parse(readFileSync(file, "utf8"));
+    return row && Number.isInteger(row.pid) && row.pid > 0 ? { pid: row.pid, startedAt: Number.isFinite(row.startedAt) ? row.startedAt : null } : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Take the data folder's start lock for this process, before anything in the folder is opened: a second Filament on one
+ * folder raced the first on its files while the first opened memory, before either listened. A lock whose process is
+ * gone (killed, crashed) is taken over; one just made, its words not yet written, is read again a moment later first.
+ * A folder that takes no lock file (read-only, say) starts unlocked: its own start says what fails there.
+ * @param {string} dataDir
+ * @param {{ pid?: number, alive?: (pid: number) => boolean, now?: () => number, pause?: (ms: number) => void }} [o]
+ * @returns {{ ok: true, release: () => void } | { ok: false, pid: number, startedAt: number | null, file: string }}
+ */
+export function takeStartLock(dataDir, { pid = process.pid, alive = processRuns, now = Date.now, pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } = {}) {
+  const file = join(dataDir, START_LOCK);
+  const release = () => {
+    if (lockOf(file)?.pid === pid) rmSync(file, { force: true });
+  };
+  try {
+    mkdirSync(dataDir, { recursive: true });
+  } catch {}
+  for (let tries = 0; tries < 4; tries++) {
+    try {
+      writeFileSync(file, `${JSON.stringify({ pid, startedAt: now() })}\n`, { flag: "wx" });
+      return { ok: true, release };
+    } catch (/** @type {any} */ e) {
+      if (e?.code !== "EEXIST") return { ok: true, release: () => {} };
+    }
+    let held = lockOf(file);
+    for (let looks = 0; !held && looks < 5 && existsSync(file); looks++) {
+      pause(100);
+      held = lockOf(file);
+    }
+    if (held && held.pid !== pid && alive(held.pid)) return { ok: false, pid: held.pid, startedAt: held.startedAt, file };
+    // Its process gone, never a lock, or this very process's (a pid used again): taken over.
+    try {
+      rmSync(file, { force: true });
+    } catch {}
+  }
+  const held = lockOf(file);
+  return { ok: false, pid: held?.pid ?? 0, startedAt: held?.startedAt ?? null, file };
 }

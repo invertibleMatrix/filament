@@ -1976,6 +1976,12 @@ service — the app shows that one, its windows this computer's owner there as i
 tray is greyed (*started elsewhere*), and Quit leaves it running; where another program holds the port, or a Filament
 of another data folder, it says so and starts nothing.
 
+One Filament runs per data folder. A start takes the folder's `filament.lock` before it opens anything there, and a
+second start while the first still opens memory (before it answers) or runs is refused in words, exit 6, never racing
+it on the folder's files. The app waits for that one, up to five minutes, and shows it once it answers; `npm run app`
+waits for it too. A lock whose process is gone (Filament was killed) is taken over by the next start; where the words
+name a process that is no Filament, delete the file they name.
+
 **Other machines.** The app's window shows your other machines' Filament beside this one: their chats in this
 computer's left bar, what they ask answered from Now, a chat started on one (Run on) and its changes brought back, and
 their Filament set up and updated from here ([Remote access](#remote-access-this-filament-from-another-machine),

@@ -4,10 +4,11 @@
 // stream and a refusal, and what each exit code says.
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LISTENING_FILE, listeningUrl, readListening, removeListening, writeListening } from "../src/cli/listening.js";
+import { LISTENING_FILE, START_LOCK, STARTED_ALREADY, listeningUrl, readListening, removeListening, takeStartLock, writeListening } from "../src/cli/listening.js";
 import { CliError, EXIT, busyOf, clientAt, connect, readEvents, refusalWords, whereFilament } from "../src/cli/client.js";
 import { signedInWords } from "../src/cli/flows.js";
 import http from "node:http";
@@ -35,6 +36,54 @@ describe("where Filament listens", () => {
       assert.equal(readListening(dir), null, "a file that does not read is none");
     } finally {
       await removeDirs(dir);
+    }
+  });
+
+  // (fails before: yes — the hunt on x46: nothing kept a second start off a data folder whose Filament still opened
+  // memory, before it listened: both opened its config, devices and archive)
+  test("the start lock: one process holds it, a second is refused while that one runs, a gone one's is taken over", () => {
+    const dir = mkdtempSync(join(tmpdir(), "filament-cli-lock-"));
+    const file = join(dir, START_LOCK);
+    /** @type {Set<number>} */
+    const running = new Set([10, 20]);
+    const alive = (/** @type {number} */ pid) => running.has(pid);
+    try {
+      const first = takeStartLock(dir, { pid: 10, alive, now: () => 5 });
+      assert.ok(first.ok);
+      assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { pid: 10, startedAt: 5 });
+      assert.deepEqual(takeStartLock(dir, { pid: 20, alive }), { ok: false, pid: 10, startedAt: 5, file });
+      const other = takeStartLock(dir, { pid: 20, alive: () => false });
+      assert.ok(other.ok, "its process gone: taken over");
+      if (first.ok) first.release();
+      assert.equal(JSON.parse(readFileSync(file, "utf8")).pid, 20, "a release lets go of its own lock alone");
+      if (other.ok) other.release();
+      assert.equal(existsSync(file), false);
+      // A lock just made, its words not yet written: read again a moment later before it is taken over.
+      writeFileSync(file, "");
+      /** @type {number[]} */
+      const paused = [];
+      const late = takeStartLock(dir, { pid: 20, alive, pause: (ms) => (paused.push(ms), paused.length === 2 && writeFileSync(file, JSON.stringify({ pid: 10, startedAt: 7 }))) });
+      assert.deepEqual([late.ok, paused], [false, [100, 100]]);
+      rmSync(file);
+      writeFileSync(file, `${JSON.stringify({ pid: 30, startedAt: 1 })}\n`);
+      assert.ok(takeStartLock(dir, { pid: 30, alive: () => true }).ok, "one with this very process's pid is a gone one's, its pid used again");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("filament start on a folder whose lock a running process holds: refused in words, exit 6, before it opens anything", () => {
+    const dir = mkdtempSync(join(tmpdir(), "filament-cli-locked-"));
+    try {
+      writeFileSync(join(dir, START_LOCK), `${JSON.stringify({ pid: process.pid, startedAt: Date.now() })}\n`);
+      const r = spawnSync(process.execPath, ["bin/filament.js", "--data-dir", dir, "start"], { encoding: "utf8", timeout: 60_000, env: { ...process.env, FILAMENT_SUPERVISOR: "test" } });
+      assert.equal(r.status, STARTED_ALREADY, r.stderr);
+      assert.equal(r.status, EXIT.startedAlready);
+      assert.match(r.stderr, new RegExp(`another Filament of this data folder \\(pid ${process.pid}\\) is starting or runs, so this one does not start`));
+      assert.deepEqual(readdirSync(dir), [START_LOCK], "no config, no archive, no listening.json");
+      assert.equal(JSON.parse(readFileSync(join(dir, START_LOCK), "utf8")).pid, process.pid, "the lock stays its holder's");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -126,9 +175,9 @@ describe("a command line, a stream, a refusal", () => {
   });
 
   test("the exit codes, as --help says them", () => {
-    assert.deepEqual(EXIT, { ok: 0, failed: 1, usage: 2, noFilament: 3, needsPerson: 4, busy: 5, interrupted: 130 });
+    assert.deepEqual(EXIT, { ok: 0, failed: 1, usage: 2, noFilament: 3, needsPerson: 4, busy: 5, startedAlready: 6, interrupted: 130 });
     const bin = readFileSync("bin/filament.js", "utf8");
-    assert.match(bin, /Exit codes: 0 done, 1 failed, 2 typed wrong, 3 no Filament answers, 4 needs you \(a terminal, a browser\),\n5 busy \(a turn runs\), 130 stopped\./);
+    assert.match(bin, /Exit codes: 0 done, 1 failed, 2 typed wrong, 3 no Filament answers, 4 needs you \(a terminal, a browser\),\n5 busy \(a turn runs\), 6 another Filament of the data folder starts or runs \(filament start\), 130 stopped\./);
   });
 });
 

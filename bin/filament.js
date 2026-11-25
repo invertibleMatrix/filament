@@ -53,7 +53,7 @@ Options:
   -v, --version     Print version
 
 Exit codes: 0 done, 1 failed, 2 typed wrong, 3 no Filament answers, 4 needs you (a terminal, a browser),
-5 busy (a turn runs), 130 stopped.
+5 busy (a turn runs), 6 another Filament of the data folder starts or runs (filament start), 130 stopped.
 `);
 // `filament update --version <v>` names a release: that --version is update's own.
 } else if ((has("-v") || has("--version")) && first !== "update") console.log(VERSION);
@@ -100,6 +100,16 @@ async function start(dataDir) {
   // program Filament runs (an agent's shell, a test of its own) never inherits it.
   const supervisor = process.env.FILAMENT_SUPERVISOR || null;
   delete process.env.FILAMENT_SUPERVISOR;
+  // One Filament per data folder, from before it opens anything there: a second start while the first still opens memory,
+  // before it listens, raced it on the folder's files (the hunt on x46). Its end lets the lock go; one killed leaves a lock
+  // whose process is gone, which the next start takes over.
+  const { STARTED_ALREADY, takeStartLock } = await import("../src/cli/listening.js");
+  const lock = takeStartLock(dataDir);
+  if (!lock.ok) {
+    console.error(`Filament: another Filament of this data folder ${lock.pid ? `(pid ${lock.pid}) ` : ""}is starting or runs, so this one does not start: \`filament status\` says how it stands. Where no Filament runs, delete ${lock.file} and start again.`);
+    process.exit(STARTED_ALREADY);
+  }
+  process.on("exit", lock.release);
   // What an Electron program sets for itself — the desktop app, or a VS Code or Cursor terminal Filament was started from —
   // goes the same way: a program Filament runs would start as plain Node by it (HarnessV3-Native NA-D5).
   dropElectronVars(process.env);
