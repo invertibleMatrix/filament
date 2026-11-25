@@ -6,8 +6,8 @@
 // files straight into that draft and keeps no artifact on a tag's run (one release's outgrew the account's 2 GB of
 // artifact storage: the owner's of 11-16), and every file an installed app fetches from that release is one the run
 // builds and checks is there. Filament for servers is built beside them, and its release carries its tarballs,
-// latest-server.yml and install.sh (the remote-agents plan's sv-ci) — x64's, and arm64's with latest-server-arm64.yml
-// where its job ran (sv-arm).
+// latest-server.yml and install.sh (the remote-agents plan's sv-ci) — x64's, arm64's with latest-server-arm64.yml
+// where its job ran (sv-arm), Windows hosts' with install.ps1 (s3f) and Mac hosts' (s3e).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -52,7 +52,7 @@ const TOKENS = /\n {10}OWN_TOKEN: \$\{\{ github\.token \}\}\n {10}MIRROR_TOKEN: 
 const checkStep = (text) => text.slice(text.indexOf("- name: Every system's files are here"), text.indexOf("- name: The release's notes"));
 
 /** The jobs that build something and put it into the draft (on a tag's run) or keep it as an artifact (by hand). */
-const BUILDS = ["windows", "mac", "linux", "server", "server-arm64", "server-windows"];
+const BUILDS = ["windows", "mac", "linux", "server", "server-arm64", "server-windows", "server-mac"];
 
 // (fails before: yes — the release job made the draft from the builds' artifacts, which one release's outgrew the 2 GB of)
 test("a tag's run drafts the release here and in the mirror before any build: one there is left as it is, a published one stops the run, and each build puts its files into both", async () => {
@@ -156,7 +156,7 @@ test("a tag that is not package.json's version stops the run before npm ci", asy
   assert.ok(text.indexOf("- name: The tag names this version") < text.indexOf("run: npm ci"));
   assert.match(job(text, "version"), /- name: The tag names this version/);
   for (const name of BUILDS) assert.match(job(text, name), /\n {4}needs: version\n/, `${name} waits on the version's check`);
-  assert.match(job(text, "release"), /\n {4}needs: \[version, windows, mac, linux, server, server-arm64, server-windows\]\n/);
+  assert.match(job(text, "release"), /\n {4}needs: \[version, windows, mac, linux, server, server-arm64, server-windows, server-mac\]\n/);
 });
 
 // (fails before: yes — a tag's run typechecked and ran the suite on Windows, and the release waited on it)
@@ -288,6 +288,30 @@ test("the Windows server build: on windows-latest, its memory engine the windows
   const listed = /\n\s+for f in ([\s\S]*?); do\n/.exec(checkStep(text))?.[1] || "";
   for (const f of [tarballName("$VERSION", true, W), tarballName("$VERSION", false, W), feedName(W), "install.ps1"]) assert.ok(listed.includes(`"${f}"`) || listed.includes(` ${f}`), `the release checks ${f}`);
   assert.match(text.slice(text.indexOf("- name: The release's notes")), /\*\*Windows hosts\*\* \(x64, no desktop app\): \\`irm https:\/\/github\.com\/\$RELEASES_REPO\/releases\/latest\/download\/install\.ps1 \| iex\\` in PowerShell/);
+});
+
+// (fails before, s3e1: yes — no Mac server build: a Mac could be no host)
+test("the Mac server build: on macos-15 with no signing secret or keychain, the mac job's unsigned bundle under its key, npm run dist:server, its tarballs and feed in both drafts, checked in the release and named in its notes", async () => {
+  const text = await yml();
+  const mac = job(text, "server-mac");
+  const M = "darwin-arm64";
+  assert.match(mac, /\n {4}needs: version\n/);
+  assert.match(mac, /\n {4}if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.systems == 'all' \|\| inputs\.systems == 'server' \}\}\n/);
+  assert.match(mac, /\n {4}runs-on: macos-15\n/, "an Apple-silicon runner, as the mac job's");
+  assert.doesNotMatch(mac, /secrets\.(MAC_|APPLE_)|keychain|CSC_/i, "no signing secret, keychain or identity reaches it");
+  const cache = (/** @type {string} */ j) => /\n {10}path: (vendor\/memory-engine\/\S+)\n {10}key: (.+)\n/.exec(j)?.slice(1);
+  const key = "memory-engine-darwin-arm64-unsigned-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}";
+  assert.deepEqual(cache(mac), [`vendor/memory-engine/${M}`, key]);
+  assert.equal(cache(job(text, "mac"))?.[1].replace("${{ steps.signing.outputs.with }}", "unsigned"), key, "the mac job's bundle as it keeps one unsigned");
+  const order = ["run: npm ci\n", "uses: actions/cache@v6\n", "run: npm run engine:bundle\n", "run: npm run dist:server\n", "- name: Into the draft release\n", "uses: actions/upload-artifact@v7\n"];
+  for (let i = 1; i < order.length; i++) assert.ok(mac.indexOf(order[i - 1]) > 0 && mac.indexOf(order[i - 1]) < mac.indexOf(order[i]), `${order[i - 1].trim()} before ${order[i].trim()}`);
+  const v = "${{ needs.version.outputs.version }}";
+  // install.sh goes up with x64's alone: one file of one name in the release
+  assert.deepEqual(keeps(mac), [tarballName(v, true, M), tarballName(v, false, M), feedName(M)].map((f) => `dist/server/${v}/${f}`));
+  assert.deepEqual(sends(mac), keeps(mac));
+  const listed = /\n\s+for f in ([\s\S]*?); do\n/.exec(checkStep(text))?.[1] || "";
+  for (const f of [tarballName("$VERSION", true, M), tarballName("$VERSION", false, M), feedName(M)]) assert.ok(listed.includes(`"${f}"`) || listed.includes(` ${f}`), `the release checks ${f}`);
+  assert.match(text.slice(text.indexOf("- name: The release's notes")), /\*\*Mac hosts\*\* \(Apple Silicon, no desktop app\): \\`curl -fsSL https:\/\/github\.com\/\$RELEASES_REPO\/releases\/latest\/download\/install\.sh \| sh\\` in Terminal/);
 });
 
 // (fails before: yes — the run built Windows alone)

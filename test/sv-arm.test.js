@@ -98,7 +98,7 @@ describe("dist:server on linux-arm64", () => {
         feed = "latest-server-arm64.yml";
       assert.deepEqual([tarballName("1.2.3", true, ARM), tarballName("1.2.3", false, ARM), feedName(ARM)], [whole, small, feed]);
       assert.deepEqual([tarballName("1.2.3"), feedName(), feedName("linux-x64")], ["filament-server-1.2.3-linux-x64.tar.gz", FEED, FEED], "x64's names, where none is given");
-      assert.deepEqual(SERVER_TARGETS, ["linux-x64", ARM, "win32-x64"]);
+      assert.deepEqual(SERVER_TARGETS, ["linux-x64", ARM, "win32-x64", "darwin-arm64"]);
       assert.deepEqual(readdirSync(out).sort(), [feed, small, whole].sort());
       assert.deepEqual(checked, [ARM], "arm64's bundle checked whole before anything is packed");
       const releases = { owner: "invertibleMatrix", repo: "filament" };
@@ -123,7 +123,7 @@ describe("dist:server on linux-arm64", () => {
     }
   });
 
-  test("it builds on the machine it is for alone: any other — Windows on arm64, a Mac, 32-bit Linux — is refused in words with nothing made, and arm64 without node-pty built for it too", async () => {
+  test("it builds on the machine it is for alone: any other — Windows on arm64, an Intel Mac, 32-bit Linux — is refused in words with nothing made, and arm64 without node-pty built for it too", async () => {
     const at = tmp("refuse-");
     try {
       const root = checkoutAt(join(at, "checkout"));
@@ -134,9 +134,9 @@ describe("dist:server on linux-arm64", () => {
         check: async () => WHOLE, smoke: async () => assert.fail("nothing to smoke-test"),
         log: () => {}, error: (/** @type {string} */ l) => said.push(l),
       };
-      for (const machine of ["win32-arm64", "darwin-arm64", "linux-ia32", "linux-arm"]) {
+      for (const machine of ["win32-arm64", "darwin-x64", "linux-ia32", "linux-arm"]) {
         assert.equal(await distServer({ ...io, machine }), 1, machine);
-        assert.equal(said.at(-1), `Filament's server build is for linux-x64, linux-arm64 and win32-x64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64, or on Windows x64.`);
+        assert.equal(said.at(-1), `Filament's server build is for linux-x64, linux-arm64, win32-x64 and darwin-arm64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64, on Windows x64, or on a Mac with Apple silicon.`);
       }
       // node-pty with x64's prebuilt binary alone: none for arm64
       rmSync(join(root, "node_modules", "node-pty", "build"), { recursive: true });

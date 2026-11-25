@@ -467,6 +467,56 @@ test("dist:server on Windows x64: its tarballs carry node\\node.exe with its LIC
   }
 });
 
+// (fails before, s3e1: yes — a Mac was refused: no server build was made there, so no Mac could be a host)
+test("dist:server on a Mac with Apple silicon: its tarballs carry node/bin/node with its LICENSE and bin/filament, node-pty's darwin-arm64 prebuilds with its helper, and the darwin-arm64 engine; their feed is latest-server-darwin-arm64.yml; no glibc said", async () => {
+  const at = tmp();
+  try {
+    const root = checkoutAt(join(at, "checkout"));
+    // node-pty as npm ci leaves it on a Mac: its prebuilt binary and helper, nothing built.
+    rmSync(join(root, "node_modules", "node-pty", "build"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "node-pty", "prebuilds", "darwin-arm64", "spawn-helper"), "a Mac's helper");
+    mkdirSync(join(root, "vendor", "memory-engine", "darwin-arm64"), { recursive: true });
+    writeFileSync(join(root, "vendor", "memory-engine", "darwin-arm64", "uv"), "a Mac's uv");
+    /** @type {string[]} */
+    const said = [];
+    /** @type {string[]} */
+    const platforms = [];
+    /** @type {string[]} */
+    const smoked = [];
+    const io = {
+      machine: "darwin-arm64", root, vendor: join(root, "vendor", "memory-engine"), node: nodeAt(at), glibc: () => null, facts: FACTS,
+      ptyHelpers: (/** @type {string} */ _root, /** @type {string} */ platform) => (platforms.push(platform), []),
+      check: async () => WHOLE, smoke: async (/** @type {any} */ o) => (smoked.push(o.target), ""),
+      log: (/** @type {string} */ l) => said.push(l), error: (/** @type {string} */ l) => said.push(`! ${l}`),
+    };
+    assert.equal(await distServer(io), 0, said.join("\n"));
+    assert.deepEqual(platforms, ["darwin"], "node-pty's helper made runnable as a Mac's");
+    assert.deepEqual(smoked, ["darwin-arm64", "darwin-arm64"]);
+    const out = serverDir(root, "1.2.3");
+    const feed = join(out, "latest-server-darwin-arm64.yml");
+    assert.deepEqual(readdirSync(out).sort(), ["filament-server-1.2.3-darwin-arm64-no-engine.tar.gz", "filament-server-1.2.3-darwin-arm64.tar.gz", "latest-server-darwin-arm64.yml"]);
+    const file = join(out, "filament-server-1.2.3-darwin-arm64.tar.gz");
+    assert.equal(shaIn(readFileSync(feed, "utf8"), "filament-server-1.2.3-darwin-arm64.tar.gz"), sha512Of(file));
+    const into = join(at, "unpacked");
+    mkdirSync(into);
+    assert.equal(untar(file, into), "");
+    const top = join(into, "filament-server-1.2.3-darwin-arm64");
+    const inside = filesUnder(top);
+    for (const f of ["bin/filament", "bin/filament.js", "node/bin/node", "node/LICENSE", "node_modules/node-pty/prebuilds/darwin-arm64/pty.node", "node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper", "vendor/memory-engine/darwin-arm64/uv"])
+      assert.ok(inside.includes(f), f);
+    for (const f of ["bin/filament.cmd", "node/node.exe", "node_modules/node-pty/build/", "node_modules/node-pty/prebuilds/win32-x64/", "vendor/memory-engine/linux-x64/", "vendor/memory-engine/win32-x64/"]) assert.ok(!inside.includes(f), `no ${f}`);
+    assert.equal(readFileSync(join(top, "bin", "filament"), "utf8"), LAUNCHER);
+    assert.equal(readFileSync(join(top, "node", "LICENSE"), "utf8"), "Node's license", "nodejs.org's LICENSE, from a folder up from bin/node");
+    const marker = JSON.parse(readFileSync(join(top, MARKER), "utf8"));
+    assert.deepEqual([marker.target, marker.feed, marker.glibc], ["darwin-arm64", "latest-server-darwin-arm64.yml", null]);
+    assert.match(said.at(-2) || "", /— tar -xzf it where it is to live, then filament-server-1\.2\.3-darwin-arm64-no-engine\/bin\/filament start\.$/);
+    assert.equal(said.at(-1), `Its update file: ${feed} — a release of invertibleMatrix/filament offers them to servers with the tarballs beside it.`);
+    assert.ok(!said.some((l) => /glibc/.test(l)), "no glibc said of a Mac's build");
+  } finally {
+    rmSync(at, { recursive: true, force: true });
+  }
+});
+
 test("dist:server packs of a git checkout's src, docs, starters and sidecar only what git tracks — a developer's .env, config.json, logs and screenshots stay out; a .git git can't list, or none, is refused", async () => {
   const at = tmp();
   try {
@@ -526,8 +576,8 @@ test("dist:server refuses, in words and with nothing made: another machine, a fl
       log: () => {}, error: (/** @type {string} */ l) => said.push(l),
     };
     const nothing = () => assert.ok(!existsSync(join(root, "dist")), "nothing made");
-    assert.equal(await distServer({ ...io, machine: "darwin-arm64" }), 1);
-    assert.equal(said.at(-1), "Filament's server build is for linux-x64, linux-arm64 and win32-x64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is darwin-arm64; build it on Linux x64 or arm64, or on Windows x64.");
+    assert.equal(await distServer({ ...io, machine: "darwin-x64" }), 1);
+    assert.equal(said.at(-1), "Filament's server build is for linux-x64, linux-arm64, win32-x64 and darwin-arm64, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is darwin-x64; build it on Linux x64 or arm64, on Windows x64, or on a Mac with Apple silicon.");
     assert.equal(await distServer({ ...io, args: ["--publish"] }), 2);
     assert.equal(said.at(-1), "npm run dist:server takes --no-engine alone (a tarball without the memory engine), not --publish.");
     assert.equal(await distServer({ ...io, check: async () => ({ ok: false, why: "none here" }) }), 1);

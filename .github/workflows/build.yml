@@ -12,8 +12,9 @@
 # toward none (the owner's of 11-16). docs/releasing.md says what the secrets are and how to set them. Beside the
 # desktop builds, Filament for servers: `npm run dist:server`'s tarballs, their latest-server.yml and the install.sh that installs them
 # (the remote-agents plan's sv-ci), in the same release — x64's, and arm64's with latest-server-arm64.yml (sv-arm), on
-# the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off; and Windows hosts' (s3f),
-# with latest-server-win32-x64.yml and the install.ps1 that installs them.
+# the runner the repository variable ARM64_RUNNER names, or none where SERVER_ARM64 is off; Windows hosts' (s3f),
+# with latest-server-win32-x64.yml and the install.ps1 that installs them; and Mac hosts' with Apple silicon (s3e),
+# with latest-server-darwin-arm64.yml, which install.sh installs.
 name: Build
 
 on:
@@ -616,13 +617,83 @@ jobs:
           retention-days: 1
           overwrite: true
 
+  server-mac:
+    name: Server tarballs (macOS, Apple Silicon)
+    needs: version
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.systems == 'all' || inputs.systems == 'server' }}
+    # A Mac as a headless host: node-pty comes prebuilt for Apple silicon, the Node is nodejs.org's, and the memory
+    # engine's bundle is the one built unsigned: no signing secret reaches this job. A tarball curl fetches carries no
+    # quarantine, so Gatekeeper asks nothing of it, and its programs keep the signatures they came with, which Apple
+    # silicon runs. dist:server's smoke test starts Filament and a terminal from the unpacked tarball on this Mac.
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      # An official build where the run is the project's own: its build-info.json says so, and its telemetry is on by
+      # default (services/telemetry.js). A copy of this workflow under another account builds unofficial ones.
+      FILAMENT_OFFICIAL_BUILD: ${{ github.repository_owner == 'invertibleMatrix' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+
+      # The mac job's unsigned bundle, under its key: one signed with the Developer ID goes into the notarized app alone.
+      - name: Memory engine bundle (kept between runs)
+        id: engine
+        uses: actions/cache@v6
+        with:
+          path: vendor/memory-engine/darwin-arm64
+          key: memory-engine-darwin-arm64-unsigned-${{ hashFiles('src/adapters/sidecar/install.js', 'scripts/build-memory-bundle.mjs') }}
+      - name: Build the memory engine bundle
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: npm run engine:bundle
+
+      - name: Build the tarballs
+        run: npm run dist:server
+
+      # install.sh goes up with x64's: the one in the release installs a Mac's too.
+      - name: Into the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          OWN_TOKEN: ${{ github.token }}
+          MIRROR_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          files=(
+            "dist/server/$VERSION/filament-server-$VERSION-darwin-arm64.tar.gz"
+            "dist/server/$VERSION/filament-server-$VERSION-darwin-arm64-no-engine.tar.gz"
+            "dist/server/$VERSION/latest-server-darwin-arm64.yml"
+          )
+          GH_TOKEN="$OWN_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" --clobber "${files[@]}"
+          if [ -n "$MIRROR_REPO" ]; then GH_TOKEN="$MIRROR_TOKEN" gh release upload "$GITHUB_REF_NAME" --repo "$MIRROR_REPO" --clobber "${files[@]}"; fi
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: Filament-${{ needs.version.outputs.version }}-server-darwin-arm64
+          path: |
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-darwin-arm64.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/filament-server-${{ needs.version.outputs.version }}-darwin-arm64-no-engine.tar.gz
+            dist/server/${{ needs.version.outputs.version }}/latest-server-darwin-arm64.yml
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   release:
     name: Draft release
     # Where the arm64 job was skipped (SERVER_ARM64 off) the release goes without its files: GitHub skips a job whose
     # need was skipped unless its `if` says otherwise. Any job failed or cancelled, the draft keeps what got up, without
     # its notes, until "Re-run failed jobs" puts in the rest; nothing sees a draft.
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    needs: [version, windows, mac, linux, server, server-arm64, server-windows]
+    needs: [version, windows, mac, linux, server, server-arm64, server-windows, server-mac]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -630,8 +701,8 @@ jobs:
     steps:
       # Every system's installers and update files in both drafts, or the run fails and says which is missing where: a
       # release without a system's latest*.yml offers that system no update. The servers' install.sh reads
-      # latest-server.yml, and Windows hosts' install.ps1 latest-server-win32-x64.yml: neither installs from a release
-      # without its file. arm64's servers' files are asked for where
+      # latest-server.yml (a Mac's, latest-server-darwin-arm64.yml), and Windows hosts' install.ps1
+      # latest-server-win32-x64.yml: neither installs from a release without its file. arm64's servers' files are asked for where
       # their job ran. A file counts once it is whole: an upload cut off leaves an asset GitHub has not marked uploaded.
       - name: Every system's files are here
         env:
@@ -656,7 +727,8 @@ jobs:
                      "Filament-$VERSION-mac-arm64.dmg" "Filament-$VERSION-mac-arm64.zip" latest-mac.yml \
                      "Filament-$VERSION-linux-x86_64.AppImage" "Filament-$VERSION-linux-amd64.deb" latest-linux.yml \
                      "filament-server-$VERSION-linux-x64.tar.gz" "filament-server-$VERSION-linux-x64-no-engine.tar.gz" latest-server.yml install.sh \
-                     "filament-server-$VERSION-win32-x64.tar.gz" "filament-server-$VERSION-win32-x64-no-engine.tar.gz" latest-server-win32-x64.yml install.ps1 $arm64; do
+                     "filament-server-$VERSION-win32-x64.tar.gz" "filament-server-$VERSION-win32-x64-no-engine.tar.gz" latest-server-win32-x64.yml install.ps1 \
+                     "filament-server-$VERSION-darwin-arm64.tar.gz" "filament-server-$VERSION-darwin-arm64-no-engine.tar.gz" latest-server-darwin-arm64.yml $arm64; do
               grep -qxF "$f" <<< "$there" || { echo "::error::$f is not in $repo's draft."; missing=1; }
             done
             echo "$repo:"
@@ -687,6 +759,7 @@ jobs:
           - **Linux** (x64): \`Filament-$VERSION-linux-x86_64.AppImage\` (any distribution: \`chmod +x\` it and run it), or \`Filament-$VERSION-linux-amd64.deb\` for Debian and Ubuntu (\`sudo apt install ./Filament-$VERSION-linux-amd64.deb\`)
           - **Linux servers** ($servers, no desktop app): \`curl -fsSL https://github.com/$RELEASES_REPO/releases/latest/download/install.sh | sh\`, or \`filament-server-$VERSION-linux-x64.tar.gz\` by hand
           - **Windows hosts** (x64, no desktop app): \`irm https://github.com/$RELEASES_REPO/releases/latest/download/install.ps1 | iex\` in PowerShell, or \`filament-server-$VERSION-win32-x64.tar.gz\` by hand
+          - **Mac hosts** (Apple Silicon, no desktop app): \`curl -fsSL https://github.com/$RELEASES_REPO/releases/latest/download/install.sh | sh\` in Terminal, or \`filament-server-$VERSION-darwin-arm64.tar.gz\` by hand
 
           The installed app finds this release itself once it is published.
           EOF

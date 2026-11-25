@@ -41,8 +41,8 @@ import { releasesRepoOf } from "../desktop/lib/updates.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/** What a server's build is for, each built on that machine alone. */
-export const SERVER_TARGETS = ["linux-x64", "linux-arm64", "win32-x64"];
+/** What a server's build is for, each built on that machine alone: a Mac's is Apple silicon's (its memory engine's bundle is). */
+export const SERVER_TARGETS = ["linux-x64", "linux-arm64", "win32-x64", "darwin-arm64"];
 /** x64's: the machine a name is for where none is given. */
 export const SERVER_TARGET = "linux-x64";
 /** The update file beside x64's tarballs, which a release carries for servers to check a download by. */
@@ -59,7 +59,7 @@ export const serverDir = (root, version) => join(root, "dist", "server", version
  */
 export const tarballName = (version, engine = true, target = SERVER_TARGET) => `filament-server-${version}-${target}${engine ? "" : "-no-engine"}.tar.gz`;
 
-/** The update file beside `target`'s tarballs: x64's latest-server.yml, latest-server-arm64.yml for arm64's, latest-server-win32-x64.yml for Windows'. @param {string} [target] */
+/** The update file beside `target`'s tarballs: x64's latest-server.yml, latest-server-arm64.yml for arm64's, latest-server-win32-x64.yml for Windows', latest-server-darwin-arm64.yml for a Mac's. @param {string} [target] */
 export const feedName = (target = SERVER_TARGET) => (target === SERVER_TARGET ? FEED : `latest-server-${target.replace(/^linux-/, "")}.yml`);
 
 /** The folder the tarball unpacks into: its name without .tar.gz. @param {string} name */
@@ -119,6 +119,8 @@ export const LAUNCHER_CMD = [
 
 /** Whether a machine's build is Windows'. @param {string} target */
 export const isWindows = (target) => target.startsWith("win32-");
+/** Whether a machine's build is Linux's: its node-pty is built against the machine's glibc. @param {string} target */
+export const isLinux = (target) => target.startsWith("linux-");
 
 /** Where a build's Node and launcher sit under its top folder, for the machine `target`. @param {string} target */
 export const layoutOf = (target) =>
@@ -572,7 +574,7 @@ export async function distServer({
   // The tarballs are this machine's: one machine's are never built on another.
   const target = SERVER_TARGETS.includes(machine) ? machine : "";
   if (!target) {
-    error(`Filament's server build is for ${SERVER_TARGETS.slice(0, -1).join(", ")} and ${SERVER_TARGETS.at(-1)}, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64, or on Windows x64.`);
+    error(`Filament's server build is for ${SERVER_TARGETS.slice(0, -1).join(", ")} and ${SERVER_TARGETS.at(-1)}, each built on the machine it is for: the memory engine's bundle is built there, and npm ci builds node-pty there, so no machine builds another's. This machine is ${machine}; build it on Linux x64 or arm64, on Windows x64, or on a Mac with Apple silicon.`);
     return 1;
   }
   const version = versionOf(root);
@@ -717,7 +719,7 @@ export async function distServer({
       `Filament ${version} for servers${m.engine ? "" : ", without its memory engine"}: ${m.file} (${(m.size / 1024 / 1024).toFixed(1)} MB) — ${isWindows(target) ? `scripts/install.ps1 installs it, or tar.exe -xzf it where it is to live, then ${topOf(m.name)}\\bin\\filament.cmd start` : `tar -xzf it where it is to live, then ${topOf(m.name)}/bin/filament start`}.`,
     );
   log(`Its update file: ${feed} — a release of ${releases.owner}/${releases.repo} offers ${made.length > 1 ? "them to servers with the tarballs" : "it to servers with the tarball"} beside it.`);
-  if (!isWindows(target)) log(glibcWords(builtOn));
+  if (isLinux(target)) log(glibcWords(builtOn));
   return 0;
 }
 

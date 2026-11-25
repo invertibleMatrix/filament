@@ -18,6 +18,7 @@ app it built. What it makes, in `dist/<system>/<version>/`:
 | Linux servers (x64), no desktop app | `npm run dist:server` | `filament-server-<v>-linux-x64.tar.gz`, and `…-no-engine.tar.gz` without the memory engine, which `install.sh` installs (section 6) | `latest-server.yml` |
 | Linux servers (arm64), no desktop app | `npm run dist:server`, on an arm64 machine | `filament-server-<v>-linux-arm64.tar.gz`, and `…-no-engine.tar.gz` | `latest-server-arm64.yml` |
 | Windows hosts (x64), no desktop app | `npm run dist:server`, on Windows | `filament-server-<v>-win32-x64.tar.gz`, and `…-no-engine.tar.gz`, which `install.ps1` installs (section 6) | `latest-server-win32-x64.yml` |
+| Mac hosts (Apple Silicon), no desktop app | `npm run dist:server`, on a Mac with Apple silicon | `filament-server-<v>-darwin-arm64.tar.gz`, and `…-no-engine.tar.gz`, which `install.sh` installs (section 6) | `latest-server-darwin-arm64.yml` |
 
 The update file lists each install file with its SHA-512. An installed Filament checks a download against it and
 keeps nothing that doesn't match.
@@ -166,11 +167,14 @@ nodejs.org, or nvm's. The build refuses one that uses the system's. It builds fr
 files git tracks: a folder with no `.git` is refused, since nothing there tells a developer's own `.env` from the checkout's.
 
 It builds for the machine it runs on: Linux x64, Linux arm64 (an arm64 Ubuntu 22.04 machine, after its own
-`npm ci` and `npm run engine:bundle`), or Windows x64. On arm64 it makes `filament-server-<v>-linux-arm64.tar.gz`, its
-`-no-engine` one and `latest-server-arm64.yml`; on Windows, after `npm ci` and `npm run engine:bundle` there,
-`filament-server-<v>-win32-x64.tar.gz`, its `-no-engine` one and `latest-server-win32-x64.yml`, with `node\node.exe`
-and `bin\filament.cmd` inside in place of Linux's `node/bin/node` and `bin/filament` (node-pty comes prebuilt for
-Windows; its smoke test runs the launcher through cmd). It refuses every other machine, and never builds one
+`npm ci` and `npm run engine:bundle`), Windows x64, or a Mac with Apple silicon. On arm64 it makes
+`filament-server-<v>-linux-arm64.tar.gz`, its `-no-engine` one and `latest-server-arm64.yml`; on Windows, after `npm ci`
+and `npm run engine:bundle` there, `filament-server-<v>-win32-x64.tar.gz`, its `-no-engine` one and
+`latest-server-win32-x64.yml`, with `node\node.exe` and `bin\filament.cmd` inside in place of Linux's `node/bin/node`
+and `bin/filament` (node-pty comes prebuilt for Windows; its smoke test runs the launcher through cmd); on a Mac, the
+same after `npm ci` and `npm run engine:bundle` there, `filament-server-<v>-darwin-arm64.tar.gz`, its `-no-engine` one
+and `latest-server-darwin-arm64.yml`, laid out as Linux's (node-pty comes prebuilt for Apple silicon; the bundle is
+built unsigned, as no tarball is notarized). An Intel Mac is refused. It refuses every other machine, and never builds one
 machine's tarballs on another: the memory engine's bundle and node-pty are built for the machine they run on.
 `latest-server.yml` is x64's alone, which every x64 install reads; a release by hand carries each machine's folder's
 files side by side.
@@ -312,6 +316,13 @@ irm https://github.com/invertibleMatrix/filament/releases/latest/download/instal
 It installs into `%LOCALAPPDATA%\filament\<v>`, points the junction `current` there at it, keeps the version before
 for a roll back and puts `current\bin` (with `filament.cmd`) on the user's PATH. It takes install.sh's options from
 the environment: `FILAMENT_VERSION`, `FILAMENT_NO_ENGINE`, `FILAMENT_RELEASES_URL` and `FILAMENT_NO_MODIFY_PATH`.
+
+**The Mac server build:** the `server-mac` job does the same on `macos-15`, with the `mac` job's memory engine
+bundle as it keeps one unsigned (the same cache key), and adds three files to the release:
+`filament-server-<v>-darwin-arm64.tar.gz`, its `-no-engine` one and `latest-server-darwin-arm64.yml`. No signing
+secret reaches it: a tarball `curl` fetches carries no quarantine, so Gatekeeper asks nothing of it, and Apple silicon
+runs the signatures its programs came with. Its smoke test starts Filament and a terminal on that Mac. `install.sh` on
+a Mac reads that file, and `filament update` there too. The release checks them, and its notes name them.
 
 **The arm64 server build:** the `server-arm64` job does the same on an arm64 machine, with its own memory engine
 bundle, and adds three files to the release: `filament-server-<v>-linux-arm64.tar.gz`, its `-no-engine` one and
