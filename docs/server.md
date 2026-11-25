@@ -3,7 +3,7 @@
 How to run Filament on a Linux server with no desktop: install it with one command, set it up over SSH, keep it
 running under systemd, reach it from your laptop, and update it. Everything runs as your own user; nothing needs root
 except the few system steps marked `sudo`. A Windows host is set up the same way, by PowerShell
-([section 10](#10-a-windows-host)).
+([section 10](#10-a-windows-host)), and a Mac with Apple silicon under launchd ([section 11](#11-a-mac)).
 
 ## 1. What a server runs
 
@@ -21,6 +21,8 @@ It runs on:
   on x86_64 and on arm64 alike. On an older glibc Filament runs, but its terminals don't open.
 - **Windows on x64 (AMD64)**: Windows 10 1803 or newer, or Windows Server 2019 or newer, reached with Windows' own
   OpenSSH Server ([section 10](#10-a-windows-host)). Not Windows on ARM.
+- **A Mac with Apple silicon** on **macOS 13.5 or newer**: a Mac mini or Mac Studio kept as a server, or a cloud's
+  Mac, reached over SSH with Remote Login on ([section 11](#11-a-mac)). Not an Intel Mac.
 
 **The agent's browser.** A chat's browser is the desktop app of whoever drives the chat
 ([Which machine's browser a chat uses](GUIDE.md#the-agents-browser)). In your laptop's app, Settings › Remote access ›
@@ -259,9 +261,9 @@ filament update
 ```
 
 It finds the newest published release, of the kind installed (with the memory engine or without) and for the machine
-its build is for (Linux on x64 or arm64, Windows on x64), downloads it, checks its SHA-512, unpacks it beside the
-version that runs, and points `current` at it. The Filament its service runs (systemd's unit; on a Windows host, its
-scheduled task) then restarts on it, once no turn runs. While a turn runs it exits with code 5 and keeps the update:
+its build is for (Linux on x64 or arm64, Windows on x64, a Mac with Apple silicon), downloads it, checks its SHA-512,
+unpacks it beside the version that runs, and points `current` at it. The Filament its service runs (systemd's unit; on
+a Windows host, its scheduled task; on a Mac, launchd's LaunchAgent) then restarts on it, once no turn runs. While a turn runs it exits with code 5 and keeps the update:
 `filament restart` starts the new version once the turn ends. A Filament started by hand is told to start again. A
 download, a checksum or an unpack that fails changes nothing, nor does a release built on a newer glibc than the
 server's. A new version that does not come up under its service — it ends as it starts, or does not answer within a
@@ -315,7 +317,9 @@ rm -rf ~/.config/filament        # only to forget everything: settings, keys, ch
 
 | What you see | Why | What to do |
 |---|---|---|
-| `… built for Linux on x86_64 and on arm64 (aarch64), and this machine is …` | A Mac, Windows, or a Linux machine of another kind (32-bit ARM, RISC-V) | Install the desktop app on a Mac. A Windows host installs with `install.ps1` (section 10). Other Linux machines are not built for |
+| `… built for Linux on x86_64 and on arm64 (aarch64), and for a Mac with Apple silicon, and this machine is …` | Windows, a Linux machine of another kind (32-bit ARM, RISC-V), or another system | A Windows host installs with `install.ps1` (section 10). Others are not built for |
+| `Filament for servers runs on a Mac with Apple silicon, and this Mac's chip is Intel's` | An Intel Mac | Filament is not built for Intel Macs |
+| `Filament for servers needs macOS 13.5 or newer, and this Mac runs …` | An older macOS | Update macOS (System Settings › General › Software Update) |
 | `Filament for Windows hosts is built for x64 (AMD64), and this machine is Windows on ARM64.` | Windows on ARM | Install the desktop app there |
 | `Filament's installer unpacks with Windows' own tar.exe, which this Windows does not have` | A Windows older than 10 1803, or than Windows Server 2019 | A newer Windows |
 | `filament service install` says registering a task `takes an administrator` | Task Scheduler refused your account a task that runs at boot with no one logged in | Run it in a PowerShell opened as administrator, or over SSH as an administrator (its sessions are elevated) |
@@ -352,8 +356,9 @@ above holds, with these differences.
 
 **Set up over SSH** from the Filament app (section 2) does it all, each step in PowerShell there, as Windows' own
 OpenSSH Server starts it. That server must be on there first (Settings › System › Optional features › OpenSSH Server,
-then `Start-Service sshd`), and your key in place, since the key the sheet offers is added on a Linux machine alone:
-in `%USERPROFILE%\.ssh\authorized_keys`, or for an administrator in `C:\ProgramData\ssh\administrators_authorized_keys`.
+then `Start-Service sshd`). A host that asks for a password gets your laptop's key from the sheet, its PowerShell
+adding it to `%USERPROFILE%\.ssh\authorized_keys`, or for an administrator to
+`C:\ProgramData\ssh\administrators_authorized_keys` with the access Windows' OpenSSH requires of it.
 
 **Install by hand**, in PowerShell on the host:
 
@@ -405,3 +410,77 @@ Remove-Item -Recurse -Force "$env:APPDATA\Filament"   # only to forget everythin
 
 Then take `%LOCALAPPDATA%\filament\current\bin` off your user PATH (Settings › System › About › Advanced system
 settings › Environment Variables).
+
+## 11. A Mac
+
+Filament for servers runs on a Mac with Apple silicon too — a Mac mini or Mac Studio kept as a server, or a cloud's
+Mac — with no desktop app: the same server, harness, command line and memory engine, with Node for macOS. Everything
+above holds, with these differences.
+
+**Set up over SSH** from the Filament app (section 2) does it all. Remote Login must be on there first (System
+Settings › General › Sharing › Remote Login).
+
+**Install by hand**, in Terminal on the Mac, with the same line as on Linux:
+
+```sh
+curl -fsSL https://github.com/invertibleMatrix/filament/releases/latest/download/install.sh | sh
+```
+
+It reads the release's `latest-server-darwin-arm64.yml` and installs into the same folders as on Linux:
+`~/.local/share/filament`, `~/.local/bin/filament`, and the data folder `~/.config/filament`. A Terminal under Rosetta
+installs it too, as the installer asks the Mac's own chip. Where `~/.local/bin` is not on your PATH, the installer
+gives the line for your shell (`~/.zprofile` for zsh). The Filament app on the same Mac uses that data folder and port
+too, so one of them runs at a time; the installer says so where it finds the app.
+
+**Keep it running.** `filament service install` writes launchd's LaunchAgent,
+`~/Library/LaunchAgents/com.filamentdev.server.plist` (no root), and loads it: its runner starts Filament, and starts
+it again 3 s after it ends by itself. A LaunchAgent runs once you log in at the Mac. To start Filament at boot with
+no one logged in, install its LaunchDaemon, which runs as you: `service install` writes it beside the runner's files
+and says the one line that installs it, which **Set up over SSH** runs in a terminal on its sheet:
+
+```sh
+sudo launchctl bootout system/com.filamentdev.server 2>/dev/null; sudo install -m 644 -o root -g wheel ~/.config/filament/service/com.filamentdev.server.plist /Library/LaunchDaemons/com.filamentdev.server.plist && sudo launchctl bootstrap system /Library/LaunchDaemons/com.filamentdev.server.plist
+```
+
+`filament service status`, `logs` and `uninstall` work as on Linux, and its log is
+`~/.config/filament/service/server.log`. `filament start`, `stop` and `restart` go through its runner, with no `sudo`,
+whether launchd started it by its LaunchAgent or its LaunchDaemon.
+
+**What a Mac asks of a server.**
+
+- **Sleep.** A Mac that sleeps runs nothing: System Settings › Energy, **Prevent automatic sleeping when the display is
+  off** (or `sudo pmset -a sleep 0`).
+- **FileVault.** After a restart, a Mac with FileVault on runs nothing until someone unlocks its disk at the Mac. For a
+  restart you plan, `sudo fdesetup authrestart` unlocks it once.
+- **Your folders.** macOS asks before a program reads `~/Documents`, `~/Desktop` or `~/Downloads`, and a Filament
+  launchd runs has no one to ask: keep projects in another folder (`~/code`), or give Filament's Node Full Disk Access
+  (System Settings › Privacy & Security).
+- **Sign-ins.** Claude Code keeps its sign-in in your login keychain, which stays locked until you log in at the Mac;
+  started at boot before that, it may ask to sign in again.
+
+**Your network.** macOS's firewall, where it is on, lets in programs rather than ports, and asks at the Mac before it
+lets a new one in. With no one there to answer, let Filament's Node in:
+
+```sh
+n=$(readlink -f ~/.local/bin/filament); n=$(cd "${n%/*}/../node/bin" && pwd -P)/node
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "$n" && sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$n"
+```
+
+Each update's Node is a program of its own to it, so run it again after an update; **Set up over SSH** says it on
+every run while the firewall is on. Tailscale serves Filament with no rule, as on Linux, and a Mac names no operator
+to set.
+
+**Update.** `filament update` updates it as on Linux, launchd's runner restarting it on the new version. The app's
+**Update Filament** runs the update apart from Filament, by the build's own Node, as on a Windows host.
+
+**Uninstall:**
+
+```sh
+filament service uninstall       # or filament stop, where you started it by hand
+rm -rf ~/.local/share/filament
+rm -f ~/.local/bin/filament
+rm -rf ~/.config/filament        # only to forget everything: settings, keys, chats and memory, the app's too
+```
+
+Where its LaunchDaemon is installed, `service uninstall` says the line that removes it:
+`sudo launchctl bootout system/com.filamentdev.server; sudo rm /Library/LaunchDaemons/com.filamentdev.server.plist`.
