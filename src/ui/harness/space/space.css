@@ -255,7 +255,7 @@
 .sp-lane-state.is-needs { color: var(--color-sys-orange-text); }
 .sp-lane-state.is-error { color: var(--color-sys-red-text); }
 .sp-spin { display: inline-flex; }
-.sp-spin svg { width: 12px; height: 12px; animation: spin 1s linear infinite; }
+.sp-spin svg { width: 12px; height: 12px; animation: spin 1s steps(8, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .sp-spin svg { animation: none; } }
 .sp-lane-facts { font-size: var(--text-ui-sm); color: var(--aq-label); }
 .sp-lane-line {

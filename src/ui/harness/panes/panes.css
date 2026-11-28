@@ -331,7 +331,7 @@ html.app-frame .app-shell.pane-window .tile-head :is(button, a, input, select, t
 /* A read or the move on its way: the line says what it waits on, its spinner turning, as Move's does; the last read's words dim. */
 .mv-said.is-waiting { display: flex; align-items: center; gap: 8px; }
 .mv-wait-spin, .zc-btn .mv-spin { display: inline-flex; flex: none; }
-.mv-wait-spin svg, .zc-btn .mv-spin svg { width: 14px; height: 14px; animation: spin 1s linear infinite; }
+.mv-wait-spin svg, .zc-btn .mv-spin svg { width: 14px; height: 14px; animation: spin 1s steps(8, end) infinite; }
 .zc-btn:not([aria-busy="true"]) .mv-spin { display: none; }
 .mv-where.is-stale, .mv-list.is-stale { opacity: 0.5; transition: opacity 150ms; }
 @media (prefers-reduced-motion: reduce) { .mv-wait-spin svg, .zc-btn .mv-spin svg { animation: none; } }

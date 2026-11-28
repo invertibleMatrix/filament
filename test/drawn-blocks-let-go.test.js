@@ -74,7 +74,7 @@ console.log(JSON.stringify({ live: icons(true), over: icons(false) }));
     over: [["plan-ic done", false], ["plan-ic doing", true], ["plan-ic pending", false]],
   });
   const css = readFileSync(new URL("../src/ui/harness.css", import.meta.url), "utf8");
-  assert.ok(css.includes(".plan-ic.doing.is-live svg { animation: spin 1s linear infinite; }"));
+  assert.ok(css.includes(".plan-ic.doing.is-live svg { animation: spin 1s steps(8, end) infinite; }"));
   assert.ok(css.includes("@media (prefers-reduced-motion: reduce) { .plan-ic.doing.is-live svg { animation: none; } }"));
 });
 
