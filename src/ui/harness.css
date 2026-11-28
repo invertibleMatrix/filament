@@ -822,7 +822,7 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .sess-age { color: var(--color-foreground-subtle); font-size: var(--text-ui-sm); white-space: nowrap; flex: none; }
 .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-border); flex: none; }
 .live-spin { width: 16px; height: 16px; flex: none; display: grid; place-items: center; color: var(--color-foreground-subtle); }
-.live-spin svg { width: 16px; height: 16px; animation: spin 1s linear infinite; }
+.live-spin svg { width: 16px; height: 16px; animation: spin 1s steps(8, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .live-spin svg { animation: none; } }
 .sess-row .pin {
   opacity: 0; transition: opacity var(--t-fast) var(--ease);
@@ -855,7 +855,7 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .now-gdot.needs { background: var(--color-sys-orange); }
 .now-gdot.done { background: var(--color-sys-green); }
 .now-gspin { display: flex; flex: none; color: var(--color-foreground-subtle); }
-.now-gspin svg { width: 10px; height: 10px; animation: spin 1s linear infinite; }
+.now-gspin svg { width: 10px; height: 10px; animation: spin 1s steps(8, end) infinite; }
 .now-clear { margin-left: auto; padding: 0 4px; border: 0; background: none; font: inherit; font-weight: 500; color: var(--color-foreground-subtle); cursor: pointer; border-radius: 4px; }
 .now-clear:hover { color: var(--color-foreground); }
 .now-row { display: flex; align-items: flex-start; gap: 9px; padding: 6px 8px 6px 10px; border-radius: 8px; cursor: pointer; min-width: 0; }
@@ -912,7 +912,7 @@ button.sm.ghost[aria-disabled="true"]:hover { background: none; color: var(--col
 .now-under:hover { background: var(--color-surface-hover); }
 .now-under:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-sys-blue) 60%, transparent); outline-offset: -2px; }
 .now-under-spin { display: flex; flex: none; color: var(--color-sys-purple-text); }
-.now-under-spin svg { width: 10px; height: 10px; animation: spin 1s linear infinite; }
+.now-under-spin svg { width: 10px; height: 10px; animation: spin 1s steps(8, end) infinite; }
 .now-under-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* An agent you started, among the lines under its chat: the Projects list's "side" tag, in its word. */
 .now-under-tag { flex: none; padding: 0 5px; border-radius: 4px; font-size: var(--text-ui-2xs); font-weight: 600; line-height: 16px;
@@ -1186,7 +1186,7 @@ html.app-frame .zc-sheet { height: calc(100dvh - var(--bar-h) - 20px); }
 .turn-live { display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; min-width: 0; padding: 2px 0 6px; font-size: var(--text-ui-sm); color: var(--color-foreground-subtle); font-variant-numeric: tabular-nums; }
 .turn-live.hidden { display: none; }
 .turn-live-spin { display: grid; place-items: center; flex: none; width: 14px; height: 14px; margin-right: 4px; color: var(--color-sys-blue-text); }
-.turn-live-spin svg { width: 14px; height: 14px; animation: spin 1s linear infinite; }
+.turn-live-spin svg { width: 14px; height: 14px; animation: spin 1s steps(8, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .turn-live-spin svg { animation: none; } }
 .turn-live-lead { font-weight: 600; color: var(--color-foreground); }
 .turn-live-reached { color: var(--color-foreground-subtlest); }
@@ -1917,7 +1917,7 @@ html.app-frame .zc-sheet { height: calc(100dvh - var(--bar-h) - 20px); }
 .sp-plan-ic { display: inline-flex; }
 .sp-plan-ic svg { width: 14px; height: 14px; }
 .sp-plan-ic.doing { color: var(--color-sys-blue-text); }
-.sp-plan-ic.is-live svg { animation: spin 1s linear infinite; }
+.sp-plan-ic.is-live svg { animation: spin 1s steps(8, end) infinite; }
 [data-motion="reduced"] .sp-plan-ic.is-live svg { animation: none; }
 @media (prefers-reduced-motion: reduce) { .sp-plan-ic.is-live svg { animation: none; } }
 .sp-agent { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; }
@@ -1960,7 +1960,7 @@ html.app-frame .zc-sheet { height: calc(100dvh - var(--bar-h) - 20px); }
 .sc-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--sc-tone); }
 .status-capsule.is-working .sc-dot, .status-capsule.is-room .sc-dot {
   width: 11px; height: 11px; background: none; border: 2px solid color-mix(in oklab, var(--sc-tone) 28%, transparent); border-top-color: var(--sc-tone);
-  animation: spin 1s linear infinite;
+  animation: spin 1s steps(4, end) infinite;
 }
 @media (prefers-reduced-motion: reduce) { .status-capsule .sc-dot { animation: none; } }
 .sc-lead { flex: none; font-weight: 600; }
@@ -2575,7 +2575,7 @@ html.app-frame .zc-sheet { height: calc(100dvh - var(--bar-h) - 20px); }
 .plan-ic.doing { color: var(--color-sys-blue-text); }
 /* The step in progress spins while its turn runs (the owner's of 11-10), still where Animations are Reduced, as the
    Plan's own marks (views.css). */
-.plan-ic.doing.is-live svg { animation: spin 1s linear infinite; }
+.plan-ic.doing.is-live svg { animation: spin 1s steps(8, end) infinite; }
 [data-motion="reduced"] .plan-ic.doing.is-live svg { animation: none; }
 @media (prefers-reduced-motion: reduce) { .plan-ic.doing.is-live svg { animation: none; } }
 .plan-ic.done { color: var(--color-success); }
@@ -3549,7 +3549,7 @@ details.memory-note[open] > summary.card-title { margin-bottom: 4px; }
 .si-page { display: flex; flex-wrap: wrap; gap: 8px; }
 .tk-wait { display: flex; align-items: center; gap: 8px; font-size: var(--text-ui-sm); color: var(--aq-label-2); }
 .tk-spin { display: inline-flex; color: var(--aq-accent); }
-.tk-spin svg { width: 14px; height: 14px; animation: spin 1s linear infinite; }
+.tk-spin svg { width: 14px; height: 14px; animation: spin 1s steps(8, end) infinite; }
 .tk-alt { font-size: var(--text-ui-sm); color: var(--aq-label-2); }
 .tk-alt summary { width: fit-content; cursor: pointer; }
 .tk-alt summary:hover { color: var(--aq-label); }
@@ -3580,7 +3580,7 @@ details.memory-note[open] > summary.card-title { margin-bottom: 4px; }
 .ssh-step.is-done .ssh-mark { color: var(--color-sys-green-text); }
 .ssh-step.is-failed .ssh-mark { color: var(--color-sys-red-text); }
 .ssh-step.is-running .ssh-mark { color: var(--aq-accent); }
-.ssh-step.is-running .ssh-mark svg { animation: spin 1s linear infinite; }
+.ssh-step.is-running .ssh-mark svg { animation: spin 1s steps(8, end) infinite; }
 .ssh-step-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--text-ui-sm); line-height: 1.45; color: var(--aq-label-2); }
 .ssh-step-text b { font-size: var(--text-ui-base); font-weight: 600; color: var(--aq-label); }
 .ssh-step.is-pending .ssh-step-text b { color: var(--aq-label-2); }
